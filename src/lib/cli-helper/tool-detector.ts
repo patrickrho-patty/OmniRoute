@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { getCurrentHermesAgentRoles } from "./config-generator/hermes-agent";
 import { getCachedLoginShellPath, mergeShellPath } from "@/shared/services/loginShellPath";
+import { getRuntimePorts } from "@/lib/runtime/ports";
 
 const execFileAsync = promisify(execFile);
 let execFileImpl = execFileAsync;
@@ -72,9 +73,13 @@ function expandHome(p: string): string {
 
 function isConfigured(content: string, baseUrl: string): boolean {
   const normalized = baseUrl.replace(/\/+$/, "");
+  // Heuristic: a tool is "configured for OmniRoute" when its config either
+  // contains the literal base URL, or references the runtime port (handles
+  // both the historical :20128 default and deployments that override PORT).
+  const runtimePort = String(getRuntimePorts().port);
   return (
     content.includes(normalized) ||
-    content.includes("localhost:20128") ||
+    content.includes(`localhost:${runtimePort}`) ||
     content.includes("OMNIROUTE_BASE_URL")
   );
 }
@@ -137,8 +142,7 @@ export async function detectTool(id: string): Promise<DetectedTool | null> {
       Object.entries(roles).forEach(([role, info]) => {
         const usingOmni =
           info?.provider === "omniroute" ||
-          (info?.base_url || "").includes("20128") ||
-          (info?.base_url || "").includes("localhost:20128");
+          (info?.base_url || "").includes(`:${getRuntimePorts().port}`);
 
         richRoles[role] = {
           model: info.model,

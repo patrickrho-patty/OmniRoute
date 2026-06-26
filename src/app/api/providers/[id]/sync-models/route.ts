@@ -13,6 +13,7 @@ import {
   isModelSyncInternalRequest,
 } from "@/shared/services/modelSyncScheduler";
 import { GET as getProviderModels } from "../models/route";
+import { getRuntimePorts } from "@/lib/runtime/ports";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 
 type JsonRecord = Record<string, unknown>;
@@ -188,7 +189,7 @@ export async function ensureLoopbackServerReady(opts: EnsureReadyOptions = {}): 
         // readiness — we only care that the dispatcher succeeds (no
         // ECONNREFUSED). Using a synthetic connection id so no real DB lookup
         // is needed; the 404 is sufficient proof the server is dispatching.
-        const probePort = process.env.OMNIROUTE_PORT || process.env.PORT || "20128";
+        const probePort = getRuntimePorts().port;
         const res = await f(
           `http://127.0.0.1:${probePort}/api/providers/__readiness_probe__/models`,
           {
@@ -329,7 +330,7 @@ async function fetchProviderModelsForSync(request: Request, connectionId: string
   const loopbackPort =
     SAFE_HOSTS.has(incomingUrl.hostname) && incomingUrl.port
       ? incomingUrl.port
-      : process.env.PORT || "20128";
+      : String(getRuntimePorts().port);
   const safeOrigin = `http://127.0.0.1:${loopbackPort}`;
   const modelsPath = `/api/providers/${encodeURIComponent(connectionId)}/models?refresh=true`;
   const headers = {
@@ -476,8 +477,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const allFetchedModels = modelsData.models || [];
     const importFreeOnly = Boolean(
-      (connection.providerSpecificData as Record<string, unknown> | undefined)
-        ?.importFreeModelsOnly
+      (connection.providerSpecificData as Record<string, unknown> | undefined)?.importFreeModelsOnly
     );
     const { models: fetchedModels, freeFilterEmpty } = selectModelsForImport(
       logProvider,
