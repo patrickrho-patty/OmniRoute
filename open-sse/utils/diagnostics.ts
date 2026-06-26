@@ -200,6 +200,28 @@ export function detectMalformedNonStream(resp: unknown): MalformedReason | null 
     return null;
   }
 
+  // ── Claude Messages API shape (#fork fix: prev. treated as malformed → 502) ──
+  // Claude's Messages API uses {type:"message", role:"assistant", content:[…],
+  // stop_reason, usage, …}. Critically the discriminator is `type` (NOT `object` —
+  // Responses API uses `object:"response"` and Chat Completions uses `object:"chat.completion"`).
+  // Without this branch every Claude response (including successful ones) was
+  // misclassified as "empty_choices" because the code below looks for `body.choices`
+  // (OpenAI's container) which Claude never sets.
+  if (body.type === "message") {
+    const content = body.content;
+    const hasOutput =
+      Array.isArray(content) &&
+      content.some((block) => {
+        if (!block || typeof block !== "object") return false;
+        const b = block as Record<string, unknown>;
+        if (typeof b.text === "string" && (b.text as string).length > 0) return true;
+        if (b.type === "tool_use" || b.type === "tool_result") return true;
+        return false;
+      });
+    if (!hasOutput) return "empty_choices";
+    return null;
+  }
+
   // ── Chat Completions shape ──
   const choices = body.choices;
   if (!Array.isArray(choices) || choices.length === 0) return "empty_choices";
