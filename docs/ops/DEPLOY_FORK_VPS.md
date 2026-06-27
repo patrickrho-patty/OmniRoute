@@ -29,7 +29,7 @@ ssh ubuntu@161.33.162.164 'sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omn
   && sudo systemctl restart omniroute.service'
 ```
 
-Then verify (see [Step 5](#5-verify-the-deploy)).
+Then verify (see [Step 6](#6-verify-the-deploy)).
 
 ---
 
@@ -57,7 +57,12 @@ Client → https://jebo.ai/v1 → Cloudflare edge TLS (Flexible) → origin HTTP
 
 The VPS is small (45 GB disk, limited RAM). `next build` is heavy and would risk OOM or
 compete with the running service. So we **build on the Mac** and rsync the already-assembled
-bundle. The VPS only runs `node dist/server.js` — no build step.
+bundle. The VPS runs the `omniroute` CLI entry point — `ExecStart=/usr/bin/omniroute`, a
+symlink to `bin/omniroute.mjs` at the install root — which launches the standalone server
+from `dist/`. No build step on the VPS.
+
+Note: `bin/omniroute.mjs` lives at the install root, **not** in `dist/`, so a normal
+`dist/` rsync does not touch the CLI entry — only the server bundle it launches.
 
 rsync delta-syncs, so despite a ~775 MB bundle, the actual transfer is tiny (e.g. ~16 MB
 when most of `node_modules` is unchanged between deploys).
@@ -112,8 +117,9 @@ Record the commit SHA — you'll use it for the rollback backup name.
 npm run build
 ```
 
-Watch for `===BUILD_EXIT=0===` (or the `✔ OmniRoute is running!`-style success in the
-assemble step). The build produces the assembled bundle at:
+Watch for a clean exit (exit code 0) and the final `[assembleStandalone] Synced module:`
+lines in the output — that means the assembled bundle is ready. The build produces the
+assembled bundle at:
 
 ```bash
 ls -la .build/next/standalone/server.js          # must exist
@@ -204,7 +210,8 @@ ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 '
 - `{"error":{"code":"AUTH_001",...}}` → **healthy.** The endpoint requires auth; a clean
   JSON AUTH error (not a 502, not an empty body) proves the server is up and routing.
 - Empty body / 502 / connection refused → **unhealthy.** Check journalctl, check port 80,
-  check that `dist/server.js` exists.
+  and confirm the entry point resolves: `readlink -f /usr/bin/omniroute` should point at
+  `…/omniroute/bin/omniroute.mjs`, and the bundle it launches (`dist/server.js`) should exist.
 
 **How to verify your change is live:**
 Pick a literal string your change introduced and grep the compiled bundle. Note the path is

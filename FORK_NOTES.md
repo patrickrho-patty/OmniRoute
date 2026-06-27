@@ -210,15 +210,15 @@ Web-cookie executors that should support tool calling must go through `prepareTo
 
 ### SRC-004 — Ponytail compression engine + per-engine analytics separation
 
-| Field             | Value                                                                        |
-| ----------------- | ---------------------------------------------------------------------------- |
-| Commit            | `680b8c00c6763ad99e4173012f2ed99c9d6f1130`                                   |
-| Commit title      | `feat(compression): add ponytail engine and per-engine analytics separation` |
-| Date              | 2026-06-28 06:35:19 KST                                                      |
-| Upstream baseline | `555b21d29` / v3.8.37                                                        |
-| Files changed     | 18 (12 source + 4 tests + 2 new files)                                       |
-| Diff stat         | +591 / −126                                                                  |
-| Status            | Deployed to `jebo.ai`; source pushed to fork                                 |
+| Field             | Value                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------ |
+| Commit            | `680b8c00c6763ad99e4173012f2ed99c9d6f1130`                                                       |
+| Commit title      | `feat(compression): add ponytail engine and per-engine analytics separation`                     |
+| Date              | 2026-06-28 06:35:19 KST                                                                          |
+| Upstream baseline | `555b21d29` / v3.8.37                                                                            |
+| Files changed     | 18 (15 modified + 3 new: `ponytail/index.ts`, `systemInstruction.ts`, `ponytail-engine.test.ts`) |
+| Diff stat         | +591 / −126                                                                                      |
+| Status            | Deployed to `jebo.ai`; source pushed to fork                                                     |
 
 #### Problem
 
