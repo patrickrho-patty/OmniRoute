@@ -58,14 +58,14 @@ That broke our deployment because `jebo.ai` runs OmniRoute on **port 80** behind
 
 The fork routes those call sites through `getRuntimePorts()`:
 
-| File                                              | Fork change                                                                            |
-| ------------------------------------------------- | -------------------------------------------------------------------------------------- | --- | -------- |
-| `open-sse/handlers/chatCore/telemetryHelpers.ts`  | Uses `getRuntimePorts().liveWsPort` instead of `process.env.LIVE_WS_PORT               |     | "20129"` |
-| `src/app/api/playground/improve-prompt/route.ts`  | Uses `getRuntimePorts().port` instead of `process.env.PORT ?? "20128"`                 |
-| `src/app/api/providers/[id]/sync-models/route.ts` | Uses `getRuntimePorts().port` for two loopback readiness/model-sync call sites         |
-| `src/app/api/v1/ws/route.ts`                      | Uses `getRuntimePorts().liveWsPort` for advertised live-WS metadata                    |
-| `src/lib/cli-helper/tool-detector.ts`             | Tool-detection heuristic uses the runtime port instead of `localhost:20128`            |
-| `src/lib/runtime/ports.ts`                        | Adds live-WS defaulting: `liveWsPort = basePort + 1` unless `LIVE_WS_PORT` is explicit |
+| File                                              | Fork change                                                                                  |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `open-sse/handlers/chatCore/telemetryHelpers.ts`  | Uses `getRuntimePorts().liveWsPort` instead of the `LIVE_WS_PORT` hardcoded `20129` fallback |
+| `src/app/api/playground/improve-prompt/route.ts`  | Uses `getRuntimePorts().port` instead of `process.env.PORT ?? "20128"`                       |
+| `src/app/api/providers/[id]/sync-models/route.ts` | Uses `getRuntimePorts().port` for two loopback readiness/model-sync call sites               |
+| `src/app/api/v1/ws/route.ts`                      | Uses `getRuntimePorts().liveWsPort` for advertised live-WS metadata                          |
+| `src/lib/cli-helper/tool-detector.ts`             | Tool-detection heuristic uses the runtime port instead of `localhost:20128`                  |
+| `src/lib/runtime/ports.ts`                        | Adds live-WS defaulting: `liveWsPort = basePort + 1` unless `LIVE_WS_PORT` is explicit       |
 
 Added behavior in `src/lib/runtime/ports.ts`:
 
