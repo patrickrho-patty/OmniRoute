@@ -29,6 +29,11 @@ import {
   __resetChatGptImageCacheForTesting,
   type ChatGptImageConversationContext,
 } from "../services/chatgptImageCache.ts";
+import {
+  prepareToolMessages,
+  buildToolAwareResult,
+  type OpenAIToolCall,
+} from "../translator/webTools.ts";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1754,11 +1759,154 @@ function buildStreamingResponse(
           );
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         } finally {
-          try { controller.close(); } catch {}
+          try {
+            controller.close();
+          } catch {}
         }
       },
     },
     { highWaterMark: 16384 }
+  );
+}
+
+function emitToolAwareSseChunk(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  cid: string,
+  created: number,
+  model: string,
+  delta: Record<string, unknown>,
+  finishReason: string | null
+): void {
+  controller.enqueue(
+    encoder.encode(
+      `data: ${JSON.stringify({
+        id: cid,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{ index: 0, delta, finish_reason: finishReason, logprobs: null }],
+      })}\n\n`
+    )
+  );
+}
+
+function buildToolAwareStreamingResponse(
+  cid: string,
+  created: number,
+  model: string,
+  content: string,
+  toolCalls: OpenAIToolCall[] | null,
+  finishReason: string
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      emitToolAwareSseChunk(controller, encoder, cid, created, model, { role: "assistant" }, null);
+      if (content) {
+        emitToolAwareSseChunk(controller, encoder, cid, created, model, { content }, null);
+      }
+      if (toolCalls?.length) {
+        emitToolAwareSseChunk(
+          controller,
+          encoder,
+          cid,
+          created,
+          model,
+          {
+            tool_calls: toolCalls.map((toolCall, index) => ({
+              index,
+              id: toolCall.id,
+              type: "function",
+              function: toolCall.function,
+            })),
+          },
+          null
+        );
+      }
+      emitToolAwareSseChunk(controller, encoder, cid, created, model, {}, finishReason);
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+async function buildToolAwareChatGptResponse(
+  eventStream: ReadableStream<Uint8Array>,
+  model: string,
+  cid: string,
+  created: number,
+  currentMsg: string,
+  requestedTools: unknown,
+  stream: boolean,
+  signal?: AbortSignal | null
+): Promise<Response> {
+  let fullAnswer = "";
+
+  for await (const chunk of extractContent(eventStream, signal)) {
+    if (chunk.error) {
+      return new Response(
+        JSON.stringify({
+          error: { message: chunk.error, type: "upstream_error", code: "CHATGPT_ERROR" },
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (chunk.done) {
+      fullAnswer = chunk.answer || fullAnswer;
+      break;
+    }
+    if (chunk.answer) fullAnswer = chunk.answer;
+  }
+
+  const { content, toolCalls, finishReason } = buildToolAwareResult(
+    cleanChatGptText(fullAnswer),
+    requestedTools,
+    "cgpt"
+  );
+
+  if (stream) {
+    return buildToolAwareStreamingResponse(cid, created, model, content, toolCalls, finishReason);
+  }
+
+  const message: Record<string, unknown> = { role: "assistant", content };
+  if (toolCalls?.length) {
+    message.tool_calls = toolCalls;
+    if (!content) message.content = null;
+  }
+  const promptTokens = Math.ceil(currentMsg.length / 4);
+  const completionTokens = Math.ceil(content.length / 4);
+
+  return new Response(
+    JSON.stringify({
+      id: cid,
+      object: "chat.completion",
+      created,
+      model,
+      system_fingerprint: null,
+      choices: [
+        {
+          index: 0,
+          message,
+          finish_reason: finishReason,
+          logprobs: null,
+        },
+      ],
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
   );
 }
 
@@ -2460,9 +2608,8 @@ export class ChatGptWebExecutor extends BaseExecutor {
     onCredentialsRefreshed,
     clientHeaders,
   }: ExecuteInput) {
-    const messages = (body as Record<string, unknown> | null)?.messages as
-      | Array<Record<string, unknown>>
-      | undefined;
+    const bodyObj = (body as Record<string, unknown> | null) ?? {};
+    const messages = bodyObj.messages as Array<Record<string, unknown>> | undefined;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return {
         response: errorResponse(400, "Missing or empty messages array"),
@@ -2659,7 +2806,11 @@ export class ChatGptWebExecutor extends BaseExecutor {
     }
 
     // 4. Build conversation request
-    const parsed = parseOpenAIMessages(messages);
+    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+      bodyObj,
+      messages as Array<{ role: string; content: unknown }>
+    );
+    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
     if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
       return {
         response: errorResponse(400, "Empty user message"),
@@ -2796,7 +2947,18 @@ export class ChatGptWebExecutor extends BaseExecutor {
       pollForAsyncImage(conversationId, resolverCtx);
 
     let finalResponse: Response;
-    if (stream) {
+    if (hasTools) {
+      finalResponse = await buildToolAwareChatGptResponse(
+        bodyStream,
+        model,
+        cid,
+        created,
+        parsed.currentMsg,
+        requestedTools,
+        stream !== false,
+        signal
+      );
+    } else if (stream) {
       const sseStream = buildStreamingResponse(
         bodyStream,
         model,
