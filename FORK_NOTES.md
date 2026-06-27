@@ -13,17 +13,27 @@ Keep this file updated whenever we add a new fork-only source patch or a product
 
 ## Current git state
 
-| Item                                | Value                                           |
-| ----------------------------------- | ----------------------------------------------- |
-| Upstream repo                       | `github.com/diegosouzapw/OmniRoute`             |
-| Fork remote                         | `git@github.com:patrickrho-patty/OmniRoute.git` |
-| Fork branch carrying source patches | `custom-features`                               |
-| Upstream baseline                   | `555b21d29` — `Release v3.8.37 (#5053)`         |
-| Fork source patch commit            | `9b374c5870caebf1a7f0ff9f260d60ce7ab98613`      |
-| Source divergence                   | 1 commit ahead of upstream v3.8.37              |
-| Source files changed by fork        | 7                                               |
-| Source diff stat                    | +50 / −11                                       |
-| Pushed to GitHub                    | Yes — `custom-features` pushed to origin        |
+| Item                                | Value                                                                  |
+| ----------------------------------- | ---------------------------------------------------------------------- |
+| Upstream repo                       | `github.com/diegosouzapw/OmniRoute`                                    |
+| Fork remote                         | `git@github.com:patrickrho-patty/OmniRoute.git`                        |
+| Fork branch carrying source patches | `custom-features`                                                      |
+| Upstream baseline                   | `555b21d29` — `Release v3.8.37 (#5053)`                                |
+| Current deploy HEAD                 | `680b8c00c` (deployed to `jebo.ai` 2026-06-28)                         |
+| Source divergence                   | 5 commits ahead of upstream v3.8.37 (3 source patches + 2 doc commits) |
+| Source files changed by fork        | 27                                                                     |
+| Source diff stat                    | +949 / −148                                                            |
+| Pushed to GitHub                    | Yes — `custom-features` pushed to origin                               |
+
+Fork source patch commits on `custom-features` (oldest → newest):
+
+| Commit      | Title                                                                      | Docs below  |
+| ----------- | -------------------------------------------------------------------------- | ----------- |
+| `9b374c587` | Fix hardcoded ports + Claude Messages API shape recognition                | SRC-001/002 |
+| `e799ee98c` | fix: add ChatGPT Web tool-call translation                                 | SRC-003     |
+| `680b8c00c` | feat(compression): add ponytail engine and per-engine analytics separation | SRC-004     |
+
+(`515465908` and `88de13291` are this file's own doc commits and carry no source changes.)
 
 `main` in this fork is intentionally kept identical to upstream `main`; our deploy branch is `custom-features`.
 
@@ -161,6 +171,88 @@ After rebuild + deploy:
 If a new response format is added, update `detectMalformedNonStream()` with a shape-specific branch. Otherwise, valid non-OpenAI responses can be misclassified as `empty_choices` and returned as 502.
 
 ---
+
+### SRC-003 — ChatGPT Web tool-call translation
+
+| Field             | Value                                                  |
+| ----------------- | ------------------------------------------------------ |
+| Commit            | `e799ee98cc4205e1726b90f145f1159be55c72e4`             |
+| Commit title      | `fix: add ChatGPT Web tool-call translation`           |
+| Date              | 2026-06-28 03:19:11 KST                                |
+| Upstream baseline | `555b21d29` / v3.8.37                                  |
+| Files changed     | 2 (`chatgpt-web.ts`, `tests/unit/chatgpt-web.test.ts`) |
+| Diff stat         | +308 / −11                                             |
+| Status            | Deployed to `jebo.ai`; source pushed to fork           |
+
+#### Problem
+
+The `chatgpt-web` executor (ChatGPT web-session provider) ignored `body.tools` entirely, so any request asking the model to call a tool got plain text back instead of structured tool calls. Clients expecting OpenAI-format `tool_calls` could not use function-calling through the ChatGPT Web route.
+
+#### Fix
+
+`open-sse/executors/chatgpt-web.ts` now reuses the generic web-tool helpers and emits OpenAI-compatible tool-call output:
+
+| Change                 | Detail                                                                                                                                                |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tool-message prep      | Calls `prepareToolMessages()` (from `open-sse/translator/webTools.ts`) to translate `body.tools` into the message shape ChatGPT's web session expects |
+| Tool-call parsing      | Calls `buildToolAwareResult()` to parse the model's tool-call text into structured calls                                                              |
+| Synthetic `tool_calls` | Emits OpenAI-compatible `choices[].delta.tool_calls[]` / `message.tool_calls[]` so OpenAI-format clients see real tool calls                          |
+| Streaming parity       | Includes `logprobs: null` in every streamed chunk (matches OpenAI's streaming shape)                                                                  |
+| Non-streaming          | Buffers the tool-mode response and returns the assembled assistant message with `tool_calls`                                                          |
+
+Verified symbols in deployed source: `prepareToolMessages` (import line 33, call site `chatgpt-web.ts:2809`), `buildToolAwareResult` (import line 34, call site `chatgpt-web.ts:1870`), `tool_calls` emission (`chatgpt-web.ts:1817, 1882`), `logprobs: null` across all chunk shapes.
+
+#### Durable rule
+
+Web-cookie executors that should support tool calling must go through `prepareToolMessages()` / `buildToolAwareResult()` rather than hand-rolling their own tool-call parsing. (Note: `deepseek-web.ts` is the exception — it has a specialized `parseDeepSeekToolCalls()` for DeepSeek's multiple tag formats.)
+
+---
+
+### SRC-004 — Ponytail compression engine + per-engine analytics separation
+
+| Field             | Value                                                                        |
+| ----------------- | ---------------------------------------------------------------------------- |
+| Commit            | `680b8c00c6763ad99e4173012f2ed99c9d6f1130`                                   |
+| Commit title      | `feat(compression): add ponytail engine and per-engine analytics separation` |
+| Date              | 2026-06-28 06:35:19 KST                                                      |
+| Upstream baseline | `555b21d29` / v3.8.37                                                        |
+| Files changed     | 18 (12 source + 4 tests + 2 new files)                                       |
+| Diff stat         | +591 / −126                                                                  |
+| Status            | Deployed to `jebo.ai`; source pushed to fork                                 |
+
+#### Problem
+
+1. The compression suite had no Ponytail integration. Ponytail (DietrichGebert/ponytail) is a lazy-senior-dev YAGNI discipline for AI coding agents — it forces a 7-rung ladder (does this need to exist → already in codebase → stdlib → native → dependency → one line → minimum safe code) before writing any code.
+2. Compression analytics showed only combined `stacked` totals. When multiple engines ran in a stacked pipeline (RTK → Caveman → …), the dashboard could not show how much each individual engine saved.
+
+#### Fix — Ponytail engine
+
+New stackable engine at `open-sse/services/compression/engines/ponytail/index.ts` (stackPriority 25, levels lite/full/ultra, default full):
+
+- Injects Ponytail YAGNI instructions into endpoint system prompts via the **shared output-style injection path** (`applyOutputStyles()` with a custom `[OmniRoute Ponytail]` marker).
+- Idempotent: the shared `injectSystemInstructionOnce()` helper (new in `open-sse/services/compression/systemInstruction.ts`) skips re-injection when the marker already exists.
+- **Augmentation, not compression:** injecting instructions _adds_ tokens. Ponytail stats report `savingsPercent = 0` and track `augmentationTokens`; the stacked finalizer subtracts augmentation tokens from estimated savings so the suite total is not penalized by the added instruction.
+- Wired through: `engineCatalog.ts` (catalog entry + `levels`), `engines/index.ts` (registry), `compression/index.ts` (exports), `types.ts` (`CompressionEngineId` union), `compressionConfigSchemas.ts` (Zod — resolves upstream issue #4955 engine-id drift gap), `compression.ts` (default engine map), `compressionCombos.ts` (combo normalization).
+
+#### Fix — Per-engine analytics
+
+`src/lib/db/compressionAnalytics.ts::getCompressionAnalyticsSummary()`:
+
+- `byEngine` now prefers per-stage rows from `compression_engine_breakdown` and excludes the matching aggregate `compression_analytics` row (and null-`request_id` stacked rows) so stacked runs show RTK/Caveman/Ponytail separately instead of only `stacked`.
+- Anti-join switched from unbounded `NOT IN` to indexed `NOT EXISTS`.
+- Added index `idx_ceb_ts_engine ON compression_engine_breakdown(timestamp, engine)`.
+- `avgSavingsPct` computed from weighted token sums, not averages of per-row percentages.
+- `src/app/(dashboard)/dashboard/analytics/CompressionAnalyticsTab.tsx` renders a separate Engine Breakdown card.
+
+#### Verification
+
+`ponytail-engine.test.ts`, `compressionAnalytics.test.ts`, `engine-catalog.test.ts`, `mode-and-pipeline.test.ts`, `output-styles-apply.test.ts`, `output-styles-backcompat.test.ts`, `outputMode.test.ts`, `combos-engine-ui-schema-parity-4955.test.ts` → **55 pass / 0 fail**. `typecheck:core` clean, `check:cycles` OK (285 files).
+
+Deployed bundle (`680b8c00c`) verified to contain `OmniRoute Ponytail` marker (chunks `26410.js`, `35827.js`), `augmentationTokens` (5 hits), `NOT EXISTS` anti-join (67 hits).
+
+#### Durable rule
+
+Augmentation engines (those that add tokens rather than remove them) must report `savingsPercent = 0` and set `augmentationTokens`; the stacked finalizer excludes augmentation tokens from the suite total so legitimate compression savings stay accurate.
 
 ## Production runtime customizations not in upstream source
 
@@ -518,20 +610,21 @@ curl -sS https://jebo.ai/v1/messages \
 
 These were present when this document was reviewed:
 
-| Path                                               | What it is                 | Commit?                       |
-| -------------------------------------------------- | -------------------------- | ----------------------------- |
-| `.pi/APPEND_SYSTEM.md`                             | pi runtime/context helper  | No                            |
-| `FORK_NOTES.md`                                    | This canonical record      | Yes, recommended              |
-| `docs/setup/README.md`                             | Operator setup/runbook doc | Yes, recommended after review |
-| `docs/setup/ARCHITECTURE.md`                       | Operator architecture doc  | Yes, recommended after review |
-| `docs/setup/STRUCTURE.md`                          | Operator structure doc     | Yes, recommended after review |
-| `omniroute-backup-2026-06-26T17-48-48-221Z.sqlite` | Stale DB backup            | No; do not commit DB backups  |
+| Path                                               | What it is                 | Commit?                           |
+| -------------------------------------------------- | -------------------------- | --------------------------------- |
+| `.pi/`                                             | pi runtime/context helpers | No — stays local, never committed |
+| `docs/setup/README.md`                             | Operator setup/runbook doc | Yes, recommended after review     |
+| `docs/setup/ARCHITECTURE.md`                       | Operator architecture doc  | Yes, recommended after review     |
+| `docs/setup/STRUCTURE.md`                          | Operator structure doc     | Yes, recommended after review     |
+| `omniroute-backup-2026-06-26T17-48-48-221Z.sqlite` | Stale DB backup            | No; do not commit DB backups      |
+
+`FORK_NOTES.md` itself is committed (in `515465908` / `88de13291`).
 
 ---
 
 ## Open items
 
-- [ ] Commit `FORK_NOTES.md` after review.
+- [x] Commit `FORK_NOTES.md` after review. — Done (`515465908`, `88de13291`); updated through `680b8c00c`.
 - [ ] Review and possibly commit `docs/setup/*.md` as operator docs.
 - [ ] Decide whether to PR `SRC-001` and `SRC-002` upstream. Both are self-contained.
 - [ ] Add a unit/smoke test for Claude Messages API response-shape validation so `detectMalformedNonStream()` cannot regress.
