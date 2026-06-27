@@ -3,9 +3,8 @@ import assert from "node:assert/strict";
 
 const { ChatGptWebExecutor, __derivePublicBaseUrlForTesting, __resetChatGptWebCachesForTesting } =
   await import("../../open-sse/executors/chatgpt-web.ts");
-const { describeChatGptWebHttpError } = await import(
-  "../../open-sse/executors/chatgptWebErrors.ts"
-);
+const { describeChatGptWebHttpError } =
+  await import("../../open-sse/executors/chatgptWebErrors.ts");
 const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.ts");
 const { __setTlsFetchOverrideForTesting, looksLikeSse, TlsClientUnavailableError } =
   await import("../../open-sse/services/chatgptTlsClient.ts");
@@ -622,6 +621,142 @@ test("Non-streaming: returns OpenAI chat.completion JSON", async () => {
   }
 });
 
+test("Non-streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls", async () => {
+  reset();
+  const toolText = '<tool>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool>';
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: [toolText] },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "what is the weather?" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "get_weather",
+              description: "Get current weather",
+              parameters: {
+                type: "object",
+                properties: { city: { type: "string" } },
+                required: ["city"],
+              },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    assert.equal(result.response.status, 200);
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "tool_calls");
+    assert.equal(json.choices[0].message.content, null);
+    assert.equal(json.choices[0].message.tool_calls[0].function.name, "get_weather");
+    assert.deepEqual(JSON.parse(json.choices[0].message.tool_calls[0].function.arguments), {
+      city: "Seoul",
+    });
+
+    const convIdx = m.calls.urls.findIndex(
+      (u) =>
+        u.endsWith("/backend-api/f/conversation") ||
+        u.endsWith("/backend-api/conversation") ||
+        /\/backend-api\/(f\/)?conversation\?/.test(u)
+    );
+    const sentBody = JSON.parse(m.calls.bodies[convIdx]);
+    const systemPart = sentBody.messages[0].content.parts[0];
+    assert.match(systemPart, /get_weather/);
+    assert.match(systemPart, /<tool>/);
+  } finally {
+    m.restore();
+  }
+});
+
+test("Streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls", async () => {
+  reset();
+  const toolText = '<tool>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool>';
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: [toolText] },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "what is the weather?" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "get_weather",
+              description: "Get current weather",
+              parameters: {
+                type: "object",
+                properties: { city: { type: "string" } },
+                required: ["city"],
+              },
+            },
+          },
+        ],
+        stream: true,
+      },
+      stream: true,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    assert.equal(result.response.status, 200);
+    assert.equal(result.response.headers.get("Content-Type"), "text/event-stream");
+    const text = await result.response.text();
+    const chunks = text
+      .split("\n")
+      .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
+      .map((line) => JSON.parse(line.slice(6)));
+    const toolChunk = chunks.find((chunk) => chunk.choices?.[0]?.delta?.tool_calls);
+    assert.equal(toolChunk.choices[0].logprobs, null);
+    assert.equal(toolChunk.choices[0].delta.tool_calls[0].function.name, "get_weather");
+    assert.deepEqual(JSON.parse(toolChunk.choices[0].delta.tool_calls[0].function.arguments), {
+      city: "Seoul",
+    });
+    assert.equal(chunks.at(-1).choices[0].finish_reason, "tool_calls");
+  } finally {
+    m.restore();
+  }
+});
+
 test("Streaming: produces valid SSE chunks ending with [DONE]", async () => {
   reset();
   const m = installMockFetch({
@@ -1174,12 +1309,12 @@ test("MODEL_MAP drift guard: every advertised dot-form catalog id resolves to a 
       const body = JSON.parse(m.calls.bodies[convIdx]);
       assert.ok(
         !body.model.includes("."),
-        `${omniId} reached the backend as "${body.model}" (still dot-form) — missing MODEL_MAP entry causes silent model substitution`,
+        `${omniId} reached the backend as "${body.model}" (still dot-form) — missing MODEL_MAP entry causes silent model substitution`
       );
       assert.notEqual(
         body.model,
         omniId,
-        `${omniId} fell through MODEL_MAP verbatim — add a dash-form mapping`,
+        `${omniId} fell through MODEL_MAP verbatim — add a dash-form mapping`
       );
     }
   } finally {
