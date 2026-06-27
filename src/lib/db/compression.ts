@@ -254,20 +254,7 @@ function normalizeContextEditingConfig(value: unknown): ContextEditingConfig {
   };
 }
 
-// Engines allowed in the global stackedPipeline setting. MUST stay in sync with the
-// compression-combo KNOWN_ENGINE_IDS (src/lib/db/compressionCombos.ts) — otherwise the
-// global setting silently strips engines the combo path accepts (B-PIPELINE-DIVERGENCE).
-const STACKED_PIPELINE_ENGINE_IDS = new Set([
-  "lite",
-  "caveman",
-  "aggressive",
-  "ultra",
-  "rtk",
-  "headroom",
-  "session-dedup",
-  "ccr",
-  "llmlingua",
-]);
+const STACKED_PIPELINE_ENGINE_IDS = new Set(ENGINE_IDS);
 
 export function normalizeStackedPipeline(value: unknown): CompressionPipelineStep[] {
   const source = Array.isArray(value) ? value : (DEFAULT_COMPRESSION_CONFIG.stackedPipeline ?? []);
@@ -638,8 +625,7 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
         storedEngines = parseStoredEnginesMap(parsed);
         break;
       case "activeComboId":
-        config.activeComboId =
-          typeof parsed === "string" && parsed.trim() ? parsed.trim() : null;
+        config.activeComboId = typeof parsed === "string" && parsed.trim() ? parsed.trim() : null;
         break;
       case "ultraEngine":
         // Phase 4 (B): SLM tier selector. Only the two known values; anything else

@@ -175,6 +175,19 @@ export const stackedPipelineStepSchema = z.discriminatedUnion("engine", [
       config: rtkConfigSchema.optional(),
     })
     .strict(),
+  z
+    .object({
+      engine: z.literal("ponytail"),
+      intensity: cavemanIntensitySchema.optional(),
+      config: z
+        .object({
+          level: cavemanIntensitySchema.optional(),
+          intensity: cavemanIntensitySchema.optional(),
+        })
+        .strict()
+        .optional(),
+    })
+    .strict(),
 ]);
 
 /**
@@ -192,6 +205,7 @@ export const stackedPipelineStepSchema = z.discriminatedUnion("engine", [
 export const STACKED_PIPELINE_ENGINE_INTENSITIES: Record<string, readonly string[]> = {
   rtk: ["minimal", "standard", "aggressive"],
   caveman: ["lite", "full", "ultra"],
+  ponytail: ["lite", "full", "ultra"],
   lite: ["lite"],
   aggressive: ["standard"],
   ultra: ["ultra"],

@@ -2,8 +2,8 @@ export interface EngineMeta {
   id: string;
   label: string;
   stackPriority: number;
-  levels?: string[];        // intensity options; undefined = no level selector
-  isSingleMode: boolean;    // can be the effective mode when it is the only engine on
+  levels?: string[]; // intensity options; undefined = no level selector
+  isSingleMode: boolean; // can be the effective mode when it is the only engine on
   description: string;
 }
 
@@ -51,6 +51,14 @@ export const ENGINE_CATALOG: Record<string, EngineMeta> = {
     levels: ["lite", "full", "ultra"],
     isSingleMode: true,
     description: "Rule-based prose compression.",
+  },
+  ponytail: {
+    id: "ponytail",
+    label: "Ponytail",
+    stackPriority: 25,
+    levels: ["lite", "full", "ultra"],
+    isSingleMode: false,
+    description: "Lazy-senior-dev YAGNI instruction injection.",
   },
   aggressive: {
     id: "aggressive",

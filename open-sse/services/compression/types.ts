@@ -40,6 +40,7 @@ export type CompressionEngineId =
   | "session-dedup"
   | "headroom"
   | "ccr"
+  | "ponytail"
   | "llmlingua";
 
 export interface CavemanRule {
@@ -200,6 +201,8 @@ export interface CompressionStats {
   validationWarnings?: string[];
   validationErrors?: string[];
   fallbackApplied?: boolean;
+  /** Prompt tokens added by non-compression augmentation engines; excluded from estimated savings. */
+  augmentationTokens?: number;
   /**
    * Phase 4 (B): which `ultra` tier actually ran for this request.
    * "slm" — Tier-B ran and produced the output.
@@ -237,6 +240,7 @@ export interface CompressionStats {
     durationMs?: number;
     rejected?: boolean;
     rejectReason?: string;
+    augmentationTokens?: number;
   }>;
 }
 

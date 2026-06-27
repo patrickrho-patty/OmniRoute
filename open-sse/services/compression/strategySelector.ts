@@ -592,6 +592,7 @@ export interface StackAccumulator {
   rtkRawOutputPointers: NonNullable<CompressionStats["rtkRawOutputPointers"]>;
   validationWarnings: Set<string>;
   validationErrors: Set<string>;
+  augmentationTokens: number;
   fallbackApplied: boolean;
 }
 
@@ -603,6 +604,7 @@ function createStackAccumulator(): StackAccumulator {
     rtkRawOutputPointers: [],
     validationWarnings: new Set<string>(),
     validationErrors: new Set<string>(),
+    augmentationTokens: 0,
     fallbackApplied: false,
   };
 }
@@ -658,6 +660,7 @@ function mergeStackStep(acc: StackAccumulator, engineId: string, result: Compres
   result.stats.rtkRawOutputPointers?.forEach((pointer) => acc.rtkRawOutputPointers.push(pointer));
   result.stats.validationWarnings?.forEach((warning) => acc.validationWarnings.add(warning));
   result.stats.validationErrors?.forEach((error) => acc.validationErrors.add(error));
+  acc.augmentationTokens += result.stats.augmentationTokens ?? 0;
   acc.fallbackApplied = acc.fallbackApplied || result.stats.fallbackApplied === true;
   acc.breakdown.push({
     engine: engineId,
@@ -667,6 +670,9 @@ function mergeStackStep(acc: StackAccumulator, engineId: string, result: Compres
     techniquesUsed: result.stats.techniquesUsed,
     ...(result.stats.rulesApplied ? { rulesApplied: result.stats.rulesApplied } : {}),
     ...(result.stats.durationMs !== undefined ? { durationMs: result.stats.durationMs } : {}),
+    ...(result.stats.augmentationTokens !== undefined
+      ? { augmentationTokens: result.stats.augmentationTokens }
+      : {}),
   });
 }
 
@@ -686,6 +692,14 @@ function finalizeStackedResult(
     acc.rules.size > 0 ? Array.from(acc.rules) : undefined,
     Math.round((performance.now() - start) * 100) / 100
   );
+  if (acc.augmentationTokens > 0) {
+    stats.augmentationTokens = acc.augmentationTokens;
+    stats.compressedTokens = Math.max(0, stats.compressedTokens - acc.augmentationTokens);
+    stats.savingsPercent =
+      stats.originalTokens > 0
+        ? Math.round(((stats.originalTokens - stats.compressedTokens) / stats.originalTokens) * 100)
+        : 0;
+  }
   stats.engine = "stacked";
   stats.compressionComboId = compressionComboId ?? null;
   stats.engineBreakdown = acc.breakdown;

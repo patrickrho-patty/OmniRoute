@@ -206,6 +206,7 @@ function ensureCompressionEngineBreakdownTable(): void {
       duration_ms INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_ceb_engine_ts ON compression_engine_breakdown(engine, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_ceb_ts_engine ON compression_engine_breakdown(timestamp, engine);
     CREATE INDEX IF NOT EXISTS idx_ceb_request ON compression_engine_breakdown(request_id);
   `);
   breakdownTableEnsuredForDb = db;
@@ -302,6 +303,20 @@ function appendCondition(whereClause: string, condition: string): string {
   return whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
 }
 
+function legacyEngineRowFilter(alias: string): string {
+  return `(
+    COALESCE(${alias}.engine, ${alias}.mode) <> 'stacked'
+    AND (
+      ${alias}.request_id IS NULL
+      OR NOT EXISTS (
+        SELECT 1
+        FROM compression_engine_breakdown ceb
+        WHERE ceb.request_id = ${alias}.request_id
+      )
+    )
+  )`;
+}
+
 type EngineAggRow = { runs: number; original: number; compressed: number; saved: number };
 
 export function getPerEngineAnalytics(engineId: string, days = 7) {
@@ -328,17 +343,12 @@ export function getPerEngineAnalytics(engineId: string, days = 7) {
   const legacy = db
     .prepare(
       `SELECT COUNT(*) AS runs,
-              COALESCE(SUM(original_tokens), 0) AS original,
-              COALESCE(SUM(compressed_tokens), 0) AS compressed,
-              COALESCE(SUM(tokens_saved), 0) AS saved
-       FROM compression_analytics
-       WHERE COALESCE(engine, mode) = ? AND timestamp >= ?
-         AND (
-           request_id IS NULL
-           OR request_id NOT IN (
-             SELECT request_id FROM compression_engine_breakdown WHERE request_id IS NOT NULL
-           )
-         )`
+              COALESCE(SUM(ca.original_tokens), 0) AS original,
+              COALESCE(SUM(ca.compressed_tokens), 0) AS compressed,
+              COALESCE(SUM(ca.tokens_saved), 0) AS saved
+       FROM compression_analytics ca
+       WHERE COALESCE(ca.engine, ca.mode) = ? AND ca.timestamp >= ?
+         AND ${legacyEngineRowFilter("ca")}`
     )
     .get(engineId, since) as EngineAggRow;
 
@@ -365,6 +375,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
   }
 
   const whereClause = cutoff ? "WHERE timestamp >= ?" : "";
+  const aliasedWhereClause = cutoff ? "WHERE ca.timestamp >= ?" : "";
   const params = cutoff ? [cutoff] : [];
 
   type ScalarRow = { total: number; totalSaved: number; avgPct: number; avgDur: number };
@@ -397,24 +408,71 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     byMode[r.mode] = { count: r.cnt, tokensSaved: r.saved, avgSavingsPct: Math.round(r.avgPct) };
   }
 
-  const engineRows = db
+  ensureCompressionEngineBreakdownTable();
+  const breakdownRows = db
     .prepare(
       `
-    SELECT COALESCE(engine, mode) as engine, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved,
-      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS REAL) / original_tokens * 100 ELSE 0 END), 0) as avgPct
-    FROM compression_analytics ${whereClause}
-    GROUP BY COALESCE(engine, mode)
+    SELECT engine, COUNT(*) as cnt,
+      COALESCE(SUM(original_tokens), 0) as original,
+      COALESCE(SUM(compressed_tokens), 0) as compressed,
+      COALESCE(SUM(tokens_saved), 0) as saved
+    FROM compression_engine_breakdown ${whereClause}
+    GROUP BY engine
   `
     )
-    .all(...params) as Array<{ engine: string; cnt: number; saved: number; avgPct: number }>;
+    .all(...params) as Array<{
+    engine: string;
+    cnt: number;
+    original: number;
+    compressed: number;
+    saved: number;
+  }>;
+
+  const legacyEngineRows = db
+    .prepare(
+      `
+    SELECT COALESCE(ca.engine, ca.mode) as engine, COUNT(*) as cnt,
+      COALESCE(SUM(ca.original_tokens), 0) as original,
+      COALESCE(SUM(ca.compressed_tokens), 0) as compressed,
+      COALESCE(SUM(ca.tokens_saved), 0) as saved
+    FROM compression_analytics ca ${appendCondition(aliasedWhereClause, legacyEngineRowFilter("ca"))}
+    GROUP BY COALESCE(ca.engine, ca.mode)
+  `
+    )
+    .all(...params) as Array<{
+    engine: string;
+    cnt: number;
+    original: number;
+    compressed: number;
+    saved: number;
+  }>;
+
+  const byEngineTotals = new Map<
+    string,
+    { count: number; original: number; compressed: number; tokensSaved: number }
+  >();
+  for (const row of [...breakdownRows, ...legacyEngineRows]) {
+    const current = byEngineTotals.get(row.engine) ?? {
+      count: 0,
+      original: 0,
+      compressed: 0,
+      tokensSaved: 0,
+    };
+    current.count += row.cnt;
+    current.original += row.original;
+    current.compressed += row.compressed;
+    current.tokensSaved += row.saved;
+    byEngineTotals.set(row.engine, current);
+  }
 
   const byEngine: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }> =
     {};
-  for (const r of engineRows) {
-    byEngine[r.engine] = {
-      count: r.cnt,
-      tokensSaved: r.saved,
-      avgSavingsPct: Math.round(r.avgPct),
+  for (const [engine, row] of byEngineTotals) {
+    byEngine[engine] = {
+      count: row.count,
+      tokensSaved: row.tokensSaved,
+      avgSavingsPct:
+        row.original > 0 ? Math.round(((row.original - row.compressed) / row.original) * 100) : 0,
     };
   }
 
