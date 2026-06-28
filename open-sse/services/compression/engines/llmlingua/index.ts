@@ -274,7 +274,7 @@ const LLMLINGUA_SCHEMA: EngineConfigField[] = [
     key: "minTokens",
     type: "number",
     label: "Min tokens (floor)",
-    defaultValue: 2000,
+    defaultValue: 1000,
     min: 0,
     max: 100000,
   },
@@ -404,7 +404,7 @@ export const llmlinguaEngine: CompressionEngine = {
     // minTokens floor: skip the model entirely on small prompts (avoid paying
     // model latency when there is little to gain). 0 disables the floor.
     const minTokens =
-      typeof stepConfig["minTokens"] === "number" ? (stepConfig["minTokens"] as number) : 2000;
+      typeof stepConfig["minTokens"] === "number" ? (stepConfig["minTokens"] as number) : 1000;
     if (minTokens > 0) {
       const nonSystemText = (messages as MessageLike[])
         .filter((m) => m.role !== "system")
