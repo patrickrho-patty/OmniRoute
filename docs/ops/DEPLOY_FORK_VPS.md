@@ -94,6 +94,18 @@ when most of `node_modules` is unchanged between deploys).
 
 A normal code deploy does **not** migrate or reset any production data.
 
+### Never `npm install` inside `dist/`
+
+The `dist/` directory is an **assembled standalone bundle** — webpack chunk IDs in
+compiled page files reference specific chunk files by number. Running `npm install` in
+`dist/` mutates `node_modules` and can corrupt the inline chunk references, causing
+`Cannot find module './chunks/NNNNN.js'` errors on SSR pages. The corruption is subtle:
+rsync with default flags may not detect the byte-level changes (matching file sizes +
+close mtimes). If you need an extra dependency (e.g. `@atjsh/llmlingua-2` for
+LLMLingua), install it in the **main checkout before `npm run build`** so it's included
+in the assembled bundle, or use `scp` to copy the missing package directly into
+`dist/node_modules/` without running npm's resolver.
+
 ---
 
 ## Prerequisites
@@ -296,8 +308,9 @@ operation, not a git operation).
 | Your change grep returns 0 hits                 | Wrong path (`dist/.next/...` vs `dist/.build/next/...`) | grep `dist/.build/next/server/`                                                |
 | Build fails on Mac                              | Node version / deps                                     | ensure Node `>=22`; `npm ci`                                                   |
 | rsync transfers full 700 MB every time          | forgot `--delete` delta flags or source trailing `/`    | use exact command from Step 4                                                  |
-| OOM crash: `FATAL ERROR: … heap out of memory`  | V8 heap limit too low for the bundle size               | bump `--max-old-space-size` in `20-heap-limit.conf`; `daemon-reload + restart` |
+| OOM crash: `FATAL ERROR: … heap out of memory`  | V8 heap limit too low for the bundle size               | set `OMNIROUTE_MEMORY_MB=768` in drop-in (CLI reads this, not NODE_OPTIONS)    |
 | "Server is unreachable. Reconnecting…" in UI    | OOM crash → auto-restart → cold start (~8–15s downtime) | check `journalctl -u omniroute.service` for heap/OOM; fix per row above        |
+| `Cannot find module './chunks/NNNNN.js'` (500s) | Corrupted page chunks from `npm install` in `dist/`     | clean-build (`rm -rf .build && npm run build`), redeploy; never npm in `dist/` |
 
 ---
 
