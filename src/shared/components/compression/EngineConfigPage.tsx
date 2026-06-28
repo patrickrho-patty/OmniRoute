@@ -26,6 +26,7 @@ interface EngineEntry {
 const SETTINGS_SUBOBJECT: Record<string, string> = {
   aggressive: "aggressive",
   ultra: "ultra",
+  "session-dedup": "sessionDedup",
 };
 
 interface CompressionSettings {

@@ -26,6 +26,7 @@ import {
   type EngineToggle,
   type McpAccessibilityConfig,
   type RtkConfig,
+  type SessionDedupConfig,
   type UltraConfig,
 } from "@omniroute/open-sse/services/compression/types.ts";
 import { maybePrewarmUltraSlmOnConfig } from "@omniroute/open-sse/services/compression/ultra.ts";
@@ -390,6 +391,21 @@ function normalizeUltraConfig(value: unknown): UltraConfig {
   };
 }
 
+const DEFAULT_SESSION_DEDUP_CONFIG: SessionDedupConfig = { minBlockChars: 80, fuzzy: false };
+
+function normalizeSessionDedupConfig(value: unknown): SessionDedupConfig {
+  const record = toRecord(value);
+  return {
+    minBlockChars: boundedInt(
+      record.minBlockChars,
+      DEFAULT_SESSION_DEDUP_CONFIG.minBlockChars,
+      1,
+      100000
+    ),
+    fuzzy: typeof record.fuzzy === "boolean" ? record.fuzzy : DEFAULT_SESSION_DEDUP_CONFIG.fuzzy,
+  };
+}
+
 // Single-mode → engine id mapping. Mirrors deriveDefaultPlan's SINGLE_MODE_OF: a legacy
 // install whose only signal is `defaultMode` should turn on the engine that mode runs, so the
 // derived engines map matches the old behavior. Keep conservative — these are the only modes
@@ -528,6 +544,7 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
     stackedPipeline: normalizeStackedPipeline(undefined),
     aggressive: normalizeAggressiveConfig(undefined),
     ultra: normalizeUltraConfig(undefined),
+    sessionDedup: normalizeSessionDedupConfig(undefined),
     contextEditing: { ...DEFAULT_CONTEXT_EDITING_CONFIG },
     engines: {},
     activeComboId: null,
@@ -617,6 +634,9 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
       case "ultra":
       case "ultraConfig":
         config.ultra = normalizeUltraConfig(parsed);
+        break;
+      case "sessionDedup":
+        config.sessionDedup = normalizeSessionDedupConfig(parsed);
         break;
       case "contextEditing":
         config.contextEditing = normalizeContextEditingConfig(parsed);

@@ -235,6 +235,13 @@ export const compressionSettingsUpdateSchema = z
     languageConfig: languageConfigSchema.optional(),
     aggressive: aggressiveConfigSchema.optional(),
     ultra: ultraConfigSchema.optional(),
+    sessionDedup: z
+      .object({
+        minBlockChars: z.number().int().min(1).max(100000).optional(),
+        fuzzy: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     contextEditing: contextEditingConfigSchema.optional(),
     engines: z.record(z.string(), engineToggleSchema).optional(),
     enginesExplicit: z.boolean().optional(),

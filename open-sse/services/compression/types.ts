@@ -185,6 +185,12 @@ export interface CompressionConfig {
    * swallowed; the lazy first-call path still applies. Default false.
    */
   ultraSlmPrewarm?: boolean;
+  sessionDedup?: SessionDedupConfig;
+}
+
+export interface SessionDedupConfig {
+  minBlockChars: number;
+  fuzzy: boolean;
 }
 
 export interface CompressionStats {
