@@ -25,10 +25,19 @@ export interface LlmlinguaModelEntry {
   label: string;
 }
 
-export const DEFAULT_LLMLINGUA_MODEL = "tinybert";
+export const DEFAULT_LLMLINGUA_MODEL = "bert-base-ms";
 
-/** Registry keyed by config `model` value. Only the two PROVEN models. */
+/** Registry keyed by config `model` value. */
 export const LLMLINGUA_MODELS: Record<string, LlmlinguaModelEntry> = {
+  "bert-base-ms": {
+    id: "bert-base-ms",
+    hfRepo: "microsoft/llmlingua-2-bert-base-multilingual-cased-meetingbank",
+    factory: "WithBERTMultilingual",
+    dtype: "fp32",
+    subfolder: "",
+    sizeMB: 710,
+    label: "BERT-base multilingual (Microsoft, 710MB — default)",
+  },
   tinybert: {
     id: "tinybert",
     hfRepo: "atjsh/llmlingua-2-js-tinybert-meetingbank",
@@ -36,7 +45,7 @@ export const LLMLINGUA_MODELS: Record<string, LlmlinguaModelEntry> = {
     dtype: "fp32",
     subfolder: "",
     sizeMB: 57,
-    label: "TinyBERT (57MB, fast — default)",
+    label: "TinyBERT (57MB, fast — requires HF auth)",
   },
   "bert-base": {
     id: "bert-base",
@@ -45,11 +54,12 @@ export const LLMLINGUA_MODELS: Record<string, LlmlinguaModelEntry> = {
     dtype: "fp32",
     subfolder: "",
     sizeMB: 710,
-    label: "BERT-base (710MB, higher accuracy)",
+    label: "BERT-base (710MB, Arcoldd mirror)",
   },
 };
 
-/** Per-call worker reply timeout → fail-open. */
-export const LLMLINGUA_WORKER_TIMEOUT_MS = 5000;
+/** Per-call worker reply timeout → fail-open. First call downloads the model
+ *  (~710MB for bert-base-ms), so the timeout must accommodate that. */
+export const LLMLINGUA_WORKER_TIMEOUT_MS = 120_000;
 /** Terminate the idle worker after this long to free model RAM. */
 export const LLMLINGUA_WORKER_IDLE_MS = 300000;
