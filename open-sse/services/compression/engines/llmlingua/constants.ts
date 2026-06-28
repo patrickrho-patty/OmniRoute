@@ -25,7 +25,7 @@ export interface LlmlinguaModelEntry {
   label: string;
 }
 
-export const DEFAULT_LLMLINGUA_MODEL = "bert-base-ms";
+export const DEFAULT_LLMLINGUA_MODEL = "bert-base";
 
 /** Registry keyed by config `model` value. */
 export const LLMLINGUA_MODELS: Record<string, LlmlinguaModelEntry> = {
