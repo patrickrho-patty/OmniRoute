@@ -52,6 +52,24 @@ Client → https://jebo.ai/v1 → Cloudflare edge TLS (Flexible) → origin HTTP
 | SSH user      | `ubuntu` (passwordless sudo)                                                                  |
 | Build output  | `.build/next/standalone/` (assembled bundle, NOT raw `.next/`)                                |
 | Build distDir | `.build/next` → server chunks at `dist/.build/next/server/chunks/` (NOT `dist/.next/server/`) |
+| Node heap     | `--max-old-space-size=768` (systemd drop-in `20-heap-limit.conf`)                             |
+
+### Systemd drop-in overrides
+
+The main unit (`omniroute.service`) is managed by the package; fork-specific runtime
+overrides live in `/etc/systemd/system/omniroute.service.d/*.conf` so they survive
+package reinstalls. Current drop-ins:
+
+| File                      | What it does                                                             |
+| ------------------------- | ------------------------------------------------------------------------ |
+| `10-disable-live-ws.conf` | `OMNIROUTE_ENABLE_LIVE_WS=0` — disables the live-WS sidecar bridge       |
+| `20-heap-limit.conf`      | `NODE_OPTIONS=--max-old-space-size=768` — raises the V8 heap from ~512MB |
+
+The VPS has **954 MB RAM + 2 GB swap**. The default V8 heap limit (~512 MB on a 1 GB
+machine) caused OOM crashes after the v3.8.38 rebase (larger bundle: ionizer engine,
+new providers, fidelity gate). 768 MB leaves ~180 MB for the OS and swap backs any
+transient spikes. If a future upstream release is even larger, bump this value — but
+watch `free -h` to make sure OS + Node fit in RAM without constant swap thrashing.
 
 ### Why we rsync instead of building on the VPS
 
@@ -269,15 +287,17 @@ operation, not a git operation).
 
 ## Troubleshooting
 
-| Symptom                                         | Likely cause                                            | Fix                                                                           |
-| ----------------------------------------------- | ------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `curl :80/api/health` → empty / 502             | Service not up or wrong port                            | `systemctl status omniroute.service`; confirm `PORT=80` in `.env` / unit      |
-| Service crashes on start, `EACCES` in logs      | `dist/` owned by root (lazy native download)            | `sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omniroute`                 |
-| Externally unreachable on :80 but works locally | Oracle iptables REJECT rule above ACCEPT                | insert TCP 80 ACCEPT above the catch-all REJECT (see `FORK_NOTES.md` OPS-001) |
-| `https://jebo.ai` 403s / blocks Anthropic SDK   | Cloudflare AI bot detection                             | disable CF AI bot detection for `jebo.ai` (see `FORK_NOTES.md` OPS-003)       |
-| Your change grep returns 0 hits                 | Wrong path (`dist/.next/...` vs `dist/.build/next/...`) | grep `dist/.build/next/server/`                                               |
-| Build fails on Mac                              | Node version / deps                                     | ensure Node `>=22`; `npm ci`                                                  |
-| rsync transfers full 700 MB every time          | forgot `--delete` delta flags or source trailing `/`    | use exact command from Step 4                                                 |
+| Symptom                                         | Likely cause                                            | Fix                                                                            |
+| ----------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `curl :80/api/health` → empty / 502             | Service not up or wrong port                            | `systemctl status omniroute.service`; confirm `PORT=80` in `.env` / unit       |
+| Service crashes on start, `EACCES` in logs      | `dist/` owned by root (lazy native download)            | `sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omniroute`                  |
+| Externally unreachable on :80 but works locally | Oracle iptables REJECT rule above ACCEPT                | insert TCP 80 ACCEPT above the catch-all REJECT (see `FORK_NOTES.md` OPS-001)  |
+| `https://jebo.ai` 403s / blocks Anthropic SDK   | Cloudflare AI bot detection                             | disable CF AI bot detection for `jebo.ai` (see `FORK_NOTES.md` OPS-003)        |
+| Your change grep returns 0 hits                 | Wrong path (`dist/.next/...` vs `dist/.build/next/...`) | grep `dist/.build/next/server/`                                                |
+| Build fails on Mac                              | Node version / deps                                     | ensure Node `>=22`; `npm ci`                                                   |
+| rsync transfers full 700 MB every time          | forgot `--delete` delta flags or source trailing `/`    | use exact command from Step 4                                                  |
+| OOM crash: `FATAL ERROR: … heap out of memory`  | V8 heap limit too low for the bundle size               | bump `--max-old-space-size` in `20-heap-limit.conf`; `daemon-reload + restart` |
+| "Server is unreachable. Reconnecting…" in UI    | OOM crash → auto-restart → cold start (~8–15s downtime) | check `journalctl -u omniroute.service` for heap/OOM; fix per row above        |
 
 ---
 
