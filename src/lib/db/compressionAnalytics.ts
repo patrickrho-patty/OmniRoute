@@ -361,6 +361,52 @@ export function getPerEngineAnalytics(engineId: string, days = 7) {
   return { engineId, runs, tokensSaved, avgSavingsPercent, days };
 }
 
+export interface EngineRunHistoryRow {
+  timestamp: string;
+  requestId: string | null;
+  originalTokens: number;
+  compressedTokens: number;
+  tokensSaved: number;
+  durationMs: number | null;
+}
+
+/**
+ * Recent per-engine runs (newest first) from `compression_engine_breakdown`, for the
+ * per-engine history views (e.g. the Ponytail dashboard). Augmentation engines like
+ * `ponytail` intentionally record `compressed_tokens === original_tokens` and
+ * `tokens_saved === 0` — they inject instructions rather than reduce tokens, so a
+ * history row with zero savings is expected, not a failure.
+ */
+export function getEngineRunHistory(engineId: string, limit = 50): EngineRunHistoryRow[] {
+  const db = getDbInstance();
+  ensureCompressionEngineBreakdownTable();
+  const safeLimit = Math.min(Math.max(1, Math.floor(limit || 0)), 500);
+  const rows = db
+    .prepare(
+      `SELECT timestamp, request_id, original_tokens, compressed_tokens, tokens_saved, duration_ms
+       FROM compression_engine_breakdown
+       WHERE engine = ?
+       ORDER BY id DESC
+       LIMIT ?`
+    )
+    .all(engineId, safeLimit) as Array<{
+    timestamp: string;
+    request_id: string | null;
+    original_tokens: number;
+    compressed_tokens: number;
+    tokens_saved: number;
+    duration_ms: number | null;
+  }>;
+  return rows.map((r) => ({
+    timestamp: r.timestamp,
+    requestId: r.request_id ?? null,
+    originalTokens: r.original_tokens,
+    compressedTokens: r.compressed_tokens,
+    tokensSaved: r.tokens_saved,
+    durationMs: r.duration_ms ?? null,
+  }));
+}
+
 export function getCompressionAnalyticsSummary(since?: string): CompressionAnalyticsSummary {
   const db = getDbInstance();
   ensureCompressionAnalyticsColumns();

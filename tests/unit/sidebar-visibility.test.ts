@@ -56,6 +56,7 @@ test("primary sidebar items place limits after cache", () => {
       "context-lite",
       "context-aggressive",
       "context-ultra",
+      "compression-ponytail",
       "compression-studio",
       "cli-code",
       "cli-agents",

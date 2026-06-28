@@ -21,6 +21,7 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "context-lite",
   "context-aggressive",
   "context-ultra",
+  "compression-ponytail",
   "compression-studio",
   // OmniProxy > Tools
   "cli-code",
@@ -433,6 +434,14 @@ export const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
       labelFallback: "Ultra",
       subtitleFallback: "Heuristic pruning",
       icon: "bolt",
+    },
+    {
+      id: "compression-ponytail",
+      href: "/dashboard/compression/ponytail",
+      i18nKey: "compressionPonytail",
+      labelFallback: "Ponytail",
+      subtitleFallback: "Augmentation history",
+      icon: "content_cut",
     },
     {
       id: "compression-studio",
