@@ -19,7 +19,7 @@ lastDeployed: "2026-06-28"
 ```bash
 # On your Mac (build host):
 npm run build                                   # → .build/next/standalone/
-rsync -az --delete --exclude 'logs/' \
+rsync -az --delete --exclude '/logs/' \
   -e "ssh -i ~/.ssh/t1_fetcher_ed25519" \
   .build/next/standalone/ \
   ubuntu@161.33.162.164:/usr/lib/node_modules/omniroute/dist/
@@ -178,7 +178,7 @@ Example: `dist.bak.680b8c00c-pre`.
 ### 4. rsync the new bundle
 
 ```bash
-rsync -az --delete --exclude 'logs/' \
+rsync -az --delete --exclude '/logs/' \
   -e "ssh -i ~/.ssh/t1_fetcher_ed25519 -o ConnectTimeout=20" \
   .build/next/standalone/ \
   ubuntu@161.33.162.164:/usr/lib/node_modules/omniroute/dist/ \
@@ -192,7 +192,7 @@ rsync -az --delete --exclude 'logs/' \
 | `-a`                   | Archive mode (preserve perms, symlinks, recursive)                      |
 | `-z`                   | Compress during transfer                                                |
 | `--delete`             | Remove files in remote `dist/` that no longer exist locally (true sync) |
-| `--exclude 'logs/'`    | **Do not delete** the runtime logs directory                            |
+| `--exclude '/logs/'`   | **Do not delete** the runtime logs directory                            |
 | trailing `/` on source | Sync the _contents_ of standalone, not the folder itself                |
 
 Exit 0 = success. Note the `speedup` line (high number = mostly matched blocks = cheap transfer).
@@ -343,7 +343,7 @@ ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 \
   "cp -a /usr/lib/node_modules/omniroute/dist /usr/lib/node_modules/omniroute/dist.bak.<COMMIT>-pre && echo BACKUP_OK"
 
 # 3. rsync
-rsync -az --delete --exclude 'logs/' \
+rsync -az --delete --exclude '/logs/' \
   -e "ssh -i ~/.ssh/t1_fetcher_ed25519 -o ConnectTimeout=20" \
   .build/next/standalone/ \
   ubuntu@161.33.162.164:/usr/lib/node_modules/omniroute/dist/ --stats
