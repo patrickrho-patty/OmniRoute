@@ -10,6 +10,7 @@ import {
   evaluatePromptInjection,
   type PromptInjectionGuardrailOptions,
 } from "@/lib/guardrails/promptInjection";
+import { getCachedSettings } from "@/lib/db/readCache";
 import { resolveDisabledGuardrails } from "@/lib/guardrails/registry";
 import {
   CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES,
@@ -17,6 +18,11 @@ import {
   checkClaudeMessagesBodySize,
   isClaudeMessagesPath,
 } from "@/shared/middleware/bodySizeGuard";
+import {
+  applyClaudeMessagesLargeRequestMode,
+  resolveClaudeLargeMessagesConfig,
+  type ClaudeLargeMessagesConfig,
+} from "@/shared/middleware/claudeMessagesVcc";
 import { CORS_HEADERS } from "@/shared/utils/cors";
 
 /**
@@ -66,11 +72,20 @@ export function withInjectionGuard(handler: any, options: any = {}) {
 
     // Hoist parsed body so it can be threaded to the downstream handler (#4041).
     let parsedBody: any = null;
+    let claudeLargeConfig: ClaudeLargeMessagesConfig | null = null;
+    let claudeLargeSettings: Record<string, unknown> | null = null;
 
     try {
       const pathname = new URL(request.url).pathname;
       const isClaudeMessages = isClaudeMessagesPath(pathname);
-      if (isClaudeMessages) {
+      claudeLargeSettings = isClaudeMessages
+        ? await getCachedSettings().catch((error) => {
+            console.warn("[SECURITY] Failed to load Claude large-message settings:", error);
+            return {};
+          })
+        : null;
+      claudeLargeConfig = resolveClaudeLargeMessagesConfig(process.env, claudeLargeSettings);
+      if (isClaudeMessages && claudeLargeConfig.mode !== "vcc") {
         const declaredSizeRejection = checkBodySize(request, CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES);
         if (declaredSizeRejection) return declaredSizeRejection;
       }
@@ -82,8 +97,21 @@ export function withInjectionGuard(handler: any, options: any = {}) {
 
       if (parsedBody) {
         if (isClaudeMessages) {
-          const sizeRejection = checkClaudeMessagesBodySize(request, pathname, parsedBody);
-          if (sizeRejection) return sizeRejection;
+          if (claudeLargeConfig.mode === "vcc") {
+            const largeMode = applyClaudeMessagesLargeRequestMode(request, pathname, parsedBody, {
+              config: claudeLargeConfig,
+            });
+            if (largeMode.rejection) return largeMode.rejection;
+            if (largeMode.compacted) {
+              console.debug(
+                `[VCC] Compacted Claude Messages: ${largeMode.stats?.originalBytes ?? "?"} -> ${largeMode.stats?.compactedBytes ?? "?"} bytes`
+              );
+            }
+            parsedBody = largeMode.body;
+          } else {
+            const sizeRejection = checkClaudeMessagesBodySize(request, pathname, parsedBody);
+            if (sizeRejection) return sizeRejection;
+          }
         }
 
         const { blocked, result }: any = guard(parsedBody);
@@ -120,6 +148,10 @@ export function withInjectionGuard(handler: any, options: any = {}) {
     // handlers (e.g. /v1/responses) can reuse it without re-cloning+re-parsing the
     // request on the hot path (#4041). Handlers that don't accept a preParsedBody
     // simply ignore the extra argument — no signature change required for other routes.
-    return handler(request, context, parsedBody);
+    return handler(request, context, parsedBody, {
+      ...(claudeLargeSettings ? { cachedSettings: claudeLargeSettings } : {}),
+      claudeLargeMessagesConfig: claudeLargeConfig ?? resolveClaudeLargeMessagesConfig(),
+      claudeLargeMessagesApplied: true,
+    });
   };
 }

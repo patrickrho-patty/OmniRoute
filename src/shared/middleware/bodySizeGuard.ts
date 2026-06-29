@@ -113,7 +113,10 @@ function* ownEnumerableKeys(source: Record<string, unknown>) {
   }
 }
 
-function estimateJsonBodyBytes(value: unknown, stopAtBytes: number): number {
+export function estimateJsonBodyBytes(
+  value: unknown,
+  stopAtBytes: number = Number.POSITIVE_INFINITY
+): number {
   type Frame =
     | { kind: "value"; value: unknown; inArray?: boolean }
     | { kind: "array"; values: unknown[]; index: number }
@@ -191,7 +194,7 @@ function estimateJsonBodyBytes(value: unknown, stopAtBytes: number): number {
   return bytes;
 }
 
-function createPayloadTooLargeResponse(message: string): Response {
+export function createPayloadTooLargeResponse(message: string): Response {
   return new Response(JSON.stringify(buildErrorBody(413, message)), {
     status: 413,
     headers: {
@@ -220,11 +223,23 @@ export function checkBodySize(request: Request, limit: number = MAX_BODY_BYTES):
  * sends giant tool schemas or prompt blocks without a declared Content-Length.
  * This post-parse guard protects the hot chat path before cloning/logging.
  */
-export function checkClaudeMessagesBodySize(
+export type ClaudeMessagesBodySizeReason = "absolute" | "tool-heavy";
+
+export interface ClaudeMessagesBodySizeAssessment {
+  oversized: boolean;
+  reason: ClaudeMessagesBodySizeReason | null;
+  toolCount: number;
+  declaredBytes: number | null;
+  bodyBytes: number;
+  limitBytes: number | null;
+  message: string | null;
+}
+
+export function assessClaudeMessagesBodySize(
   request: HeaderReadableRequest,
   pathname: string,
   body: unknown
-): Response | null {
+): ClaudeMessagesBodySizeAssessment | null {
   if (!isClaudeMessagesPath(pathname) || !body || typeof body !== "object" || Array.isArray(body)) {
     return null;
   }
@@ -233,21 +248,6 @@ export function checkClaudeMessagesBodySize(
     ? (body as { tools: unknown[] }).tools.length
     : 0;
   const declaredBytes = getDeclaredContentLengthBytes(request);
-  if (declaredBytes !== null && declaredBytes > CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES) {
-    return createPayloadTooLargeResponse(
-      `Claude-format request too large. Maximum allowed: ${formatBytes(CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES)}`
-    );
-  }
-  if (
-    declaredBytes !== null &&
-    toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS &&
-    declaredBytes > CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES
-  ) {
-    return createPayloadTooLargeResponse(
-      `Claude-format tool-heavy request too large (${toolCount} tools). Reduce tools or keep the request at or below ${formatBytes(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES)}.`
-    );
-  }
-
   const estimateLimit =
     toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS
       ? CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES + 1
@@ -255,21 +255,52 @@ export function checkClaudeMessagesBodySize(
   const bodyBytes = Math.max(declaredBytes ?? 0, estimateJsonBodyBytes(body, estimateLimit));
 
   if (bodyBytes > CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES) {
-    return createPayloadTooLargeResponse(
-      `Claude-format request too large. Maximum allowed: ${formatBytes(CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES)}`
-    );
+    return {
+      oversized: true,
+      reason: "absolute",
+      toolCount,
+      declaredBytes,
+      bodyBytes,
+      limitBytes: CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES,
+      message: `Claude-format request too large. Maximum allowed: ${formatBytes(CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES)}`,
+    };
   }
 
   if (
     toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS &&
     bodyBytes > CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES
   ) {
-    return createPayloadTooLargeResponse(
-      `Claude-format tool-heavy request too large (${toolCount} tools). Reduce tools or keep the request at or below ${formatBytes(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES)}.`
-    );
+    return {
+      oversized: true,
+      reason: "tool-heavy",
+      toolCount,
+      declaredBytes,
+      bodyBytes,
+      limitBytes: CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES,
+      message: `Claude-format tool-heavy request too large (${toolCount} tools). Reduce tools or keep the request at or below ${formatBytes(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES)}.`,
+    };
   }
 
-  return null;
+  return {
+    oversized: false,
+    reason: null,
+    toolCount,
+    declaredBytes,
+    bodyBytes,
+    limitBytes: null,
+    message: null,
+  };
+}
+
+export function checkClaudeMessagesBodySize(
+  request: HeaderReadableRequest,
+  pathname: string,
+  body: unknown
+): Response | null {
+  const assessment = assessClaudeMessagesBodySize(request, pathname, body);
+  if (!assessment) return null;
+  if (!assessment.oversized || !assessment.message) return null;
+  return createPayloadTooLargeResponse(assessment.message);
 }
 
 /** Format bytes as human-readable string */

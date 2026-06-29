@@ -1,4 +1,4 @@
-import { handleChat } from "@/sse/handlers/chat";
+import { handleChat, type HandleChatRuntimeOptions } from "@/sse/handlers/chat";
 import { initTranslators } from "@omniroute/open-sse/translator/index.ts";
 import { withInjectionGuard } from "@/middleware/promptInjectionGuard";
 import {
@@ -38,7 +38,12 @@ export async function OPTIONS() {
  * `preParsedBody` is threaded from withInjectionGuard (#4041) so the body is
  * parsed at most once per request.
  */
-async function postHandler(request: any, context: any, preParsedBody: any = null) {
+async function postHandler(
+  request: any,
+  context: any,
+  preParsedBody: any = null,
+  runtimeOptions: HandleChatRuntimeOptions = {}
+) {
   await ensureInitialized();
   // Streaming Anthropic clients (Claude Code, the Anthropic SDK) drop the connection
   // when no bytes arrive while a large prompt is processed before the first token — a
@@ -54,13 +59,16 @@ async function postHandler(request: any, context: any, preParsedBody: any = null
       preParsedBody && typeof preParsedBody === "object" && !Array.isArray(preParsedBody)
         ? preParsedBody.model
         : undefined;
-    return await withEarlyStreamKeepalive(handleChat(request, null, preParsedBody), {
-      signal: request.signal,
-      thresholdMs: resolveKeepaliveThreshold(model),
-      keepaliveFrame: ANTHROPIC_PING_FRAME,
-    });
+    return await withEarlyStreamKeepalive(
+      handleChat(request, null, preParsedBody, runtimeOptions),
+      {
+        signal: request.signal,
+        thresholdMs: resolveKeepaliveThreshold(model),
+        keepaliveFrame: ANTHROPIC_PING_FRAME,
+      }
+    );
   }
-  return await handleChat(request, null, preParsedBody);
+  return await handleChat(request, null, preParsedBody, runtimeOptions);
 }
 
 export const POST = withInjectionGuard(postHandler);

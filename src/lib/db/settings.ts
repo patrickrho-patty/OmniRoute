@@ -8,8 +8,14 @@ import { PROVIDER_ID_TO_ALIAS } from "@omniroute/open-sse/config/providerModels.
 import { invalidateDbCache } from "./readCache";
 import { getProxyRegistryGeneration, resolveProxyForScopeFromRegistry } from "./proxies";
 import { getComboModelProvider as getComboEntryProvider } from "@/lib/combos/steps";
-import { requestBodyLimitMbFromEnv } from "@/shared/constants/bodySize";
+import {
+  claudeLargeMessagesMaxMbFromEnv,
+  claudeLargeMessagesModeFromEnv,
+  claudeLargeMessagesTargetKbFromEnv,
+  requestBodyLimitMbFromEnv,
+} from "@/shared/constants/bodySize";
 import { DEFAULT_RESPONSES_PREVIOUS_RESPONSE_ID_MODE } from "@/shared/constants/responsesPreviousResponseId";
+import { isTruthyEnvFlag } from "@/shared/utils/envParsing";
 
 type JsonRecord = Record<string, unknown>;
 type PricingModels = Record<string, JsonRecord>;
@@ -30,10 +36,6 @@ type ProxyResolutionCacheEntry = {
 };
 
 const PROXY_RESOLUTION_CACHE_MAX_ENTRIES = 100;
-
-function isTruthyEnvFlag(value: string | undefined): boolean {
-  return typeof value === "string" && /^(1|true|yes|on)$/i.test(value.trim());
-}
 
 let proxyConfigGeneration = 0;
 const proxyResolutionCache = new Map<string, ProxyResolutionCacheEntry>();
@@ -136,6 +138,15 @@ export async function getSettings() {
     idempotencyWindowMs: 5000,
     wsAuth: false,
     maxBodySizeMb: requestBodyLimitMbFromEnv(process.env.MAX_BODY_SIZE_BYTES),
+    claudeLargeMessagesMode: claudeLargeMessagesModeFromEnv(
+      process.env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_MODE
+    ),
+    claudeLargeMessagesTargetKb: claudeLargeMessagesTargetKbFromEnv(
+      process.env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_TARGET_BYTES
+    ),
+    claudeLargeMessagesMaxMb: claudeLargeMessagesMaxMbFromEnv(
+      process.env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_MAX_BYTES
+    ),
     debugMode: true,
     // Opt-in diagnostic: when true, the chat handler emits a `log.debug("TOOLS", …)`
     // line per request summarizing tool count + MCP/hosted/client source breakdown.
@@ -651,18 +662,25 @@ export async function resolveProxyForConnection(connectionId: string, apiKeyId?:
 
   const db = getDbInstance();
 
-  // Step 1: Check global proxyEnabled setting
-  // Read only the proxyEnabled key for performance instead of loading all settings.
+  // Step 1: Check global proxy toggles with one settings query for the proxy hot path.
   let globalProxyEnabled = true;
+  let globalPerKeyProxyEnabled = false;
   try {
-    const proxyEnabledRow = db
-      .prepare("SELECT value FROM key_value WHERE namespace = 'settings' AND key = 'proxyEnabled'")
-      .get() as { value?: string } | undefined;
-    if (proxyEnabledRow?.value) {
-      globalProxyEnabled = JSON.parse(proxyEnabledRow.value) !== false;
+    const settingsRows = db
+      .prepare(
+        "SELECT key, value FROM key_value WHERE namespace = 'settings' AND key IN ('proxyEnabled', 'perKeyProxyEnabled')"
+      )
+      .all() as Array<{ key?: string; value?: string }>;
+    for (const row of settingsRows) {
+      if (row.key === "proxyEnabled" && row.value) {
+        globalProxyEnabled = JSON.parse(row.value) !== false;
+      }
+      if (row.key === "perKeyProxyEnabled" && row.value) {
+        globalPerKeyProxyEnabled = JSON.parse(row.value) !== false;
+      }
     }
   } catch {
-    // Default to true on read error
+    // Defaults: proxy on, per-key proxy off.
   }
 
   if (!globalProxyEnabled) {
@@ -697,21 +715,6 @@ export async function resolveProxyForConnection(connectionId: string, apiKeyId?:
     const result: ProxyResolutionResult = { proxy: null, level: "direct", levelId: null };
     cacheProxyResolution(cacheKey, startGeneration, startRegistryGeneration, result);
     return result;
-  }
-
-  // Step 1.5: Check global perKeyProxyEnabled setting
-  let globalPerKeyProxyEnabled = false;
-  try {
-    const perKeyRow = db
-      .prepare(
-        "SELECT value FROM key_value WHERE namespace = 'settings' AND key = 'perKeyProxyEnabled'"
-      )
-      .get() as { value?: string } | undefined;
-    if (perKeyRow?.value) {
-      globalPerKeyProxyEnabled = JSON.parse(perKeyRow.value) !== false;
-    }
-  } catch {
-    // Default to false on read error
   }
 
   const config = await getProxyConfig();

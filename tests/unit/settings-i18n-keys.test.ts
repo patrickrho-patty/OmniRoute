@@ -39,6 +39,23 @@ const requestBodyLimitSettingsKeys = [
   "requestBodyLimitSaving",
   "requestBodyLimitSave",
   "requestBodyLimitCurrent",
+  "requestBodyLimitUnsavedChanges",
+  "claudeLargeMessagesTitle",
+  "claudeLargeMessagesDescription",
+  "claudeLargeMessagesModeLabel",
+  "claudeLargeMessagesModeReject",
+  "claudeLargeMessagesModeVcc",
+  "claudeLargeMessagesTargetLabel",
+  "claudeLargeMessagesTargetHelp",
+  "claudeLargeMessagesMaxLabel",
+  "claudeLargeMessagesMaxHelp",
+  "claudeLargeMessagesTargetWholeNumberError",
+  "claudeLargeMessagesTargetMinimumError",
+  "claudeLargeMessagesTargetMaximumError",
+  "claudeLargeMessagesMaxWholeNumberError",
+  "claudeLargeMessagesMaxMinimumError",
+  "claudeLargeMessagesMaxMaximumError",
+  "claudeLargeMessagesMaxBelowTargetError",
 ];
 
 const proxyPageSettingsKeys = ["httpProxy", "1proxy", "proxySubTabsAria"];

@@ -2,13 +2,11 @@
 // matching used to decide whether a model is permitted for a key. Pure logic (no DB) extracted from
 // db/apiKeys.ts (god-file decomposition); behavior is byte-identical to the original inline defs.
 
+import { isTruthyEnvFlag } from "@/shared/utils/envParsing";
+
 export const CLAUDE_CODE_PROVIDER_PREFIXES = new Set(["cc", "claude"]);
 
 export const CLAUDE_CODE_SHORT_ALIASES = new Set(["sonnet", "opus", "haiku", "fable"]);
-
-export function isTruthyEnvFlag(value: string | undefined): boolean {
-  return typeof value === "string" && /^(1|true|yes|on)$/i.test(value.trim());
-}
 
 export async function preferClaudeCodeForUnprefixedClaudeModels(): Promise<boolean> {
   try {

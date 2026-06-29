@@ -50,6 +50,36 @@ test("settings schemas accept request body limit", () => {
   assert.equal(sharedSettingsSchema.safeParse({ maxBodySizeMb: 501 }).success, false);
 });
 
+test("settings schemas accept Claude large-message VCC settings", () => {
+  const payload = {
+    claudeLargeMessagesMode: "vcc",
+    claudeLargeMessagesTargetKb: 900,
+    claudeLargeMessagesMaxMb: 50,
+  };
+  const routeParsed = settingsRouteSchema.parse(payload);
+  const sharedParsed = sharedSettingsSchema.parse(payload);
+
+  assert.equal(routeParsed.claudeLargeMessagesMode, "vcc");
+  assert.equal(routeParsed.claudeLargeMessagesTargetKb, 900);
+  assert.equal(routeParsed.claudeLargeMessagesMaxMb, 50);
+  assert.deepEqual(sharedParsed, routeParsed);
+  assert.equal(settingsRouteSchema.safeParse({ claudeLargeMessagesMode: "allow" }).success, false);
+  assert.equal(settingsRouteSchema.safeParse({ claudeLargeMessagesTargetKb: 63 }).success, false);
+  assert.equal(
+    settingsRouteSchema.safeParse({ claudeLargeMessagesTargetKb: 10241 }).success,
+    false
+  );
+  assert.equal(settingsRouteSchema.safeParse({ claudeLargeMessagesMaxMb: 0 }).success, false);
+  assert.equal(settingsRouteSchema.safeParse({ claudeLargeMessagesMaxMb: 501 }).success, false);
+  assert.equal(
+    settingsRouteSchema.safeParse({
+      claudeLargeMessagesTargetKb: 2048,
+      claudeLargeMessagesMaxMb: 1,
+    }).success,
+    false
+  );
+});
+
 test("settings schemas accept wsAuth toggle", () => {
   const routeParsed = settingsRouteSchema.parse({ wsAuth: true });
   const sharedParsed = sharedSettingsSchema.parse({ wsAuth: false });

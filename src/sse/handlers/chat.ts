@@ -86,10 +86,12 @@ import { logAuditEvent } from "../../lib/compliance/index";
 import { enforceApiKeyPolicy } from "../../shared/utils/apiKeyPolicy";
 import { cloneLogPayload } from "@/lib/logPayloads";
 import { handleInternalUsageCommand } from "@/lib/usage/internalUsageCommand";
+import { isClaudeMessagesPath } from "@/shared/middleware/bodySizeGuard";
 import {
-  checkClaudeMessagesBodySize,
-  isClaudeMessagesPath,
-} from "@/shared/middleware/bodySizeGuard";
+  applyClaudeMessagesLargeRequestMode,
+  resolveClaudeLargeMessagesConfig,
+  type ClaudeLargeMessagesConfig,
+} from "@/shared/middleware/claudeMessagesVcc";
 import {
   applyTaskAwareRouting,
   getTaskRoutingConfig,
@@ -206,10 +208,24 @@ const comboPromoteDeps = { updateCombo, info: log.info, warn: log.warn };
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
  * Format detection and translation handled by translator
  */
+export interface HandleChatRuntimeOptions {
+  cachedSettings?: Record<string, unknown>;
+  claudeLargeMessagesConfig?: ClaudeLargeMessagesConfig;
+  /**
+   * Set by the injection guard once it has already run Claude large-message
+   * reject/VCC on this request. When true, handleChat must NOT re-run
+   * compaction (it would re-assess against the stale Content-Length header and
+   * compact an already-compacted body). Direct handleChat callers leave this
+   * unset so the handler applies compaction once as a fallback.
+   */
+  claudeLargeMessagesApplied?: boolean;
+}
+
 export async function handleChat(
   request: any,
   clientRawRequest: any = null,
-  preParsedBody: any = null
+  preParsedBody: any = null,
+  runtimeOptions: HandleChatRuntimeOptions = {}
 ) {
   // Pipeline: Start request telemetry
   const reqId = generateRequestId();
@@ -226,10 +242,30 @@ export async function handleChat(
   }
 
   const url = new URL(request.url);
-  const oversizedClaudeRequestRejection = checkClaudeMessagesBodySize(request, url.pathname, body);
-  if (oversizedClaudeRequestRejection) {
-    log.warn("CHAT", `Rejecting oversized Claude-format request for ${url.pathname}`);
-    return oversizedClaudeRequestRejection;
+  const requestSettings =
+    runtimeOptions.cachedSettings ??
+    (await getCachedSettings().catch(() => ({}) as Record<string, unknown>));
+  const getRequestSettings = () => Promise.resolve(requestSettings);
+  // Claude large-message reject/VCC runs ONCE per request. For guarded routes
+  // (/v1/messages) the injection guard already assessed + compacted and threaded
+  // the result via runtimeOptions (claudeLargeMessagesApplied). Only run here for
+  // direct handleChat callers (no guard) as a fallback.
+  if (!runtimeOptions.claudeLargeMessagesApplied && isClaudeMessagesPath(url.pathname)) {
+    const claudeLargeConfig = resolveClaudeLargeMessagesConfig(process.env, requestSettings);
+    const claudeLargeMode = applyClaudeMessagesLargeRequestMode(request, url.pathname, body, {
+      config: claudeLargeConfig,
+    });
+    if (claudeLargeMode.rejection) {
+      log.warn("CHAT", `Rejecting oversized Claude-format request for ${url.pathname}`);
+      return claudeLargeMode.rejection;
+    }
+    if (claudeLargeMode.compacted) {
+      body = claudeLargeMode.body;
+      log.warn(
+        "CHAT",
+        `Compacted oversized Claude-format request for ${url.pathname}: ${claudeLargeMode.stats?.originalBytes ?? "?"} -> ${claudeLargeMode.stats?.compactedBytes ?? "?"} bytes`
+      );
+    }
   }
 
   const rawClientBody = cloneLogPayload(body);
@@ -447,7 +483,7 @@ export async function handleChat(
   // Settings are read only when a web-search tool is present; the override lands before
   // auto/combo resolution and the layer-1 fallback so the target's own handling applies.
   if (hasNativeWebSearchTool(body)) {
-    const wsSettings = await getCachedSettings().catch(() => ({}) as Record<string, unknown>);
+    const wsSettings = await getRequestSettings();
     const wsRoute = resolveWebSearchRouteOverride(resolvedModelStr, body, wsSettings);
     if (wsRoute.wasRouted) {
       log.info(
@@ -489,7 +525,7 @@ export async function handleChat(
     // `getCachedSettings` is. Calling the bare name caused a ReferenceError
     // on every auto-routed request. The cached variant has the same shape
     // and benefits the auto-routing hot path.
-    const settings = await getCachedSettings().catch(() => ({}) as Record<string, unknown>);
+    const settings = await getRequestSettings();
     if (settings?.autoRoutingEnabled === false) {
       return errorResponse(
         HTTP_STATUS.BAD_REQUEST,
@@ -649,7 +685,7 @@ export async function handleChat(
 
     // Fetch settings and all combos for config cascade and nested resolution
     const [settings, allCombos] = await Promise.all([
-      getCachedSettings().catch(() => ({})),
+      getRequestSettings(),
       getCombosCachedForChat(),
     ]);
     const relayConfig =
@@ -697,6 +733,7 @@ export async function handleChat(
               getComboCredentialCacheKey(m, target)
             ),
             cachedSettings: settings,
+            getRequestSettings,
             providerId: target?.providerId ?? null,
           },
           target?.effectiveComboStrategy ?? combo.strategy,
@@ -752,6 +789,8 @@ export async function handleChat(
           {
             sessionId,
             sessionAffinityKey,
+            cachedSettings: settings as Record<string, unknown>,
+            getRequestSettings,
             emergencyFallbackTried: true,
             forceLiveComboTest: isComboLiveTest,
           },
@@ -791,6 +830,8 @@ export async function handleChat(
     {
       sessionId,
       sessionAffinityKey,
+      cachedSettings: await getRequestSettings(),
+      getRequestSettings,
       forceLiveComboTest: isComboLiveTest,
       forcedConnectionId: requestedConnectionId,
     },
@@ -838,7 +879,8 @@ async function handleSingleModelChat(
     skipUpstreamRetry?: boolean;
     allowRateLimitedConnection?: boolean;
     preselectedCredentials?: any;
-    cachedSettings?: any;
+    cachedSettings?: Record<string, unknown>;
+    getRequestSettings?: () => Promise<Record<string, unknown>>;
     providerId?: string | null;
   } = {},
   comboStrategy: string | null = null,
@@ -886,6 +928,8 @@ async function handleSingleModelChat(
           telemetry,
           {
             sessionId: "", // safety-net redirect doesn't have session context
+            cachedSettings: runtimeOptions.cachedSettings,
+            getRequestSettings: runtimeOptions.getRequestSettings,
             forceLiveComboTest: false,
             forcedConnectionId: null,
             allowedConnectionIds: null,
@@ -993,9 +1037,10 @@ async function handleSingleModelChat(
   });
 
   const userAgent = request?.headers?.get("user-agent") || "";
-  const baseRetrySettings = resolveCooldownAwareRetrySettings(
-    runtimeOptions.cachedSettings ?? (await getCachedSettings().catch(() => ({})))
-  );
+  const cachedSettings =
+    runtimeOptions.cachedSettings ??
+    (runtimeOptions.getRequestSettings ? await runtimeOptions.getRequestSettings() : {});
+  const baseRetrySettings = resolveCooldownAwareRetrySettings(cachedSettings);
   const disableCooldownAwareRetry =
     isCombo || forceLiveComboTest || runtimeOptions.emergencyFallbackTried === true;
   const retrySettings = disableCooldownAwareRetry
@@ -1208,7 +1253,7 @@ async function handleSingleModelChat(
         extendedContext,
         modelApiFormat: apiFormat,
         providerProfile,
-        cachedSettings: runtimeOptions.cachedSettings,
+        cachedSettings,
         skipUpstreamRetry: runtimeOptions.skipUpstreamRetry ?? false,
       });
       if (telemetry) telemetry.endPhase();
@@ -1479,7 +1524,7 @@ async function handleSingleModelChat(
         const match = errorStr.match(/today's quota for model ([^,]+)/);
         const limitedModel = match ? match[1].trim() : model;
 
-        const mlSettings = resolveModelLockoutSettings(runtimeOptions.cachedSettings);
+        const mlSettings = resolveModelLockoutSettings(cachedSettings);
         if (mlSettings.enabled && mlSettings.errorCodes.includes(result.status)) {
           // Lock this model on this connection until tomorrow 00:00
           const lockResult = recordModelLockoutFailure(

@@ -1,4 +1,10 @@
 import path from "path";
+import {
+  parseBoolean,
+  parseNonNegativeInt,
+  parsePositiveInt,
+  parsePositiveIntOrNull,
+} from "@/shared/utils/envParsing";
 
 const DEFAULT_APP_LOG_RETENTION_DAYS = 7;
 const DEFAULT_CALL_LOG_RETENTION_DAYS = 7;
@@ -9,26 +15,6 @@ const DEFAULT_CALL_LOGS_TABLE_MAX_ROWS = 100000;
 const DEFAULT_CALL_LOG_PIPELINE_MAX_SIZE_KB = 512;
 const DEFAULT_PROXY_LOGS_TABLE_MAX_ROWS = 100000;
 const DEFAULT_APP_LOG_PATH = path.join(process.cwd(), "logs", "application", "app.log");
-
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function parseNonNegativeInt(value: string | undefined, fallback: number): number {
-  if (value === undefined || value === "") return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
-function parseBoolean(value: string | undefined, fallback: boolean): boolean {
-  if (!value) return fallback;
-  const normalized = value.trim().toLowerCase();
-  if (["1", "true", "yes", "on"].includes(normalized)) return true;
-  if (["0", "false", "no", "off"].includes(normalized)) return false;
-  return fallback;
-}
 
 export function parseFileSize(raw: string | undefined): number {
   if (!raw) return DEFAULT_APP_LOG_MAX_SIZE;
@@ -77,12 +63,6 @@ export function getCallLogRetentionDays(): number {
  * over the dashboard's database retention, while falling back to the dashboard (not the
  * hardcoded 7-day default) when the operator did not set the env var. (#4354)
  */
-function parsePositiveIntOrNull(value: string | undefined): number | null {
-  if (value === undefined || value === "") return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
 export function getAppLogRetentionDaysOverride(): number | null {
   return parsePositiveIntOrNull(process.env.APP_LOG_RETENTION_DAYS);
 }
