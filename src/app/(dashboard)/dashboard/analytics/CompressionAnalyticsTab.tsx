@@ -165,9 +165,9 @@ export default function CompressionAnalyticsTab() {
   }
 
   const modes = Object.entries(stats.byMode).sort(([, a], [, b]) => b.count - a.count);
-  const engines = Object.entries(stats.byEngine ?? {}).sort(
-    ([, a], [, b]) => b.tokensSaved - a.tokensSaved
-  );
+  const engines = Object.entries(stats.byEngine ?? {})
+    .filter(([id]) => id !== "ponytail")
+    .sort(([, a], [, b]) => b.tokensSaved - a.tokensSaved);
   const engineTotalRequests = engines.reduce((sum, [, entry]) => sum + entry.count, 0);
   const providers = Object.entries(stats.byProvider).sort(([, a], [, b]) => b.count - a.count);
 
