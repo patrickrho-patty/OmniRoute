@@ -13,6 +13,7 @@
  * @module shared/middleware/bodySizeGuard
  */
 
+import { buildErrorBody } from "@omniroute/open-sse/utils/error.ts";
 import {
   normalizeRequestBodyLimitMb,
   parseRequestBodyLimitBytes,
@@ -31,8 +32,13 @@ export const MAX_BODY_BYTES_FILE = 500 * 1024 * 1024;
 
 /** Configured limit — reads from env or falls back to 10 MB */
 export const MAX_BODY_BYTES = parseRequestBodyLimitBytes(process.env.MAX_BODY_SIZE_BYTES);
+export const CLAUDE_MESSAGES_ROUTE = "/v1/messages";
+const CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS = 20;
+export const CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES = 512 * 1024;
+export const CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES = 1024 * 1024;
 
 type BodySizeRule = { prefix: string; limit: number };
+type HeaderReadableRequest = { headers?: { get?: (name: string) => string | null } };
 
 const ROUTE_LIMITS: BodySizeRule[] = [
   { prefix: "/api/db-backups/import", limit: MAX_BODY_BYTES_IMPORT },
@@ -59,38 +65,215 @@ export function getBodySizeLimit(pathname: string, settings?: Record<string, unk
 }
 
 /**
+ * Parse the declared request Content-Length header.
+ */
+export function getDeclaredContentLengthBytes(request: HeaderReadableRequest): number | null {
+  const contentLength = request.headers?.get?.("content-length");
+  if (!contentLength) return null;
+  const bytes = Number.parseInt(contentLength, 10);
+  return Number.isNaN(bytes) || bytes <= 0 ? null : bytes;
+}
+
+export function isClaudeMessagesPath(pathname: string): boolean {
+  return pathname === CLAUDE_MESSAGES_ROUTE || pathname === `/api${CLAUDE_MESSAGES_ROUTE}`;
+}
+
+function estimateJsonStringBytes(value: string): number {
+  let bytes = 2; // surrounding quotes
+  for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 0x22 || code === 0x5c) {
+      bytes += 2; // escaped quote/backslash
+    } else if (code <= 0x1f) {
+      bytes += 6; // \u00xx
+    } else if (code <= 0x7f) {
+      bytes += 1;
+    } else if (code <= 0x7ff) {
+      bytes += 2;
+    } else if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        bytes += 4;
+        i++;
+      } else {
+        bytes += 6; // JSON.stringify escapes lone surrogates
+      }
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      bytes += 6; // JSON.stringify escapes lone surrogates
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
+}
+
+function* ownEnumerableKeys(source: Record<string, unknown>) {
+  for (const key in source) {
+    yield key;
+  }
+}
+
+function estimateJsonBodyBytes(value: unknown, stopAtBytes: number): number {
+  type Frame =
+    | { kind: "value"; value: unknown; inArray?: boolean }
+    | { kind: "array"; values: unknown[]; index: number }
+    | { kind: "object"; source: Record<string, unknown>; iterator: IterableIterator<string> };
+
+  let bytes = 0;
+  const stack: Frame[] = [{ kind: "value", value }];
+  const seen = new WeakSet<object>();
+
+  const add = (count: number) => {
+    bytes += count;
+    return bytes > stopAtBytes;
+  };
+
+  while (stack.length > 0) {
+    const frame = stack.pop();
+    if (!frame) continue;
+
+    if (frame.kind === "array") {
+      if (frame.index < frame.values.length) {
+        stack.push({ kind: "array", values: frame.values, index: frame.index + 1 });
+        stack.push({ kind: "value", value: frame.values[frame.index], inArray: true });
+      }
+      continue;
+    }
+
+    if (frame.kind === "object") {
+      for (;;) {
+        const next = frame.iterator.next();
+        if (next.done) break;
+        const key = next.value;
+        if (!Object.prototype.hasOwnProperty.call(frame.source, key)) continue;
+        const item = frame.source[key];
+        if (item === undefined || typeof item === "function" || typeof item === "symbol") continue;
+        if (add(estimateJsonStringBytes(key) + 2)) return bytes; // key + colon + conservative comma
+        stack.push(frame);
+        stack.push({ kind: "value", value: item });
+        break;
+      }
+      continue;
+    }
+
+    const current = frame.value;
+    if (current === null || current === undefined) {
+      if (frame.inArray || current === null) {
+        if (add(4)) return bytes;
+      }
+      continue;
+    }
+
+    if (typeof current === "string") {
+      if (add(estimateJsonStringBytes(current))) return bytes;
+    } else if (typeof current === "number") {
+      if (add(Number.isFinite(current) ? String(current).length : 4)) return bytes;
+    } else if (typeof current === "boolean") {
+      if (add(current ? 4 : 5)) return bytes;
+    } else if (typeof current === "object") {
+      if (seen.has(current)) continue;
+      seen.add(current);
+
+      if (Array.isArray(current)) {
+        if (add(2 + Math.max(0, current.length - 1))) return bytes; // [] + commas
+        stack.push({ kind: "array", values: current, index: 0 });
+      } else {
+        if (add(2)) return bytes; // {}
+        stack.push({
+          kind: "object",
+          source: current as Record<string, unknown>,
+          iterator: ownEnumerableKeys(current as Record<string, unknown>),
+        });
+      }
+    }
+  }
+
+  return bytes;
+}
+
+function createPayloadTooLargeResponse(message: string): Response {
+  return new Response(JSON.stringify(buildErrorBody(413, message)), {
+    status: 413,
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+}
+
+/**
  * Check Content-Length header against the configured limit.
  * Returns a 413 Response if the body is too large, or null if OK.
  */
 export function checkBodySize(request: Request, limit: number = MAX_BODY_BYTES): Response | null {
-  const contentLength = request.headers.get("content-length");
+  const bytes = getDeclaredContentLengthBytes(request);
+  if (bytes !== null && bytes > limit) {
+    return createPayloadTooLargeResponse(
+      `Request body too large. Maximum allowed: ${formatBytes(limit)}`
+    );
+  }
 
-  if (contentLength) {
-    const bytes = Number.parseInt(contentLength, 10);
-    if (!Number.isNaN(bytes) && bytes > limit) {
-      return new Response(
-        JSON.stringify({
-          error: {
-            message: `Request body too large. Maximum allowed: ${formatBytes(limit)}`,
-            type: "payload_too_large",
-            code: "PAYLOAD_TOO_LARGE",
-          },
-        }),
-        {
-          status: 413,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
-    }
+  return null;
+}
+
+/**
+ * Claude Messages requests can be deceptively large after JSON parse when a client
+ * sends giant tool schemas or prompt blocks without a declared Content-Length.
+ * This post-parse guard protects the hot chat path before cloning/logging.
+ */
+export function checkClaudeMessagesBodySize(
+  request: HeaderReadableRequest,
+  pathname: string,
+  body: unknown
+): Response | null {
+  if (!isClaudeMessagesPath(pathname) || !body || typeof body !== "object" || Array.isArray(body)) {
+    return null;
+  }
+
+  const toolCount = Array.isArray((body as { tools?: unknown }).tools)
+    ? (body as { tools: unknown[] }).tools.length
+    : 0;
+  const declaredBytes = getDeclaredContentLengthBytes(request);
+  if (declaredBytes !== null && declaredBytes > CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES) {
+    return createPayloadTooLargeResponse(
+      `Claude-format request too large. Maximum allowed: ${formatBytes(CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES)}`
+    );
+  }
+  if (
+    declaredBytes !== null &&
+    toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS &&
+    declaredBytes > CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES
+  ) {
+    return createPayloadTooLargeResponse(
+      `Claude-format tool-heavy request too large (${toolCount} tools). Reduce tools or keep the request at or below ${formatBytes(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES)}.`
+    );
+  }
+
+  const estimateLimit =
+    toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS
+      ? CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES + 1
+      : CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES + 1;
+  const bodyBytes = Math.max(declaredBytes ?? 0, estimateJsonBodyBytes(body, estimateLimit));
+
+  if (bodyBytes > CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES) {
+    return createPayloadTooLargeResponse(
+      `Claude-format request too large. Maximum allowed: ${formatBytes(CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES)}`
+    );
+  }
+
+  if (
+    toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS &&
+    bodyBytes > CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES
+  ) {
+    return createPayloadTooLargeResponse(
+      `Claude-format tool-heavy request too large (${toolCount} tools). Reduce tools or keep the request at or below ${formatBytes(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES)}.`
+    );
   }
 
   return null;
 }
 
 /** Format bytes as human-readable string */
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${bytes} bytes`;

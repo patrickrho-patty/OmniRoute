@@ -87,6 +87,10 @@ import { enforceApiKeyPolicy } from "../../shared/utils/apiKeyPolicy";
 import { cloneLogPayload } from "@/lib/logPayloads";
 import { handleInternalUsageCommand } from "@/lib/usage/internalUsageCommand";
 import {
+  checkClaudeMessagesBodySize,
+  isClaudeMessagesPath,
+} from "@/shared/middleware/bodySizeGuard";
+import {
   applyTaskAwareRouting,
   getTaskRoutingConfig,
 } from "@omniroute/open-sse/services/taskAwareRouter.ts";
@@ -221,6 +225,13 @@ export async function handleChat(
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
   }
 
+  const url = new URL(request.url);
+  const oversizedClaudeRequestRejection = checkClaudeMessagesBodySize(request, url.pathname, body);
+  if (oversizedClaudeRequestRejection) {
+    log.warn("CHAT", `Rejecting oversized Claude-format request for ${url.pathname}`);
+    return oversizedClaudeRequestRejection;
+  }
+
   const rawClientBody = cloneLogPayload(body);
 
   // Early guard: an explicitly empty `messages` array is invalid for every
@@ -229,13 +240,12 @@ export async function handleChat(
   // a clear OmniRoute-level error before any routing or upstream call (#5110).
   // Responses-API requests use `input` (not `messages`) so they are unaffected,
   // and an absent `messages` field is left to downstream validation.
-  if (Array.isArray((body as { messages?: unknown }).messages) &&
-    (body as { messages: unknown[] }).messages.length === 0) {
+  if (
+    Array.isArray((body as { messages?: unknown }).messages) &&
+    (body as { messages: unknown[] }).messages.length === 0
+  ) {
     log.warn("CHAT", "Rejecting request with empty messages array");
-    return errorResponse(
-      HTTP_STATUS.BAD_REQUEST,
-      "messages: at least one message is required"
-    );
+    return errorResponse(HTTP_STATUS.BAD_REQUEST, "messages: at least one message is required");
   }
 
   // Build clientRawRequest for logging (if not provided)
@@ -262,14 +272,13 @@ export async function handleChat(
   }
 
   // Log request endpoint and model
-  const url = new URL(request.url);
 
   // No-thinking gateway alias (Fase 8.1): `no-think/<provider>/<model>`
   // resolves back to the real model with reasoning suppressed in place, before any
   // model resolution / combo routing sees it. Claude/Messages path forces
   // `thinking:{type:"disabled"}`; OpenAI path drops the reasoning fields.
   const noThinking = applyNoThinkingAlias(body, {
-    claudeFormat: url.pathname.includes("/messages"),
+    claudeFormat: isClaudeMessagesPath(url.pathname),
   });
   if (noThinking.applied) {
     log.debug("NO_THINKING", `Resolved no-thinking alias → ${noThinking.realModel}`);

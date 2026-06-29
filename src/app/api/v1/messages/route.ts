@@ -50,13 +50,10 @@ async function postHandler(request: any, context: any, preParsedBody: any = null
   // verbatim path.
   const accept = String(request.headers?.get?.("accept") || "").toLowerCase();
   if (accept.includes("text/event-stream")) {
-    let model;
-    try {
-      const body = preParsedBody ?? (await request.clone().json().catch(() => null));
-      model = body?.model;
-    } catch {
-      // body unavailable / non-JSON — fall back to the default keepalive threshold
-    }
+    const model =
+      preParsedBody && typeof preParsedBody === "object" && !Array.isArray(preParsedBody)
+        ? preParsedBody.model
+        : undefined;
     return await withEarlyStreamKeepalive(handleChat(request, null, preParsedBody), {
       signal: request.signal,
       thresholdMs: resolveKeepaliveThreshold(model),

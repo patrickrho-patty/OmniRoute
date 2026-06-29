@@ -11,6 +11,12 @@ import {
   type PromptInjectionGuardrailOptions,
 } from "@/lib/guardrails/promptInjection";
 import { resolveDisabledGuardrails } from "@/lib/guardrails/registry";
+import {
+  CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES,
+  checkBodySize,
+  checkClaudeMessagesBodySize,
+  isClaudeMessagesPath,
+} from "@/shared/middleware/bodySizeGuard";
 import { CORS_HEADERS } from "@/shared/utils/cors";
 
 /**
@@ -62,11 +68,24 @@ export function withInjectionGuard(handler: any, options: any = {}) {
     let parsedBody: any = null;
 
     try {
-      // Clone request so body can still be read by handler
-      const cloned = request.clone();
-      parsedBody = await cloned.json().catch(() => null);
+      const pathname = new URL(request.url).pathname;
+      const isClaudeMessages = isClaudeMessagesPath(pathname);
+      if (isClaudeMessages) {
+        const declaredSizeRejection = checkBodySize(request, CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES);
+        if (declaredSizeRejection) return declaredSizeRejection;
+      }
+
+      // Most handlers still expect the original body to remain readable. Claude Messages
+      // handlers accept `preParsedBody`, so consume that request once and avoid a clone.
+      const bodySource = isClaudeMessages ? request : request.clone();
+      parsedBody = await bodySource.json().catch(() => null);
 
       if (parsedBody) {
+        if (isClaudeMessages) {
+          const sizeRejection = checkClaudeMessagesBodySize(request, pathname, parsedBody);
+          if (sizeRejection) return sizeRejection;
+        }
+
         const { blocked, result }: any = guard(parsedBody);
 
         if (blocked) {
