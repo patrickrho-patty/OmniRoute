@@ -106,6 +106,51 @@ LLMLingua), install it in the **main checkout before `npm run build`** so it's i
 in the assembled bundle, or use `scp` to copy the missing package directly into
 `dist/node_modules/` without running npm's resolver.
 
+### VPS migration gotchas
+
+When moving to a new VPS (cloning the repo + importing the DB from the old machine):
+
+1. **Copy `STORAGE_ENCRYPTION_KEY`** from the old VPS's `.env` to the new one.
+   Provider credentials are AES-256-GCM encrypted at rest — without the matching
+   key, all connections appear invalid. The key lives in `~/.omniroute/.env` or the
+   repo's `.env`.
+
+2. **OAuth tokens expire on migration.** OAuth connections (Claude, Codex,
+   ChatGPT-web) are session-bound to the originating machine. After importing the
+   DB, these connections show "authentication expired." Re-authenticate them in the
+   dashboard. API-key providers (Mistral, OpenAI direct) survive migration.
+
+3. **LLMLingua ONNX model pre-download.** The BERT model (~680 MB) downloads on
+   first use from HuggingFace Hub. Pre-download it after a fresh deploy so the
+   first compression request doesn't time out:
+
+   ```bash
+   cd /opt/OmniRoute && node --import tsx/esm -e "
+     import { configureTransformersEnv } from './open-sse/services/compression/engines/llmlingua/modelStore.ts';
+     const { env } = await import('@huggingface/transformers');
+     configureTransformersEnv(env, {});
+     const { LLMLingua2 } = await import('@atjsh/llmlingua-2');
+     const { Tiktoken } = await import('js-tiktoken/lite');
+     const o200k_base = (await import('js-tiktoken/ranks/o200k_base')).default;
+     const { promptCompressor } = await LLMLingua2.WithBERTMultilingual(
+       'Arcoldd/llmlingua4j-bert-base-onnx',
+       { transformerJSConfig: { device: 'cpu', dtype: 'fp32' },
+         oaiTokenizer: new Tiktoken(o200k_base),
+         modelSpecificOptions: { subfolder: '' }, logger: () => {} });
+     console.log('Model cached');
+   "
+   ```
+
+4. **rsync `--exclude` anchoring.** Use `--exclude '/logs/'` (leading `/`), not
+   `--exclude 'logs/'`. Without the anchor, rsync excludes every path segment
+   named `logs/` — including `app/api/logs/` and `dashboard/logs/` routes.
+
+5. **Systemd entry point.** When running from a cloned repo (not an npm-installed
+   package), use `npm start` as the ExecStart (runs `next start` with full
+   initialization). The standalone `server.js` works for the API but the CLI
+   entry point (`bin/omniroute.mjs serve`) expects a `dist/` directory — symlink
+   `.build/next/standalone` to `dist` if using the CLI.
+
 ---
 
 ## Prerequisites
