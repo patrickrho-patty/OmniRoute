@@ -53,6 +53,7 @@ test("settings schemas accept request body limit", () => {
 test("settings schemas accept Claude large-message VCC settings", () => {
   const payload = {
     claudeLargeMessagesMode: "vcc",
+    claudeLargeMessagesThresholdKb: 1024,
     claudeLargeMessagesTargetKb: 900,
     claudeLargeMessagesMaxMb: 50,
   };
@@ -60,6 +61,7 @@ test("settings schemas accept Claude large-message VCC settings", () => {
   const sharedParsed = sharedSettingsSchema.parse(payload);
 
   assert.equal(routeParsed.claudeLargeMessagesMode, "vcc");
+  assert.equal(routeParsed.claudeLargeMessagesThresholdKb, 1024);
   assert.equal(routeParsed.claudeLargeMessagesTargetKb, 900);
   assert.equal(routeParsed.claudeLargeMessagesMaxMb, 50);
   assert.deepEqual(sharedParsed, routeParsed);
@@ -77,6 +79,31 @@ test("settings schemas accept Claude large-message VCC settings", () => {
       claudeLargeMessagesMaxMb: 1,
     }).success,
     false
+  );
+  // Threshold bounds
+  assert.equal(
+    settingsRouteSchema.safeParse({ claudeLargeMessagesThresholdKb: 63 }).success,
+    false
+  );
+  assert.equal(
+    settingsRouteSchema.safeParse({ claudeLargeMessagesThresholdKb: 10241 }).success,
+    false
+  );
+  // Target above threshold is rejected
+  assert.equal(
+    settingsRouteSchema.safeParse({
+      claudeLargeMessagesThresholdKb: 512,
+      claudeLargeMessagesTargetKb: 900,
+    }).success,
+    false
+  );
+  // Target equal to threshold is allowed
+  assert.equal(
+    settingsRouteSchema.safeParse({
+      claudeLargeMessagesThresholdKb: 900,
+      claudeLargeMessagesTargetKb: 900,
+    }).success,
+    true
   );
 });
 

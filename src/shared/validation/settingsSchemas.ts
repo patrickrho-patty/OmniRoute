@@ -11,9 +11,11 @@ import {
   CLAUDE_LARGE_MESSAGES_MODES,
   MAX_CLAUDE_LARGE_MESSAGES_MAX_MB,
   MAX_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   MAX_REQUEST_BODY_LIMIT_MB,
   MIN_CLAUDE_LARGE_MESSAGES_MAX_MB,
   MIN_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   MIN_REQUEST_BODY_LIMIT_MB,
 } from "@/shared/constants/bodySize";
 import { HIDEABLE_SIDEBAR_GROUP_IDS } from "@/shared/constants/sidebarGroupVisibility";
@@ -121,6 +123,12 @@ export const updateSettingsSchema = z
       .max(MAX_REQUEST_BODY_LIMIT_MB)
       .optional(),
     claudeLargeMessagesMode: z.enum(CLAUDE_LARGE_MESSAGES_MODES).optional(),
+    claudeLargeMessagesThresholdKb: z
+      .number()
+      .int()
+      .min(MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB)
+      .max(MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB)
+      .optional(),
     claudeLargeMessagesTargetKb: z
       .number()
       .int()
@@ -372,6 +380,19 @@ export const updateSettingsSchema = z
         code: z.ZodIssueCode.custom,
         path: ["claudeLargeMessagesMaxMb"],
         message: "Claude large-message emergency max must be greater than or equal to target size",
+      });
+    }
+    // Compaction target must not exceed the trigger threshold: a target above
+    // the trigger could never be reached because compaction never fires there.
+    if (
+      settings.claudeLargeMessagesThresholdKb !== undefined &&
+      settings.claudeLargeMessagesTargetKb !== undefined &&
+      settings.claudeLargeMessagesTargetKb > settings.claudeLargeMessagesThresholdKb
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["claudeLargeMessagesTargetKb"],
+        message: "Claude compaction target must be less than or equal to the trigger threshold",
       });
     }
   });

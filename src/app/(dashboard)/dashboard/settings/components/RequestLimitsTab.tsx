@@ -8,12 +8,15 @@ import {
   DEFAULT_CLAUDE_LARGE_MESSAGES_MAX_MB,
   DEFAULT_CLAUDE_LARGE_MESSAGES_MODE,
   DEFAULT_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   DEFAULT_REQUEST_BODY_LIMIT_MB,
   MAX_CLAUDE_LARGE_MESSAGES_MAX_MB,
   MAX_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   MAX_REQUEST_BODY_LIMIT_MB,
   MIN_CLAUDE_LARGE_MESSAGES_MAX_MB,
   MIN_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   MIN_REQUEST_BODY_LIMIT_MB,
   type ClaudeLargeMessagesMode,
 } from "@/shared/constants/bodySize";
@@ -24,6 +27,7 @@ type Message = { type: "success" | "error"; text: string };
 interface SettingsResponse {
   maxBodySizeMb?: number;
   claudeLargeMessagesMode?: ClaudeLargeMessagesMode;
+  claudeLargeMessagesThresholdKb?: number;
   claudeLargeMessagesTargetKb?: number;
   claudeLargeMessagesMaxMb?: number;
   [key: string]: unknown;
@@ -52,6 +56,12 @@ export default function RequestLimitsTab() {
   const [savedClaudeMode, setSavedClaudeMode] = useState<ClaudeLargeMessagesMode>(
     DEFAULT_CLAUDE_LARGE_MESSAGES_MODE
   );
+  const [claudeThresholdKb, setClaudeThresholdKb] = useState(
+    String(DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB)
+  );
+  const [savedClaudeThresholdKb, setSavedClaudeThresholdKb] = useState(
+    String(DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB)
+  );
   const [claudeTargetKb, setClaudeTargetKb] = useState(
     String(DEFAULT_CLAUDE_LARGE_MESSAGES_TARGET_KB)
   );
@@ -72,6 +82,10 @@ export default function RequestLimitsTab() {
       DEFAULT_REQUEST_BODY_LIMIT_MB
     );
     const nextClaudeMode = normalizeModeValue(settings.claudeLargeMessagesMode);
+    const nextClaudeThresholdKb = normalizeInputValue(
+      settings.claudeLargeMessagesThresholdKb,
+      DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB
+    );
     const nextClaudeTargetKb = normalizeInputValue(
       settings.claudeLargeMessagesTargetKb,
       DEFAULT_CLAUDE_LARGE_MESSAGES_TARGET_KB
@@ -85,6 +99,8 @@ export default function RequestLimitsTab() {
     setSavedBodyLimitValue(nextBodyLimit);
     setClaudeMode(nextClaudeMode);
     setSavedClaudeMode(nextClaudeMode);
+    setClaudeThresholdKb(nextClaudeThresholdKb);
+    setSavedClaudeThresholdKb(nextClaudeThresholdKb);
     setClaudeTargetKb(nextClaudeTargetKb);
     setSavedClaudeTargetKb(nextClaudeTargetKb);
     setClaudeMaxMb(nextClaudeMaxMb);
@@ -135,6 +151,19 @@ export default function RequestLimitsTab() {
   }, [bodyLimitValue, t]);
 
   const claudeValidationError = useMemo(() => {
+    const threshold = parseIntegerOrNull(claudeThresholdKb);
+    if (threshold === null) return t("claudeLargeMessagesThresholdWholeNumberError");
+    if (threshold < MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB) {
+      return t("claudeLargeMessagesThresholdMinimumError", {
+        min: MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
+      });
+    }
+    if (threshold > MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB) {
+      return t("claudeLargeMessagesThresholdMaximumError", {
+        max: MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
+      });
+    }
+
     const target = parseIntegerOrNull(claudeTargetKb);
     if (target === null) return t("claudeLargeMessagesTargetWholeNumberError");
     if (target < MIN_CLAUDE_LARGE_MESSAGES_TARGET_KB) {
@@ -146,6 +175,9 @@ export default function RequestLimitsTab() {
       return t("claudeLargeMessagesTargetMaximumError", {
         max: MAX_CLAUDE_LARGE_MESSAGES_TARGET_KB,
       });
+    }
+    if (target > threshold) {
+      return t("claudeLargeMessagesTargetAboveThresholdError");
     }
 
     const maxMb = parseIntegerOrNull(claudeMaxMb);
@@ -165,13 +197,14 @@ export default function RequestLimitsTab() {
     }
 
     return null;
-  }, [claudeMaxMb, claudeTargetKb, t]);
+  }, [claudeMaxMb, claudeTargetKb, claudeThresholdKb, t]);
 
   const validationError = bodyLimitValidationError ?? claudeValidationError;
 
   const dirty =
     bodyLimitValue.trim() !== savedBodyLimitValue ||
     claudeMode !== savedClaudeMode ||
+    claudeThresholdKb.trim() !== savedClaudeThresholdKb ||
     claudeTargetKb.trim() !== savedClaudeTargetKb ||
     claudeMaxMb.trim() !== savedClaudeMaxMb;
 
@@ -179,6 +212,7 @@ export default function RequestLimitsTab() {
     if (validationError || !dirty) return;
 
     const nextBodyLimit = Number(bodyLimitValue.trim());
+    const nextClaudeThresholdKb = Number(claudeThresholdKb.trim());
     const nextClaudeTargetKb = Number(claudeTargetKb.trim());
     const nextClaudeMaxMb = Number(claudeMaxMb.trim());
     setSaving(true);
@@ -191,6 +225,7 @@ export default function RequestLimitsTab() {
         body: JSON.stringify({
           maxBodySizeMb: nextBodyLimit,
           claudeLargeMessagesMode: claudeMode,
+          claudeLargeMessagesThresholdKb: nextClaudeThresholdKb,
           claudeLargeMessagesTargetKb: nextClaudeTargetKb,
           claudeLargeMessagesMaxMb: nextClaudeMaxMb,
         }),
@@ -203,6 +238,8 @@ export default function RequestLimitsTab() {
         ...settings,
         maxBodySizeMb: settings.maxBodySizeMb ?? nextBodyLimit,
         claudeLargeMessagesMode: settings.claudeLargeMessagesMode ?? claudeMode,
+        claudeLargeMessagesThresholdKb:
+          settings.claudeLargeMessagesThresholdKb ?? nextClaudeThresholdKb,
         claudeLargeMessagesTargetKb: settings.claudeLargeMessagesTargetKb ?? nextClaudeTargetKb,
         claudeLargeMessagesMaxMb: settings.claudeLargeMessagesMaxMb ?? nextClaudeMaxMb,
       });
@@ -219,6 +256,7 @@ export default function RequestLimitsTab() {
     claudeMaxMb,
     claudeMode,
     claudeTargetKb,
+    claudeThresholdKb,
     dirty,
     t,
     validationError,
@@ -263,12 +301,38 @@ export default function RequestLimitsTab() {
           {bodyLimitValidationError && (
             <p className="text-xs text-red-500">{bodyLimitValidationError}</p>
           )}
+          <p className="text-xs text-text-muted">{t("requestBodyLimitClaudeHint")}</p>
         </section>
 
         <section className="flex flex-col gap-3 border-t border-border pt-5">
           <div>
             <p className="font-medium">{t("claudeLargeMessagesTitle")}</p>
             <p className="text-sm text-text-muted mt-1">{t("claudeLargeMessagesDescription")}</p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="text-text-muted">{t("claudeLargeMessagesThresholdLabel")}</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB}
+                  max={MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB}
+                  step={1}
+                  value={claudeThresholdKb}
+                  onChange={(event) => {
+                    setClaudeThresholdKb(event.target.value);
+                    setMessage(null);
+                  }}
+                  className="w-28 px-3 py-1.5 rounded bg-surface-2 border border-border text-sm text-text-primary"
+                  disabled={loading || saving}
+                />
+                <span className="text-xs text-text-muted">KB</span>
+              </div>
+              <span className="text-xs text-text-muted">
+                {t("claudeLargeMessagesThresholdHelp")}
+              </span>
+            </label>
           </div>
 
           <div className="grid gap-3 md:grid-cols-3">

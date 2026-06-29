@@ -150,6 +150,18 @@ test("resolveClaudeLargeMessagesConfig prefers persisted settings over env fallb
   assert.equal(config.mode, "vcc");
   assert.equal(config.targetBytes, 900 * 1024);
   assert.equal(config.maxBytes, 50 * 1024 * 1024);
+  assert.equal(config.thresholdBytes, 1024 * 1024);
+});
+
+test("resolveClaudeLargeMessagesConfig honors settings-driven threshold", () => {
+  const config = resolveClaudeLargeMessagesConfig({} as NodeJS.ProcessEnv, {
+    claudeLargeMessagesMode: "vcc",
+    claudeLargeMessagesThresholdKb: 512,
+    claudeLargeMessagesTargetKb: 256,
+    claudeLargeMessagesMaxMb: 10,
+  });
+  assert.equal(config.thresholdBytes, 512 * 1024);
+  assert.equal(config.targetBytes, 256 * 1024);
 });
 
 test("resolveClaudeLargeMessagesConfig keeps compact env alias for compatibility", () => {
@@ -168,6 +180,7 @@ test("applyClaudeMessagesLargeRequestMode rejects oversized requests in reject m
     {
       config: {
         mode: "reject",
+        thresholdBytes: 1024 * 1024,
         targetBytes: 650 * 1024,
         maxBytes: 8 * 1024 * 1024,
       },

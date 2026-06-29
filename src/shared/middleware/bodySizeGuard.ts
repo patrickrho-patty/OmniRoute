@@ -238,7 +238,11 @@ export interface ClaudeMessagesBodySizeAssessment {
 export function assessClaudeMessagesBodySize(
   request: HeaderReadableRequest,
   pathname: string,
-  body: unknown
+  body: unknown,
+  // Configurable absolute trigger (bytes). Defaults to the historical 1 MB so
+  // callers that haven't been updated keep the prior behavior. Bound from the
+  // configured `claudeLargeMessagesThresholdKb` setting in production.
+  absoluteMaxBytes: number = CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES
 ): ClaudeMessagesBodySizeAssessment | null {
   if (!isClaudeMessagesPath(pathname) || !body || typeof body !== "object" || Array.isArray(body)) {
     return null;
@@ -247,37 +251,35 @@ export function assessClaudeMessagesBodySize(
   const toolCount = Array.isArray((body as { tools?: unknown }).tools)
     ? (body as { tools: unknown[] }).tools.length
     : 0;
+  // Tool-heavy ceiling must never exceed the absolute trigger — if the user
+  // lowers the threshold below 512 KB, fold tool-heavy into it.
+  const toolHeavyBytes = Math.min(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES, absoluteMaxBytes);
   const declaredBytes = getDeclaredContentLengthBytes(request);
   const estimateLimit =
-    toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS
-      ? CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES + 1
-      : CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES + 1;
+    toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS ? toolHeavyBytes + 1 : absoluteMaxBytes + 1;
   const bodyBytes = Math.max(declaredBytes ?? 0, estimateJsonBodyBytes(body, estimateLimit));
 
-  if (bodyBytes > CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES) {
+  if (bodyBytes > absoluteMaxBytes) {
     return {
       oversized: true,
       reason: "absolute",
       toolCount,
       declaredBytes,
       bodyBytes,
-      limitBytes: CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES,
-      message: `Claude-format request too large. Maximum allowed: ${formatBytes(CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES)}`,
+      limitBytes: absoluteMaxBytes,
+      message: `Claude-format request too large. Maximum allowed: ${formatBytes(absoluteMaxBytes)}`,
     };
   }
 
-  if (
-    toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS &&
-    bodyBytes > CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES
-  ) {
+  if (toolCount >= CLAUDE_MESSAGES_TOOL_HEAVY_MIN_TOOLS && bodyBytes > toolHeavyBytes) {
     return {
       oversized: true,
       reason: "tool-heavy",
       toolCount,
       declaredBytes,
       bodyBytes,
-      limitBytes: CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES,
-      message: `Claude-format tool-heavy request too large (${toolCount} tools). Reduce tools or keep the request at or below ${formatBytes(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES)}.`,
+      limitBytes: toolHeavyBytes,
+      message: `Claude-format tool-heavy request too large (${toolCount} tools). Reduce tools or keep the request at or below ${formatBytes(toolHeavyBytes)}.`,
     };
   }
 
@@ -295,9 +297,10 @@ export function assessClaudeMessagesBodySize(
 export function checkClaudeMessagesBodySize(
   request: HeaderReadableRequest,
   pathname: string,
-  body: unknown
+  body: unknown,
+  absoluteMaxBytes?: number
 ): Response | null {
-  const assessment = assessClaudeMessagesBodySize(request, pathname, body);
+  const assessment = assessClaudeMessagesBodySize(request, pathname, body, absoluteMaxBytes);
   if (!assessment) return null;
   if (!assessment.oversized || !assessment.message) return null;
   return createPayloadTooLargeResponse(assessment.message);

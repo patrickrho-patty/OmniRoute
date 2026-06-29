@@ -5913,7 +5913,14 @@
     "claudeLargeMessagesMaxWholeNumberError": "Claude 紧急上限请使用整数。",
     "claudeLargeMessagesMaxMinimumError": "Claude 紧急上限最小值为 {min} MB",
     "claudeLargeMessagesMaxMaximumError": "Claude 紧急上限最大值为 {max} MB",
-    "claudeLargeMessagesMaxBelowTargetError": "Claude 紧急上限必须大于或等于压缩目标。"
+    "claudeLargeMessagesMaxBelowTargetError": "Claude 紧急上限必须大于或等于压缩目标。",
+    "requestBodyLimitClaudeHint": "Claude Messages requests use the separate trigger threshold below.",
+    "claudeLargeMessagesThresholdLabel": "Trigger threshold",
+    "claudeLargeMessagesThresholdHelp": "Claude requests above this size are rejected (or compacted in VCC mode). Below it, requests pass through unchanged.",
+    "claudeLargeMessagesThresholdWholeNumberError": "Use a whole number for the Claude trigger threshold.",
+    "claudeLargeMessagesThresholdMinimumError": "Claude trigger threshold minimum is {min} KB",
+    "claudeLargeMessagesThresholdMaximumError": "Claude trigger threshold maximum is {max} KB",
+    "claudeLargeMessagesTargetAboveThresholdError": "Claude compaction target must be less than or equal to the trigger threshold."
   },
   "contextRtk": {
     "title": "RTK 引擎",

@@ -2,10 +2,13 @@ import {
   DEFAULT_CLAUDE_LARGE_MESSAGES_MAX_MB,
   DEFAULT_CLAUDE_LARGE_MESSAGES_MODE,
   DEFAULT_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   MAX_CLAUDE_LARGE_MESSAGES_MAX_MB,
   MAX_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   MIN_CLAUDE_LARGE_MESSAGES_MAX_MB,
   MIN_CLAUDE_LARGE_MESSAGES_TARGET_KB,
+  MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
   REQUEST_BODY_BYTES_PER_KB,
   REQUEST_BODY_BYTES_PER_MB,
   normalizeBoundedIntegerValue,
@@ -29,6 +32,12 @@ type HeaderReadableRequest = { headers?: { get?: (name: string) => string | null
 
 export interface ClaudeLargeMessagesConfig {
   mode: ClaudeLargeMessagesMode;
+  /**
+   * Trigger threshold in bytes. Requests at or below this size pass through
+   * untouched; requests above it are rejected (`reject` mode) or compacted
+   * (`vcc` mode). Exposed in Settings → Request Limits as `Threshold (KB)`.
+   */
+  thresholdBytes: number;
   targetBytes: number;
   maxBytes: number;
 }
@@ -61,7 +70,10 @@ export interface ClaudeLargeRequestModeResult<T = unknown> {
 
 const DEFAULT_TARGET_BYTES = DEFAULT_CLAUDE_LARGE_MESSAGES_TARGET_KB * REQUEST_BODY_BYTES_PER_KB;
 const DEFAULT_MAX_BYTES = DEFAULT_CLAUDE_LARGE_MESSAGES_MAX_MB * REQUEST_BODY_BYTES_PER_MB;
+const DEFAULT_THRESHOLD_BYTES =
+  DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB * REQUEST_BODY_BYTES_PER_KB;
 const MIN_TARGET_BYTES = MIN_CLAUDE_LARGE_MESSAGES_TARGET_KB * REQUEST_BODY_BYTES_PER_KB;
+const MIN_THRESHOLD_BYTES = MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB * REQUEST_BODY_BYTES_PER_KB;
 const DESCRIPTION_DROP_KEYS = new Set(["$comment", "examples", "default", "title"]);
 const TEXT_TRUNCATION_SUFFIX = "\n...[truncated]";
 
@@ -71,6 +83,11 @@ export function resolveClaudeLargeMessagesConfig(
 ): ClaudeLargeMessagesConfig {
   const settingsMode = normalizeClaudeLargeMessagesMode(settings?.claudeLargeMessagesMode);
   const envMode = normalizeClaudeLargeMessagesMode(env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_MODE);
+  const settingsThresholdKb = normalizeBoundedIntegerValue(
+    settings?.claudeLargeMessagesThresholdKb,
+    MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB,
+    MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB
+  );
   const settingsTargetKb = normalizeBoundedIntegerValue(
     settings?.claudeLargeMessagesTargetKb,
     MIN_CLAUDE_LARGE_MESSAGES_TARGET_KB,
@@ -82,6 +99,16 @@ export function resolveClaudeLargeMessagesConfig(
     MAX_CLAUDE_LARGE_MESSAGES_MAX_MB
   );
 
+  const thresholdBytes =
+    settingsThresholdKb !== null
+      ? settingsThresholdKb * REQUEST_BODY_BYTES_PER_KB
+      : Math.max(
+          MIN_THRESHOLD_BYTES,
+          parsePositiveInt(
+            env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_THRESHOLD_BYTES,
+            DEFAULT_THRESHOLD_BYTES
+          )
+        );
   const targetBytes =
     settingsTargetKb !== null
       ? settingsTargetKb * REQUEST_BODY_BYTES_PER_KB
@@ -97,6 +124,7 @@ export function resolveClaudeLargeMessagesConfig(
   );
   return {
     mode: settingsMode ?? envMode ?? DEFAULT_CLAUDE_LARGE_MESSAGES_MODE,
+    thresholdBytes,
     targetBytes,
     maxBytes,
   };
@@ -488,7 +516,7 @@ export function applyClaudeMessagesLargeRequestMode<T = unknown>(
     };
   }
 
-  const assessment = assessClaudeMessagesBodySize(request, pathname, body);
+  const assessment = assessClaudeMessagesBodySize(request, pathname, body, config.thresholdBytes);
   if (!assessment?.oversized) {
     return { body, rejection: null, compacted: false, stats: null, assessment, config };
   }

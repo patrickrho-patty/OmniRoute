@@ -13,7 +13,6 @@ import {
 import { getCachedSettings } from "@/lib/db/readCache";
 import { resolveDisabledGuardrails } from "@/lib/guardrails/registry";
 import {
-  CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES,
   checkBodySize,
   checkClaudeMessagesBodySize,
   isClaudeMessagesPath,
@@ -86,7 +85,7 @@ export function withInjectionGuard(handler: any, options: any = {}) {
         : null;
       claudeLargeConfig = resolveClaudeLargeMessagesConfig(process.env, claudeLargeSettings);
       if (isClaudeMessages && claudeLargeConfig.mode !== "vcc") {
-        const declaredSizeRejection = checkBodySize(request, CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES);
+        const declaredSizeRejection = checkBodySize(request, claudeLargeConfig.thresholdBytes);
         if (declaredSizeRejection) return declaredSizeRejection;
       }
 
@@ -109,7 +108,12 @@ export function withInjectionGuard(handler: any, options: any = {}) {
             }
             parsedBody = largeMode.body;
           } else {
-            const sizeRejection = checkClaudeMessagesBodySize(request, pathname, parsedBody);
+            const sizeRejection = checkClaudeMessagesBodySize(
+              request,
+              pathname,
+              parsedBody,
+              claudeLargeConfig.thresholdBytes
+            );
             if (sizeRejection) return sizeRejection;
           }
         }

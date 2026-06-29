@@ -12,6 +12,7 @@ import {
   claudeLargeMessagesMaxMbFromEnv,
   claudeLargeMessagesModeFromEnv,
   claudeLargeMessagesTargetKbFromEnv,
+  claudeLargeMessagesThresholdKbFromEnv,
   requestBodyLimitMbFromEnv,
 } from "@/shared/constants/bodySize";
 import { DEFAULT_RESPONSES_PREVIOUS_RESPONSE_ID_MODE } from "@/shared/constants/responsesPreviousResponseId";
@@ -140,6 +141,9 @@ export async function getSettings() {
     maxBodySizeMb: requestBodyLimitMbFromEnv(process.env.MAX_BODY_SIZE_BYTES),
     claudeLargeMessagesMode: claudeLargeMessagesModeFromEnv(
       process.env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_MODE
+    ),
+    claudeLargeMessagesThresholdKb: claudeLargeMessagesThresholdKbFromEnv(
+      process.env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_THRESHOLD_BYTES
     ),
     claudeLargeMessagesTargetKb: claudeLargeMessagesTargetKbFromEnv(
       process.env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_TARGET_BYTES

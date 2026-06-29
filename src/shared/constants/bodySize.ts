@@ -21,6 +21,12 @@ export const MAX_CLAUDE_LARGE_MESSAGES_TARGET_KB = 10 * 1024;
 export const DEFAULT_CLAUDE_LARGE_MESSAGES_MAX_MB = 50;
 export const MIN_CLAUDE_LARGE_MESSAGES_MAX_MB = 1;
 export const MAX_CLAUDE_LARGE_MESSAGES_MAX_MB = MAX_REQUEST_BODY_LIMIT_MB;
+// Threshold (KB) above which a Claude Messages request triggers reject/VCC.
+// Default 1024 KB = 1 MB — the historical hardcoded value; now user-configurable
+// so the actual trigger is visible in Settings → Request Limits.
+export const DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB = 1024;
+export const MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB = 64;
+export const MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB = 10 * 1024;
 
 export function normalizeClaudeLargeMessagesMode(value: unknown): ClaudeLargeMessagesMode | null {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : undefined;
@@ -45,6 +51,16 @@ export function normalizeBoundedIntegerValue(
 
   const normalized = Math.floor(parsed);
   return normalized >= min && normalized <= max ? normalized : null;
+}
+
+export function claudeLargeMessagesThresholdKbFromEnv(value: string | undefined): number {
+  const bytes = parseBoundedInteger(
+    value,
+    DEFAULT_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB * REQUEST_BODY_BYTES_PER_KB,
+    MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB * REQUEST_BODY_BYTES_PER_KB,
+    MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB * REQUEST_BODY_BYTES_PER_KB
+  );
+  return Math.round(bytes / REQUEST_BODY_BYTES_PER_KB);
 }
 
 export function claudeLargeMessagesTargetKbFromEnv(value: string | undefined): number {
