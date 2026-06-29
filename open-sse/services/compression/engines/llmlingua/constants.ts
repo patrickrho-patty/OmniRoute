@@ -61,5 +61,5 @@ export const LLMLINGUA_MODELS: Record<string, LlmlinguaModelEntry> = {
 /** Per-call worker reply timeout → fail-open. First call downloads the model
  *  (~710MB for bert-base-ms), so the timeout must accommodate that. */
 export const LLMLINGUA_WORKER_TIMEOUT_MS = 120_000;
-/** Terminate the idle worker after this long to free model RAM. */
-export const LLMLINGUA_WORKER_IDLE_MS = 300000;
+/** Terminate the idle worker after this long to free model RAM. 0 = never unload. */
+export const LLMLINGUA_WORKER_IDLE_MS = 0;
