@@ -13,27 +13,31 @@ Keep this file updated whenever we add a new fork-only source patch or a product
 
 ## Current git state
 
-| Item                                | Value                                                                  |
-| ----------------------------------- | ---------------------------------------------------------------------- |
-| Upstream repo                       | `github.com/diegosouzapw/OmniRoute`                                    |
-| Fork remote                         | `git@github.com:patrickrho-patty/OmniRoute.git`                        |
-| Fork branch carrying source patches | `custom-features`                                                      |
-| Upstream baseline                   | `555b21d29` — `Release v3.8.37 (#5053)`                                |
-| Current deploy HEAD                 | `680b8c00c` (deployed to `jebo.ai` 2026-06-28)                         |
-| Source divergence                   | 5 commits ahead of upstream v3.8.37 (3 source patches + 2 doc commits) |
-| Source files changed by fork        | 27                                                                     |
-| Source diff stat                    | +949 / −148                                                            |
-| Pushed to GitHub                    | Yes — `custom-features` pushed to origin                               |
+| Item                                | Value                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| Upstream repo                       | `github.com/diegosouzapw/OmniRoute`                                     |
+| Fork remote                         | `git@github.com:patrickrho-patty/OmniRoute.git`                         |
+| Fork branch carrying source patches | `custom-features`                                                       |
+| Upstream baseline                   | `v3.8.38` (`7b139fdb5`) — rebased 2026-06-28                            |
+| Current deploy HEAD                 | `8365ca699` (deployed to `jebo.ai` new VPS 2026-06-29)                  |
+| Source divergence                   | 15 commits ahead of upstream v3.8.38 (9 source patches + 6 doc commits) |
+| Pushed to GitHub                    | Yes — `custom-features` pushed to origin                                |
+| VPS                                 | Contabo `109.123.231.227` (24 GB RAM, 8 CPU, 774 GB disk), port 12160   |
+| Previous VPS                        | Oracle `161.33.162.164` (1 GB RAM), decommissioned                      |
 
-Fork source patch commits on `custom-features` (oldest → newest):
+Fork source patch commits on `custom-features` (oldest → newest, rebased onto v3.8.38):
 
 | Commit      | Title                                                                      | Docs below  |
 | ----------- | -------------------------------------------------------------------------- | ----------- |
-| `9b374c587` | Fix hardcoded ports + Claude Messages API shape recognition                | SRC-001/002 |
-| `e799ee98c` | fix: add ChatGPT Web tool-call translation                                 | SRC-003     |
-| `680b8c00c` | feat(compression): add ponytail engine and per-engine analytics separation | SRC-004     |
-
-(`515465908` and `88de13291` are this file's own doc commits and carry no source changes.)
+| `959667005` | Fix hardcoded ports + Claude Messages API shape recognition                | SRC-001/002 |
+| `4bea2187b` | fix: add ChatGPT Web tool-call translation                                 | SRC-003     |
+| `95a0bd35c` | feat(compression): add ponytail engine and per-engine analytics separation | SRC-004     |
+| `b166f0c97` | fix(sse): treat mid-stream client disconnect as disconnect, not a 502      | SRC-005     |
+| `b3134b958` | feat(telemetry): honor OMNIROUTE_ENABLE_LIVE_WS=0 in the live-WS forwarder | SRC-006     |
+| `4d12f18aa` | feat(dashboard): add Ponytail submenu under Compression with run history   | SRC-007     |
+| `43d670f77` | feat(compression): wire session-dedup config persistence                   | SRC-008     |
+| `a55966c3b` | fix(compression): LLMLingua Worker path fix for Node 22                    | SRC-009     |
+| `aeab40d15` | feat(compression): add Microsoft + Arcoldd LLMLingua ONNX models           | SRC-010     |
 
 `main` in this fork is intentionally kept identical to upstream `main`; our deploy branch is `custom-features`.
 
@@ -258,41 +262,50 @@ Augmentation engines (those that add tokens rather than remove them) must report
 
 These changes are required for the current `jebo.ai` deployment, but they are **not source commits** in OmniRoute.
 
-### OPS-001 — Run OmniRoute on port 80 behind Cloudflare Flexible SSL
+### OPS-001 — Run OmniRoute on port 12160 behind Cloudflare Origin Rule
 
 | Field   | Value                                                      |
 | ------- | ---------------------------------------------------------- |
 | Commit  | External runtime state / no repo commit                    |
-| Host    | `nic1` / `161.33.162.164` currently                        |
+| Host    | Contabo `109.123.231.227` (24 GB RAM, 8 CPU)               |
 | Domain  | `https://jebo.ai`                                          |
 | Purpose | Clean HTTPS base URL for coding agents without port suffix |
 
 #### Current architecture
 
 ```text
-Client → https://jebo.ai/v1 → Cloudflare edge TLS → origin HTTP :80 → OmniRoute
+Client → https://jebo.ai/v1 → Cloudflare edge TLS → Origin Rule (port 12160) → OmniRoute
 ```
 
-Cloudflare SSL mode is **Flexible**. TLS terminates at Cloudflare. The origin server listens on plain HTTP port 80.
+Cloudflare SSL mode is **Flexible**. TLS terminates at Cloudflare. A Cloudflare **Origin Rule** rewrites the destination port from 443 to **12160**. The origin server listens on plain HTTP port 12160 (unprivileged — no `setcap` needed).
 
 #### Required server settings
 
-- `PORT=80` in `omniroute.service`
+- `PORT=12160` in `.env`
 - `REQUIRE_API_KEY=true`
-- `OMNIROUTE_BASE_URL=http://127.0.0.1:80`
-- `BASE_URL=http://127.0.0.1:80`
-- `NEXT_PUBLIC_BASE_URL=http://127.0.0.1:80`
-- `setcap cap_net_bind_service=+ep /usr/bin/node` so non-root Node can bind port 80
+- `OMNIROUTE_BASE_URL=http://127.0.0.1:12160`
+- `NEXT_PUBLIC_BASE_URL=https://jebo.ai`
+- `OMNIROUTE_PUBLIC_BASE_URL=https://jebo.ai`
+- `NEXT_PUBLIC_APP_URL=https://jebo.ai`
 
-#### Required firewall/network settings
+#### Required Cloudflare settings
 
-- Oracle/host firewall allows inbound TCP 80 from `0.0.0.0/0`
-- Local iptables has TCP 80 ACCEPT **above** Oracle Ubuntu's default catch-all REJECT rule
-- Cloudflare A record for `jebo.ai` points at the active VPS IP
+- **DNS:** A record `jebo.ai` → `109.123.231.227` (proxied, orange cloud)
+- **Origin Rule:** hostname equals `jebo.ai` → destination port rewrite to `12160`
+  (Rules → Overview → Create rule → Origin Rule)
+- **AI bot detection:** disabled for `jebo.ai` (see OPS-003)
 
-#### Historical pitfall
+#### Deployment model
 
-On Oracle Ubuntu images, inserting the ACCEPT rule after the default REJECT rule makes port 80 look open locally but unreachable externally. Insert the ACCEPT rule before REJECT.
+The new VPS builds from source (cloned repo at `/opt/OmniRoute`), unlike the old VPS which used rsync of a standalone bundle. Deploy flow:
+
+```bash
+cd /opt/OmniRoute && git pull origin custom-features && npm run build && systemctl restart omniroute.service
+```
+
+#### Previous VPS (decommissioned)
+
+Oracle `161.33.162.164` (1 GB RAM), port 80, rsync-based deploys. Kept as backup but no longer receiving traffic.
 
 ---
 
@@ -545,17 +558,17 @@ Current decision:
 
 No source commit.
 
-| Scenario                                              |        RAM guidance |
-| ----------------------------------------------------- | ------------------: |
-| OmniRoute only, strict minimum                        | 1 GB (works, swaps) |
-| OmniRoute only, recommended                           |                2 GB |
-| OmniRoute + Headroom sidecar without Kompress-base    |                2 GB |
-| OmniRoute + Headroom/Kompress-base or future-proofing |                4 GB |
+| Scenario                                             |        RAM guidance |
+| ---------------------------------------------------- | ------------------: |
+| OmniRoute only, strict minimum                       | 1 GB (works, swaps) |
+| OmniRoute only, recommended                          |                2 GB |
+| OmniRoute + LLMLingua ONNX (BERT-base, 680 MB model) |                4 GB |
+| OmniRoute + LLMLingua + future-proofing              |                8 GB |
 
-Current recommendation:
+Current VPS: **Contabo 24 GB / 8 vCPU / 774 GB** — no memory constraints.
 
-- **2 GB / 1 vCPU / 30 GB** if we do not run Kompress-base.
-- **4 GB** if we want room for full Headroom/Kompress-base later.
+Previous VPS (Oracle 1 GB) hit OOM crashes with v3.8.38 bundle + LLMLingua. The
+BERT-base ONNX model alone needs ~1.5 GB runtime memory for inference.
 
 ---
 
@@ -624,10 +637,13 @@ These were present when this document was reviewed:
 
 ## Open items
 
-- [x] Commit `FORK_NOTES.md` after review. — Done (`515465908`, `88de13291`); updated through `680b8c00c`.
+- [x] Commit `FORK_NOTES.md` after review. — Done; updated through v3.8.38 rebase.
+- [x] Rebase onto upstream v3.8.38. — Done 2026-06-28 (all conflicts resolved).
+- [x] Migrate to new VPS (Contabo). — Done 2026-06-29.
+- [x] Get LLMLingua working in production. — Done 2026-06-29. Fixed Worker path for Node 22, timeout, and model access.
+- [x] Wire session-dedup config persistence (Save button). — Done (`43d670f77`).
+- [ ] Re-authenticate OAuth providers (Claude, Codex, ChatGPT-web) on the new VPS.
 - [ ] Review and possibly commit `docs/setup/*.md` as operator docs.
-- [ ] Decide whether to PR `SRC-001` and `SRC-002` upstream. Both are self-contained.
-- [ ] Add a unit/smoke test for Claude Messages API response-shape validation so `detectMalformedNonStream()` cannot regress.
-- [ ] If Headroom work resumes, decide between:
-  - source patch: add lossy SmartCrusher sampler to OmniRoute's existing engine; or
-  - sidecar: run upstream Headroom proxy on the VPS.
+- [ ] Decide whether to PR SRC-001/002/005 upstream. All are self-contained.
+- [ ] Decommission the old Oracle VPS (`161.33.162.164`) once new VPS is stable.
+- [ ] If Headroom work resumes, decide between source patch (lossy SmartCrusher) or sidecar.

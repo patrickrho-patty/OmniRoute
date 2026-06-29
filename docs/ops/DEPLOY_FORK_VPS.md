@@ -36,23 +36,21 @@ Then verify (see [Step 6](#6-verify-the-deploy)).
 ## Architecture & key facts
 
 ```text
-Client → https://jebo.ai/v1 → Cloudflare edge TLS (Flexible) → origin HTTP :80 → OmniRoute
+Client → https://jebo.ai/v1 → Cloudflare edge TLS (Flexible) → Origin Rule (port 12160) → OmniRoute
 ```
 
-| Item          | Value                                                                                         |
-| ------------- | --------------------------------------------------------------------------------------------- |
-| Host          | `nic1` / `161.33.162.164`                                                                     |
-| Domain        | `https://jebo.ai` (Cloudflare A record → VPS IP)                                              |
-| Listen port   | **80** (NOT 3000)                                                                             |
-| Service       | `omniroute.service` (systemd, runs as `ubuntu`)                                               |
-| Install path  | `/usr/lib/node_modules/omniroute/`                                                            |
-| Bundle path   | `/usr/lib/node_modules/omniroute/dist/`                                                       |
-| Data dir      | `/home/ubuntu/.omniroute/` (SQLite + WAL)                                                     |
-| SSH key       | `~/.ssh/t1_fetcher_ed25519`                                                                   |
-| SSH user      | `ubuntu` (passwordless sudo)                                                                  |
-| Build output  | `.build/next/standalone/` (assembled bundle, NOT raw `.next/`)                                |
-| Build distDir | `.build/next` → server chunks at `dist/.build/next/server/chunks/` (NOT `dist/.next/server/`) |
-| Node heap     | `--max-old-space-size=768` (systemd drop-in `20-heap-limit.conf`)                             |
+| Item          | Value                                                                 |
+| ------------- | --------------------------------------------------------------------- |
+| Host          | Contabo `109.123.231.227` (24 GB RAM, 8 CPU, 774 GB disk)             |
+| Domain        | `https://jebo.ai` (Cloudflare A record → VPS IP, Origin Rule → 12160) |
+| Listen port   | **12160** (unprivileged, no setcap needed)                            |
+| Service       | `omniroute.service` (systemd, `npm start`, runs as `root`)            |
+| Repo path     | `/opt/OmniRoute` (cloned from GitHub, built on VPS)                   |
+| Data dir      | `/root/.omniroute/` (SQLite + WAL)                                    |
+| SSH key       | `~/.ssh/t1_fetcher_ed25519`                                           |
+| SSH user      | `root`                                                                |
+| Build command | `npm run build` (on VPS — 24 GB RAM, no rsync needed)                 |
+| Deploy flow   | `git pull → npm run build → systemctl restart omniroute.service`      |
 
 ### Systemd drop-in overrides
 
