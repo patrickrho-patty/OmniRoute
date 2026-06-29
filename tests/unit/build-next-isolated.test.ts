@@ -12,6 +12,8 @@ const {
   resolveNextBuildEnv,
   syncStandaloneNativeAssets,
 } = await import("../../scripts/build/build-next-isolated.mjs");
+const { parseBooleanEnv, parsePositiveIntegerEnv } =
+  await import("../../scripts/build/buildEnv.mjs");
 
 async function withTempDir(fn) {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omniroute-build-next-isolated-"));
@@ -94,16 +96,31 @@ test("movePath rethrows non-EXDEV rename failures", async () => {
   });
 });
 
-test("resolveNextBuildEnv forces stable build worker mode unless already provided", () => {
+test("build env helpers parse positive integers and booleans consistently", () => {
+  assert.equal(parsePositiveIntegerEnv("7", 1), 7);
+  assert.equal(parsePositiveIntegerEnv("0", 3), 3);
+  assert.equal(parsePositiveIntegerEnv("nope", 3), 3);
+  assert.equal(parseBooleanEnv("false", true), false);
+  assert.equal(parseBooleanEnv("off", true), false);
+  assert.equal(parseBooleanEnv("yes", false), true);
+  assert.equal(parseBooleanEnv(undefined, true), true);
+});
+
+test("resolveNextBuildEnv enables build worker mode unless already provided", () => {
   const defaultEnv = resolveNextBuildEnv({ NODE_ENV: "test" });
-  assert.equal(defaultEnv.NEXT_PRIVATE_BUILD_WORKER, "0");
+  assert.equal(defaultEnv.NEXT_PRIVATE_BUILD_WORKER, "1");
   assert.equal(defaultEnv.NODE_ENV, "test");
+  assert.match(
+    defaultEnv.NODE_OPTIONS ?? "",
+    /--max-old-space-size=\d+/,
+    "workerized builds must still carry an explicit heap limit"
+  );
 
   const preservedEnv = resolveNextBuildEnv({
     NODE_ENV: "production",
-    NEXT_PRIVATE_BUILD_WORKER: "1",
+    NEXT_PRIVATE_BUILD_WORKER: "0",
   });
-  assert.equal(preservedEnv.NEXT_PRIVATE_BUILD_WORKER, "1");
+  assert.equal(preservedEnv.NEXT_PRIVATE_BUILD_WORKER, "0");
   assert.equal(preservedEnv.NODE_ENV, "production");
 });
 

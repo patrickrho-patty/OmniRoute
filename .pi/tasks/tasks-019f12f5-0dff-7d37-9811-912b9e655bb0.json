@@ -1,5 +1,5 @@
 {
-  "nextId": 21,
+  "nextId": 25,
   "tasks": [
     {
       "id": "13",
@@ -96,6 +96,54 @@
       "blockedBy": [],
       "createdAt": 1782744952843,
       "updatedAt": 1782744952843
+    },
+    {
+      "id": "21",
+      "subject": "Research Next build parallelism",
+      "description": "Search primary sources for Next.js build worker, parallel server compile, build trace, and Turbopack implications, then identify the correct build knobs for OmniRoute.",
+      "status": "completed",
+      "activeForm": "Researching Next build parallelism",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1782746593400,
+      "updatedAt": 1782746619305
+    },
+    {
+      "id": "22",
+      "subject": "Enable workerized multi-core build path",
+      "description": "Patch OmniRoute build wrapper and Next config so VPS builds use available cores by default while preserving env rollback switches.",
+      "status": "completed",
+      "activeForm": "Enabling multi-core build path",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1782746600010,
+      "updatedAt": 1782746625623
+    },
+    {
+      "id": "23",
+      "subject": "Verify build parallelism",
+      "description": "Run tests/build validation and capture evidence that Next sees the worker/parallel settings and uses more CPU on Contabo.",
+      "status": "completed",
+      "activeForm": "Verifying build parallelism",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1782746605220,
+      "updatedAt": 1782746904258
+    },
+    {
+      "id": "24",
+      "subject": "Ship and deploy multi-core build fix",
+      "description": "After verification and team-protocol loop, commit/push the build parallelism fix and deploy to Contabo with the deployment script.",
+      "status": "in_progress",
+      "activeForm": "Shipping and deploying build fix",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1782746612116,
+      "updatedAt": 1782746914003
     }
   ]
 }

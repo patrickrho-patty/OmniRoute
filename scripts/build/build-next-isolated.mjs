@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { parsePositiveIntegerEnv } from "./buildEnv.mjs";
 import {
   assembleStandalone,
   syncStandaloneNativeAssets as _syncNativeAssets,
@@ -109,12 +110,18 @@ export function resolveNextBuildBundlerFlag(baseEnv = process.env) {
 export function resolveNextBuildEnv(baseEnv = process.env) {
   const env = {
     ...baseEnv,
-    NEXT_PRIVATE_BUILD_WORKER: baseEnv.NEXT_PRIVATE_BUILD_WORKER || "0",
+    // Let Next use its build-worker path by default. Next's custom-webpack opt-out
+    // is handled in next.config.mjs via experimental.webpackBuildWorker, and this
+    // env var stays overrideable for emergency fallback.
+    NEXT_PRIVATE_BUILD_WORKER: baseEnv.NEXT_PRIVATE_BUILD_WORKER || "1",
   };
 
-  // Raise the Node heap for the spawned `next build`. The webpack production pass
-  // ("Compiling instrumentation" bundles the whole server graph) is the heaviest
-  // phase and overflows V8's default ~2 GB ceiling on memory-constrained machines,
+  // Raise the Node heap for the spawned `next build` and its inherited build
+  // worker children. Workerized/parallel builds can use more total RSS, so keep
+  // this explicit and overrideable via OMNIROUTE_BUILD_MEMORY_MB for VPS tuning.
+  // The webpack production pass ("Compiling instrumentation" bundles the whole
+  // server graph) is the heaviest phase and overflows V8's default ~2 GB ceiling
+  // on memory-constrained machines,
   // stalling/OOMing local `npm run build` (npm-global installs). #4076/#4104 fixed
   // this only in the Docker builder stage (ENV NODE_OPTIONS); the local/native path
   // was left unprotected. Respect an existing --max-old-space-size (Docker already
@@ -125,7 +132,7 @@ export function resolveNextBuildEnv(baseEnv = process.env) {
     // headroom without risk. NOTE: heap size does NOT fix a poisoned scope — if the build
     // OOMs/livelocks far above this, check for worktrees/cruft leaking into the tsconfig
     // scope (run `npm run check:build-scope`), not for "more heap". See incident 2026-06-25.
-    const heapMb = Number(baseEnv.OMNIROUTE_BUILD_MEMORY_MB) || 8192;
+    const heapMb = parsePositiveIntegerEnv(baseEnv.OMNIROUTE_BUILD_MEMORY_MB, 8192);
     env.NODE_OPTIONS = `${env.NODE_OPTIONS || ""} --max-old-space-size=${heapMb}`.trim();
   }
 
