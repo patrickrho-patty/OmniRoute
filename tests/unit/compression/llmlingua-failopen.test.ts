@@ -181,6 +181,33 @@ describe("llmlingua engine", () => {
       );
     }
   });
+
+  it("preserves assistant history and the latest user instruction verbatim", async () => {
+    const backendCalls: string[] = [];
+    setLlmlinguaBackend((text) => {
+      backendCalls.push(text);
+      return Promise.resolve(text.replace(/\s+/g, ""));
+    });
+
+    const oldUser = "Older user context may be compressed because it is not the live instruction.";
+    const assistant = "PR into staging:\n\n```text\nhttps://example.test/pull/4\n```";
+    const latestUser = "Please submit the PR into staging and keep the exact wording.";
+
+    const body = makeBody([
+      { role: "user", content: oldUser },
+      { role: "assistant", content: assistant },
+      { role: "user", content: latestUser },
+    ]);
+
+    const result = await llmlinguaEngine.applyAsync!(body, { stepConfig: { minTokens: 0 } });
+    const outMessages = result.body.messages as Array<{ role: string; content: string }>;
+
+    assert.equal(outMessages[1].content, assistant);
+    assert.equal(outMessages[2].content, latestUser);
+    assert.ok(backendCalls.includes(oldUser), "older user context remains eligible");
+    assert.ok(!backendCalls.includes(assistant), "assistant history must not be rewritten");
+    assert.ok(!backendCalls.includes(latestUser), "latest user instruction must not be rewritten");
+  });
 });
 
 // ─── Task 3/4: minTokens floor, opts threading, config schema/validation ───────

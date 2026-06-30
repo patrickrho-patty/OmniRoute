@@ -211,6 +211,51 @@ test("Responses -> OpenAI: text delta streams as content and flush sends stop fi
   assert.equal(final.choices[0].finish_reason, "stop");
 });
 
+test("Responses -> OpenAI: repeated text deltas are not duplicated", () => {
+  const state = {};
+  const first = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Assumption: PR target is `staging`." },
+    state
+  );
+  const repeated = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Assumption: PR target is `staging`." },
+    state
+  );
+
+  assert.equal(first.choices[0].delta.content, "Assumption: PR target is `staging`.");
+  assert.equal(repeated, null);
+});
+
+test("Responses -> OpenAI: cumulative text snapshots emit only the new suffix", () => {
+  const state = {};
+  const first = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Worktree is clean." },
+    state
+  );
+  const snapshot = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Worktree is clean. I am creating the PR." },
+    state
+  );
+
+  assert.equal(first.choices[0].delta.content, "Worktree is clean.");
+  assert.equal(snapshot.choices[0].delta.content, " I am creating the PR.");
+});
+
+test("Responses -> OpenAI: tiny repeated text chunks remain incremental", () => {
+  const state = {};
+  const first = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "ha" },
+    state
+  );
+  const second = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "ha" },
+    state
+  );
+
+  assert.equal(first.choices[0].delta.content, "ha");
+  assert.equal(second.choices[0].delta.content, "ha");
+});
+
 test("Responses -> OpenAI: empty-name tool call is deferred until output_item.done", () => {
   const state = {};
   const started = openaiResponsesToOpenAIResponse(

@@ -645,6 +645,37 @@ function computeFinishReason(state): "tool_calls" | "stop" {
   return (state.toolCallIndex || 0) > 0 || state.currentToolCallId ? "tool_calls" : "stop";
 }
 
+const TEXT_SNAPSHOT_DEDUPE_MIN_CHARS = 12;
+
+function normalizeResponsesTextDelta(state, data, streamKind: string, rawDelta: string): string {
+  if (!rawDelta) return "";
+
+  const key = [
+    streamKind,
+    data?.item_id ?? data?.item?.id ?? "",
+    data?.output_index ?? 0,
+    data?.content_index ?? 0,
+  ].join(":");
+  state.responsesTextBuffers ??= new Map();
+  const emitted = state.responsesTextBuffers.get(key) || "";
+
+  // Some Responses-compatible upstreams emit cumulative text snapshots, or repeat the same
+  // snapshot/delta. Chat Completions clients expect incremental deltas, so emit only the suffix.
+  // Keep this conservative to avoid corrupting legitimate tiny repeated chunks like "ha" + "ha".
+  if (emitted.length >= TEXT_SNAPSHOT_DEDUPE_MIN_CHARS && rawDelta.startsWith(emitted)) {
+    const suffix = rawDelta.slice(emitted.length);
+    state.responsesTextBuffers.set(key, rawDelta);
+    return suffix;
+  }
+
+  if (rawDelta.length >= TEXT_SNAPSHOT_DEDUPE_MIN_CHARS && emitted.endsWith(rawDelta)) {
+    return "";
+  }
+
+  state.responsesTextBuffers.set(key, emitted + rawDelta);
+  return rawDelta;
+}
+
 /**
  * Translate OpenAI Responses API chunk to OpenAI Chat Completions format
  * This is for when Codex returns data and we need to send it to an OpenAI-compatible client
@@ -704,7 +735,7 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
 
   // Text content delta
   if (eventType === "response.output_text.delta") {
-    const delta = data.delta || "";
+    const delta = normalizeResponsesTextDelta(state, data, "output_text", data.delta || "");
     if (!delta) return null;
 
     return {
@@ -943,7 +974,12 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
     eventType === "response.reasoning_content_text.delta" ||
     eventType === "response.reasoning_text.delta"
   ) {
-    const reasoningDelta = data.delta || "";
+    const reasoningDelta = normalizeResponsesTextDelta(
+      state,
+      data,
+      "reasoning_text",
+      data.delta || ""
+    );
     if (!reasoningDelta) return null;
     return {
       id: state.chatId,
@@ -967,7 +1003,12 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
   // panel. A nested `delta.reasoning.summary` object is swallowed by most
   // stream mergers and never reaches the user.
   if (eventType === "response.reasoning_summary_text.delta") {
-    const reasoningDelta = data.delta || "";
+    const reasoningDelta = normalizeResponsesTextDelta(
+      state,
+      data,
+      "reasoning_summary_text",
+      data.delta || ""
+    );
     if (!reasoningDelta) return null;
     const reasoningDeltaShape = state.copilotCompatibleReasoning
       ? { reasoning_text: reasoningDelta }
