@@ -29,7 +29,7 @@ Fork source patch commits on `custom-features` (most recent first):
 
 | Commit      | Title                                                                                      | Docs        |
 | ----------- | ------------------------------------------------------------------------------------------ | ----------- |
-| `3b5810bd4` | feat(llmlingua): bundle tinybert ONNX model + load-from-repo-first logic (Git LFS)         | SRC-011     |
+| `3b5810bd4` | feat(llmlingua): bundle tinybert ONNX model + load-from-repo-first logic                   | SRC-011     |
 | `011760580` | fix(branding): use patty.io's actual favicon image (not a vector approximation)            | DOC         |
 | `701433d7a` | fix(deploy): raise poller timeout to 25 min (build exceeds 10 min, caused false timeout)   | DOC         |
 | `4aece25e1` | feat(dashboard): add relevance engine page + fix favicon flicker                           | DOC         |
@@ -476,13 +476,13 @@ fixture; test there first.
 
 ---
 
-### SRC-013 — LLMLingua bundled-model repo (TinyBERT + Git LFS)
+### SRC-013 — LLMLingua bundled-model repo (TinyBERT direct git blob)
 
-| Field          | Value                                                                 |
-| -------------- | --------------------------------------------------------------------- |
-| Commit         | `3b5810bd4`                                                           |
-| Status         | Deployed to `jebo.ai` 2026-06-30. No HF download required on the VPS. |
-| Disk footprint | 54 MB `model.onnx` (tracked via Git LFS) + ~1 MB tokenizer files      |
+| Field          | Value                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Commit         | `3b5810bd4`                                                                               |
+| Status         | Deployed to `jebo.ai` 2026-06-30. No HF download required on the VPS.                     |
+| Disk footprint | 54 MB `model.onnx` (direct git blob; under GitHub's 100 MB limit) + ~1 MB tokenizer files |
 
 #### Problem
 
@@ -496,10 +496,10 @@ alert when the HF token auth changed.
 Bundle a **57 MB TinyBERT** model directly in the repo:
 
 - `models/llmlingua/atjsh/llmlingua-2-js-tinybert-meetingbank/`
-  - `model.onnx` (54 MB, Git LFS, public)
+  - `model.onnx` (54 MB direct git blob; public model; below GitHub's 100 MB hard file limit)
   - `config.json`, `tokenizer.json`, `tokenizer_config.json`, `special_tokens_map.json`, `vocab.txt`
-- `.gitattributes` tracks `models/llmlingua/**/*.onnx` + `*.onnx.data` via LFS (others
-  inline).
+- Git LFS is **not** used for this model: GitHub refused new LFS object uploads from this
+  public fork (`can not upload new objects to public fork`).
 - `open-sse/services/compression/engines/llmlingua/modelStore.ts::findBundledModelRoot()`
   resolves the bundled dir at runtime: walks `process.cwd()` and `process.argv[1]`
   ancestors up to 6 levels. Works in both dev (`tsx/esm`) and the standalone
@@ -525,8 +525,10 @@ Manual load test from bundled path: ~92 ms load (first call), warm inference ~5.
   `kompress-small` benchmark) is offset by the size (57 vs 710 MB) and warm
   inference speed (~6 vs ~117 ms). Switch to `bert-base` / `bert-base-ms` only when
   every percentage of accuracy matters.
-- **Future bundled models must ship via LFS** with the pattern `models/<family>/<hfRepo>/model.onnx`,
-  so `findBundledModelRoot()` finds them automatically.
+- **Future bundled models must either stay under GitHub's 100 MB file limit as direct blobs**
+  or use a separate release artifact / object store. Do not rely on Git LFS for this public
+  fork unless LFS uploads are explicitly enabled. Keep the path pattern
+  `models/<family>/<hfRepo>/model.onnx` so `findBundledModelRoot()` finds them automatically.
 
 ---
 
@@ -873,7 +875,7 @@ These were present when this document was reviewed:
 - [x] Get LLMLingua working in production. — Done 2026-06-29. Fixed Worker path for Node 22, timeout, and model access.
 - [x] Wire session-dedup config persistence (Save button). — Done (`43d670f77`).
 - [x] Stage 1 + cache safety + cache-hit visibility deployed to jebo.ai. — Done 2026-06-30.
-- [x] Bundle TinyBERT ONNX model in repo via Git LFS. — Done 2026-06-30 (`3b5810bd4`).
+- [x] Bundle TinyBERT ONNX model in repo as a direct git blob. — Done 2026-06-30 (`3b5810bd4`; corrected after GitHub rejected LFS uploads from the public fork).
 - [x] Update `docs/ops/DEPLOY_FORK_VPS.md` to match the current VPS-side build flow. — Done 2026-06-30.
 - [ ] Re-authenticate OAuth providers (Claude, Codex, ChatGPT-web) on the new VPS.
 - [ ] Review and possibly commit `docs/setup/*.md` as operator docs.

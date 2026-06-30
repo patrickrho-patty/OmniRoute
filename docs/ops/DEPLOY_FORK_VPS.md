@@ -10,7 +10,7 @@ lastDeployed: "2026-06-30"
 > This is the **verified runbook** for deploying the `patrickrho-patty/OmniRoute` fork
 > (branch `custom-features`) to the production VPS at `jebo.ai`.
 >
-> Last verified against deploy `3b5810bd4` (bundle tinybert ONNX model + LFS) on 2026-06-30.
+> Last verified against deploy `3b5810bd4` (bundle tinybert ONNX model) on 2026-06-30.
 > Do not paraphrase the paths/flags — they are load-bearing.
 
 ## TL;DR
@@ -55,9 +55,9 @@ The entire deploy runs **on the VPS** as a single self-contained script uploaded
 
 1. **`git fetch origin custom-features` + `git reset --hard`** — dirty trees on the VPS
    can't abort the update.
-2. **`npm ci`** — installs any new deps (including LFS objects like the bundled tinybert
-   ONNX model — `git lfs pull` runs implicitly via the file structure) before stopping
-   the service, so no downtime yet.
+2. **`npm ci`** — installs any new deps before stopping the service, so no downtime yet.
+   The bundled TinyBERT ONNX is a normal git blob (54 MB, under GitHub's 100 MB limit),
+   so no Git LFS hydration step is required.
 3. **Stop service** (the only downtime window — ~10 min while the build runs).
 4. **`npm run build`** (≈8–12 min on Contabo's 8 vCPUs — static-page generation
    dominates; ~600 pages including the recent branding pages and Compression Studio
@@ -104,15 +104,17 @@ A normal code deploy does **not** migrate or reset any production data.
 - `/opt/OmniRoute/node_modules/` — refreshed by `npm ci` if `package.json` changed
 - `/opt/OmniRoute/.next/standalone/` — the live install root (same files as `.build/`)
 - `/opt/OmniRoute/models/llmlingua/` — bundled model directory (54 MB tinybert + tokenizer,
-  tracked via Git LFS). `git lfs pull` is implicit on deploy.
+  direct git blob; no Git LFS).
 
 ### LLMLingua model is bundled in the repo (no HF download needed)
 
 As of `3b5810bd4` the TinyBERT ONNX model (57 MB, public, no HF auth) ships in
-`models/llmlingua/atjsh/llmlingua-2-js-tinybert-meetingbank/` (`.onnx` tracked via
-Git LFS). At runtime, `findBundledModelRoot()` walks `cwd` + `argv[1]` to locate it
-and configures the transformers.js env with `localModelPath = <bundled-root>` and
-`allowRemoteModels = false`. No HuggingFace download on the VPS.
+`models/llmlingua/atjsh/llmlingua-2-js-tinybert-meetingbank/` as a direct git blob
+(under GitHub's 100 MB hard file limit). At runtime, `findBundledModelRoot()` walks
+`cwd` + `argv[1]` to locate it, validates that `model.onnx` is a real model blob (not
+a Git LFS pointer), and configures the transformers.js env with
+`localModelPath = <bundled-root>` and `allowRemoteModels = false`. No HuggingFace
+download on the VPS.
 
 If the bundled files are ever missing, the fallback is the data-dir cache
 (`/root/.omniroute/models/llmlingua/`) with `allowRemoteModels = true`, so the model
@@ -144,12 +146,7 @@ When moving to a new VPS (cloning the repo + importing the DB from the old machi
    DB, these connections show "authentication expired." Re-authenticate them in the
    dashboard. API-key providers (Mistral, OpenAI direct) survive migration.
 
-3. **Git LFS objects.** The first `git pull` on the new VPS fetches LFS objects
-   (tinybert ONNX, 57 MB). Ensure `git-lfs` is installed before cloning, or the
-   model files appear as 0-byte LFS pointers — `apt install git-lfs && git lfs install`
-   then `git lfs pull`.
-
-4. **LLMLingua model pre-cache (first request smoke test).** Even though the model
+3. **LLMLingua model pre-cache (first request smoke test).** Even though the model
    ships in the repo, run one compression request after deploy so the first
    `load + warm inference` (~100 ms total) caches the ONNX tensors in process memory:
 
@@ -180,11 +177,6 @@ When moving to a new VPS (cloning the repo + importing the DB from the old machi
    ```bash
    ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 'hostname; systemctl is-active omniroute.service'
    ```
-4. **Git LFS installed on the VPS:**
-   ```bash
-   ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 'git lfs version'
-   ```
-   If missing: `apt install -y git-lfs && git lfs install` (one-time per VPS).
 
 ---
 
@@ -257,7 +249,7 @@ A healthy deploy returns:
 
 - `active` for service status
 - the commit SHA you pushed
-- ~54 MB (LFS pointer size on disk; the actual blob loaded in the ONNX runtime cache)
+- ~54 MB for `model.onnx` (real ONNX blob, not a 133-byte LFS pointer)
 - `NO_ERRORS`
 
 **How to verify your change is live:**
@@ -342,19 +334,19 @@ For source-only changes that don't need a rebuild (rare; e.g. config-only): the 
 
 ## Troubleshooting
 
-| Symptom                                            | Likely cause                                                        | Fix                                                                                                                                                             |
-| -------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| Build phase hangs on "Collecting page data"        | next-static-pages step; can exceed the 25 min poller                | raise `MAX_POLLS` in `scripts/deploy-vps.sh` (each poll = 10 s); 150 was correct through v3.8.41                                                                |
-| Deploy script reports TIMED OUT but service up     | Local poller's 25 min cap hit; VPS script kept running and finished | Confirm with `systemctl is-active omniroute.service`; if active, the deploy actually succeeded                                                                  |
-| `curl :12160/api/health` → empty / 502             | Service not up or wrong port                                        | `systemctl status omniroute.service`; confirm `PORT=12160` in `/opt/OmniRoute/.env`                                                                             |
-| Service crashes on start, `EACCES` in logs         | `.build/next/standalone/` owned by wrong uid (lazy native download) | `chown -R root:root /opt/OmniRoute/.build/next/standalone`; the deploy script does this automatically                                                           |
-| Externally unreachable on :12160 but works locally | iptables REJECT rule above ACCEPT                                   | TCP 12160 ACCEPT above REJECT (see `FORK_NOTES.md` OPS-001)                                                                                                     |
-| `https://jebo.ai` 403s / blocks Anthropic SDK      | Cloudflare AI bot detection                                         | disable CF AI bot detection for `jebo.ai` (see `FORK_NOTES.md` OPS-003)                                                                                         |
-| tinybert ONNX shows as 0 bytes                     | Git LFS pointers not hydrated on the VPS                            | `cd /opt/OmniRoute && git lfs pull && git lfs ls-files                                                                                                          | xargs -I {} ls -lh {}`; or `apt install -y git-lfs && git lfs install && git lfs pull` |
-| First compression request times out                | ONNX tensors cold-cache + first-call model build                    | expected one-time ~100 ms hit; subsequent requests warm-cache in ~6 ms (see `cache_hit%` in `[USAGE]` log lines)                                                |
-| cache_hit% drops after a deploy                    | New compression layer is mutating the cached prefix                 | check engines registry: every engine marked `cacheSafe === false` is dropped for caching providers — see `FORK_NOTES.md` SRC-011                                |
-| `cache_hit=NN%` missing from logs                  | Running an older version without the visibility patch               | ensure you've deployed `501548d5e` or later (see `FORK_NOTES.md` SRC-011)                                                                                       |
-| `Cannot find module './chunks/NNNNN.js'` (500s)    | Corrupted page chunks from `npm install` inside `.build/`           | never `npm install` in `.build/`; clean-build (`rm -rf .build && cd /opt/OmniRoute && git checkout -- .build && git pull && npm ci && npm run build`), redeploy |
+| Symptom                                            | Likely cause                                                        | Fix                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Build phase hangs on "Collecting page data"        | next-static-pages step; can exceed the 25 min poller                | raise `MAX_POLLS` in `scripts/deploy-vps.sh` (each poll = 10 s); 150 was correct through v3.8.41                                                                                                                                                                                                           |
+| Deploy script reports TIMED OUT but service up     | Local poller's 25 min cap hit; VPS script kept running and finished | Confirm with `systemctl is-active omniroute.service`; if active, the deploy actually succeeded                                                                                                                                                                                                             |
+| `curl :12160/api/health` → empty / 502             | Service not up or wrong port                                        | `systemctl status omniroute.service`; confirm `PORT=12160` in `/opt/OmniRoute/.env`                                                                                                                                                                                                                        |
+| Service crashes on start, `EACCES` in logs         | `.build/next/standalone/` owned by wrong uid (lazy native download) | `chown -R root:root /opt/OmniRoute/.build/next/standalone`; the deploy script does this automatically                                                                                                                                                                                                      |
+| Externally unreachable on :12160 but works locally | iptables REJECT rule above ACCEPT                                   | TCP 12160 ACCEPT above REJECT (see `FORK_NOTES.md` OPS-001)                                                                                                                                                                                                                                                |
+| `https://jebo.ai` 403s / blocks Anthropic SDK      | Cloudflare AI bot detection                                         | disable CF AI bot detection for `jebo.ai` (see `FORK_NOTES.md` OPS-003)                                                                                                                                                                                                                                    |
+| tinybert ONNX shows as ~133 bytes                  | A Git LFS pointer was deployed instead of the real ONNX blob        | This should not happen after the direct-blob fix. Immediate hotfix: `curl -L https://huggingface.co/atjsh/llmlingua-2-js-tinybert-meetingbank/resolve/main/onnx/model.onnx -o /opt/OmniRoute/models/llmlingua/atjsh/llmlingua-2-js-tinybert-meetingbank/model.onnx && systemctl restart omniroute.service` |
+| First compression request times out                | ONNX tensors cold-cache + first-call model build                    | expected one-time ~100 ms hit; subsequent requests warm-cache in ~6 ms (see `cache_hit%` in `[USAGE]` log lines)                                                                                                                                                                                           |
+| cache_hit% drops after a deploy                    | New compression layer is mutating the cached prefix                 | check engines registry: every engine marked `cacheSafe === false` is dropped for caching providers — see `FORK_NOTES.md` SRC-011                                                                                                                                                                           |
+| `cache_hit=NN%` missing from logs                  | Running an older version without the visibility patch               | ensure you've deployed `501548d5e` or later (see `FORK_NOTES.md` SRC-011)                                                                                                                                                                                                                                  |
+| `Cannot find module './chunks/NNNNN.js'` (500s)    | Corrupted page chunks from `npm install` inside `.build/`           | never `npm install` in `.build/`; clean-build (`rm -rf .build && cd /opt/OmniRoute && git checkout -- .build && git pull && npm ci && npm run build`), redeploy                                                                                                                                            |
 
 ---
 
