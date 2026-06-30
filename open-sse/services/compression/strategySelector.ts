@@ -655,6 +655,22 @@ export function filterCacheUnsafeSteps(
     if (isDroppableEngine(step.engine)) dropped.push(step.engine);
     else kept.push(step);
   }
+
+  // Overflow safety outranks cache preservation. The dropped engines are also size reducers; if
+  // dropping them would leave the pipeline unable to shrink the request at all — nothing in the
+  // kept set still compresses AND no hard budget (targetTokens/targetRatio) is configured — keep
+  // everything. A context-window overflow hard-failure upstream is worse than a cache miss.
+  // (A kept overflow-critical engine like headroom naturally satisfies keptStillCompresses.)
+  const keptStillCompresses = kept.some(
+    // ponytail only INJECTS an instruction; every other registered engine shrinks content.
+    (s) => getCompressionEngine(s.engine) !== undefined && String(s.engine) !== "ponytail"
+  );
+  const hasHardBudget =
+    options?.config?.targetTokens != null || options?.config?.targetRatio != null;
+  if (!keptStillCompresses && !hasHardBudget) {
+    return { steps, dropped: [] };
+  }
+
   return { steps: kept, dropped };
 }
 

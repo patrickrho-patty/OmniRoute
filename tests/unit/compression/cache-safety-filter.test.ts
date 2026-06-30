@@ -70,6 +70,36 @@ describe("cache-safety pipeline filter", () => {
     assert.deepEqual(dropped, ["relevance"]);
   });
 
+  it("overflow safety: keeps a cache-buster if dropping leaves NO compression and no hard budget", () => {
+    // [aggressive] alone in a caching context: dropping it would leave nothing to shrink the
+    // request → context-overflow risk. Overflow safety wins → keep it (accept the cache cost).
+    const r1 = filterCacheUnsafeSteps([{ engine: "aggressive" }], body, {
+      cachingContext: { provider: "claude" },
+    });
+    assert.deepEqual(r1.dropped, [], "should keep aggressive — nothing else compresses");
+
+    // Same, but a hard budget guarantees the fit → safe to drop.
+    const r2 = filterCacheUnsafeSteps([{ engine: "aggressive" }], body, {
+      cachingContext: { provider: "claude" },
+      config: { targetTokens: 50000 } as never,
+    });
+    assert.deepEqual(r2.dropped, ["aggressive"], "hard budget present → safe to drop");
+
+    // Only ponytail (an augmenter, doesn't compress) survives → keep the cache-buster.
+    const r3 = filterCacheUnsafeSteps([{ engine: "aggressive" }, { engine: "ponytail" }], body, {
+      cachingContext: { provider: "claude" },
+    });
+    assert.deepEqual(r3.dropped, [], "only ponytail remains (no real compression) → keep");
+
+    // A cache-safe compressor survives (session-dedup) → dropping is safe.
+    const r4 = filterCacheUnsafeSteps(
+      [{ engine: "aggressive" }, { engine: "session-dedup" }],
+      body,
+      { cachingContext: { provider: "claude" } }
+    );
+    assert.deepEqual(r4.dropped, ["aggressive"], "session-dedup still compresses → safe to drop");
+  });
+
   it("the user's production pipeline is unchanged in a caching context (no pure cache-busters)", () => {
     const prod = [
       { engine: "session-dedup" },

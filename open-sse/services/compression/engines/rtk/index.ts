@@ -23,6 +23,19 @@ type Message = {
   [key: string]: unknown;
 };
 
+/** Registered id of this engine — used for the incremental memo key namespace. */
+const RTK_ENGINE_ID = "rtk";
+
+/** A message's RTK stat contributions, kept separate from the message so they can be memoised
+ *  alongside it and re-accumulated on a cache hit (no telemetry undercount). */
+type RtkStatContribution = {
+  techniques: string[];
+  rules: string[];
+  pointers: RtkRawOutputPointer[];
+};
+type RtkMessageResult = { message: Message; contribution: RtkStatContribution };
+const EMPTY_RTK_STATS: RtkStatContribution = { techniques: [], rules: [], pointers: [] };
+
 type ToolMeta = { toolName: string; command: string | null };
 
 // Same terminal-tool pattern as grok-web.ts isTerminalTool(): RTK's command-aware filters
@@ -614,19 +627,26 @@ export function applyRtkCompression(
   // assistant messages in the immutable prefix, so a message's output depends only on itself +
   // its prefix — keyed exactly by the cumulative hash. The incremental compressor memoises this
   // so prefix messages are reused and only the new tail is filtered.
-  const computeMessage = (message: Message): Message => {
-    if (!shouldCompressMessage(message, config)) return message;
+  // Pure (side-effect-free): returns the compressed message AND its per-message stat
+  // contributions. The caller accumulates the stats for EVERY message — cached or freshly
+  // computed — so the memo never undercounts techniques/rules/raw-output pointers for the
+  // cached prefix (the analytics that validate this feature would otherwise be wrong).
+  const computeMessage = (message: Message): RtkMessageResult => {
+    if (!shouldCompressMessage(message, config)) return { message, contribution: EMPTY_RTK_STATS };
 
     // Anthropic-shape tool results: `tool_result` content blocks inside a (typically
     // role:"user") message. Compress each block's inner text, resolving the shell command
     // per block from the matching assistant `tool_use` (mirrors the OpenAI tool path).
     if (Array.isArray(message.content) && message.content.some(isAnthropicToolResultBlock)) {
       const processed = processToolResultBlocks(message.content, config, toolCallLookup);
-      allTechniques.push(...processed.techniquesUsed);
-      allRules.push(...processed.rulesApplied);
-      rawOutputPointers.push(...processed.rawOutputPointers);
-      if (!processed.compressed) return message;
-      return { ...message, content: processed.content };
+      return {
+        message: processed.compressed ? { ...message, content: processed.content } : message,
+        contribution: {
+          techniques: processed.techniquesUsed,
+          rules: processed.rulesApplied,
+          pointers: processed.rawOutputPointers,
+        },
+      };
     }
 
     // OpenAI-shape tool message: resolve metadata from the preceding assistant tool_calls.
@@ -638,13 +658,13 @@ export function applyRtkCompression(
     }
 
     const processed = processRtkContent(message.content, config, { command, skipFilters });
-    allTechniques.push(...processed.techniquesUsed);
-    allRules.push(...processed.rulesApplied);
-    rawOutputPointers.push(...processed.rawOutputPointers);
-    if (!processed.compressed) return message;
     return {
-      ...message,
-      content: processed.content,
+      message: processed.compressed ? { ...message, content: processed.content } : message,
+      contribution: {
+        techniques: processed.techniquesUsed,
+        rules: processed.rulesApplied,
+        pointers: processed.rawOutputPointers,
+      },
     };
   };
 
@@ -655,13 +675,19 @@ export function applyRtkCompression(
     ctx.cumulativeByIndex.length === messages.length;
 
   const compressedMessages = messages.map((message, idx) => {
-    if (!useMemo) return computeMessage(message);
-    const key = memoKey("rtk", ctx!.cumulativeByIndex[idx]);
-    const cached = ctx!.memo.get(key);
-    if (cached !== undefined) return cached as Message;
-    const out = computeMessage(message);
-    ctx!.memo.set(key, out);
-    return out;
+    let res: RtkMessageResult;
+    if (useMemo) {
+      const key = memoKey(RTK_ENGINE_ID, ctx!.cumulativeByIndex[idx]);
+      res = (ctx!.memo.get(key) as RtkMessageResult | undefined) ?? computeMessage(message);
+      ctx!.memo.set(key, res);
+    } else {
+      res = computeMessage(message);
+    }
+    // Accumulate per-message stats for cached AND fresh messages alike (no undercount).
+    allTechniques.push(...res.contribution.techniques);
+    allRules.push(...res.contribution.rules);
+    rawOutputPointers.push(...res.contribution.pointers);
+    return res.message;
   });
 
   const compressedBody = { ...adapter.body, messages: compressedMessages };
