@@ -572,6 +572,17 @@ export function logUsage(
   const cacheCreation = getPromptCacheCreationTokens(usage);
   if (cacheCreation) msg += ` | cache_create=${cacheCreation}`;
 
+  // At-a-glance provider prompt-cache efficiency: what fraction of the prompt was served
+  // from the upstream cache. `inTokens` (getLoggedInputTokens) is the FULL prompt total —
+  // it already folds in cache_read + cache_creation — so the hit rate is simply
+  // cache_read / inTokens. High and rising = cache healthy; a drop signals the prefix is
+  // being mutated (e.g. a cache-unsafe compression engine busting the provider cache).
+  const cacheTotal = (cacheRead || 0) + (cacheCreation || 0);
+  if (cacheTotal > 0 && inTokens > 0) {
+    const hitPct = Math.round(((cacheRead || 0) / inTokens) * 100);
+    msg += ` | ${COLORS.cyan}cache_hit=${hitPct}%${COLORS.reset}`;
+  }
+
   const reasoning = usage.reasoning_tokens;
   if (reasoning) msg += ` | reasoning=${reasoning}`;
 
