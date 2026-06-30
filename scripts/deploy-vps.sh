@@ -85,8 +85,10 @@ echo "  Deploy kicked off on VPS (nohup). Polling for completion..."
 
 # ── Step 3: Poll the log until SUCCESS or FAILED appears ──
 # Hard timeout so a wedged build can never make the poller hang forever (it did
-# once, leaving the service stopped with no signal). 60 polls * 10s = 10 min.
-MAX_POLLS=60
+# once, leaving the service stopped with no signal). 150 polls * 10s = 25 min —
+# the full Next build (~600 static pages + standalone assembly) can exceed 10 min,
+# so keep this generously above it to avoid a misleading "timed out" on a healthy deploy.
+MAX_POLLS=150
 poll=0
 while true; do
   sleep 10
