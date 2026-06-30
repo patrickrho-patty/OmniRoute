@@ -384,10 +384,31 @@ test("Responses -> OpenAI: tool-call delta, reasoning delta and completed usage 
   assert.equal(args.choices[0].delta.tool_calls[0].function.arguments, '{"city":"SP"}');
   assert.equal(reasoning.choices[0].delta.reasoning_content, "Need weather info.");
   assert.equal(completed.choices[0].finish_reason, "tool_calls");
-  assert.equal((completed as any).usage.prompt_tokens, 8);
+  assert.equal((completed as any).usage.prompt_tokens, 5);
   assert.equal((completed as any).usage.completion_tokens, 2);
   (assert as any).equal((completed as any).usage.prompt_tokens_details.cached_tokens, 1);
   assert.equal((completed as any).usage.prompt_tokens_details.cache_creation_tokens, 2);
+});
+
+test("Responses -> OpenAI: does not double count Responses cached input details", () => {
+  const state = {};
+  const completed = openaiResponsesToOpenAIResponse(
+    {
+      type: "response.completed",
+      response: {
+        usage: {
+          input_tokens: 252450,
+          output_tokens: 125,
+          input_tokens_details: { cached_tokens: 125440 },
+        },
+      },
+    },
+    state
+  );
+
+  assert.equal((completed as any).usage.prompt_tokens, 252450);
+  assert.equal((completed as any).usage.completion_tokens, 125);
+  assert.equal((completed as any).usage.prompt_tokens_details.cached_tokens, 125440);
 });
 
 test("Responses -> OpenAI: preserves upstream model instead of defaulting to gpt-4", () => {

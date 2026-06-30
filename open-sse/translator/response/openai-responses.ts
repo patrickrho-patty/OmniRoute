@@ -5,6 +5,7 @@
 import { register } from "../registry.ts";
 import { FORMATS } from "../formats.ts";
 import { appendToolCallArgumentDelta } from "../../utils/toolCallArguments.ts";
+import { normalizeResponsesUsageToOpenAI } from "../../utils/usageTracking.ts";
 import { fallbackToolCallId } from "../helpers/toolCallHelper.ts";
 
 function normalizeToolName(value) {
@@ -899,46 +900,7 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
     // Extract usage from response.completed event
     const responseUsage = data.response?.usage;
     if (responseUsage && typeof responseUsage === "object") {
-      const inputTokens = responseUsage.input_tokens || responseUsage.prompt_tokens || 0;
-      const outputTokens = responseUsage.output_tokens || responseUsage.completion_tokens || 0;
-      const cacheReadTokens =
-        responseUsage.cache_read_input_tokens ||
-        responseUsage.input_tokens_details?.cached_tokens ||
-        responseUsage.prompt_tokens_details?.cached_tokens ||
-        0;
-      const cacheCreationTokens = responseUsage.cache_creation_input_tokens || 0;
-      const reasoningTokens =
-        responseUsage.output_tokens_details?.reasoning_tokens ||
-        responseUsage.completion_tokens_details?.reasoning_tokens ||
-        responseUsage.reasoning_tokens ||
-        0;
-
-      // prompt_tokens = input_tokens + cache_read + cache_creation (all prompt-side tokens)
-      const promptTokens = inputTokens + cacheReadTokens + cacheCreationTokens;
-
-      state.usage = {
-        prompt_tokens: promptTokens,
-        completion_tokens: outputTokens,
-        total_tokens: promptTokens + outputTokens,
-      };
-
-      // Add prompt_tokens_details if cache tokens exist
-      if (cacheReadTokens > 0 || cacheCreationTokens > 0) {
-        state.usage.prompt_tokens_details = {};
-        if (cacheReadTokens > 0) {
-          state.usage.prompt_tokens_details.cached_tokens = cacheReadTokens;
-        }
-        if (cacheCreationTokens > 0) {
-          state.usage.prompt_tokens_details.cache_creation_tokens = cacheCreationTokens;
-        }
-      }
-
-      // Add completion_tokens_details if reasoning tokens exist
-      if (reasoningTokens > 0) {
-        state.usage.completion_tokens_details = {
-          reasoning_tokens: reasoningTokens,
-        };
-      }
+      state.usage = normalizeResponsesUsageToOpenAI(responseUsage);
     }
 
     if (!state.finishReasonSent) {
