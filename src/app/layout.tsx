@@ -38,12 +38,14 @@ export async function generateMetadata() {
       "mobile-web-app-capable": "yes",
     },
     icons: {
+      // A single canonical pair: the SVG (preferred by modern browsers, scales to any tab size)
+      // with the multi-size .ico as the legacy fallback. Declaring a third PNG candidate made
+      // browsers cycle between icons ("flickering"); two consistent sources resolve to one mark.
       icon: customFaviconUrl
         ? "/api/settings/favicon"
         : [
-            { url: "/favicon.ico", sizes: "any" },
             { url: "/favicon.svg", type: "image/svg+xml" },
-            { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+            { url: "/favicon.ico", sizes: "any" },
           ],
       apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     },

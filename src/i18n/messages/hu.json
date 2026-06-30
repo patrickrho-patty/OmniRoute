@@ -953,6 +953,7 @@
     "contextSessionDedup": "Session Dedup",
     "contextCcr": "CCR",
     "contextLlmlingua": "LLMLingua",
+    "contextRelevance": "Relevance",
     "combosLive": "Combo Studio",
     "compressionStudio": "Compression Studio",
     "routingSection": "Routing",

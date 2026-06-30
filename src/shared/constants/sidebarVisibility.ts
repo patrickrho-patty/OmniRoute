@@ -18,6 +18,7 @@ export const HIDEABLE_SIDEBAR_ITEM_IDS = [
   "context-session-dedup",
   "context-ccr",
   "context-llmlingua",
+  "context-relevance",
   "context-lite",
   "context-aggressive",
   "context-ultra",
@@ -410,6 +411,14 @@ export const COMPRESSION_CONTEXT_GROUP: SidebarItemGroup = {
       labelFallback: "LLMLingua",
       subtitleFallback: "Semantic pruning",
       icon: "psychology",
+    },
+    {
+      id: "context-relevance",
+      href: "/dashboard/context/relevance",
+      i18nKey: "contextRelevance",
+      labelFallback: "Relevance",
+      subtitleFallback: "Query-relevance pruning",
+      icon: "filter_center_focus",
     },
     {
       id: "context-lite",
