@@ -38,15 +38,10 @@ export async function generateMetadata() {
       "mobile-web-app-capable": "yes",
     },
     icons: {
-      // A single canonical pair: the SVG (preferred by modern browsers, scales to any tab size)
-      // with the multi-size .ico as the legacy fallback. Declaring a third PNG candidate made
-      // browsers cycle between icons ("flickering"); two consistent sources resolve to one mark.
-      icon: customFaviconUrl
-        ? "/api/settings/favicon"
-        : [
-            { url: "/favicon.svg", type: "image/svg+xml" },
-            { url: "/favicon.ico", sizes: "any" },
-          ],
+      // Single source: favicon.ico (multi-size 16/32/48/256), generated from patty.io's actual
+      // favicon pixels — so the tab shows the EXACT patty.io mark, not a vector approximation.
+      // Declaring only one candidate also avoids the browser cycling between icons ("flickering").
+      icon: customFaviconUrl ? "/api/settings/favicon" : [{ url: "/favicon.ico", sizes: "any" }],
       apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     },
   };
