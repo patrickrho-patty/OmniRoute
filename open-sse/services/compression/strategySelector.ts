@@ -613,6 +613,41 @@ interface StackOptions {
    * every engine via buildStepOptions so incremental-aware engines can do O(new-messages) work.
    */
   incremental?: IncrementalContext;
+  /**
+   * Routing-pipeline provider/format/model metadata. When it (or the body) indicates a
+   * caching provider, the stacked pipeline drops cache-unsafe engines to preserve the
+   * provider's prompt cache. See {@link filterCacheUnsafeSteps}.
+   */
+  cachingContext?: CachingDetectionContext;
+}
+
+/**
+ * In a caching context, drop engines whose output mutates the cached prefix turn-to-turn
+ * (`metadata.cacheSafe === false`) — they would bust the provider's prompt cache, whose ~10x
+ * discount far outweighs their local savings. `overflowCritical` engines (headroom) are kept:
+ * they prevent context-window overflow. Outside a caching context, nothing is dropped.
+ *
+ * Returns the kept steps plus the dropped engine ids (for telemetry).
+ */
+export function filterCacheUnsafeSteps(
+  steps: CompressionPipelineStep[],
+  body: Record<string, unknown>,
+  options?: StackOptions
+): { steps: CompressionPipelineStep[]; dropped: string[] } {
+  const ctx = detectCachingContext(body, options?.cachingContext);
+  if (!ctx.isCachingProvider) return { steps, dropped: [] };
+
+  const kept: CompressionPipelineStep[] = [];
+  const dropped: string[] = [];
+  for (const step of steps) {
+    const md = getCompressionEngine(step.engine)?.metadata;
+    if (md?.cacheSafe === false && md?.overflowCritical !== true) {
+      dropped.push(step.engine);
+    } else {
+      kept.push(step);
+    }
+  }
+  return { steps: kept, dropped };
 }
 
 /** Emit a per-engine step to the live streaming callback (best-effort, no-op when unset). */
@@ -791,8 +826,8 @@ function runStackedCompression(
   pipeline?: Array<CompressionPipelineStep | string>,
   options?: StackOptions
 ): CompressionResult {
-  const steps = resolveStackSteps(pipeline);
   registerBuiltinCompressionEngines();
+  const steps = filterCacheUnsafeSteps(resolveStackSteps(pipeline), body, options).steps;
 
   let currentBody = body;
   let compressed = false;
@@ -895,8 +930,8 @@ async function runStackedCompressionAsync(
   pipeline?: Array<CompressionPipelineStep | string>,
   options?: StackOptions
 ): Promise<CompressionResult> {
-  const steps = resolveStackSteps(pipeline);
   registerBuiltinCompressionEngines();
+  const steps = filterCacheUnsafeSteps(resolveStackSteps(pipeline), body, options).steps;
 
   let currentBody = body;
   let compressed = false;

@@ -37,6 +37,24 @@ export interface CompressionEngineMetadata {
    * leave this false and implement their own incremental mode via `options.incremental`.
    */
   perMessageDeterministic?: boolean;
+  /**
+   * True when this engine produces output for a given message that is STABLE across
+   * turns — i.e. it never rewrites earlier content based on later content or total
+   * token budget. Stable engines keep the provider's prompt cache alive (the cached
+   * prefix stays byte-identical turn to turn). Budget-driven engines (headroom, ultra,
+   * aggressive) drop DIFFERENT content as the conversation grows, mutating the prefix
+   * and busting the provider cache — they are NOT cacheSafe. In a caching context the
+   * pipeline drops `cacheSafe === false` engines (unless `overflowCritical`), because
+   * the provider's ~10x cache discount far outweighs local compression savings.
+   */
+  cacheSafe?: boolean;
+  /**
+   * True for an engine that must keep running even in a caching context because it
+   * prevents context-window OVERFLOW (a hard upstream failure), not just opportunistic
+   * compression. Only `headroom`. Such an engine is exempt from the cacheSafe gate; the
+   * proper long-term fix is to make it tail-aware (compress only past the cache boundary).
+   */
+  overflowCritical?: boolean;
 }
 
 export interface CompressionEngineApplyOptions {

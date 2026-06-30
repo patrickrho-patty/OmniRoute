@@ -1224,6 +1224,11 @@ export async function handleChatCore({
           model: effectiveModel,
           config: compressionConfig,
           principalId: apiKeyInfo?.id ? String(apiKeyInfo.id) : undefined,
+          // Thread provider/format so the stacked pipeline can drop cache-unsafe engines in a
+          // caching context (preserves the provider prompt cache — its ~10x discount beats the
+          // engines' local savings). Native Claude models carry no "/" so provider can't be
+          // inferred from the body alone; pass it explicitly.
+          cachingContext: { provider, targetFormat, model: effectiveModel },
           // F3.3: stream per-engine progress live (best-effort) before compression.completed.
           onEngineStep: (s) => {
             try {

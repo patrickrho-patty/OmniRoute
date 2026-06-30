@@ -86,6 +86,7 @@ export {
   shouldAutoTrigger,
   applyStackedCompression,
   applyStackedCompressionAsync,
+  filterCacheUnsafeSteps,
 } from "./strategySelector.ts";
 
 export type {

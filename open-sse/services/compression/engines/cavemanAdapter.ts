@@ -340,6 +340,9 @@ export const aggressiveEngine: CompressionEngine = {
     targetLatencyMs: 5,
     supportsPreview: true,
     stable: true,
+    // Summarization + progressive aging rewrite earlier content as the conversation grows →
+    // mutates the cached prefix → busts provider prompt caching. Gated in caching contexts.
+    cacheSafe: false,
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);
@@ -398,6 +401,9 @@ export const ultraEngine: CompressionEngine = {
     targetLatencyMs: 5,
     supportsPreview: true,
     stable: true,
+    // Budget-driven token pruning drops different tokens as total grows → non-stable prefix
+    // → busts provider prompt caching. Gated in caching contexts.
+    cacheSafe: false,
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);
