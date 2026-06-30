@@ -15,19 +15,18 @@ const inter = Inter({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#0b0f1a",
+  themeColor: "#ffffff",
   viewportFit: "cover",
 };
 
 export async function generateMetadata() {
   const settings = await getSettings();
-  const instanceName = settings?.instanceName || "OmniRoute";
+  const instanceName = settings?.instanceName || "Patty";
   const customFaviconUrl = settings?.customFaviconUrl || settings?.customFaviconBase64;
 
   return {
-    title: `${instanceName} — AI Gateway for Multi-Provider LLMs`,
-    description:
-      "OmniRoute is an AI gateway for multi-provider LLMs. One endpoint for all your AI providers.",
+    title: instanceName,
+    description: "Patty — where AI becomes everyone's superpower.",
     manifest: "/manifest.webmanifest",
     applicationName: instanceName,
     appleWebApp: {

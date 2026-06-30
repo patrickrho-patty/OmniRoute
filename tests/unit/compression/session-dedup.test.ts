@@ -144,6 +144,35 @@ describe("session-dedup engine", () => {
     assert.deepEqual(imageItem!.image_url, { url: "data:image/png;base64,abc" });
   });
 
+  it("does not let an adjacent multipart message collide with a string message (key namespace)", () => {
+    // Regression: string msg used key `i` while multipart used `i*100000+p+1`, so a multipart
+    // message at index 0 (part 0 → key 1) collided with a string message at index 1 (key 1),
+    // corrupting one with the other's dedup. Namespacing string keys to `i*100000` fixes it.
+    const block = `${REPEATED_BLOCK}\nextra unique tail line for namespace test padding here`;
+    const body = {
+      model: "gpt-4",
+      messages: [
+        { role: "user", content: [{ type: "text", text: block }] }, // index 0, multipart
+        { role: "assistant", content: "short string reply that is wholly unique and intact" }, // index 1, string
+        { role: "user", content: [{ type: "text", text: block }] }, // index 2, dup of 0
+      ],
+    };
+
+    const result = sessionDedupEngine.apply(body as Record<string, unknown>);
+    const messages = result.body.messages as Array<{ role: string; content: unknown }>;
+
+    // The string message at index 1 must remain byte-identical (never overwritten by a
+    // colliding multipart dedup entry).
+    assert.equal(
+      messages[1].content,
+      "short string reply that is wholly unique and intact",
+      "adjacent string message must not be corrupted by a multipart dedup key collision"
+    );
+    // Index 0 first occurrence intact; index 2 deduped.
+    const first = (messages[0].content as Array<{ type: string; text: string }>)[0].text;
+    assert.ok(first.includes(REPEATED_BLOCK), "first multipart occurrence kept intact");
+  });
+
   it("getConfigSchema returns an array with expected fields", () => {
     const schema = sessionDedupEngine.getConfigSchema();
     assert.ok(Array.isArray(schema));

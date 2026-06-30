@@ -28,9 +28,9 @@
  *   from the reverse map attached as `__sessionDedupMap__` on the body object.
  */
 
-import crypto from "node:crypto";
 import { createCompressionStats } from "../../stats.ts";
 import { runFuzzyPass } from "./fuzzy.ts";
+import { dedupMessageTexts } from "./suffixDedup.ts";
 import type {
   CompressionEngine,
   CompressionEngineApplyOptions,
@@ -44,128 +44,10 @@ import type { CompressionResult } from "../../types.ts";
 const ENGINE_ID = "session-dedup";
 /** Minimum block character count to be a dedup candidate. */
 const DEFAULT_MIN_BLOCK_CHARS = 80;
-/** Minimum number of lines a block must span to be a dedup candidate. */
-const MIN_BLOCK_LINES = 3;
 
-// ─── hash helper (SHA-256 prefix, collision-resistant) ───────────────────────
-
-function hashBlock(text: string): string {
-  // 24 hex / 96 bits — collision-resistant (a 32-bit djb2 could collide and make a
-  // dedup marker reference the WRONG block). Pass 2 additionally verifies block
-  // equality before substituting, so a collision can never cause corruption.
-  return crypto.createHash("sha256").update(text).digest("hex").slice(0, 24);
-}
-
-// ─── suffix-block extraction ──────────────────────────────────────────────────
-
-/**
- * For each starting line position, emit the suffix block `lines[start..end]`
- * (i.e. from `start` to the end of the line array). This ensures that any
- * multiline sub-content that appears verbatim in multiple messages is discoverable
- * regardless of what text precedes it in each message.
- *
- * Only emits blocks that meet minBlockChars AND have at least MIN_BLOCK_LINES lines.
- * Uses a seen-set to deduplicate identical suffix blocks.
- */
-function findSuffixBlocks(
-  lines: string[],
-  minBlockChars: number
-): Array<{ block: string; startLine: number }> {
-  const n = lines.length;
-  const seen = new Set<string>();
-  const results: Array<{ block: string; startLine: number }> = [];
-
-  for (let start = 0; start < n; start++) {
-    const block = lines.slice(start).join("\n");
-    const blockLines = n - start;
-    if (blockLines >= MIN_BLOCK_LINES && block.length >= minBlockChars && !seen.has(block)) {
-      seen.add(block);
-      results.push({ block, startLine: start });
-    }
-  }
-  return results;
-}
-
-// ─── two-pass dedup on message texts ─────────────────────────────────────────
-
-/**
- * Runs two-pass dedup over an ordered list of (msgIdx, text) pairs.
- * Returns the replaced texts for duplicate messages, a reverse map, and a count.
- */
-function dedupMessageTexts(
-  msgTexts: Array<{ msgIdx: number; text: string }>,
-  minBlockChars: number
-): {
-  deduped: Map<number, string>;
-  dedupCount: number;
-} {
-  // Pass 1: for each message, extract suffix blocks and record first ownership.
-  // `firstSeen`: sha → { ownerMsgIdx, block }
-  const firstSeen = new Map<string, { ownerMsgIdx: number; block: string }>();
-
-  for (const { msgIdx, text } of msgTexts) {
-    const lines = text.split("\n");
-    const blocks = findSuffixBlocks(lines, minBlockChars);
-    for (const { block } of blocks) {
-      const sha = hashBlock(block);
-      if (!firstSeen.has(sha)) {
-        firstSeen.set(sha, { ownerMsgIdx: msgIdx, block });
-      }
-    }
-  }
-
-  // Pass 2: for each message, find blocks that were FIRST seen in an earlier message.
-  const deduped = new Map<number, string>();
-  let dedupCount = 0;
-
-  for (const { msgIdx, text } of msgTexts) {
-    const lines = text.split("\n");
-    const blocks = findSuffixBlocks(lines, minBlockChars);
-
-    // Collect blocks that are duplicates (owned by an earlier message).
-    const dupBlocks: Array<{ block: string; sha: string }> = [];
-    for (const { block } of blocks) {
-      const sha = hashBlock(block);
-      const owner = firstSeen.get(sha);
-      // owner.block === block guards against a (now astronomically unlikely) hash
-      // collision substituting a marker that would reference the wrong block.
-      if (owner && owner.ownerMsgIdx < msgIdx && owner.block === block) {
-        dupBlocks.push({ block, sha });
-      }
-    }
-
-    if (dupBlocks.length === 0) continue;
-
-    // Sort longest-first to prefer replacing the longest matching block.
-    dupBlocks.sort((a, b) => b.block.length - a.block.length);
-
-    let result = text;
-    let changed = false;
-    const replaced = new Set<string>(); // avoid double-replacing overlapping blocks
-
-    for (const { block, sha } of dupBlocks) {
-      // Skip if this block is a suffix of a block already replaced (overlap guard).
-      if ([...replaced].some((r) => r.includes(block))) continue;
-
-      const idx = result.indexOf(block);
-      if (idx !== -1) {
-        const marker = `[dedup:ref sha=${sha}]`;
-        result = result.slice(0, idx) + marker + result.slice(idx + block.length);
-        changed = true;
-        replaced.add(block);
-        // Only replace once per block per message pass.
-        break;
-      }
-    }
-
-    if (changed) {
-      deduped.set(msgIdx, result);
-      dedupCount++;
-    }
-  }
-
-  return { deduped, dedupCount };
-}
+// Cross-message suffix dedup is implemented in ./suffixDedup.ts (single-pass, O(n)).
+// `dedupMessageTexts` preserves the exact external contract of the previous O(n²)
+// implementation (longest-suffix match, first-occurrence kept, reversible markers).
 
 // ─── message array processing ─────────────────────────────────────────────────
 
@@ -182,20 +64,21 @@ function processMessages(
   messages: MessageLike[],
   minBlockChars: number
 ): { messages: MessageLike[]; dedupCount: number } {
-  // Collect (msgIdx, text) for non-system string-content messages.
-  // For multipart, index each text part separately.
+  // Collect (msgIdx, text) for non-system content. Keys live in a per-message namespace of
+  // 100000 so string content (`i*100000`) and multipart text parts (`i*100000 + p + 1`)
+  // never collide across adjacent string/multipart messages, while preserving message order
+  // (earlier messages keep strictly smaller keys, which the dedup ordering relies on).
   const msgTexts: Array<{ msgIdx: number; text: string }> = [];
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === "system") continue;
     if (typeof msg.content === "string") {
-      msgTexts.push({ msgIdx: i, text: msg.content });
+      msgTexts.push({ msgIdx: i * 100000, text: msg.content });
     } else if (Array.isArray(msg.content)) {
       for (let p = 0; p < msg.content.length; p++) {
         const part = msg.content[p];
         if (part["type"] === "text" && typeof part["text"] === "string") {
-          // Composite key: i * 100000 + p + 1 (safe for reasonable message counts)
           msgTexts.push({ msgIdx: i * 100000 + p + 1, text: part["text"] as string });
         }
       }
@@ -216,7 +99,7 @@ function processMessages(
     if (msg.role === "system") return { ...msg };
 
     if (typeof msg.content === "string") {
-      const replacement = deduped.get(i);
+      const replacement = deduped.get(i * 100000);
       return replacement !== undefined ? { ...msg, content: replacement } : { ...msg };
     }
 
@@ -284,7 +167,8 @@ function validateSessionDedupConfig(config: Record<string, unknown>): EngineVali
     const f = config["fuzzy"];
     if (typeof f === "object" && f !== null) {
       const fe = (f as Record<string, unknown>)["enabled"];
-      if (fe !== undefined && typeof fe !== "boolean") errors.push("fuzzy.enabled must be a boolean");
+      if (fe !== undefined && typeof fe !== "boolean")
+        errors.push("fuzzy.enabled must be a boolean");
     } else if (typeof f !== "boolean") {
       errors.push("fuzzy must be an object { enabled } or a boolean");
     }

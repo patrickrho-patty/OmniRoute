@@ -5,6 +5,7 @@ import type {
   CompressionResult,
   CompressionStats,
 } from "./types.ts";
+import { applyHardBudget } from "./hardBudget.ts";
 import { type FidelityGateConfig } from "./fidelityGate.ts";
 import { gateAdvance } from "./fidelityGateStep.ts";
 import type { CompressionEngineApplyOptions } from "./engines/types.ts";
@@ -28,14 +29,27 @@ import {
   withSource,
   planFromHeader,
   formatCompressionMeta,
+  formatCompressionAnnotation,
   deriveDefaultPlanFromConfig,
   buildNamedComboLookup,
 } from "./planResolution.ts";
 import { resolveAdaptivePlan } from "./adaptiveCompression/resolveAdaptivePlan.ts";
 import type { AdaptiveTelemetry } from "./adaptiveCompression/types.ts";
+import type { RiskGateConfig } from "./riskGate/riskGate.ts";
+import { resolveRiskGate, withRiskGate, withRiskGateAsync } from "./riskGate/strategyWrap.ts";
+import {
+  withCompressionEntrypointGuards,
+  withCompressionEntrypointGuardsAsync,
+} from "./entrypointWrap.ts";
+export { resolveCacheAwareConfig } from "./cacheAwareConfig.ts";
 
 // Re-export so existing importers (resolver test + chatCore dynamic import) keep resolving.
-export { planFromHeader, formatCompressionMeta, buildNamedComboLookup };
+export {
+  planFromHeader,
+  formatCompressionMeta,
+  formatCompressionAnnotation,
+  buildNamedComboLookup,
+};
 
 /** Named-combo map: combo id → its stacked pipeline (operator-defined profiles). */
 type NamedCombos = Record<string, CompressionPipelineStep[]>;
@@ -220,32 +234,6 @@ export function selectCompressionStrategy(
     .mode as CompressionMode;
 }
 
-/**
- * #3890: honor the cache-aware `skipSystemPrompt` decision that `getCacheAwareStrategy`
- * already computes but that `selectCompressionStrategy` (which can only return a mode
- * string) previously discarded. In a caching context the system prompt is part of the
- * cacheable prefix, so compressing it breaks the upstream prompt cache. This forces
- * `preserveSystemPrompt` on for caching requests even when the operator turned it off,
- * and leaves non-caching requests untouched.
- */
-export function resolveCacheAwareConfig(
-  config: CompressionConfig,
-  body?: Record<string, unknown>,
-  context?: CachingDetectionContext
-): CompressionConfig {
-  if (!body) return config;
-  const ctx = detectCachingContext(body, context);
-  // Only `skipSystemPrompt` is consumed here, and it depends solely on `ctx.isCachingProvider`
-  // (NOT on the strategy arg — see getCacheAwareStrategy), so the stored `defaultMode` is a safe
-  // input even though it may be "off" for a panel-configured install. If getCacheAwareStrategy is
-  // ever extended to key `skipSystemPrompt` on the mode, pass the resolved effective mode instead.
-  const cacheAware = getCacheAwareStrategy(config.defaultMode, ctx);
-  if (cacheAware.skipSystemPrompt && config.preserveSystemPrompt === false) {
-    return { ...config, preserveSystemPrompt: true };
-  }
-  return config;
-}
-
 export function applyCompression(
   body: Record<string, unknown>,
   mode: CompressionMode,
@@ -260,11 +248,35 @@ export function applyCompression(
      * skipped instead of silently dropping the target. Flows through to applyStackedCompression.
      */
     bailout?: BailoutConfig;
+    /** Risk-gate mask/restore wrapper (opt-in, default off). Read via resolveRiskGate. */
+    riskGate?: RiskGateConfig;
+    /** Force/override the caching gate (studio dry-run, or chatCore's resolved context). */
+    cachingContext?: CachingDetectionContext;
+  }
+): CompressionResult {
+  return withCompressionEntrypointGuards(body, options, (b) => runCompression(b, mode, options));
+}
+
+function runCompression(
+  body: Record<string, unknown>,
+  mode: CompressionMode,
+  options?: {
+    model?: string;
+    supportsVision?: boolean | null;
+    config?: CompressionConfig;
+    principalId?: string;
+    bailout?: BailoutConfig;
+    riskGate?: RiskGateConfig;
+    cachingContext?: CachingDetectionContext;
   }
 ): CompressionResult {
   if (mode === "off") {
     return { body, compressed: false, stats: null };
   }
+  // NOTE: upstream's whole-body resultMemo is intentionally NOT wired here. OmniRoute uses
+  // the per-message incremental cache (services/compression/incremental/*) instead, which
+  // hits the immutable conversation prefix every turn — a whole-body hash misses on every
+  // turn of a growing conversation. See docs/compression/INCREMENTAL_COMPRESSION_ARCHITECTURE.md.
   if (mode === "rtk") {
     return applyRtkCompression(body, {
       // Selecting the "rtk" mode IS the enable signal — run it even if the per-engine
@@ -394,8 +406,27 @@ export async function applyCompressionAsync(
     config?: CompressionConfig;
     principalId?: string;
     onEngineStep?: (step: StackedCompressionStep) => void;
+    cachingContext?: CachingDetectionContext;
   }
 ): Promise<CompressionResult> {
+  return withCompressionEntrypointGuardsAsync(body, options, (b) =>
+    runCompressionAsync(b, mode, options)
+  );
+}
+
+async function runCompressionAsync(
+  body: Record<string, unknown>,
+  mode: CompressionMode,
+  options?: {
+    model?: string;
+    supportsVision?: boolean | null;
+    config?: CompressionConfig;
+    principalId?: string;
+    onEngineStep?: (step: StackedCompressionStep) => void;
+    cachingContext?: CachingDetectionContext;
+  }
+): Promise<CompressionResult> {
+  // resultMemo intentionally not wired — see the note in runCompression (incremental cache).
   if (mode === "stacked") {
     const adapter = adaptBodyForCompression(body);
     const result = await applyStackedCompressionAsync(
@@ -556,6 +587,8 @@ interface StackOptions {
   bailout?: BailoutConfig;
   /** Opt-in per-step fidelity gate (default disabled). */
   fidelityGate?: FidelityGateConfig;
+  /** Risk-gate mask/restore wrapper (opt-in, default off). Read via resolveRiskGate. */
+  riskGate?: RiskGateConfig;
   /** Authenticated principal id — threaded through to CCR engine for store scoping. */
   principalId?: string;
   /** F3.3: called once per engine as it completes (live per-engine streaming). */
@@ -728,6 +761,16 @@ export function applyStackedCompression(
   pipeline?: Array<CompressionPipelineStep | string>,
   options?: StackOptions
 ): CompressionResult {
+  return withRiskGate(body, resolveRiskGate(options), (b) =>
+    runStackedCompression(b, pipeline, options)
+  );
+}
+
+function runStackedCompression(
+  body: Record<string, unknown>,
+  pipeline?: Array<CompressionPipelineStep | string>,
+  options?: StackOptions
+): CompressionResult {
   const steps = resolveStackSteps(pipeline);
   registerBuiltinCompressionEngines();
 
@@ -765,7 +808,10 @@ export function applyStackedCompression(
         continue;
       }
       mergeStackStep(acc, step.engine, result);
-      if (decideStep(result, bailout).advance && gateAdvance(result, currentBody, fidelityGate, acc, step.engine)) {
+      if (
+        decideStep(result, bailout).advance &&
+        gateAdvance(result, currentBody, fidelityGate, acc, step.engine)
+      ) {
         currentBody = result.body;
         compressed = true;
       }
@@ -777,6 +823,24 @@ export function applyStackedCompression(
         compressed = true;
       }
       reportEngineStep(onStep, stepIdx++, totalSteps, step.engine, result);
+    }
+  }
+
+  // Hard-budget post-pass (#17): runs after all engines, before finalize.
+  if (options?.config?.targetTokens != null || options?.config?.targetRatio != null) {
+    const hbResult = applyHardBudget(currentBody, {
+      targetTokens: options.config.targetTokens,
+      targetRatio: options.config.targetRatio,
+    });
+    if (hbResult.compressed) {
+      mergeStackStep(acc, "hard-budget", hbResult);
+      currentBody = hbResult.body;
+      compressed = true;
+    } else {
+      // No unit could be dropped (e.g. every unit is preserve-guarded): surface the
+      // unreachable-budget validationWarnings instead of dropping them silently (#17 fix #3).
+      // mergeStackStep is gated on `compressed`, so propagate the warnings here directly.
+      hbResult.stats?.validationWarnings?.forEach((w) => acc.validationWarnings.add(w));
     }
   }
 
@@ -797,6 +861,16 @@ export function applyStackedCompression(
  * telemetry, same final stats — so sync-only pipelines yield the same result.
  */
 export async function applyStackedCompressionAsync(
+  body: Record<string, unknown>,
+  pipeline?: Array<CompressionPipelineStep | string>,
+  options?: StackOptions
+): Promise<CompressionResult> {
+  return withRiskGateAsync(body, resolveRiskGate(options), (b) =>
+    runStackedCompressionAsync(b, pipeline, options)
+  );
+}
+
+async function runStackedCompressionAsync(
   body: Record<string, unknown>,
   pipeline?: Array<CompressionPipelineStep | string>,
   options?: StackOptions
@@ -839,7 +913,10 @@ export async function applyStackedCompressionAsync(
         continue;
       }
       mergeStackStep(acc, step.engine, result);
-      if (decideStep(result, bailout).advance && gateAdvance(result, currentBody, fidelityGate, acc, step.engine)) {
+      if (
+        decideStep(result, bailout).advance &&
+        gateAdvance(result, currentBody, fidelityGate, acc, step.engine)
+      ) {
         currentBody = result.body;
         compressed = true;
       }
@@ -853,6 +930,24 @@ export async function applyStackedCompressionAsync(
         compressed = true;
       }
       reportEngineStep(onStep, stepIdx++, totalSteps, step.engine, result);
+    }
+  }
+
+  // Hard-budget post-pass (#17): runs after all engines, before finalize.
+  if (options?.config?.targetTokens != null || options?.config?.targetRatio != null) {
+    const hbResult = applyHardBudget(currentBody, {
+      targetTokens: options.config.targetTokens,
+      targetRatio: options.config.targetRatio,
+    });
+    if (hbResult.compressed) {
+      mergeStackStep(acc, "hard-budget", hbResult);
+      currentBody = hbResult.body;
+      compressed = true;
+    } else {
+      // No unit could be dropped (e.g. every unit is preserve-guarded): surface the
+      // unreachable-budget validationWarnings instead of dropping them silently (#17 fix #3).
+      // mergeStackStep is gated on `compressed`, so propagate the warnings here directly.
+      hbResult.stats?.validationWarnings?.forEach((w) => acc.validationWarnings.add(w));
     }
   }
 
