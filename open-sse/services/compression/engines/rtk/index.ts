@@ -1,6 +1,8 @@
 import { createCompressionStats, estimateCompressionTokens } from "../../stats.ts";
 import { DEFAULT_RTK_CONFIG, type CompressionResult, type RtkConfig } from "../../types.ts";
 import type { CompressionEngine } from "../types.ts";
+import { memoKey } from "../../incremental/types.ts";
+import type { IncrementalContext } from "../../incremental/types.ts";
 import { detectCommandType } from "./commandDetector.ts";
 import { RTK_SCHEMA, validateRtkEngineConfig } from "./configSchema.ts";
 import { deduplicateRepeatedLines } from "./deduplicator.ts";
@@ -527,7 +529,11 @@ export function effectiveMaxLines(base: number, intensity: string | undefined): 
 
 export function applyRtkCompression(
   body: Record<string, unknown>,
-  options: { config?: Partial<RtkConfig>; stepConfig?: Record<string, unknown> } = {}
+  options: {
+    config?: Partial<RtkConfig>;
+    stepConfig?: Record<string, unknown>;
+    incremental?: IncrementalContext;
+  } = {}
 ): CompressionResult {
   const start = performance.now();
   const stepConfig =
@@ -604,7 +610,11 @@ export function applyRtkCompression(
     }
   }
 
-  const compressedMessages = messages.map((message) => {
+  // The expensive per-message tool-result filtering. The toolCallLookup it reads is built from
+  // assistant messages in the immutable prefix, so a message's output depends only on itself +
+  // its prefix — keyed exactly by the cumulative hash. The incremental compressor memoises this
+  // so prefix messages are reused and only the new tail is filtered.
+  const computeMessage = (message: Message): Message => {
     if (!shouldCompressMessage(message, config)) return message;
 
     // Anthropic-shape tool results: `tool_result` content blocks inside a (typically
@@ -636,6 +646,22 @@ export function applyRtkCompression(
       ...message,
       content: processed.content,
     };
+  };
+
+  const ctx = options.incremental;
+  const useMemo =
+    !!ctx &&
+    Array.isArray(ctx.cumulativeByIndex) &&
+    ctx.cumulativeByIndex.length === messages.length;
+
+  const compressedMessages = messages.map((message, idx) => {
+    if (!useMemo) return computeMessage(message);
+    const key = memoKey("rtk", ctx!.cumulativeByIndex[idx]);
+    const cached = ctx!.memo.get(key);
+    if (cached !== undefined) return cached as Message;
+    const out = computeMessage(message);
+    ctx!.memo.set(key, out);
+    return out;
   });
 
   const compressedBody = { ...adapter.body, messages: compressedMessages };
@@ -679,6 +705,7 @@ export const rtkEngine: CompressionEngine = {
     return applyRtkCompression(body, {
       config: options?.config?.rtkConfig,
       stepConfig: options?.stepConfig,
+      incremental: options?.incremental,
     });
   },
   compress(body, config) {

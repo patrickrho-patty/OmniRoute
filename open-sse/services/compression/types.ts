@@ -177,6 +177,13 @@ export interface CompressionConfig {
   outputStyles?: OutputStyleSelectionEntry[];
   rtkConfig?: RtkConfig;
   sessionDedup?: SessionDedupConfig;
+  /**
+   * Opt-in (default off): route the async stacked pipeline through the incremental
+   * "process-once" compressor — per-session caching so the immutable conversation prefix is
+   * reused across turns and only new messages are compressed. Output is byte-identical to a
+   * full run (equivalence property test); enable after validating timing in production.
+   */
+  incrementalCache?: boolean;
   relevanceConfig?: RelevanceConfig;
   languageConfig?: CompressionLanguageConfig;
   aggressive?: AggressiveConfig;

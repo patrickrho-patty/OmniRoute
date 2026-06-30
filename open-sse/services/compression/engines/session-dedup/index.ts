@@ -31,6 +31,8 @@
 import { createCompressionStats } from "../../stats.ts";
 import { runFuzzyPass } from "./fuzzy.ts";
 import { dedupMessageTexts } from "./suffixDedup.ts";
+import { memoKey } from "../../incremental/types.ts";
+import type { IncrementalContext } from "../../incremental/types.ts";
 import type {
   CompressionEngine,
   CompressionEngineApplyOptions,
@@ -95,33 +97,105 @@ function processMessages(
     return { messages, dedupCount: 0 };
   }
 
-  const result = messages.map((msg, i) => {
-    if (msg.role === "system") return { ...msg };
-
-    if (typeof msg.content === "string") {
-      const replacement = deduped.get(i * 100000);
-      return replacement !== undefined ? { ...msg, content: replacement } : { ...msg };
-    }
-
-    if (Array.isArray(msg.content)) {
-      let changed = false;
-      const newContent = msg.content.map((part, p) => {
-        if (part["type"] !== "text" || typeof part["text"] !== "string") return part;
-        const key = i * 100000 + p + 1;
-        const replacement = deduped.get(key);
-        if (replacement !== undefined) {
-          changed = true;
-          return { ...part, text: replacement };
-        }
-        return part;
-      });
-      return changed ? { ...msg, content: newContent } : { ...msg };
-    }
-
-    return { ...msg };
-  });
+  const result = messages.map((msg, i) => reassembleMessage(msg, i, deduped));
 
   return { messages: result, dedupCount };
+}
+
+/**
+ * Apply the deduped-text replacements for one message, keyed by its array index `i`
+ * (string content → `i*100000`; multipart text part p → `i*100000 + p + 1`). Returns a
+ * shallow-cloned message with markers substituted where present. Shared by the full and
+ * incremental paths so they reassemble identically.
+ */
+function reassembleMessage(msg: MessageLike, i: number, deduped: Map<number, string>): MessageLike {
+  if (msg.role === "system") return { ...msg };
+
+  if (typeof msg.content === "string") {
+    const replacement = deduped.get(i * 100000);
+    return replacement !== undefined ? { ...msg, content: replacement } : { ...msg };
+  }
+
+  if (Array.isArray(msg.content)) {
+    let changed = false;
+    const newContent = msg.content.map((part, p) => {
+      if (part["type"] !== "text" || typeof part["text"] !== "string") return part;
+      const key = i * 100000 + p + 1;
+      const replacement = deduped.get(key);
+      if (replacement !== undefined) {
+        changed = true;
+        return { ...part, text: replacement };
+      }
+      return part;
+    });
+    return changed ? { ...msg, content: newContent } : { ...msg };
+  }
+
+  return { ...msg };
+}
+
+/**
+ * Incremental dedup: process only messages not yet in the session memo (the new tail),
+ * deduping them against the persistent cross-turn index (which already holds the prefix's
+ * first-seen blocks). Cached prefix messages are pulled from the memo verbatim — their dedup
+ * output is invariant because dedup only ever references EARLIER messages, and the prefix is
+ * immutable. Output is byte-identical to a full run (enforced by the equivalence property test).
+ */
+function processMessagesIncremental(
+  messages: MessageLike[],
+  minBlockChars: number,
+  ctx: IncrementalContext
+): { messages: MessageLike[]; changedCount: number } {
+  const cumulative = ctx.cumulativeByIndex;
+
+  // Collect (msgIdx, text) ONLY for messages we haven't compressed before. Array index is the
+  // msgIdx namespace base, identical across turns (append-only) so it matches the persistent
+  // index's existing ownership.
+  const newMsgTexts: Array<{ msgIdx: number; text: string }> = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "system") continue;
+    const h = cumulative[i];
+    if (h !== undefined && ctx.memo.has(memoKey(ENGINE_ID, h))) continue; // cached prefix
+    if (typeof msg.content === "string") {
+      newMsgTexts.push({ msgIdx: i * 100000, text: msg.content });
+    } else if (Array.isArray(msg.content)) {
+      for (let p = 0; p < msg.content.length; p++) {
+        const part = msg.content[p];
+        if (part["type"] === "text" && typeof part["text"] === "string") {
+          newMsgTexts.push({ msgIdx: i * 100000 + p + 1, text: part["text"] as string });
+        }
+      }
+    }
+  }
+
+  // Dedup the new tail against the carried index (prefix blocks already registered there).
+  const deduped =
+    newMsgTexts.length > 0
+      ? dedupMessageTexts(newMsgTexts, minBlockChars, ctx.dedupIndex).deduped
+      : new Map<number, string>();
+
+  let changedCount = 0;
+  const result = messages.map((msg, i) => {
+    if (msg.role === "system") return { ...msg };
+    const h = cumulative[i];
+    const key = h !== undefined ? memoKey(ENGINE_ID, h) : undefined;
+
+    // Cached prefix message → reuse its stored output verbatim.
+    if (key && ctx.memo.has(key)) {
+      const cached = ctx.memo.get(key) as MessageLike;
+      if (cached.content !== msg.content) changedCount++;
+      return cached;
+    }
+
+    // New message → reassemble from this turn's dedup, then memoise for future turns.
+    const out = reassembleMessage(msg, i, deduped);
+    if (key) ctx.memo.set(key, out);
+    if (out.content !== msg.content) changedCount++;
+    return out;
+  });
+
+  return { messages: result, changedCount };
 }
 
 // ─── schema & validation ──────────────────────────────────────────────────────
@@ -216,6 +290,46 @@ export const sessionDedupEngine: CompressionEngine = {
     const messages = body["messages"];
     if (!Array.isArray(messages) || messages.length === 0) {
       return { body, compressed: false, stats: null };
+    }
+
+    // ── Incremental path ──────────────────────────────────────────────────────
+    // When the incremental compressor supplies a per-session context (and fuzzy is off),
+    // process only the new tail against the persistent index and reuse cached prefix output.
+    // The length guard ensures the cumulative keys line up with this body 1:1; otherwise fall
+    // back to the full path (always correct).
+    const ctx = options?.incremental;
+    const fuzzyRaw = stepConfig["fuzzy"];
+    const fuzzyOn =
+      fuzzyRaw === true ||
+      (typeof fuzzyRaw === "object" &&
+        fuzzyRaw !== null &&
+        (fuzzyRaw as Record<string, unknown>)["enabled"] === true);
+    if (
+      ctx &&
+      !fuzzyOn &&
+      Array.isArray(ctx.cumulativeByIndex) &&
+      ctx.cumulativeByIndex.length === messages.length
+    ) {
+      const startInc = performance.now();
+      const { messages: incMessages, changedCount } = processMessagesIncremental(
+        messages as MessageLike[],
+        minBlockChars,
+        ctx
+      );
+      if (changedCount === 0) {
+        return { body, compressed: false, stats: null };
+      }
+      const incBody: Record<string, unknown> = { ...body, messages: incMessages };
+      const durationMs = Math.round(performance.now() - startInc);
+      const stats = createCompressionStats(
+        body,
+        incBody,
+        "stacked",
+        ["session-dedup"],
+        [`deduplicated-${changedCount}-blocks`],
+        durationMs
+      );
+      return { body: incBody, compressed: true, stats };
     }
 
     const start = performance.now();

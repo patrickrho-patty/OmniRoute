@@ -9,6 +9,8 @@ import { applyHardBudget } from "./hardBudget.ts";
 import { type FidelityGateConfig } from "./fidelityGate.ts";
 import { gateAdvance } from "./fidelityGateStep.ts";
 import type { CompressionEngineApplyOptions } from "./engines/types.ts";
+import type { IncrementalContext } from "./incremental/types.ts";
+import { incrementalCompress } from "./incremental/incrementalCompressor.ts";
 import { applyLiteCompression } from "./lite.ts";
 import { cavemanCompress } from "./caveman.ts";
 import { compressAggressive } from "./aggressive.ts";
@@ -429,11 +431,24 @@ async function runCompressionAsync(
   // resultMemo intentionally not wired — see the note in runCompression (incremental cache).
   if (mode === "stacked") {
     const adapter = adaptBodyForCompression(body);
-    const result = await applyStackedCompressionAsync(
-      adapter.body,
-      options?.config?.stackedPipeline,
-      options
-    );
+    const pipeline = options?.config?.stackedPipeline;
+    const runStacked = (b: Record<string, unknown>, opts: StackOptions) =>
+      applyStackedCompressionAsync(b, pipeline, opts);
+
+    // Opt-in "process-once" path: per-session incremental caching. Byte-identical to the full
+    // run (equivalence property test); engines that aren't incremental-aware run normally.
+    if (options?.config?.incrementalCache === true) {
+      const { result } = await incrementalCompress({
+        body: adapter.body,
+        mode,
+        runOptions: { principalId: options?.principalId, config: options?.config },
+        runStacked,
+        injectContext: (ctx) => ({ ...options, incremental: ctx }) as StackOptions,
+      });
+      return adapter.adapted ? { ...result, body: adapter.restore(result.body) } : result;
+    }
+
+    const result = await runStacked(adapter.body, options ?? {});
     return adapter.adapted ? { ...result, body: adapter.restore(result.body) } : result;
   }
   // Ultra's optional SLM (model) tier is async — route it here when a model is configured.
@@ -593,6 +608,11 @@ interface StackOptions {
   principalId?: string;
   /** F3.3: called once per engine as it completes (live per-engine streaming). */
   onEngineStep?: (step: StackedCompressionStep) => void;
+  /**
+   * Per-session incremental context (set only by the incremental compressor). Propagated to
+   * every engine via buildStepOptions so incremental-aware engines can do O(new-messages) work.
+   */
+  incremental?: IncrementalContext;
 }
 
 /** Emit a per-engine step to the live streaming callback (best-effort, no-op when unset). */

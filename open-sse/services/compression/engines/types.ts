@@ -1,4 +1,5 @@
 import type { CompressionConfig, CompressionResult } from "../types.ts";
+import type { IncrementalContext } from "../incremental/types.ts";
 
 export type CompressionEngineTarget = "messages" | "tool_results" | "code_blocks";
 
@@ -27,6 +28,15 @@ export interface CompressionEngineMetadata {
   targetLatencyMs: number;
   supportsPreview: boolean;
   stable: boolean;
+  /**
+   * True when this engine's output for message i depends ONLY on message i (no
+   * cross-message context). Such engines are safely memoised per-message by the
+   * incremental compressor: a message's compressed form is cached by its semantic
+   * hash and reused across turns. Cross-message engines (session-dedup, ccr) and
+   * context-dependent ones (rtk needs an earlier tool_use to read a tool_result)
+   * leave this false and implement their own incremental mode via `options.incremental`.
+   */
+  perMessageDeterministic?: boolean;
 }
 
 export interface CompressionEngineApplyOptions {
@@ -37,6 +47,14 @@ export interface CompressionEngineApplyOptions {
   stepConfig?: Record<string, unknown>;
   /** Authenticated principal (API key id) making the request. Used by CCR to scope its store. */
   principalId?: string;
+  /**
+   * Per-session incremental state, present only when the incremental compressor drives the
+   * pipeline. An engine MAY use it to do O(new-messages) work instead of O(all-messages) by
+   * carrying cross-turn state (e.g. session-dedup's persistent index, a cumulative tool-call
+   * lookup) — and MUST produce output byte-identical to a full run when it does (enforced by
+   * the equivalence property test). Engines that ignore it run normally and stay correct.
+   */
+  incremental?: IncrementalContext;
 }
 
 export interface CompressionEngine {
