@@ -6355,8 +6355,6 @@
     "orRemovePasswordHashField": "oder entfernen Sie das Feld „passwordHash“.",
     "restartServerWithNewPassword": "Starten Sie den Server neu – er verwendet das neue Passwort",
     "backToLogin": "Zurück zum Anmelden",
-    "forgotPassword": "Passwort vergessen?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Autorisierung",
     "Content-Disposition": "Inhaltliche Disposition",
     "waitingForAuthorization": "Warte auf Autorisierung...",

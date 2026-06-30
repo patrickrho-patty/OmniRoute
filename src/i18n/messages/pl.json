@@ -6994,8 +6994,6 @@
     "orRemovePasswordHashField": "lub usuń pole hasłoHash",
     "restartServerWithNewPassword": "Zrestartuj serwer - będzie używał nowego hasła",
     "backToLogin": "Powrót do logowania",
-    "forgotPassword": "Zapomniałeś hasła?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Autoryzacja",
     "Content-Disposition": "Dyspozycja treści",
     "waitingForAuthorization": "Waiting for authorization...",

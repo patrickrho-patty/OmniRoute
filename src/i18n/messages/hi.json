@@ -6342,8 +6342,6 @@
     "orRemovePasswordHashField": "या पासवर्डहैश फ़ील्ड हटा दें",
     "restartServerWithNewPassword": "सर्वर को पुनरारंभ करें - यह नए पासवर्ड का उपयोग करेगा",
     "backToLogin": "लॉगइन पर वापस जाएँ",
-    "forgotPassword": "पासवर्ड भूल गए?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Authorization",
     "Content-Disposition": "Content-Disposition",
     "waitingForAuthorization": "Waiting for authorization...",

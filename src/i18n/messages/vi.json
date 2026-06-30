@@ -6342,8 +6342,6 @@
     "orRemovePasswordHashField": "hoặc xóa trường mật khẩuHash",
     "restartServerWithNewPassword": "Khởi động lại máy chủ - nó sẽ sử dụng mật khẩu mới",
     "backToLogin": "Quay lại đăng nhập",
-    "forgotPassword": "Quên mật khẩu?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Ủy quyền",
     "Content-Disposition": "Bố trí nội dung",
     "waitingForAuthorization": "Đang chờ cấp phép...",

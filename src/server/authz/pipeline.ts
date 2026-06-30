@@ -20,6 +20,8 @@ import {
   AUTHZ_HEADER_ROUTE_CLASS,
   AUTHZ_TRUSTED_HEADERS,
   PEER_IP_HEADER,
+  PUBLIC_AUTH_ROUTE_HEADER,
+  PUBLIC_AUTH_ROUTE_MARK,
   VIA_PROXY_HEADER,
 } from "./headers";
 import type { AuthSubject, RouteClass, RouteClassification } from "./types";
@@ -60,7 +62,6 @@ function rejectionResponse(
     { status: outcome.status }
   );
   response.headers.set(AUTHZ_HEADER_REQUEST_ID, requestId);
-  response.headers.set(AUTHZ_HEADER_ROUTE_CLASS, classification.routeClass);
   return response;
 }
 
@@ -171,10 +172,13 @@ function drainingResponse(requestId: string): NextResponse {
 function stampRouteResponse(
   response: Response,
   requestId: string,
-  routeClass: RouteClass
+  _routeClass: RouteClass
 ): Response {
+  // Route class is forwarded only on the internal request (assertAuth reads it
+  // there). It is intentionally NOT stamped on the client-facing response —
+  // that would leak the `x-omniroute-route-class` brand string on public
+  // redirects/401s. Signature kept for call-site compatibility.
   response.headers.set(AUTHZ_HEADER_REQUEST_ID, requestId);
-  response.headers.set(AUTHZ_HEADER_ROUTE_CLASS, routeClass);
   return response;
 }
 
@@ -202,6 +206,19 @@ export async function runAuthzPipeline(
   if (pathname === "/") {
     const response = NextResponse.redirect(new URL("/dashboard", request.url));
     return stampRouteResponse(response, requestId, "MANAGEMENT");
+  }
+
+  // Security: tag the public login route so the root layout ships only the `auth`
+  // i18n namespace (not the full catalog, which leaks product-identifying strings
+  // into the served HTML). /login is intentionally NOT run through authz
+  // enforcement — it is the unauthenticated entry page.
+  if (pathname === "/login") {
+    const loginHeaders = new Headers(request.headers);
+    loginHeaders.set(PUBLIC_AUTH_ROUTE_HEADER, PUBLIC_AUTH_ROUTE_MARK);
+    const response = NextResponse.next({ request: { headers: loginHeaders } });
+    response.headers.set(AUTHZ_HEADER_REQUEST_ID, requestId);
+    applyCorsHeaders(response, request);
+    return response;
   }
 
   const classification = classifyRoute(pathname, method);
@@ -261,7 +278,6 @@ export async function runAuthzPipeline(
   if (method === "OPTIONS") {
     const preflight = new NextResponse(null, { status: 204 });
     preflight.headers.set(AUTHZ_HEADER_REQUEST_ID, requestId);
-    preflight.headers.set(AUTHZ_HEADER_ROUTE_CLASS, classification.routeClass);
     applyCorsHeaders(preflight, request);
     return preflight;
   }
@@ -269,7 +285,6 @@ export async function runAuthzPipeline(
   if (!options.enforce) {
     const response = NextResponse.next({ request: { headers: requestHeaders } });
     response.headers.set(AUTHZ_HEADER_REQUEST_ID, requestId);
-    response.headers.set(AUTHZ_HEADER_ROUTE_CLASS, classification.routeClass);
     applyCorsHeaders(response, request);
     return response;
   }
@@ -291,7 +306,6 @@ export async function runAuthzPipeline(
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set(AUTHZ_HEADER_REQUEST_ID, requestId);
-  response.headers.set(AUTHZ_HEADER_ROUTE_CLASS, classification.routeClass);
   applyCorsHeaders(response, request);
   if (managementDashboardRoute) {
     await refreshDashboardSessionIfNeeded(response, request);

@@ -6342,8 +6342,6 @@
     "orRemovePasswordHashField": "atau hapus bidang passwordHash",
     "restartServerWithNewPassword": "Mulai ulang server - server akan menggunakan kata sandi baru",
     "backToLogin": "Kembali ke Masuk",
-    "forgotPassword": "Lupa kata sandi?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Otorisasi",
     "Content-Disposition": "Disposisi Konten",
     "waitingForAuthorization": "Waiting for authorization...",

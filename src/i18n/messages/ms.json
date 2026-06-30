@@ -6994,8 +6994,6 @@
     "orRemovePasswordHashField": "atau alih keluar medan passwordHash",
     "restartServerWithNewPassword": "Mulakan semula pelayan - ia akan menggunakan kata laluan baharu",
     "backToLogin": "Kembali ke Log Masuk",
-    "forgotPassword": "Lupa kata laluan?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Keizinan",
     "Content-Disposition": "Kandungan-Pelupusan",
     "waitingForAuthorization": "Menunggu kebenaran...",

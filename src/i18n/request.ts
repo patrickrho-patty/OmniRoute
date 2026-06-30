@@ -2,6 +2,7 @@ import { getRequestConfig } from "next-intl/server";
 import { cookies, headers } from "next/headers";
 import { LOCALES, DEFAULT_LOCALE, LOCALE_COOKIE } from "./config";
 import type { Locale } from "./config";
+import { PUBLIC_AUTH_ROUTE_HEADER, PUBLIC_AUTH_ROUTE_MARK } from "../server/authz/headers";
 
 const FALLBACK_LOCALE = "en";
 
@@ -26,7 +27,10 @@ export function deepMergeFallback(
       typeof targetValue === "object" &&
       !Array.isArray(targetValue)
     ) {
-      deepMergeFallback(targetValue as Record<string, unknown>, sourceValue as Record<string, unknown>);
+      deepMergeFallback(
+        targetValue as Record<string, unknown>,
+        sourceValue as Record<string, unknown>
+      );
     } else if (targetValue === undefined) {
       target[key] = sourceValue;
     }
@@ -40,7 +44,12 @@ function setNestedValue(target: Record<string, unknown>, dottedKey: string, valu
 
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index];
-    if (!segment || segment === "__proto__" || segment === "constructor" || segment === "prototype") {
+    if (
+      !segment ||
+      segment === "__proto__" ||
+      segment === "constructor" ||
+      segment === "prototype"
+    ) {
       return;
     }
 
@@ -65,7 +74,9 @@ export function normalizeComplianceEventTypes(
   messages: Record<string, unknown>
 ): Record<string, unknown> {
   const compliance =
-    messages.compliance && typeof messages.compliance === "object" && !Array.isArray(messages.compliance)
+    messages.compliance &&
+    typeof messages.compliance === "object" &&
+    !Array.isArray(messages.compliance)
       ? (messages.compliance as Record<string, unknown>)
       : null;
   const eventTypes =
@@ -106,6 +117,28 @@ export default getRequestConfig(async () => {
 
   if (!LOCALES.includes(locale as Locale)) {
     locale = DEFAULT_LOCALE;
+  }
+
+  // Public auth fast path: /login only renders `auth.*` strings. Loading the
+  // full catalog (+ EN fallback merges) would both waste work on the app's
+  // hottest cold-start route AND embed product-identifying strings in the
+  // served HTML. The `x-public-auth-route` header is pipeline-stamped and
+  // trusted (see src/server/authz/headers.ts AUTHZ_TRUSTED_HEADERS).
+  const reqHeaders = await headers();
+  if (reqHeaders.get(PUBLIC_AUTH_ROUTE_HEADER) === PUBLIC_AUTH_ROUTE_MARK) {
+    const authMessages = (await import(`./messages/${locale}.json`)).default.auth as
+      | Record<string, unknown>
+      | undefined;
+    const fallbackAuth =
+      locale === FALLBACK_LOCALE
+        ? undefined
+        : ((await import(`./messages/${FALLBACK_LOCALE}.json`)).default.auth as
+            | Record<string, unknown>
+            | undefined);
+    return {
+      locale,
+      messages: { auth: { ...(fallbackAuth || {}), ...(authMessages || {}) } },
+    };
   }
 
   const localeMessages = normalizeComplianceEventTypes(

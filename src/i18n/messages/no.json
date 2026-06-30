@@ -6994,8 +6994,6 @@
     "orRemovePasswordHashField": "eller fjern passordHash-feltet",
     "restartServerWithNewPassword": "Start serveren på nytt - den vil bruke det nye passordet",
     "backToLogin": "Tilbake til pålogging",
-    "forgotPassword": "Glemt passord?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Autorisasjon",
     "Content-Disposition": "Innhold-Disposisjon",
     "waitingForAuthorization": "Venter på autorisasjon...",

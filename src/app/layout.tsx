@@ -52,6 +52,9 @@ export async function generateMetadata() {
 
 export default async function RootLayout({ children }) {
   const locale = await getLocale();
+  // `getMessages()` returns only the `auth` namespace on public auth routes
+  // (see src/i18n/request.ts PUBLIC_AUTH_ROUTE fast path) so the served HTML
+  // cannot leak product-identifying strings from other namespaces.
   const messages = normalizeComplianceEventTypes((await getMessages()) as Record<string, unknown>);
   const isRtl = RTL_LOCALES.includes(locale as (typeof RTL_LOCALES)[number]);
 

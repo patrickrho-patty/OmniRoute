@@ -6994,8 +6994,6 @@
     "orRemovePasswordHashField": "sau eliminați câmpul passwordHash",
     "restartServerWithNewPassword": "Reporniți serverul - va folosi noua parolă",
     "backToLogin": "Înapoi la Logare",
-    "forgotPassword": "Ai uitat parola?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Autorizare",
     "Content-Disposition": "Conținut-Dispoziție",
     "waitingForAuthorization": "Se așteaptă autorizația...",

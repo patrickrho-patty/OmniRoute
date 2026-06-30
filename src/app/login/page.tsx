@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { Button, Input } from "@/shared/components";
 import { useRouter } from "next/navigation";
+import PattyShell from "./PattyShell";
 
 export default function LoginPage() {
   const t = useTranslations("auth");
@@ -121,12 +122,7 @@ export default function LoginPage() {
 
   if (hasPassword === null || setupComplete === null) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white font-[Pretendard,-apple-system,system-ui,sans-serif] tracking-[-0.03em]">
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
-        />
-        {nodeWarningBanner}
+      <PattyShell banner={nodeWarningBanner}>
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
             <div className="w-10 h-10 border-2 border-black/10 rounded-full"></div>
@@ -134,18 +130,13 @@ export default function LoginPage() {
           </div>
           <span className="text-sm text-black/60">{t("loading")}</span>
         </div>
-      </div>
+      </PattyShell>
     );
   }
 
   if (!hasPassword && !setupComplete) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white font-[Pretendard,-apple-system,system-ui,sans-serif] tracking-[-0.03em]">
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
-        />
-        {nodeWarningBanner}
+      <PattyShell banner={nodeWarningBanner}>
         <div
           className={`w-full max-w-md transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
         >
@@ -169,18 +160,13 @@ export default function LoginPage() {
 
           <p className="text-center text-xs text-black/40 mt-8">© Patty</p>
         </div>
-      </div>
+      </PattyShell>
     );
   }
 
   if (!hasPassword && setupComplete) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-white font-[Pretendard,-apple-system,system-ui,sans-serif] tracking-[-0.03em]">
-        <link
-          rel="stylesheet"
-          href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
-        />
-        {nodeWarningBanner}
+      <PattyShell banner={nodeWarningBanner}>
         <div
           className={`w-full max-w-md transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
         >
@@ -206,127 +192,54 @@ export default function LoginPage() {
 
           <p className="text-center text-xs text-black/40 mt-8">© Patty</p>
         </div>
-      </div>
+      </PattyShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-white font-[Pretendard,-apple-system,system-ui,sans-serif] tracking-[-0.03em]">
-      <link
-        rel="stylesheet"
-        href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css"
-      />
-      {nodeWarningBanner && (
-        <div className="flex justify-center pt-6 px-6">{nodeWarningBanner}</div>
-      )}
-      <div className="flex-1 flex">
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div
-            className={`w-full max-w-sm transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
-          >
-            <div className="mb-10">
-              <div className="mb-8">
-                <span className="text-xl font-semibold text-[#0a0a0b] tracking-tight">Patty</span>
-              </div>
-              <h1 className="text-2xl font-bold text-[#0a0a0b] tracking-tight">{t("signIn")}</h1>
-              <p className="text-black/60 mt-1.5">{t("enterPassword")}</p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-[#0a0a0b]">{t("password")}</label>
-                <Input
-                  type="password"
-                  placeholder={t("enterPassword")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoFocus
-                  className="h-11"
-                />
-                {error && (
-                  <p className="text-sm text-[#0a0a0b] flex items-center gap-1.5 pt-1">
-                    <span className="material-symbols-outlined text-base">error</span>
-                    {error}
-                  </p>
-                )}
-                <p className="text-xs text-black/40 pt-0.5">{t("defaultPasswordHint")}</p>
-              </div>
-
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full h-11 text-sm font-medium"
-                loading={loading}
-              >
-                {t("continue")}
-              </Button>
-            </form>
-
-            <div className="mt-6 pt-6 border-t border-black/10">
-              <a
-                href="/forgot-password"
-                className="text-sm text-black/60 hover:text-[#0a0a0b] transition-colors"
-              >
-                {t("forgotPassword")}
-              </a>
-            </div>
-          </div>
+    <PattyShell banner={nodeWarningBanner}>
+      <div
+        className={`w-full max-w-sm transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+      >
+        <div className="text-center mb-10">
+          <span className="text-xl font-semibold text-[#0a0a0b] tracking-tight">Patty</span>
         </div>
 
-        <div className="hidden lg:flex lg:w-1/2 bg-black/[0.02] items-center justify-center p-12">
-          <div
-            className={`max-w-md transition-all duration-700 delay-200 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
-          >
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-2xl font-bold text-[#0a0a0b] mb-3 tracking-tight">
-                  Where AI Becomes Everyone&rsquo;s Superpower
-                </h2>
-                <p className="text-black/60 leading-relaxed">
-                  A connected ecosystem of AI products, built on a single verified technology
-                  foundation.
-                </p>
-              </div>
+        <h1 className="text-2xl font-bold text-[#0a0a0b] tracking-tight text-center mb-1.5">
+          {t("signIn")}
+        </h1>
+        <p className="text-black/60 text-center mb-8">{t("enterPassword")}</p>
 
-              <div className="space-y-4">
-                {[
-                  {
-                    icon: "workspace_premium",
-                    title: "Global Tech Leadership",
-                    desc: "Built by engineers from the world's leading technology companies.",
-                  },
-                  {
-                    icon: "verified",
-                    title: "Verified AI Workflows",
-                    desc: "Reliable, hallucination-resistant workflows applied across every product.",
-                  },
-                  {
-                    icon: "hub",
-                    title: "Connected Products",
-                    desc: "A growing ecosystem that creates more value the more you use it together.",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.icon}
-                    className="flex items-start gap-4 p-4 rounded-xl bg-white/60 border border-black/10"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-black/5 flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-[#0a0a0b] text-[20px]">
-                        {item.icon}
-                      </span>
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-[#0a0a0b]">{item.title}</h3>
-                      <p className="text-sm text-black/60">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[#0a0a0b]">{t("password")}</label>
+            <Input
+              type="password"
+              placeholder={t("enterPassword")}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoFocus
+              className="h-11"
+            />
+            {error && (
+              <p className="text-sm text-[#0a0a0b] flex items-center gap-1.5 pt-1">
+                <span className="material-symbols-outlined text-base">error</span>
+                {error}
+              </p>
+            )}
           </div>
-        </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full h-11 text-sm font-medium"
+            loading={loading}
+          >
+            {t("continue")}
+          </Button>
+        </form>
       </div>
-    </div>
+    </PattyShell>
   );
 }

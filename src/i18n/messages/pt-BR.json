@@ -6994,8 +6994,6 @@
     "orRemovePasswordHashField": "ou remova o campo passwordHash",
     "restartServerWithNewPassword": "Reinicie o servidor - ele usará a nova senha",
     "backToLogin": "Voltar para o Login",
-    "forgotPassword": "Esqueceu a senha?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Autorização",
     "Content-Disposition": "Disposição de conteúdo",
     "waitingForAuthorization": "Aguardando autorização...",

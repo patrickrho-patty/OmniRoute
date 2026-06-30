@@ -6342,8 +6342,6 @@
     "orRemovePasswordHashField": "eller fjern feltet passwordHash",
     "restartServerWithNewPassword": "Genstart serveren - den vil bruge den nye adgangskode",
     "backToLogin": "Tilbage til Login",
-    "forgotPassword": "Glemt adgangskode?",
-    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)",
     "Authorization": "Autorisation",
     "Content-Disposition": "Indhold-Disposition",
     "waitingForAuthorization": "Venter på godkendelse...",

@@ -6342,8 +6342,6 @@
     "orRemovePasswordHashField": "nebo odstraňte passwordHash pole",
     "restartServerWithNewPassword": "Restartujte server - použije se nové heslo.",
     "backToLogin": "Zpět na přihlášení",
-    "forgotPassword": "Zapomněli jste heslo?",
-    "defaultPasswordHint": "Výchozí heslo: CHANGEME (pokud nebylo nastaveno INITIAL_PASSWORD)",
     "Authorization": "Autorizace",
     "Content-Disposition": "Obsah-Dispozice",
     "waitingForAuthorization": "Čekám na autorizaci...",
