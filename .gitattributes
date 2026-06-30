@@ -1,0 +1,2 @@
+models/llmlingua/**/*.onnx filter=lfs diff=lfs merge=lfs -text
+models/llmlingua/**/*.onnx.data filter=lfs diff=lfs merge=lfs -text

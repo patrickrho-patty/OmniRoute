@@ -25,7 +25,9 @@ export interface LlmlinguaModelEntry {
   label: string;
 }
 
-export const DEFAULT_LLMLINGUA_MODEL = "bert-base";
+// tinybert (57MB) is the default: public (no HF auth), fast (~7ms warm inference),
+// and pre-downloadable. Switch to "bert-base" or "bert-base-ms" for higher quality.
+export const DEFAULT_LLMLINGUA_MODEL = "tinybert";
 
 /** Registry keyed by config `model` value. */
 export const LLMLINGUA_MODELS: Record<string, LlmlinguaModelEntry> = {
@@ -45,7 +47,7 @@ export const LLMLINGUA_MODELS: Record<string, LlmlinguaModelEntry> = {
     dtype: "fp32",
     subfolder: "",
     sizeMB: 57,
-    label: "TinyBERT (57MB, fast — requires HF auth)",
+    label: "TinyBERT (57MB, fast — public, no HF auth required)",
   },
   "bert-base": {
     id: "bert-base",
