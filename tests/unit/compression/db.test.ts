@@ -155,6 +155,30 @@ describe("updateCompressionSettings", () => {
     );
   });
 
+  it("lets explicit engine toggles win over stale full-config legacy fields", async () => {
+    const settings = await updateCompressionSettings({
+      enabled: true,
+      defaultMode: "lite",
+      autoTriggerMode: "lite",
+      autoTriggerTokens: 100,
+      stackedPipeline: [{ engine: "lite" }],
+      engines: {
+        "session-dedup": { enabled: true },
+        lite: { enabled: false },
+        rtk: { enabled: true, level: "minimal" },
+        llmlingua: { enabled: true },
+      },
+    } as any);
+
+    assert.equal(settings.enginesExplicit, true);
+    assert.equal(settings.defaultMode, "stacked");
+    assert.equal(settings.autoTriggerMode, "stacked");
+    assert.deepEqual(
+      settings.stackedPipeline.map((s) => s.engine),
+      ["session-dedup", "rtk", "llmlingua"]
+    );
+  });
+
   it("updates and normalizes ultra config", async () => {
     await updateCompressionSettings({
       defaultMode: "ultra",

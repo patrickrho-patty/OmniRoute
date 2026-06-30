@@ -68,6 +68,33 @@ export function shouldAutoTrigger(config: CompressionConfig, estimatedTokens: nu
   return config.autoTriggerTokens > 0 && estimatedTokens >= config.autoTriggerTokens;
 }
 
+const MODE_ENGINE: Partial<Record<CompressionMode, string>> = {
+  lite: "lite",
+  standard: "caveman",
+  aggressive: "aggressive",
+  ultra: "ultra",
+  rtk: "rtk",
+};
+
+function autoTriggerPlan(config: CompressionConfig): DerivedPlan | null {
+  const mode = config.autoTriggerMode ?? "lite";
+  if (mode === "off") return { mode: "off", stackedPipeline: [] };
+
+  if (config.enginesExplicit) {
+    if (mode === "stacked") {
+      const plan = deriveDefaultPlan(config.engines ?? {}, config.enabled !== false);
+      return plan.mode === "off" ? null : plan;
+    }
+
+    const engine = MODE_ENGINE[mode];
+    if (engine && config.engines?.[engine]?.enabled !== true) return null;
+  }
+
+  return mode === "stacked"
+    ? { mode, stackedPipeline: config.stackedPipeline ?? [] }
+    : { mode, stackedPipeline: [] };
+}
+
 /**
  * Resolves the effective compression plan (mode + derived stacked pipeline) WITHOUT
  * the caching-aware mode adjustment (that is layered on by {@link selectCompressionPlan}).
@@ -128,13 +155,8 @@ function resolveBasePlan(
   }
 
   if (!adaptiveEnabled(config) && shouldAutoTrigger(config, estimatedTokens)) {
-    const mode = config.autoTriggerMode ?? "lite";
-    return withSource(
-      mode === "stacked"
-        ? { mode, stackedPipeline: config.stackedPipeline ?? [] }
-        : { mode, stackedPipeline: [] },
-      "auto-trigger"
-    );
+    const plan = autoTriggerPlan(config);
+    if (plan) return withSource(plan, plan.mode === "off" ? "off" : "auto-trigger");
   }
 
   const plan = deriveDefaultPlanFromConfig(config, comboId, combos);
@@ -762,11 +784,15 @@ function buildStepOptions(
   step: CompressionPipelineStep,
   options?: StackOptions
 ): CompressionEngineApplyOptions {
+  const config = options?.config;
+  const engineConfig = step.engine === "session-dedup" ? config?.sessionDedup : undefined;
+
   return {
     ...options,
     compressionComboId: options?.compressionComboId ?? options?.config?.compressionComboId,
     principalId: options?.principalId,
     stepConfig: {
+      ...(engineConfig ?? {}),
       ...(step.config ?? {}),
       ...(step.intensity ? { intensity: step.intensity } : {}),
     },

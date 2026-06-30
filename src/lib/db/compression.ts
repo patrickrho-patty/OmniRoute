@@ -706,6 +706,30 @@ function getStoredCompressionEnabled(db: ReturnType<typeof getDbInstance>): bool
   return typeof stored === "boolean" ? stored : null;
 }
 
+const MODE_ENGINE: Partial<Record<CompressionMode, string>> = {
+  lite: "lite",
+  standard: "caveman",
+  aggressive: "aggressive",
+  ultra: "ultra",
+  rtk: "rtk",
+};
+
+function compressionModeDisabledByEngines(
+  mode: CompressionMode | null,
+  engines: Record<string, EngineToggle>
+): boolean {
+  if (!mode || mode === "off") return false;
+  if (mode === "stacked") return deriveDefaultPlan(engines, true).mode === "off";
+  const engine = MODE_ENGINE[mode];
+  return !!engine && engines[engine]?.enabled !== true;
+}
+
+function readCompressionMode(value: unknown): CompressionMode | null {
+  return typeof value === "string" && COMPRESSION_MODES.has(value as CompressionMode)
+    ? (value as CompressionMode)
+    : null;
+}
+
 export async function updateCompressionSettings(
   updates: Partial<CompressionConfig>
 ): Promise<CompressionConfig> {
@@ -715,6 +739,11 @@ export async function updateCompressionSettings(
   );
 
   const tx = db.transaction(() => {
+    let enginesSync: {
+      engines: Record<string, EngineToggle>;
+      plan: ReturnType<typeof deriveDefaultPlan>;
+    } | null = null;
+
     for (const [key, value] of Object.entries(updates)) {
       if (value === undefined) continue;
       // Persist the engines map as ONE sanitized JSON row so the read path always gets
@@ -723,32 +752,46 @@ export async function updateCompressionSettings(
         const engines = sanitizeEnginesForWrite(value);
         insert.run(NAMESPACE, key, JSON.stringify(engines));
 
-        // Keep legacy runtime fields in sync with the engine toggle map. Without this,
-        // disabling caveman in the UI leaves stale rows like
-        // `stackedPipeline=[rtk,caveman]` or `cavemanConfig.enabled=true`, so dispatch
-        // can still inject caveman/terse behavior even though `engines.caveman=false`.
         const masterEnabled = updates.enabled ?? getStoredCompressionEnabled(db) ?? true;
-        const plan = deriveDefaultPlan(engines, masterEnabled === true);
-        insert.run(NAMESPACE, "defaultMode", JSON.stringify(plan.mode as CompressionMode));
-        insert.run(NAMESPACE, "stackedPipeline", JSON.stringify(plan.stackedPipeline));
-
-        // Back-compat rows must not keep behavioral injection alive when the engine map says off.
-        if (engines.caveman?.enabled !== true) {
-          const currentCaveman = getStoredJson(db, "cavemanConfig");
-          insert.run(
-            NAMESPACE,
-            "cavemanConfig",
-            JSON.stringify({ ...toRecord(currentCaveman), enabled: false })
-          );
-          insert.run(
-            NAMESPACE,
-            "cavemanOutputMode",
-            JSON.stringify({ enabled: false, intensity: "lite", autoClarity: true })
-          );
-        }
+        enginesSync = { engines, plan: deriveDefaultPlan(engines, masterEnabled === true) };
         continue;
       }
       insert.run(NAMESPACE, key, JSON.stringify(value));
+    }
+
+    if (enginesSync) {
+      const { engines, plan } = enginesSync;
+
+      // Keep legacy runtime fields in sync with the engine toggle map. This runs AFTER the
+      // generic writes so full-config UI saves cannot overwrite the authoritative engine-derived
+      // plan with stale defaultMode/stackedPipeline/autoTrigger rows.
+      insert.run(NAMESPACE, "defaultMode", JSON.stringify(plan.mode as CompressionMode));
+      insert.run(NAMESPACE, "stackedPipeline", JSON.stringify(plan.stackedPipeline));
+      insert.run(NAMESPACE, "enginesExplicit", JSON.stringify(true));
+
+      const requestedAutoTrigger = readCompressionMode(
+        Object.prototype.hasOwnProperty.call(updates, "autoTriggerMode")
+          ? updates.autoTriggerMode
+          : getStoredJson(db, "autoTriggerMode")
+      );
+      if (compressionModeDisabledByEngines(requestedAutoTrigger, engines)) {
+        insert.run(NAMESPACE, "autoTriggerMode", JSON.stringify(plan.mode as CompressionMode));
+      }
+
+      // Back-compat rows must not keep behavioral injection alive when the engine map says off.
+      if (engines.caveman?.enabled !== true) {
+        const currentCaveman = getStoredJson(db, "cavemanConfig");
+        insert.run(
+          NAMESPACE,
+          "cavemanConfig",
+          JSON.stringify({ ...toRecord(currentCaveman), enabled: false })
+        );
+        insert.run(
+          NAMESPACE,
+          "cavemanOutputMode",
+          JSON.stringify({ enabled: false, intensity: "lite", autoClarity: true })
+        );
+      }
     }
   });
 
