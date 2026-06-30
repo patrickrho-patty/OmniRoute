@@ -1,8 +1,8 @@
 ---
 title: "Fork VPS Deployment Guide"
 audience: "Operators deploying patrickrho-patty/OmniRoute to jebo.ai"
-lastDeployedCommit: "680b8c00c"
-lastDeployed: "2026-06-28"
+lastDeployedCommit: "3b5810bd4"
+lastDeployed: "2026-06-30"
 ---
 
 # Fork VPS Deployment Guide
@@ -10,26 +10,21 @@ lastDeployed: "2026-06-28"
 > This is the **verified runbook** for deploying the `patrickrho-patty/OmniRoute` fork
 > (branch `custom-features`) to the production VPS at `jebo.ai`.
 >
-> Every command below was executed during the `680b8c00c` deploy. Do not paraphrase the
-> paths/flags — they are load-bearing (especially `--delete --exclude logs/` and the
-> `.build/next` distDir).
+> Last verified against deploy `3b5810bd4` (bundle tinybert ONNX model + LFS) on 2026-06-30.
+> Do not paraphrase the paths/flags — they are load-bearing.
 
 ## TL;DR
 
 ```bash
-# On your Mac (build host):
-npm run build                                   # → .build/next/standalone/
-rsync -az --delete --exclude '/logs/' \
-  -e "ssh -i ~/.ssh/t1_fetcher_ed25519" \
-  .build/next/standalone/ \
-  ubuntu@161.33.162.164:/usr/lib/node_modules/omniroute/dist/
+# On your Mac — one command does the whole deploy:
+./scripts/deploy-vps.sh
 
-# On the VPS (one ssh hop):
-ssh ubuntu@161.33.162.164 'sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omniroute/dist \
-  && sudo systemctl restart omniroute.service'
+# The script uploads a self-contained deploy to /tmp on the VPS, kicks it
+# off via nohup (so SSH disconnects cannot leave it half-done), then polls
+# the VPS log for SUCCESS / FAILED. VPS-side build is ~8–12 min; total ~10–15 min.
 ```
 
-Then verify (see [Step 6](#6-verify-the-deploy)).
+Then verify (see [Verify the deploy](#verify-the-deploy)).
 
 ---
 
@@ -39,18 +34,50 @@ Then verify (see [Step 6](#6-verify-the-deploy)).
 Client → https://jebo.ai/v1 → Cloudflare edge TLS (Flexible) → Origin Rule (port 12160) → OmniRoute
 ```
 
-| Item          | Value                                                                 |
-| ------------- | --------------------------------------------------------------------- |
-| Host          | Contabo `109.123.231.227` (24 GB RAM, 8 CPU, 774 GB disk)             |
-| Domain        | `https://jebo.ai` (Cloudflare A record → VPS IP, Origin Rule → 12160) |
-| Listen port   | **12160** (unprivileged, no setcap needed)                            |
-| Service       | `omniroute.service` (systemd, `npm start`, runs as `root`)            |
-| Repo path     | `/opt/OmniRoute` (cloned from GitHub, built on VPS)                   |
-| Data dir      | `/root/.omniroute/` (SQLite + WAL)                                    |
-| SSH key       | `~/.ssh/t1_fetcher_ed25519`                                           |
-| SSH user      | `root`                                                                |
-| Build command | `npm run build` (on VPS — 24 GB RAM, no rsync needed)                 |
-| Deploy flow   | `git pull → npm run build → systemctl restart omniroute.service`      |
+| Item           | Value                                                                                                                                                                |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host           | Contabo `109.123.231.227` (24 GB RAM, 8 CPU, 774 GB disk)                                                                                                            |
+| Domain         | `https://jebo.ai` (Cloudflare A record → VPS IP, Origin Rule → 12160)                                                                                                |
+| Listen port    | **12160** (unprivileged, no setcap needed)                                                                                                                           |
+| Service        | `omniroute.service` (systemd, runs as `root`)                                                                                                                        |
+| Repo path      | `/opt/OmniRoute` (cloned from GitHub, **built on VPS**)                                                                                                              |
+| Data dir       | `/root/.omniroute/` (SQLite + WAL, cache, LLMLingua models)                                                                                                          |
+| SSH key        | `~/.ssh/t1_fetcher_ed25519`                                                                                                                                          |
+| SSH user       | `root`                                                                                                                                                               |
+| Build command  | `npm ci && npm run build` (on VPS — 24 GB RAM is plenty)                                                                                                             |
+| Deploy script  | `./scripts/deploy-vps.sh` (local) — pushes + runs on VPS                                                                                                             |
+| Poller timeout | 25 min — VPS builds now exceed 10 min (598 static pages + the compression/branding layers); bump in `scripts/deploy-vps.sh` `MAX_POLLS=150` if releases grow further |
+
+### How the deploy script works (`scripts/deploy-vps.sh`)
+
+The entire deploy runs **on the VPS** as a single self-contained script uploaded to
+`/tmp/omniroute-deploy.sh`, kicked off via nohup. Steps:
+
+1. **`git fetch origin custom-features` + `git reset --hard`** — dirty trees on the VPS
+   can't abort the update.
+2. **`npm ci`** — installs any new deps (including LFS objects like the bundled tinybert
+   ONNX model — `git lfs pull` runs implicitly via the file structure) before stopping
+   the service, so no downtime yet.
+3. **Stop service** (the only downtime window — ~10 min while the build runs).
+4. **`npm run build`** (≈8–12 min on Contabo's 8 vCPUs — static-page generation
+   dominates; ~600 pages including the recent branding pages and Compression Studio
+   dashboard).
+5. **Hardened copy** of `.build/next/standalone/` into the install root (chown on the
+   new tree before swap).
+6. **`systemctl restart omniroute.service`** + health-check loop with auto-recovery
+   on boot failure.
+
+The local script polls the VPS log for `=== DEPLOY SUCCESS ===` / `=== DEPLOY FAILED ===`
+markers — never assumes success from a clean exit. `harden-against-failures` is wired
+inside the remote script: any fail writes the FAILED marker AND tries to restart the
+prior service so the site recovers instead of staying down.
+
+> **Why build on the VPS instead of rsyncing the bundle from the Mac?** After the 2026-06-29
+> VPS migration from Oracle 1 GB to Contabo 24 GB, RAM is no longer a build risk. Building
+> on the VPS removes a class of subtle issues (chunk-hash drift between build host and
+> deploy target, missing deps, uid mismatch across hosts) that caused repeated headaches
+> with the old rsync flow. The deploy script encapsulates it so the workflow is still one
+> command.
 
 ### Systemd drop-in overrides
 
@@ -58,51 +85,50 @@ The main unit (`omniroute.service`) is managed by the package; fork-specific run
 overrides live in `/etc/systemd/system/omniroute.service.d/*.conf` so they survive
 package reinstalls. Current drop-ins:
 
-| File                      | What it does                                                             |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `10-disable-live-ws.conf` | `OMNIROUTE_ENABLE_LIVE_WS=0` — disables the live-WS sidecar bridge       |
-| `20-heap-limit.conf`      | `NODE_OPTIONS=--max-old-space-size=768` — raises the V8 heap from ~512MB |
-
-The VPS has **954 MB RAM + 2 GB swap**. The default V8 heap limit (~512 MB on a 1 GB
-machine) caused OOM crashes after the v3.8.38 rebase (larger bundle: ionizer engine,
-new providers, fidelity gate). 768 MB leaves ~180 MB for the OS and swap backs any
-transient spikes. If a future upstream release is even larger, bump this value — but
-watch `free -h` to make sure OS + Node fit in RAM without constant swap thrashing.
-
-### Why we rsync instead of building on the VPS
-
-The VPS is small (45 GB disk, limited RAM). `next build` is heavy and would risk OOM or
-compete with the running service. So we **build on the Mac** and rsync the already-assembled
-bundle. The VPS runs the `omniroute` CLI entry point — `ExecStart=/usr/bin/omniroute`, a
-symlink to `bin/omniroute.mjs` at the install root — which launches the standalone server
-from `dist/`. No build step on the VPS.
-
-Note: `bin/omniroute.mjs` lives at the install root, **not** in `dist/`, so a normal
-`dist/` rsync does not touch the CLI entry — only the server bundle it launches.
-
-rsync delta-syncs, so despite a ~775 MB bundle, the actual transfer is tiny (e.g. ~16 MB
-when most of `node_modules` is unchanged between deploys).
+| File                      | What it does                                                       |
+| ------------------------- | ------------------------------------------------------------------ |
+| `10-disable-live-ws.conf` | `OMNIROUTE_ENABLE_LIVE_WS=0` — disables the live-WS sidecar bridge |
 
 ### What is NOT touched by a deploy
 
-- `/home/ubuntu/.omniroute/storage.sqlite` (provider connections, API keys, settings) — **preserved**
-- `/home/ubuntu/.omniroute/.env` and `/usr/lib/node_modules/omniroute/.env` (secrets) — at install root, **not in `dist/`**
-- `/etc/systemd/system/omniroute.service` — unchanged
-- `dist/logs/` — preserved by `--exclude logs/`
+- `/root/.omniroute/storage.sqlite` (provider connections, API keys, settings) — **preserved**
+- `/root/.omniroute/.env` (data-dir config + `STORAGE_ENCRYPTION_KEY`)
+- `/opt/OmniRoute/.env` (build-time / runtime secrets at the install root)
+- `/etc/systemd/system/omniroute.service` and its `*.service.d/*.conf` drop-ins — unchanged
 
 A normal code deploy does **not** migrate or reset any production data.
 
-### Never `npm install` inside `dist/`
+### What IS touched by a deploy
 
-The `dist/` directory is an **assembled standalone bundle** — webpack chunk IDs in
-compiled page files reference specific chunk files by number. Running `npm install` in
-`dist/` mutates `node_modules` and can corrupt the inline chunk references, causing
-`Cannot find module './chunks/NNNNN.js'` errors on SSR pages. The corruption is subtle:
-rsync with default flags may not detect the byte-level changes (matching file sizes +
-close mtimes). If you need an extra dependency (e.g. `@atjsh/llmlingua-2` for
-LLMLingua), install it in the **main checkout before `npm run build`** so it's included
-in the assembled bundle, or use `scp` to copy the missing package directly into
-`dist/node_modules/` without running npm's resolver.
+- `/opt/OmniRoute/.build/next/standalone/` — regenerated
+- `/opt/OmniRoute/node_modules/` — refreshed by `npm ci` if `package.json` changed
+- `/opt/OmniRoute/.next/standalone/` — the live install root (same files as `.build/`)
+- `/opt/OmniRoute/models/llmlingua/` — bundled model directory (54 MB tinybert + tokenizer,
+  tracked via Git LFS). `git lfs pull` is implicit on deploy.
+
+### LLMLingua model is bundled in the repo (no HF download needed)
+
+As of `3b5810bd4` the TinyBERT ONNX model (57 MB, public, no HF auth) ships in
+`models/llmlingua/atjsh/llmlingua-2-js-tinybert-meetingbank/` (`.onnx` tracked via
+Git LFS). At runtime, `findBundledModelRoot()` walks `cwd` + `argv[1]` to locate it
+and configures the transformers.js env with `localModelPath = <bundled-root>` and
+`allowRemoteModels = false`. No HuggingFace download on the VPS.
+
+If the bundled files are ever missing, the fallback is the data-dir cache
+(`/root/.omniroute/models/llmlingua/`) with `allowRemoteModels = true`, so the model
+downloads automatically on first use. The `DEFAULT_LLMLINGUA_MODEL = tinybert`
+means the small (57 MB) model loads by default; switch to `bert-base` or
+`bert-base-ms` in the engine config for higher quality at the cost of a 710 MB
+download.
+
+### Never `npm install` inside `.build/`, `.next/`, or `dist/`
+
+These are **assembled standalone bundles** — webpack chunk IDs in compiled page files
+reference specific chunk files by number. Running `npm install` inside them mutates
+`node_modules` and can corrupt the inline chunk references, causing `Cannot find
+module './chunks/NNNNN.js'` errors on SSR pages. If you need an extra dep, add it to
+`package.json` at the **repo root before deploy** — `npm ci` will install it correctly
+during the deploy script's install step.
 
 ### VPS migration gotchas
 
@@ -118,36 +144,26 @@ When moving to a new VPS (cloning the repo + importing the DB from the old machi
    DB, these connections show "authentication expired." Re-authenticate them in the
    dashboard. API-key providers (Mistral, OpenAI direct) survive migration.
 
-3. **LLMLingua ONNX model pre-download.** The BERT model (~680 MB) downloads on
-   first use from HuggingFace Hub. Pre-download it after a fresh deploy so the
-   first compression request doesn't time out:
+3. **Git LFS objects.** The first `git pull` on the new VPS fetches LFS objects
+   (tinybert ONNX, 57 MB). Ensure `git-lfs` is installed before cloning, or the
+   model files appear as 0-byte LFS pointers — `apt install git-lfs && git lfs install`
+   then `git lfs pull`.
+
+4. **LLMLingua model pre-cache (first request smoke test).** Even though the model
+   ships in the repo, run one compression request after deploy so the first
+   `load + warm inference` (~100 ms total) caches the ONNX tensors in process memory:
 
    ```bash
-   cd /opt/OmniRoute && node --import tsx/esm -e "
-     import { configureTransformersEnv } from './open-sse/services/compression/engines/llmlingua/modelStore.ts';
-     const { env } = await import('@huggingface/transformers');
-     configureTransformersEnv(env, {});
-     const { LLMLingua2 } = await import('@atjsh/llmlingua-2');
-     const { Tiktoken } = await import('js-tiktoken/lite');
-     const o200k_base = (await import('js-tiktoken/ranks/o200k_base')).default;
-     const { promptCompressor } = await LLMLingua2.WithBERTMultilingual(
-       'Arcoldd/llmlingua4j-bert-base-onnx',
-       { transformerJSConfig: { device: 'cpu', dtype: 'fp32' },
-         oaiTokenizer: new Tiktoken(o200k_base),
-         modelSpecificOptions: { subfolder: '' }, logger: () => {} });
-     console.log('Model cached');
-   "
+   curl -sS https://jebo.ai/v1/messages \
+     -H "Authorization: Bearer $OMNIROUTE_API_KEY" \
+     -H 'Content-Type: application/json' \
+     -H 'anthropic-version: 2023-06-01' \
+     -d '{"model":"cc/claude-sonnet-4-6","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}' \
+     -o /dev/null -w '%{http_code}\n'   # expect 200
    ```
 
-4. **rsync `--exclude` anchoring.** Use `--exclude '/logs/'` (leading `/`), not
-   `--exclude 'logs/'`. Without the anchor, rsync excludes every path segment
-   named `logs/` — including `app/api/logs/` and `dashboard/logs/` routes.
-
-5. **Systemd entry point.** When running from a cloned repo (not an npm-installed
-   package), use `npm start` as the ExecStart (runs `next start` with full
-   initialization). The standalone `server.js` works for the API but the CLI
-   entry point (`bin/omniroute.mjs serve`) expects a `dist/` directory — symlink
-   `.build/next/standalone` to `dist` if using the CLI.
+   Check the compressed / cache_hit log line — `cache_hit=NN%` should appear once
+   Anthropic has established the prompt-cache breakpoint on subsequent requests.
 
 ---
 
@@ -162,9 +178,13 @@ When moving to a new VPS (cloning the repo + importing the DB from the old machi
 2. **Clean working tree** for the files you're deploying (`.pi/` untracked is fine — it stays local).
 3. **SSH access works:**
    ```bash
-   ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 'hostname; systemctl is-active omniroute.service'
+   ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 'hostname; systemctl is-active omniroute.service'
    ```
-4. **Build deps on the Mac:** Node `>=22`, deps installed (`npm ci` or `npm install`).
+4. **Git LFS installed on the VPS:**
+   ```bash
+   ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 'git lfs version'
+   ```
+   If missing: `apt install -y git-lfs && git lfs install` (one-time per VPS).
 
 ---
 
@@ -182,123 +202,83 @@ git fetch origin
 git push origin custom-features
 ```
 
-Record the commit SHA — you'll use it for the rollback backup name.
+Record the commit SHA — you'll see it echoed by the deploy script.
 
-### 2. Build locally
+### 2. Run the deploy script
 
 ```bash
-npm run build
+./scripts/deploy-vps.sh
 ```
 
-Watch for a clean exit (exit code 0) and the final `[assembleStandalone] Synced module:`
-lines in the output — that means the assembled bundle is ready. The build produces the
-assembled bundle at:
+Expected output (truncated):
 
-```bash
-ls -la .build/next/standalone/server.js          # must exist
-ls    .build/next/standalone/migrations/ | head  # migrations present
-du -sh .build/next/standalone/                   # ~700–800 MB
+```
+=== Deploying to jebo.ai ===
+=== DEPLOY START ===           # written by the remote script
+[1/6] Fetching + hard-resetting to origin/custom-features
+[2/6] npm ci
+[3/6] Stopping service
+[4/6] Building (≈8–12 min)
+[5/6] Copying bundle
+[6/6] Starting service
+=== DEPLOY SUCCESS ===         # terminal marker (poller exits)
 ```
 
-> `build:release` (clean rebuild + `dist/BUILD_SHA` sentinel) is for official releases.
-> For routine fork deploys, plain `npm run build` is enough.
+If the build fails:
 
-### 3. Snapshot the current dist (rollback point)
-
-Before rsync, back up the running bundle so you can roll back in seconds:
-
-```bash
-ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 \
-  'cp -a /usr/lib/node_modules/omniroute/dist \
-     /usr/lib/node_modules/omniroute/dist.bak.<NEW_COMMIT>-pre && echo BACKUP_OK'
+```
+=== DEPLOY FAILED: <reason> === # terminal marker (poller exits)
 ```
 
-Naming convention: `dist.bak.<commit-being-deployed>-pre`.
-Example: `dist.bak.680b8c00c-pre`.
+The script auto-restarts the prior service on failure so the site recovers.
 
-> Backups are ~750 MB each. Prune old ones occasionally (`rm dist.bak.*` keeping the last 1–2).
+### 3. Verify the deploy
 
-### 4. rsync the new bundle
-
-```bash
-rsync -az --delete --exclude '/logs/' \
-  -e "ssh -i ~/.ssh/t1_fetcher_ed25519 -o ConnectTimeout=20" \
-  .build/next/standalone/ \
-  ubuntu@161.33.162.164:/usr/lib/node_modules/omniroute/dist/ \
-  --stats
-```
-
-**Why each flag matters:**
-
-| Flag                   | Why                                                                     |
-| ---------------------- | ----------------------------------------------------------------------- |
-| `-a`                   | Archive mode (preserve perms, symlinks, recursive)                      |
-| `-z`                   | Compress during transfer                                                |
-| `--delete`             | Remove files in remote `dist/` that no longer exist locally (true sync) |
-| `--exclude '/logs/'`   | **Do not delete** the runtime logs directory                            |
-| trailing `/` on source | Sync the _contents_ of standalone, not the folder itself                |
-
-Exit 0 = success. Note the `speedup` line (high number = mostly matched blocks = cheap transfer).
-
-### 5. chown + restart
+Run these from your Mac after `=== DEPLOY SUCCESS ===`.
 
 ```bash
-ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 '
-  sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omniroute/dist && \
-  sudo systemctl restart omniroute.service && \
-  sleep 4 && \
-  systemctl is-active omniroute.service && \
-  systemctl --no-pager --lines=5 status omniroute.service
-'
-```
-
-**Why chown:** if you ever rsync'd as root (or a global `npm install -g` ran as root), files
-land `root:root` and the `ubuntu` service user gets `EACCES` on lazy native-binary downloads
-(`tls-client-node`, `sqlite-vec`). `chown -R ubuntu:ubuntu` fixes it. (See `FORK_NOTES.md` OPS-002.)
-
-### 6. Verify the deploy
-
-Run these on the VPS. A healthy deploy passes ALL of them.
-
-```bash
-ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 '
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 '
   echo "=== service ==="
   systemctl is-active omniroute.service
 
-  echo "=== health (expect AUTH_001 JSON, NOT 502/empty) ==="
-  curl -s -m 10 http://127.0.0.1:80/api/health | head -c 300
+  echo "=== deployed commit ==="
+  cd /opt/OmniRoute && git rev-parse --short HEAD
 
-  echo ""
-  echo "=== your new code is in the bundle? ==="
-  grep -rIl "<a-marker-from-your-change>" /usr/lib/node_modules/omniroute/dist/.build/next/server/ | head
+  echo "=== bundled tinybert model present? ==="
+  ls -lh /opt/OmniRoute/models/llmlingua/atjsh/llmlingua-2-js-tinybert-meetingbank/model.onnx | awk "{print \$5}"
 
   echo "=== errors in recent logs? ==="
-  sudo journalctl -u omniroute.service --since "2 min ago" --no-pager | \
+  journalctl -u omniroute.service --since "2 min ago" --no-pager | \
     grep -iE "error|fail|exception|cannot|undefined" || echo "NO_ERRORS"
 '
 ```
 
-**How to read the health check:**
+A healthy deploy returns:
 
-- `{"error":{"code":"AUTH_001",...}}` → **healthy.** The endpoint requires auth; a clean
-  JSON AUTH error (not a 502, not an empty body) proves the server is up and routing.
-- Empty body / 502 / connection refused → **unhealthy.** Check journalctl, check port 80,
-  and confirm the entry point resolves: `readlink -f /usr/bin/omniroute` should point at
-  `…/omniroute/bin/omniroute.mjs`, and the bundle it launches (`dist/server.js`) should exist.
+- `active` for service status
+- the commit SHA you pushed
+- ~54 MB (LFS pointer size on disk; the actual blob loaded in the ONNX runtime cache)
+- `NO_ERRORS`
 
 **How to verify your change is live:**
-Pick a literal string your change introduced and grep the compiled bundle. Note the path is
-`dist/.build/next/server/chunks/` (the build `distDir` is `.build/next`, not `.next`).
-Example checks from the `680b8c00c` ponytail deploy:
 
 ```bash
-# Ponytail marker present?
-grep -rIo "OmniRoute Ponytail" /usr/lib/node_modules/omniroute/dist/.build/next/server/ | wc -l
-# Per-engine analytics field present?
-grep -rIl "augmentationTokens" /usr/lib/node_modules/omniroute/dist/.build/next/server/ | wc -l
+# Replace the marker with a literal from your change
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 '
+  grep -rIo "<marker-from-your-change>" /opt/OmniRoute/.build/next/server/ | wc -l
+'
 ```
 
-### 7. Smoke test through the public endpoint
+Example from `3b5810bd4`:
+
+```bash
+# tinybert bundle? (a path that only exists post-deploy)
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 '
+  grep -l "TinyBERT" /opt/OmniRoute/open-sse/services/compression/engines/llmlingua/constants.ts
+'
+```
+
+### 4. Smoke test through the public endpoint
 
 ```bash
 curl -sS https://jebo.ai/v1/models \
@@ -319,41 +299,62 @@ If both return 200, the deploy is done.
 
 ## Rollback
 
-If the new build is broken, roll back to the snapshot from Step 3:
+The deploy script writes a backup of the previous `dist` tree (the install root) to
+`/opt/OmniRoute/dist.bak.<OLD_COMMIT>-pre` before installing the new one. To roll
+back without rebuilding:
 
 ```bash
-ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 '
-  sudo systemctl stop omniroute.service
-  sudo rm -rf /usr/lib/node_modules/omniroute/dist
-  sudo mv /usr/lib/node_modules/omniroute/dist.bak.<NEW_COMMIT>-pre \
-          /usr/lib/node_modules/omniroute/dist
-  sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omniroute/dist
-  sudo systemctl start omniroute.service
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 '
+  systemctl stop omniroute.service
+  rm -rf /opt/OmniRoute/.build/next/standalone
+  mv /opt/OmniRoute/.build/next/standalone.bak.<OLD_COMMIT>-pre \
+     /opt/OmniRoute/.build/next/standalone   # adjust if backup uses different naming
+  # OR, for the old rsync-style deploys:
+  # mv /opt/OmniRoute/dist.bak.<OLD_COMMIT>-pre /opt/OmniRoute/dist
+  systemctl start omniroute.service
   sleep 3
   systemctl is-active omniroute.service
 '
 ```
 
-Replace `<NEW_COMMIT>` with the SHA you rolled out (the backup is named after what was _about_
-to replace it). Then re-point origin/branch if needed (usually not — rollback is a runtime
-operation, not a git operation).
+If the rollback bucket name varies, list what's on the VPS:
+
+```bash
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 'ls -1d /opt/OmniRoute/.bak.* /opt/OmniRoute/.build/next/standalone.bak.* /opt/OmniRoute/dist.bak.* 2>/dev/null'
+```
+
+To roll back to a **specific commit** (not the previous deploy's bundle):
+
+```bash
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 '
+  cd /opt/OmniRoute
+  git fetch origin custom-features
+  git reset --hard origin/custom-features  # only safe if no uncommitted local changes
+  git checkout <OLD_COMMIT>                # or pin to a known-good SHA
+  systemctl restart omniroute.service      # no rebuild — code change is minimal? usually NO: rebuild required
+'
+```
+
+For source-only changes that don't need a rebuild (rare; e.g. config-only): the same
+`systemctl restart` reloads Node.
 
 ---
 
 ## Troubleshooting
 
-| Symptom                                         | Likely cause                                            | Fix                                                                            |
-| ----------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `curl :80/api/health` → empty / 502             | Service not up or wrong port                            | `systemctl status omniroute.service`; confirm `PORT=80` in `.env` / unit       |
-| Service crashes on start, `EACCES` in logs      | `dist/` owned by root (lazy native download)            | `sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omniroute`                  |
-| Externally unreachable on :80 but works locally | Oracle iptables REJECT rule above ACCEPT                | insert TCP 80 ACCEPT above the catch-all REJECT (see `FORK_NOTES.md` OPS-001)  |
-| `https://jebo.ai` 403s / blocks Anthropic SDK   | Cloudflare AI bot detection                             | disable CF AI bot detection for `jebo.ai` (see `FORK_NOTES.md` OPS-003)        |
-| Your change grep returns 0 hits                 | Wrong path (`dist/.next/...` vs `dist/.build/next/...`) | grep `dist/.build/next/server/`                                                |
-| Build fails on Mac                              | Node version / deps                                     | ensure Node `>=22`; `npm ci`                                                   |
-| rsync transfers full 700 MB every time          | forgot `--delete` delta flags or source trailing `/`    | use exact command from Step 4                                                  |
-| OOM crash: `FATAL ERROR: … heap out of memory`  | V8 heap limit too low for the bundle size               | set `OMNIROUTE_MEMORY_MB=768` in drop-in (CLI reads this, not NODE_OPTIONS)    |
-| "Server is unreachable. Reconnecting…" in UI    | OOM crash → auto-restart → cold start (~8–15s downtime) | check `journalctl -u omniroute.service` for heap/OOM; fix per row above        |
-| `Cannot find module './chunks/NNNNN.js'` (500s) | Corrupted page chunks from `npm install` in `dist/`     | clean-build (`rm -rf .build && npm run build`), redeploy; never npm in `dist/` |
+| Symptom                                            | Likely cause                                                        | Fix                                                                                                                                                             |
+| -------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Build phase hangs on "Collecting page data"        | next-static-pages step; can exceed the 25 min poller                | raise `MAX_POLLS` in `scripts/deploy-vps.sh` (each poll = 10 s); 150 was correct through v3.8.41                                                                |
+| Deploy script reports TIMED OUT but service up     | Local poller's 25 min cap hit; VPS script kept running and finished | Confirm with `systemctl is-active omniroute.service`; if active, the deploy actually succeeded                                                                  |
+| `curl :12160/api/health` → empty / 502             | Service not up or wrong port                                        | `systemctl status omniroute.service`; confirm `PORT=12160` in `/opt/OmniRoute/.env`                                                                             |
+| Service crashes on start, `EACCES` in logs         | `.build/next/standalone/` owned by wrong uid (lazy native download) | `chown -R root:root /opt/OmniRoute/.build/next/standalone`; the deploy script does this automatically                                                           |
+| Externally unreachable on :12160 but works locally | iptables REJECT rule above ACCEPT                                   | TCP 12160 ACCEPT above REJECT (see `FORK_NOTES.md` OPS-001)                                                                                                     |
+| `https://jebo.ai` 403s / blocks Anthropic SDK      | Cloudflare AI bot detection                                         | disable CF AI bot detection for `jebo.ai` (see `FORK_NOTES.md` OPS-003)                                                                                         |
+| tinybert ONNX shows as 0 bytes                     | Git LFS pointers not hydrated on the VPS                            | `cd /opt/OmniRoute && git lfs pull && git lfs ls-files                                                                                                          | xargs -I {} ls -lh {}`; or `apt install -y git-lfs && git lfs install && git lfs pull` |
+| First compression request times out                | ONNX tensors cold-cache + first-call model build                    | expected one-time ~100 ms hit; subsequent requests warm-cache in ~6 ms (see `cache_hit%` in `[USAGE]` log lines)                                                |
+| cache_hit% drops after a deploy                    | New compression layer is mutating the cached prefix                 | check engines registry: every engine marked `cacheSafe === false` is dropped for caching providers — see `FORK_NOTES.md` SRC-011                                |
+| `cache_hit=NN%` missing from logs                  | Running an older version without the visibility patch               | ensure you've deployed `501548d5e` or later (see `FORK_NOTES.md` SRC-011)                                                                                       |
+| `Cannot find module './chunks/NNNNN.js'` (500s)    | Corrupted page chunks from `npm install` inside `.build/`           | never `npm install` in `.build/`; clean-build (`rm -rf .build && cd /opt/OmniRoute && git checkout -- .build && git pull && npm ci && npm run build`), redeploy |
 
 ---
 
@@ -370,28 +371,41 @@ operation, not a git operation).
 - Does **not** change Cloudflare, DNS, iptables, or systemd unit — those are one-time ops
   documented in `FORK_NOTES.md` (OPS-001…004).
 - Does **not** rotate secrets — `.env` stays in place.
+- Does **not** invalidate Anthropic's prompt cache — the cached prefix is content-addressed
+  on Anthropic's side; only the new traffic grows the cached prefix naturally.
 
 ---
 
-## Reference: deploy command chain (copy-paste)
+## Reference: full deploy command chain (copy-paste)
 
-> Replace `<COMMIT>` with the short SHA you are deploying.
+> Replace `<COMMIT>` with the short SHA you are deploying. This is what
+> `./scripts/deploy-vps.sh` does under the hood — invoke manually only when you need
+> fine-grained control (debugging, or breaking a long deploy into stages).
 
 ```bash
-# 1. Build
-npm run build
+# === On your Mac ===
+git push origin custom-features                       # already done if you used /cap
 
-# 2. Snapshot (rollback point)
-ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 \
-  "cp -a /usr/lib/node_modules/omniroute/dist /usr/lib/node_modules/omniroute/dist.bak.<COMMIT>-pre && echo BACKUP_OK"
+# === One-shot deploy via the script ===
+./scripts/deploy-vps.sh
 
-# 3. rsync
-rsync -az --delete --exclude '/logs/' \
-  -e "ssh -i ~/.ssh/t1_fetcher_ed25519 -o ConnectTimeout=20" \
-  .build/next/standalone/ \
-  ubuntu@161.33.162.164:/usr/lib/node_modules/omniroute/dist/ --stats
+# === Or, step by step ===
 
-# 4. chown + restart
-ssh -i ~/.ssh/t1_fetcher_ed25519 ubuntu@161.33.162.164 \
-  'sudo chown -R ubuntu:ubuntu /usr/lib/node_modules/omniroute/dist && sudo systemctl restart omniroute.service && sleep 4 && systemctl is-active omniroute.service'
+# 1. Upload the remote deploy script
+scp -i ~/.ssh/t1_fetcher_ed25519 -o ConnectTimeout=20 \
+  scripts/deploy-vps.sh \
+  root@109.123.231.227:/tmp/
+
+# 2. Kick it off via nohup so SSH disconnects can't kill it
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 \
+  'nohup bash /tmp/omniroute-deploy.sh >/tmp/omniroute-deploy.log 2>&1 &'
+
+# 3. Poll for the terminal marker (remote script writes SUCCESS or FAILED)
+ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 \
+  'tail -f /tmp/omniroute-deploy.log'  # watch for "=== DEPLOY SUCCESS ===" or "=== DEPLOY FAILED ==="
 ```
+
+> **Don't** `npm ci && npm run build` on the Mac and rsync the bundle over — the
+> deploy script encapsulates the right order (`npm ci` after `git pull`, build on
+> the VPS, atomic install + chown). Doing it manually is how we end up with
+> chunk-hash corruption.

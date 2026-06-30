@@ -13,31 +13,42 @@ Keep this file updated whenever we add a new fork-only source patch or a product
 
 ## Current git state
 
-| Item                                | Value                                                                   |
-| ----------------------------------- | ----------------------------------------------------------------------- |
-| Upstream repo                       | `github.com/diegosouzapw/OmniRoute`                                     |
-| Fork remote                         | `git@github.com:patrickrho-patty/OmniRoute.git`                         |
-| Fork branch carrying source patches | `custom-features`                                                       |
-| Upstream baseline                   | `v3.8.38` (`7b139fdb5`) — rebased 2026-06-28                            |
-| Current deploy HEAD                 | `8365ca699` (deployed to `jebo.ai` new VPS 2026-06-29)                  |
-| Source divergence                   | 15 commits ahead of upstream v3.8.38 (9 source patches + 6 doc commits) |
-| Pushed to GitHub                    | Yes — `custom-features` pushed to origin                                |
-| VPS                                 | Contabo `109.123.231.227` (24 GB RAM, 8 CPU, 774 GB disk), port 12160   |
-| Previous VPS                        | Oracle `161.33.162.164` (1 GB RAM), decommissioned                      |
+| Item                                | Value                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------- |
+| Upstream repo                       | `github.com/diegosouzapw/OmniRoute`                                   |
+| Fork remote                         | `git@github.com:patrickrho-patty/OmniRoute.git`                       |
+| Fork branch carrying source patches | `custom-features`                                                     |
+| Upstream baseline                   | `v3.8.38` (`7b139fdb5`) — rebased 2026-06-28                          |
+| Current deploy HEAD                 | `3b5810bd4` (deployed to `jebo.ai` 2026-06-30)                        |
+| Source divergence                   | ~25 commits ahead of upstream v3.8.38                                 |
+| Pushed to GitHub                    | Yes — `custom-features` pushed to origin                              |
+| VPS                                 | Contabo `109.123.231.227` (24 GB RAM, 8 CPU, 774 GB disk), port 12160 |
+| Previous VPS                        | Oracle `161.33.162.164` (1 GB RAM), decommissioned                    |
 
-Fork source patch commits on `custom-features` (oldest → newest, rebased onto v3.8.38):
+Fork source patch commits on `custom-features` (most recent first):
 
-| Commit      | Title                                                                      | Docs below  |
-| ----------- | -------------------------------------------------------------------------- | ----------- |
-| `959667005` | Fix hardcoded ports + Claude Messages API shape recognition                | SRC-001/002 |
-| `4bea2187b` | fix: add ChatGPT Web tool-call translation                                 | SRC-003     |
-| `95a0bd35c` | feat(compression): add ponytail engine and per-engine analytics separation | SRC-004     |
-| `b166f0c97` | fix(sse): treat mid-stream client disconnect as disconnect, not a 502      | SRC-005     |
-| `b3134b958` | feat(telemetry): honor OMNIROUTE_ENABLE_LIVE_WS=0 in the live-WS forwarder | SRC-006     |
-| `4d12f18aa` | feat(dashboard): add Ponytail submenu under Compression with run history   | SRC-007     |
-| `43d670f77` | feat(compression): wire session-dedup config persistence                   | SRC-008     |
-| `a55966c3b` | fix(compression): LLMLingua Worker path fix for Node 22                    | SRC-009     |
-| `aeab40d15` | feat(compression): add Microsoft + Arcoldd LLMLingua ONNX models           | SRC-010     |
+| Commit      | Title                                                                                      | Docs        |
+| ----------- | ------------------------------------------------------------------------------------------ | ----------- |
+| `3b5810bd4` | feat(llmlingua): bundle tinybert ONNX model + load-from-repo-first logic (Git LFS)         | SRC-011     |
+| `011760580` | fix(branding): use patty.io's actual favicon image (not a vector approximation)            | DOC         |
+| `701433d7a` | fix(deploy): raise poller timeout to 25 min (build exceeds 10 min, caused false timeout)   | DOC         |
+| `4aece25e1` | feat(dashboard): add relevance engine page + fix favicon flicker                           | DOC         |
+| `c51b89128` | chore(branding): Patty rebrand login shell + anti-fingerprinting authz                     | DOC         |
+| `21d21c592` | fix(compression): overflow safeguard + rtk incremental stat accuracy                       | SRC-011     |
+| `27103d0b2` | fix(compression): address code-review findings on incremental + cache-safety               | SRC-011     |
+| `501548d5e` | feat(usage): surface provider prompt-cache hit rate per request                            | SRC-011     |
+| `17bb616cb` | feat(compression): preserve provider prompt cache — gate cache-unsafe engines              | SRC-011     |
+| `28f2dbe6e` | feat(compression): incremental process-once compressor (Stage 2, default-off)              | SRC-011     |
+| `6d598fc40` | feat(compression): merge upstream compression engines and add O(n) session-dedup (Stage 1) | SRC-012     |
+| `959667005` | Fix hardcoded ports + Claude Messages API shape recognition                                | SRC-001/002 |
+| `4bea2187b` | fix: add ChatGPT Web tool-call translation                                                 | SRC-003     |
+| `95a0bd35c` | feat(compression): add ponytail engine and per-engine analytics separation                 | SRC-004     |
+| `b166f0c97` | fix(sse): treat mid-stream client disconnect as disconnect, not a 502                      | SRC-005     |
+| `b3134b958` | feat(telemetry): honor OMNIROUTE_ENABLE_LIVE_WS=0 in the live-WS forwarder                 | SRC-006     |
+| `4d12f18aa` | feat(dashboard): add Ponytail submenu under Compression with run history                   | SRC-007     |
+| `43d670f77` | feat(compression): wire session-dedup config persistence                                   | SRC-008     |
+| `a55966c3b` | fix(compression): LLMLingua Worker path fix for Node 22                                    | SRC-009     |
+| `aeab40d15` | feat(compression): add Microsoft + Arcoldd LLMLingua ONNX models                           | SRC-010     |
 
 `main` in this fork is intentionally kept identical to upstream `main`; our deploy branch is `custom-features`.
 
@@ -309,6 +320,218 @@ Oracle `161.33.162.164` (1 GB RAM), port 80, rsync-based deploys. Kept as backup
 
 ---
 
+### SRC-005—SRC-010 — Older infra / SSE / telemetry / dashboard patches
+
+Existing patches on `custom-features` before the 2026-06-30 release:
+
+| Commit      | Title                                                                      | Notes                                                            |
+| ----------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `b166f0c97` | fix(sse): treat mid-stream client disconnect as disconnect, not a 502      | `open-sse/handlers/sse.ts` — distinguishes ECONNRESET on a fin   |
+| `b3134b958` | feat(telemetry): honor OMNIROUTE_ENABLE_LIVE_WS=0 in the live-WS forwarder | `open-sse/handlers/chatCore/liveWsTelemetry.ts` — guards forward |
+| `4d12f18aa` | feat(dashboard): add Ponytail submenu under Compression with run history   | `src/app/(dashboard)/dashboard/context/ponytail/*`               |
+| `43d670f77` | feat(compression): wire session-dedup config persistence                   | dashboard Save button + config schema                            |
+| `a55966c3b` | fix(compression): LLMLingua Worker path fix for Node 22                    | `engines/llmlingua/worker.ts` — `import.meta.url` workaround     |
+| `aeab40d15` | feat(compression): add Microsoft + Arcoldd LLMLingua ONNX models           | added `bert-base-ms`, `bert-base` to `LLMLINGUA_MODELS`          |
+
+Each is a self-contained, well-isolated patch. No further detail needed beyond the
+diff; they exist primarily so the commit table above audit-trails what's deployed.
+
+---
+
+### SRC-011 — Compression: provider prompt-cache preservation + incremental cache + visibility
+
+| Field             | Value                                                                                                                                                                              |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commits (chain)   | `6d598fc40` (Stage 1) → `28f2dbe6e` (Stage 2 default-off) → `17bb616cb` (cache gate) → `501548d5e` (visibility) → `27103d0b2` (review fixes) → `21d21c592` (overflow + stat fixes) |
+| Upstream baseline | `v3.8.38` (`7b139fdb5`)                                                                                                                                                            |
+| Files changed     | ~25 (engines/_, services/compression/_, tests/unit/compression/\*)                                                                                                                 |
+| Status            | Stage 1 + cache gate + visibility deployed to `jebo.ai`; Stage 2 default-off, ready behind `incrementalCache` flag                                                                 |
+
+#### Problem
+
+Compression was being measured only by local tokens saved, with no view of whether it was
+forfeiting the provider's prompt-cache discount. Anthropic/OpenAI/Gemini give a ~10×
+discount on cached prefix tokens — rewrites that change the cached prefix byte-for-byte
+bust the cache and dominate any local savings. Also:
+
+- Stage 1 crisis: `session-dedup`'s `findSuffixBlocks` was O(n²) on the full conversation
+  (~18 s on 200 K-token agentic sessions, freezing the event loop and triggering
+  "Server is unreachable").
+- No at-a-glance cache health — every change to the compression layer could silently
+  drop the cache hit rate with no signal in logs.
+
+#### Fix — 3 layers, with separate decision records
+
+**(a) Cache-safety gate** — `open-sse/services/compression/strategySelector.ts::filterCacheUnsafeSteps()`.
+Engines declare `cacheSafe: true|false` + `overflowCritical: true|false` in their metadata
+(`open-sse/services/compression/engines/types.ts`). On the engine path:
+
+| Engine                                                      | `cacheSafe`                        | Notes                                                                                                                                                  |
+| ----------------------------------------------------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| session-dedup, rtk, caveman, lite, ponytail, ccr, llmlingua | `true`                             | Per-message, content-addressed, prefix-stable                                                                                                          |
+| aggressive, ultra, ionizer, relevance                       | `false`                            | Budget-driven or query-driven; mutates prefix → busts cache                                                                                            |
+| headroom                                                    | `false` + `overflowCritical: true` | Budget-driven (cache-busting) but exempt from the gate because it prevents context-window overflow (the proper long-term fix is to make it tail-aware) |
+
+In a caching context (provider in `CACHING_PROVIDERS` = claude/anthropic/openai/google
+gemini/deepseek/qwen/alibaba/…), the stacked pipeline drops `cacheSafe === false`
+engines, unless they're `overflowCritical`, to keep the provider cache alive. The
+`CachingDetectionContext` is now threaded through `chatCore.ts` so native Claude
+requests (`/v1/messages` with `cc/claude-*`) are correctly detected.
+
+Overflow safeguard: if dropping cache-unsafe engines would leave the pipeline unable to
+shrink the request at all (nothing in the kept set still compresses — ponytail only
+augments) and no hard budget (`targetTokens`/`targetRatio`) is set, the filter falls
+back to keeping everything. Context-window overflow upstream is worse than a cache miss.
+
+**(b) Incremental "process-once" compressor (Stage 2)** — `open-sse/services/compression/incremental/`
+(commits `28f2dbe6e`, `27103d0b2`, `21d21c592`). Optional, default-off via
+`config.incrementalCache === true`. Maintains:
+
+- A per-session memo (`ctx.memo`) keyed by cumulative message hash, so prefix messages
+  reuse their compressed form verbatim across turns.
+- An append-only invariant: the incremental memo is only valid while the conversation
+  grows by appending. Mutating a past message forces a reset (handled by
+  `isAppendOnlyExtension` — `_processMessages_ → resetContextState`).
+- A pipeline signature (`pipelineSignature.ts`) with canonical key-sort so semantically-
+  identical configs hash the same (no spurious cache resets from key insertion order).
+- An incremental-safe gate (`pipelineIsIncrementalSafe()`) on the entry point: any
+  cache-unsafe engine before a memoizing one would let stale memo output flow downstream
+  and silently diverge — falls back to the full path when any `cacheSafe === false`
+  engine is present.
+- An rtk memo-stats fix (no undercounting for cached messages): `computeMessage` is
+  pure; the caller accumulates stats for both cached and fresh messages.
+
+**(c) Cache-hit visibility** — `open-sse/utils/usageTracking.ts` emits
+`cache_hit=NN%` on every `[USAGE]` log line. The percentage is
+`cache_read_input_tokens / input_tokens` (both fields are returned by Anthropic/OpenAI
+per response). A sudden drop in `cache_hit%` is now an instant signal that something is
+busting the cache. Verified against live `jebo.ai` Claude traffic: ~83 % on the principal.
+
+#### Verification
+
+49 compression tests pass (7/7 in `tests/unit/compression/cache-safety-filter.test.ts`,
+8/8 in `incremental-equivalence.test.ts`, plus rtk + session-dedup + ponytail). Manual
+load-from-bundled-repo end-to-end test: ~92 ms to load tinybert from
+`models/llmlingua/...`, ~6 ms warm inference, 41 % token reduction on 292-char prose
+input.
+
+#### Durable rules
+
+1. **Any new compression engine** must declare its `cacheSafe` flag in
+   `metadata`. Default is "safe but unknown" — the filter keeps it. This guarantees a
+   forgotten flag degrades to "keep the engine" rather than silently disabling it.
+2. **Anything query- or budget-driven (LongLLMLingua, SCOPE, relevance, aggressive,
+   ultra, ionizer, headroom)** must be tagged `cacheSafe: false` because it rewrites
+   the prefix. From upstream: only `headroom` justifies the `overflowCritical` escape
+   hatch.
+3. **The incremental memo** is only valid for append-only growth. If the conversation
+   stops being append-only, reset; never trust the memo across a structural change.
+
+---
+
+### SRC-012 — `session-dedup` O(n²) → O(n) rewrite (Stage 1)
+
+| Field             | Value                                                    |
+| ----------------- | -------------------------------------------------------- |
+| Commit            | `6d598fc40`                                              |
+| Upstream baseline | `v3.8.38` (`7b139fdb5`)                                  |
+| Files changed     | session-dedup/{index,suffixDedup}.ts, + bounded eviction |
+| Status            | Deployed to `jebo.ai` 2026-06-30                         |
+
+#### Problem
+
+`suffixDedup.ts::findSuffixBlocks()` materialized and SHA-hashed **every suffix of every
+message** and ran twice on the full conversation history. On a 200 K-token / 385-message
+production conversation this took **~18 s of event-loop block** per turn. The dashboard
+surfaced it as "Server is unreachable."
+
+#### Root cause
+
+A textbook quadratic blowup: `O(n²)` strings × `O(n)` chars = `O(n³)` for a 200 K-token
+string. Also vulnerable to thrashing on adjacent string-vs-multipart message boundaries
+(fix in the same commit: string keys namespaced to `i*100000`).
+
+#### Fix
+
+Replaced the two suffix-materialization passes with a **single-pass backward rolling
+suffix hash**:
+
+| File                                                                 | Change                                                                                                                                                                |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open-sse/services/compression/engines/session-dedup/suffixDedup.ts` | New backward rolling-hash implementation; ~37 ms on the 200 K-token / 385-message fixture (~487× faster)                                                              |
+| `engines/session-dedup/index.ts`                                     | Uses the new implementation; identical contract (longest suffix match, first-occurrence kept verbatim, reversible `[dedup:ref sha=]` markers, collision verification) |
+| `engines/session-dedup/types.ts`                                     | Exports a `DedupIndex` type so the incremental compressor (`SRC-011`) can carry the cross-turn state                                                                  |
+
+#### Bounded eviction
+
+`ownerLines` (the verification store) and `firstSeen` (the suffix index) are bounded by
+`boundedMapSet` (FIFO, capacity 5000 entries). Eviction is always a missed dedup, never
+corruption.
+
+#### Durable rule
+
+If you add a new algorithm that touches every position of every message, assume it is
+quadratic unless you can prove otherwise. The 200 K-token prod case is the test
+fixture; test there first.
+
+---
+
+### SRC-013 — LLMLingua bundled-model repo (TinyBERT + Git LFS)
+
+| Field          | Value                                                                 |
+| -------------- | --------------------------------------------------------------------- |
+| Commit         | `3b5810bd4`                                                           |
+| Status         | Deployed to `jebo.ai` 2026-06-30. No HF download required on the VPS. |
+| Disk footprint | 54 MB `model.onnx` (tracked via Git LFS) + ~1 MB tokenizer files      |
+
+#### Problem
+
+LLMLingua downloaded its 710 MB BERT-base model from HuggingFace on first use. Every
+fresh VPS deploy had to: (a) own network access to HF, (b) tolerate ~60 s for first-call
+load, (c) eat transient disk pressure for the cache. Worst case: locked VPS billing
+alert when the HF token auth changed.
+
+#### Fix
+
+Bundle a **57 MB TinyBERT** model directly in the repo:
+
+- `models/llmlingua/atjsh/llmlingua-2-js-tinybert-meetingbank/`
+  - `model.onnx` (54 MB, Git LFS, public)
+  - `config.json`, `tokenizer.json`, `tokenizer_config.json`, `special_tokens_map.json`, `vocab.txt`
+- `.gitattributes` tracks `models/llmlingua/**/*.onnx` + `*.onnx.data` via LFS (others
+  inline).
+- `open-sse/services/compression/engines/llmlingua/modelStore.ts::findBundledModelRoot()`
+  resolves the bundled dir at runtime: walks `process.cwd()` and `process.argv[1]`
+  ancestors up to 6 levels. Works in both dev (`tsx/esm`) and the standalone
+  `.build/next/standalone/server.js` bundle.
+- `configureTransformersEnv()` priority order:
+  1. Explicit `modelPath` admin override (no network)
+  2. Bundled in-repo copy (no network; `allowRemoteModels = false`)
+  3. `~/.omniroute/models/llmlingua/` cache + HF download allowed (fallback)
+
+- `LLMLINGUA_MODELS.tinybert` label changed from "requires HF auth" to "public, no HF
+  auth required" (the model has always been public; the label was wrong).
+- `DEFAULT_LLMLINGUA_MODEL = "tinybert"` (was `"bert-base"`); warm inference ~6 ms.
+
+#### Verification
+
+Manual load test from bundled path: ~92 ms load (first call), warm inference ~5.8 ms,
+292 → 171 chars (41 % reduction). No network access during the load.
+
+#### Durable rules
+
+- **Always use `tinybert` as the default model** unless higher accuracy is mission-
+  critical — the quality gap (5.9 → 7.4 / 10 on Claude Code sessions per the
+  `kompress-small` benchmark) is offset by the size (57 vs 710 MB) and warm
+  inference speed (~6 vs ~117 ms). Switch to `bert-base` / `bert-base-ms` only when
+  every percentage of accuracy matters.
+- **Future bundled models must ship via LFS** with the pattern `models/<family>/<hfRepo>/model.onnx`,
+  so `findBundledModelRoot()` finds them automatically.
+
+---
+
+---
+
 ### OPS-002 — `tls-client-node` global-install permission fix
 
 | Field   | Value                                                                             |
@@ -558,17 +781,24 @@ Current decision:
 
 No source commit.
 
-| Scenario                                             |        RAM guidance |
-| ---------------------------------------------------- | ------------------: |
-| OmniRoute only, strict minimum                       | 1 GB (works, swaps) |
-| OmniRoute only, recommended                          |                2 GB |
-| OmniRoute + LLMLingua ONNX (BERT-base, 680 MB model) |                4 GB |
-| OmniRoute + LLMLingua + future-proofing              |                8 GB |
+| Scenario                                                     |        RAM guidance |
+| ------------------------------------------------------------ | ------------------: |
+| OmniRoute only, strict minimum                               | 1 GB (works, swaps) |
+| OmniRoute only, recommended                                  |                2 GB |
+| OmniRoute + bundled TinyBERT LLMLingua (57 MB ONNX, default) |              2.5 GB |
+| OmniRoute + LLMLingua BERT-base (710 MB ONNX, optional)      |                4 GB |
+| OmniRoute + LLMLingua + future-proofing                      |                8 GB |
+
+The TinyBERT switch (see `SRC-013`) halved the model footprint and reduced warm
+inference from ~117 ms to ~6 ms. The 4 GB row is now only relevant if an admin
+explicitly switches `DEFAULT_LLMLINGUA_MODEL` to `bert-base` / `bert-base-ms`.
 
 Current VPS: **Contabo 24 GB / 8 vCPU / 774 GB** — no memory constraints.
 
 Previous VPS (Oracle 1 GB) hit OOM crashes with v3.8.38 bundle + LLMLingua. The
-BERT-base ONNX model alone needs ~1.5 GB runtime memory for inference.
+BERT-base ONNX model alone needs ~1.5 GB runtime memory for inference; with the
+switch to TinyBERT this is now ~0.7 GB (fits in the old 1 GB VPS at the boundary,
+but Contabo is still recommended).
 
 ---
 
@@ -637,13 +867,18 @@ These were present when this document was reviewed:
 
 ## Open items
 
-- [x] Commit `FORK_NOTES.md` after review. — Done; updated through v3.8.38 rebase.
+- [x] Commit `FORK_NOTES.md` after review. — Done 2026-06-28.
 - [x] Rebase onto upstream v3.8.38. — Done 2026-06-28 (all conflicts resolved).
 - [x] Migrate to new VPS (Contabo). — Done 2026-06-29.
 - [x] Get LLMLingua working in production. — Done 2026-06-29. Fixed Worker path for Node 22, timeout, and model access.
 - [x] Wire session-dedup config persistence (Save button). — Done (`43d670f77`).
+- [x] Stage 1 + cache safety + cache-hit visibility deployed to jebo.ai. — Done 2026-06-30.
+- [x] Bundle TinyBERT ONNX model in repo via Git LFS. — Done 2026-06-30 (`3b5810bd4`).
+- [x] Update `docs/ops/DEPLOY_FORK_VPS.md` to match the current VPS-side build flow. — Done 2026-06-30.
 - [ ] Re-authenticate OAuth providers (Claude, Codex, ChatGPT-web) on the new VPS.
 - [ ] Review and possibly commit `docs/setup/*.md` as operator docs.
 - [ ] Decide whether to PR SRC-001/002/005 upstream. All are self-contained.
 - [ ] Decommission the old Oracle VPS (`161.33.162.164`) once new VPS is stable.
 - [ ] If Headroom work resumes, decide between source patch (lossy SmartCrusher) or sidecar.
+- [ ] Enable Stage 2 (`incrementalCache`) on one principal and observe cache_hit% before enabling globally.
+- [ ] Decide on Kompress / external prompt-compression engines from the 2026-06-30 research — none added today; revisit if tinybert quality proves insufficient for pasted-prose workloads.
