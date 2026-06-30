@@ -437,7 +437,11 @@ async function runCompressionAsync(
 
     // Opt-in "process-once" path: per-session incremental caching. Byte-identical to the full
     // run (equivalence property test); engines that aren't incremental-aware run normally.
-    if (options?.config?.incrementalCache === true) {
+    // Gated on a STABLE pipeline: the memo keys each message by the hash of the original prefix,
+    // so a budget-driven (cacheSafe===false) engine — whose prefix output changes turn-to-turn
+    // for the same input — would let the memo return stale output and diverge. Fall back to the
+    // full path when any such engine is present.
+    if (options?.config?.incrementalCache === true && pipelineIsIncrementalSafe(pipeline)) {
       const { result } = await incrementalCompress({
         body: adapter.body,
         mode,
@@ -634,20 +638,50 @@ export function filterCacheUnsafeSteps(
   body: Record<string, unknown>,
   options?: StackOptions
 ): { steps: CompressionPipelineStep[]; dropped: string[] } {
-  const ctx = detectCachingContext(body, options?.cachingContext);
-  if (!ctx.isCachingProvider) return { steps, dropped: [] };
+  // Hot-path short-circuit: the only thing that can change the result is the presence of a
+  // droppable (cache-unsafe, non-overflow-critical) engine. Scan the tiny steps array first
+  // (cheap metadata Map gets); if none is droppable there is nothing to filter regardless of
+  // the caching context — so skip detectCachingContext, which would otherwise walk the whole
+  // body (hasCacheControl) on every request even though the common production pipeline has no
+  // cache-busters.
+  if (!steps.some((s) => isDroppableEngine(s.engine))) return { steps, dropped: [] };
+  if (!detectCachingContext(body, options?.cachingContext).isCachingProvider) {
+    return { steps, dropped: [] };
+  }
 
   const kept: CompressionPipelineStep[] = [];
   const dropped: string[] = [];
   for (const step of steps) {
-    const md = getCompressionEngine(step.engine)?.metadata;
-    if (md?.cacheSafe === false && md?.overflowCritical !== true) {
-      dropped.push(step.engine);
-    } else {
-      kept.push(step);
-    }
+    if (isDroppableEngine(step.engine)) dropped.push(step.engine);
+    else kept.push(step);
   }
   return { steps: kept, dropped };
+}
+
+/**
+ * An engine that mutates the cached prefix turn-to-turn (`cacheSafe === false`) and is not
+ * required for overflow protection — safe to drop in a caching context to keep the provider
+ * prompt cache alive. Unregistered/unflagged engines are NOT droppable (kept), so a forgotten
+ * flag degrades to "keep" rather than silently disabling a needed engine.
+ */
+function isDroppableEngine(engineId: string): boolean {
+  const md = getCompressionEngine(engineId)?.metadata;
+  return md?.cacheSafe === false && md?.overflowCritical !== true;
+}
+
+/**
+ * Whether a pipeline is safe for the incremental memo. The memo reuses a prefix message's
+ * compressed output across turns, which is only valid if every engine's output for a message is
+ * a deterministic function of the (immutable) prefix. A `cacheSafe === false` engine is
+ * budget-driven — its output for the same message changes as the conversation grows — so its
+ * presence anywhere in the pipeline makes the memo unsafe; the caller must fall back to a full run.
+ */
+function pipelineIsIncrementalSafe(pipeline?: Array<CompressionPipelineStep | string>): boolean {
+  registerBuiltinCompressionEngines();
+  for (const step of resolveStackSteps(pipeline)) {
+    if (getCompressionEngine(step.engine)?.metadata?.cacheSafe === false) return false;
+  }
+  return true;
 }
 
 /** Emit a per-engine step to the live streaming callback (best-effort, no-op when unset). */

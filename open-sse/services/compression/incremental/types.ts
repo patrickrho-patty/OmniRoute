@@ -25,12 +25,23 @@ export interface IncrementalContext {
   memo: Map<string, unknown>;
   /** Persistent cross-message dedup index (session-dedup), carried across turns. */
   dedupIndex: DedupIndex;
-  /** Cumulative hashes already folded into `dedupIndex` (so prefix is never rescanned). */
+  /**
+   * Cumulative hashes seen on prior turns — telemetry only. The orchestrator uses it to report
+   * cacheHits/computed (how much of this turn was prefix vs new). Engines decide cached-vs-new
+   * via their own `memo`, not this set; it does not gate any compression work.
+   */
   processedDedupHashes: Set<string>;
   /** Authenticated principal id for tenant-scoped persistence. */
   principalId: string;
   /** Pipeline signature this context was built under; mismatch ⇒ caller resets the context. */
   pipelineSig: string;
+  /**
+   * The previous turn's `cumulativeByIndex`. The incremental invariant holds only for
+   * APPEND-ONLY conversations; if the prior array is no longer a prefix of this turn's
+   * (a message was edited / deleted / reordered), the carried memo + dedup index are stale and
+   * the orchestrator resets the context for a correct full recompute. Undefined on first turn.
+   */
+  lastCumulative?: string[];
 }
 
 /** Build a memo key for an engine + message. */

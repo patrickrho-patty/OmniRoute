@@ -12,9 +12,12 @@
  */
 
 import { createDedupIndex } from "../engines/session-dedup/suffixDedup.ts";
+import { SESSION_TTL_MS } from "../../sessionManager.ts";
 import type { IncrementalContext } from "./types.ts";
 
-const TTL_MS = 15 * 60 * 1000;
+// Single source of truth — aligned with sessionManager's session TTL (imported, not copied, so
+// the two can never silently drift).
+const TTL_MS = SESSION_TTL_MS;
 const MAX_CONTEXTS = 500;
 
 interface Entry {
@@ -73,6 +76,18 @@ export function getOrCreateContext(
   evict();
   contexts.set(key, { context, lastUsedAt: Date.now() });
   return context;
+}
+
+/**
+ * Reset a context's carried state IN PLACE (memo, dedup index, processed set, last-cumulative)
+ * without changing its identity. Used when the conversation stops being append-only — the
+ * carried state is stale, so the next run recomputes everything from scratch (correct).
+ */
+export function resetContextState(context: IncrementalContext): void {
+  context.memo.clear();
+  context.dedupIndex = createDedupIndex();
+  context.processedDedupHashes.clear();
+  context.lastCumulative = undefined;
 }
 
 /** Test/maintenance helper: drop all in-memory contexts. */

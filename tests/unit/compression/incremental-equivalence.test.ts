@@ -134,4 +134,49 @@ describe("incremental compression equivalence (incremental ≡ full body)", () =
       }
     });
   }
+
+  // Guards the append-only invariant: if a conversation stops being append-only (a middle
+  // message is deleted/edited), the carried memo + dedup index are stale. The orchestrator's
+  // append-only guard must detect this and reset the context so the result still matches a full
+  // run — otherwise the tail would dedup against stale prefix state and diverge silently.
+  it("resets and stays byte-identical when the conversation is NOT append-only (mid-message delete)", async () => {
+    const pipeline = PIPELINES["session-dedup + rtk"];
+    const rng = makeRng(0xbadbeef);
+    const convo = buildConversation(6, rng);
+
+    // Warm the session context with several append-only turns.
+    for (let t = 1; t <= 4; t++) {
+      const upto = convo.slice(0, 1 + t * 2);
+      await incrementalCompress({
+        body: bodyOf(upto),
+        mode: "stacked",
+        runOptions: {
+          config: { enabled: true, defaultMode: "stacked", stackedPipeline: pipeline } as never,
+        },
+        runStacked: (b, opts) => applyStackedCompressionAsync(b, pipeline, opts as never),
+        injectContext: (ctx) => ({ incremental: ctx }),
+      });
+    }
+
+    // Now break append-only: drop a middle (user,assistant) pair, keep the rest (same session
+    // key — message 0 is unchanged — so the SAME warmed context is reused, exercising the guard).
+    const mutated = [...convo.slice(0, 3), ...convo.slice(5, 9)];
+
+    const fullResult = await applyStackedCompressionAsync(bodyOf(mutated), pipeline, {});
+    const { result: incResult } = await incrementalCompress({
+      body: bodyOf(mutated),
+      mode: "stacked",
+      runOptions: {
+        config: { enabled: true, defaultMode: "stacked", stackedPipeline: pipeline } as never,
+      },
+      runStacked: (b, opts) => applyStackedCompressionAsync(b, pipeline, opts as never),
+      injectContext: (ctx) => ({ incremental: ctx }),
+    });
+
+    assert.equal(
+      JSON.stringify((incResult.body as { messages: unknown }).messages),
+      JSON.stringify((fullResult.body as { messages: unknown }).messages),
+      "non-append-only mutation must reset the context and match a full run, not diverge"
+    );
+  });
 });

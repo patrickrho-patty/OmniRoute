@@ -42,7 +42,7 @@ const sessions = new Map<string, SessionEntry>();
 const MAX_SESSIONS = 200;
 
 // Auto-cleanup sessions older than 15 minutes (reduced from 30)
-const SESSION_TTL_MS = 15 * 60 * 1000;
+export const SESSION_TTL_MS = 15 * 60 * 1000;
 const _cleanupTimer = setInterval(() => {
   const now = Date.now();
   // Evict expired sessions

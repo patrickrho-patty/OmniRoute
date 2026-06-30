@@ -134,6 +134,27 @@ function reassembleMessage(msg: MessageLike, i: number, deduped: Map<number, str
   return { ...msg };
 }
 
+/** A session-dedup memo entry: the message's compressed output + whether dedup changed it. */
+type MemoizedMessage = { msg: MessageLike; changed: boolean };
+
+/**
+ * Whether the dedup substituted a marker for any text span of message `i` this turn — the
+ * content-level "did this message change" signal (string key `i*100000`; multipart text part p
+ * key `i*100000 + p + 1`). Mirrors the keys reassembleMessage consumes.
+ */
+function messageWasDeduped(msg: MessageLike, i: number, deduped: Map<number, string>): boolean {
+  if (typeof msg.content === "string") return deduped.has(i * 100000);
+  if (Array.isArray(msg.content)) {
+    return msg.content.some(
+      (part, p) =>
+        part["type"] === "text" &&
+        typeof part["text"] === "string" &&
+        deduped.has(i * 100000 + p + 1)
+    );
+  }
+  return false;
+}
+
 /**
  * Incremental dedup: process only messages not yet in the session memo (the new tail),
  * deduping them against the persistent cross-turn index (which already holds the prefix's
@@ -181,17 +202,19 @@ function processMessagesIncremental(
     const h = cumulative[i];
     const key = h !== undefined ? memoKey(ENGINE_ID, h) : undefined;
 
-    // Cached prefix message → reuse its stored output verbatim.
-    if (key && ctx.memo.has(key)) {
-      const cached = ctx.memo.get(key) as MessageLike;
-      if (cached.content !== msg.content) changedCount++;
-      return cached;
+    // Cached prefix message → reuse its stored output AND its real change flag.
+    const cached = key ? (ctx.memo.get(key) as MemoizedMessage | undefined) : undefined;
+    if (cached) {
+      if (cached.changed) changedCount++;
+      return cached.msg;
     }
 
-    // New message → reassemble from this turn's dedup, then memoise for future turns.
+    // New message → "changed" iff the dedup actually substituted a marker for it (a content-
+    // level fact, not a cross-turn object-reference compare which is always true for multipart).
+    const changed = messageWasDeduped(msg, i, deduped);
     const out = reassembleMessage(msg, i, deduped);
-    if (key) ctx.memo.set(key, out);
-    if (out.content !== msg.content) changedCount++;
+    if (key) ctx.memo.set(key, { msg: out, changed });
+    if (changed) changedCount++;
     return out;
   });
 

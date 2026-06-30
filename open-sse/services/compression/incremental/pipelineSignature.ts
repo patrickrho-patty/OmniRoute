@@ -13,6 +13,7 @@
 
 import crypto from "node:crypto";
 import type { CompressionConfig, CompressionMode } from "../types.ts";
+import { canonicalize } from "./messageHash.ts";
 
 type PipelineStep = { engine: string; intensity?: string; config?: Record<string, unknown> };
 
@@ -50,6 +51,8 @@ export function pipelineSignature(
   mode: CompressionMode,
   config: CompressionConfig | undefined
 ): string {
-  const payload = JSON.stringify({ v: 1, mode, config: configFingerprint(config) });
+  // canonicalize() sorts object keys recursively so two semantically-identical configs that
+  // differ only in key insertion order produce the SAME signature (no spurious cache resets).
+  const payload = JSON.stringify(canonicalize({ v: 1, mode, config: configFingerprint(config) }));
   return crypto.createHash("sha256").update(payload).digest("hex").slice(0, 32);
 }

@@ -61,6 +61,15 @@ describe("cache-safety pipeline filter", () => {
     assert.deepEqual(ids(steps), ids(FULL_PIPELINE));
   });
 
+  it("drops relevance in a caching context (scores against the changing query → cache-unsafe)", () => {
+    const { dropped } = filterCacheUnsafeSteps(
+      [{ engine: "session-dedup" }, { engine: "relevance" }, { engine: "rtk" }],
+      body,
+      { cachingContext: { provider: "claude" } }
+    );
+    assert.deepEqual(dropped, ["relevance"]);
+  });
+
   it("the user's production pipeline is unchanged in a caching context (no pure cache-busters)", () => {
     const prod = [
       { engine: "session-dedup" },

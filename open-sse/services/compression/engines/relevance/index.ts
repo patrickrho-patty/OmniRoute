@@ -103,6 +103,10 @@ export const relevanceEngine: CompressionEngine = {
     targetLatencyMs: 2,
     supportsPreview: true,
     stable: true,
+    // Scores/prunes each message against the LAST user query and a total-chars budget — both
+    // change every turn, so a prefix message's kept sentences change turn-to-turn → mutates the
+    // cached prefix → busts provider prompt caching. Gated in caching contexts.
+    cacheSafe: false,
   },
 
   apply(body, options): CompressionResult {

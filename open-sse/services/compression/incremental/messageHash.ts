@@ -30,9 +30,11 @@ const VOLATILE_KEYS = new Set(["cache_control", "ephemeral"]);
 /**
  * Deep clone `value` with all volatile keys removed and object keys sorted, producing a
  * canonical, deterministic structure for hashing. Arrays preserve order (semantically
- * significant); object key order does not, so it is normalised.
+ * significant); object key order does not, so it is normalised. Exported so the pipeline
+ * signature hashes config with the same key-order normalisation (avoids spurious cache resets
+ * when two semantically-identical configs differ only in key insertion order).
  */
-function canonicalize(value: unknown): unknown {
+export function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => canonicalize(item));
   }
