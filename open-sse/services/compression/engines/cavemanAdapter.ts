@@ -289,9 +289,18 @@ export const cavemanEngine: CompressionEngine = {
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);
+    const stepEnabled = options?.stepConfig?.enabled;
+    const engineToggleEnabled = options?.config?.engines?.caveman?.enabled;
+    const effectiveEnabled =
+      stepEnabled === false
+        ? false
+        : stepEnabled === true || engineToggleEnabled === true
+          ? true
+          : undefined;
     const cavemanConfig = {
       ...(options?.config?.cavemanConfig ?? {}),
       ...(options?.stepConfig ?? {}),
+      ...(effectiveEnabled !== undefined ? { enabled: effectiveEnabled } : {}),
       ...(options?.config?.languageConfig?.enabled
         ? {
             language: options.config.languageConfig.defaultLanguage,

@@ -4,6 +4,7 @@ import {
   cavemanCompress,
   applyRulesToText,
 } from "../../../open-sse/services/compression/caveman.ts";
+import { cavemanEngine } from "../../../open-sse/services/compression/engines/cavemanAdapter.ts";
 import { CAVEMAN_RULES } from "../../../open-sse/services/compression/cavemanRules.ts";
 import type { CavemanRule } from "../../../open-sse/services/compression/types.ts";
 
@@ -58,6 +59,36 @@ describe("caveman engine", () => {
       preservePatterns: [],
     });
     assert.equal(result.compressed, false);
+  });
+
+  it("adapter honors enabled engine toggle over stale cavemanConfig.enabled=false", () => {
+    const body = {
+      messages: [
+        {
+          role: "user",
+          content:
+            "Please could you help me analyze this code? I would like you to provide a detailed explanation of what the function does. Thank you so much for your help!",
+        },
+      ],
+    };
+    const result = cavemanEngine.apply(body, {
+      config: {
+        engines: { caveman: { enabled: true } },
+        cavemanConfig: {
+          enabled: false,
+          compressRoles: ["user"],
+          skipRules: [],
+          minMessageLength: 50,
+          preservePatterns: [],
+          intensity: "lite",
+        },
+        preserveSystemPrompt: true,
+      } as any,
+      stepConfig: { intensity: "full" },
+    });
+
+    assert.equal(result.compressed, true);
+    assert.ok(result.stats?.savingsPercent && result.stats.savingsPercent > 0);
   });
 
   it("should preserve code blocks", () => {
