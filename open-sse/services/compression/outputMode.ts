@@ -59,6 +59,11 @@ export const CAVEMAN_INSTRUCTION_BY_LANGUAGE = {
     full: `短く圧縮して回答。断片文可。技術内容、コード、エラー、URL、識別子は正確に保持。${SHARED_BOUNDARIES}`,
     ultra: `超短く回答。DB/auth/config/req/res/fn など一般的な略語は可。コード記号、API名、エラー文字列、URL、識別子は省略しない。${SHARED_BOUNDARIES}`,
   },
+  ko: {
+    lite: `간결하게 답변. 군더더기, 인사, 애매한 표현 제거. 기술 용어, 코드, 오류, URL, 식별자는 정확히 유지. ${SHARED_BOUNDARIES}`,
+    full: `짧고 압축해서 답변. 문장 조각 허용. 기술 내용, 코드, 오류, URL, 식별자는 정확히 유지. ${SHARED_BOUNDARIES}`,
+    ultra: `초압축 답변. DB/auth/config/req/res/fn 같은 일반 약어 허용. 코드 심볼, API명, 오류 문자열, URL, 식별자는 줄이지 말 것. ${SHARED_BOUNDARIES}`,
+  },
   id: {
     lite: `Jawab ringkas. Hapus pengisi, salam sopan santun, keraguan. Pertahankan istilah teknis, kode, error, URL, & identifier secara persis. ${SHARED_BOUNDARIES}`,
     full: `Jawab sangat singkat ala caveman pintar. Hapus kata pengisi (hanya/sangat/sebenarnya), salam sopan santun. Kalimat pendek/tidak lengkap OK. Gunakan sinonim pendek. Pertahankan semua substansi teknis, kode, error, URL, & identifier secara persis. ${SHARED_BOUNDARIES}`,

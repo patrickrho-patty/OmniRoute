@@ -241,7 +241,7 @@ ssh -i ~/.ssh/t1_fetcher_ed25519 root@109.123.231.227 '
 
   echo "=== errors in recent logs? ==="
   journalctl -u omniroute.service --since "2 min ago" --no-pager | \
-    grep -iE "error|fail|exception|cannot|undefined" || echo "NO_ERRORS"
+    grep -iE "error|fail|exception|cannot|undefined" || echo "no recent errors found"
 '
 ```
 
@@ -250,7 +250,7 @@ A healthy deploy returns:
 - `active` for service status
 - the commit SHA you pushed
 - ~54 MB for `model.onnx` (real ONNX blob, not a 133-byte LFS pointer)
-- `NO_ERRORS`
+- `no recent errors found`
 
 **How to verify your change is live:**
 

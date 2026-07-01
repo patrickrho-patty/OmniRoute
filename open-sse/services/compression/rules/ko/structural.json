@@ -1,0 +1,30 @@
+{
+  "language": "ko",
+  "category": "structural",
+  "rules": [
+    {
+      "name": "ko_purpose",
+      "pattern": "(?:하기 위해서|하기 위하여|목적으로)",
+      "replacement": " 위해 ",
+      "context": "all",
+      "category": "structural",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_connectors",
+      "pattern": "(?:게다가|추가로|또한|더불어)",
+      "replacement": "또 ",
+      "context": "all",
+      "category": "structural",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_emphasis",
+      "pattern": "(?:매우|정말|상당히|굉장히)",
+      "replacement": "",
+      "context": "all",
+      "category": "structural",
+      "minIntensity": "lite"
+    }
+  ]
+}

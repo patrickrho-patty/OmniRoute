@@ -1,0 +1,86 @@
+{
+  "language": "ko",
+  "category": "ultra",
+  "rules": [
+    {
+      "name": "ko_ultra_database_abbreviation",
+      "pattern": "데이터베이스(?:를|을)?",
+      "replacement": "DB",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_config_abbreviation",
+      "pattern": "(?:컨피그|설정)(?:을|를)?",
+      "replacement": "config",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_function_abbreviation",
+      "pattern": "함수(?:를|을)?",
+      "replacement": "fn",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_request_abbreviation",
+      "pattern": "요청(?:을|를)?",
+      "replacement": "req",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_response_abbreviation",
+      "pattern": "응답(?:을|를)?",
+      "replacement": "res",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_implementation_abbreviation",
+      "pattern": "구현(?:을|를)?",
+      "replacement": "impl",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_authentication_abbreviation",
+      "pattern": "인증(?:을|를)?",
+      "replacement": "auth",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_authorization_abbreviation",
+      "pattern": "(?:권한 부여|권한부여|접근 권한|인가 처리)(?:을|를)?",
+      "replacement": "authz",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_application_abbreviation",
+      "pattern": "애플리케이션(?:을|를)?",
+      "replacement": "app",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    },
+    {
+      "name": "ko_ultra_dependency_abbreviation",
+      "pattern": "의존성(?:을|를)?",
+      "replacement": "dep",
+      "context": "all",
+      "category": "ultra",
+      "minIntensity": "ultra"
+    }
+  ]
+}

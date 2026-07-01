@@ -1,0 +1,38 @@
+{
+  "language": "ko",
+  "category": "dedup",
+  "rules": [
+    {
+      "name": "ko_repeated_context",
+      "pattern": "(?:앞서 말했듯이|전에 말한 것처럼|이전에 언급했듯이|앞에서 설명한 것처럼)",
+      "replacement": "위 참조.",
+      "context": "all",
+      "category": "dedup",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_repeated_question",
+      "pattern": "(?:이전과 같은 질문입니다|앞서 한 질문과 같습니다|같은 질문인데요)",
+      "replacement": "［같은 질문］",
+      "context": "user",
+      "category": "dedup",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_reestablished_context",
+      "pattern": "(?:위 코드로 돌아가면|앞서 이야기로 돌아가면|이전 내용으로 돌아가면)",
+      "replacement": "Re: ",
+      "context": "all",
+      "category": "dedup",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_summary_replacement",
+      "pattern": "(?:지금까지 논의를 요약하면|대화를 요약하면|정리하면)",
+      "replacement": "요약:",
+      "context": "assistant",
+      "category": "dedup",
+      "minIntensity": "lite"
+    }
+  ]
+}

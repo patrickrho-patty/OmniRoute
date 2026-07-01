@@ -7,6 +7,7 @@ const LANGUAGE_HINTS: Record<string, RegExp[]> = {
   de: [/\b(?:ich|datei|fehler|bitte|kannst|konfiguration|danke)\b/i],
   fr: [/\b(?:fichier|erreur|merci|peux|besoin)\b/i],
   ja: [/[\u3040-\u30ff]/],
+  ko: [/[\uac00-\ud7af]/, /\b(?:코드|파일|오류|에러|수정|확인|설명|감사)\b/i],
   id: [/\b(?:saya|kamu|anda|dengan|untuk|yang|tidak|bisa|terima\s+kasih|dari)\b/i],
 };
 
