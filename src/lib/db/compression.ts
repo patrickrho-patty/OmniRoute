@@ -16,6 +16,7 @@ import {
   clampMcpAccessibilityConfig,
   type AggressiveConfig,
   type CavemanConfig,
+  type CavemanIntensity,
   type CavemanOutputModeConfig,
   type OutputStyleSelectionEntry,
   type CompressionLanguageConfig,
@@ -778,9 +779,20 @@ export async function updateCompressionSettings(
         insert.run(NAMESPACE, "autoTriggerMode", JSON.stringify(plan.mode as CompressionMode));
       }
 
-      // Back-compat rows must not keep behavioral injection alive when the engine map says off.
-      if (engines.caveman?.enabled !== true) {
-        const currentCaveman = getStoredJson(db, "cavemanConfig");
+      // Sync legacy runtime caveman config with the authoritative engine toggle map.
+      // The UI engine grid only writes `engines`; without this, cavemanConfig stays stale
+      // and the runtime may ignore the selected intensity or stay disabled.
+      const currentCaveman = getStoredJson(db, "cavemanConfig");
+      if (engines.caveman?.enabled === true) {
+        const level = engines.caveman?.level;
+        const intensity: CavemanIntensity =
+          level === "lite" || level === "full" || level === "ultra" ? level : "full";
+        insert.run(
+          NAMESPACE,
+          "cavemanConfig",
+          JSON.stringify({ ...toRecord(currentCaveman), enabled: true, intensity })
+        );
+      } else {
         insert.run(
           NAMESPACE,
           "cavemanConfig",

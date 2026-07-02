@@ -9,9 +9,8 @@ const ORIGINAL_DATA_DIR = process.env.DATA_DIR;
 process.env.DATA_DIR = TEST_DATA_DIR;
 
 const { getDbInstance, resetDbInstance } = await import("../../../src/lib/db/core.ts");
-const { getCompressionSettings, updateCompressionSettings } = await import(
-  "../../../src/lib/db/compression.ts"
-);
+const { getCompressionSettings, updateCompressionSettings } =
+  await import("../../../src/lib/db/compression.ts");
 
 function freshDir() {
   resetDbInstance();
@@ -66,4 +65,31 @@ test("engines map persists round-trip + activeComboId", async () => {
   assert.equal(cfg.engines.caveman.level, "full");
   // A stored engines row exists → the panel configured engines; dispatch trusts the map.
   assert.equal(cfg.enginesExplicit, true);
+});
+
+test("turning caveman engine on syncs cavemanConfig enabled and intensity", async () => {
+  freshDir();
+  getDbInstance();
+  await updateCompressionSettings({
+    enabled: true,
+    cavemanConfig: { enabled: false, intensity: "lite" },
+    engines: { caveman: { enabled: true, level: "ultra" } },
+  });
+  const cfg = await getCompressionSettings();
+  assert.equal(cfg.cavemanConfig.enabled, true);
+  assert.equal(cfg.cavemanConfig.intensity, "ultra");
+});
+
+test("turning caveman engine off disables cavemanConfig and output mode", async () => {
+  freshDir();
+  getDbInstance();
+  await updateCompressionSettings({
+    enabled: true,
+    cavemanConfig: { enabled: true, intensity: "ultra" },
+    cavemanOutputMode: { enabled: true, intensity: "ultra", autoClarity: true },
+    engines: { caveman: { enabled: false } },
+  });
+  const cfg = await getCompressionSettings();
+  assert.equal(cfg.cavemanConfig.enabled, false);
+  assert.equal(cfg.cavemanOutputMode.enabled, false);
 });
