@@ -1892,6 +1892,37 @@ function makeSyntheticToolCall(name: string, args: Record<string, unknown>): Ope
   ];
 }
 
+function buildSyntheticToolCallResponse(
+  model: string,
+  stream: boolean,
+  toolCalls: OpenAIToolCall[]
+): Response {
+  const cid = `chatcmpl-cgpt-${randomUUID().slice(0, 12)}`;
+  const created = Math.floor(Date.now() / 1000);
+  if (stream) {
+    return buildToolAwareStreamingResponse(cid, created, model, "", toolCalls, "tool_calls");
+  }
+  return new Response(
+    JSON.stringify({
+      id: cid,
+      object: "chat.completion",
+      created,
+      model,
+      system_fingerprint: null,
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: null, tool_calls: toolCalls },
+          finish_reason: "tool_calls",
+          logprobs: null,
+        },
+      ],
+      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+}
+
 function isLocalProjectToolExcuse(content: string): boolean {
   return (
     /(filesystem|file system|repository|repo|workspace|project files|package\.json).{0,160}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste)/i.test(
@@ -1948,6 +1979,60 @@ function synthesizeLocalProjectAnswer(
   if (!devScript) return null;
 
   return `In package.json, \`pnpm dev\` runs:\n\n\`\`\`bash\n${devScript}\n\`\`\`\n\nThat is the root dev script. If you want a deeper trace of what that command fans out to, the next file to inspect is usually \`turbo.json\` or the relevant workspace package scripts.`;
+}
+
+const READABLE_PATH_RE = /(?:`|\b)([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:json|sh|md|ts|tsx|js|jsx|mjs|cjs|yaml|yml|toml|py|go|rs|java|rb|php|css|scss|html|env))(?:`|\b)/g;
+
+function findLastMentionedReadablePath(parsed: ParsedMessages): string | null {
+  for (const item of [...parsed.history].reverse()) {
+    if (item.role !== "assistant" && item.role !== "user") continue;
+    const matches = [...item.content.matchAll(READABLE_PATH_RE)].map((match) => match[1]);
+    if (matches.length > 0) return matches[matches.length - 1];
+  }
+  return null;
+}
+
+function isVagueFileFollowup(currentMsg: string): boolean {
+  const prompt = currentMsg.trim().toLowerCase();
+  if (!prompt) return false;
+  if (READABLE_PATH_RE.test(currentMsg)) {
+    READABLE_PATH_RE.lastIndex = 0;
+    return false;
+  }
+  READABLE_PATH_RE.lastIndex = 0;
+  return /\b(yes|yeah|yep|please|inspect|open|read|check|look|that|it|this|go ahead|continue|do it)\b/i.test(
+    prompt
+  );
+}
+
+function synthesizePreProviderToolCall(
+  parsed: ParsedMessages,
+  requestedTools: unknown
+): OpenAIToolCall[] | null {
+  const toolNames = getRequestedToolNameSet(requestedTools);
+  if (toolNames.size === 0) return null;
+
+  const hasRead = toolNames.has("read");
+  const hasBash = toolNames.has("bash");
+  const currentMsg = parsed.currentMsg || "";
+
+  if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev)\b/i.test(currentMsg)) {
+    const packageJson = tryParsePackageJsonFromToolHistory(parsed);
+    const scripts = packageJson?.scripts as JsonRecord | undefined;
+    if (typeof scripts?.dev === "string") return null;
+    if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
+    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
+  }
+
+  if (isVagueFileFollowup(currentMsg)) {
+    const path = findLastMentionedReadablePath(parsed);
+    if (path) {
+      if (hasRead) return makeSyntheticToolCall("read", { path });
+      if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${path}`, timeout: 120 });
+    }
+  }
+
+  return null;
 }
 
 function synthesizeLocalProjectToolCall(
@@ -3022,6 +3107,18 @@ export class ChatGptWebExecutor extends BaseExecutor {
     if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
       return {
         response: errorResponse(400, "Empty user message"),
+        url: CONV_URL,
+        headers: {},
+        transformedBody: body,
+      };
+    }
+
+    const preProviderToolCalls = hasTools
+      ? synthesizePreProviderToolCall(parsed, requestedTools)
+      : null;
+    if (preProviderToolCalls?.length) {
+      return {
+        response: buildSyntheticToolCallResponse(model, stream !== false, preProviderToolCalls),
         url: CONV_URL,
         headers: {},
         transformedBody: body,

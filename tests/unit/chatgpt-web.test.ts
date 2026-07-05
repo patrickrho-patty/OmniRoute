@@ -691,6 +691,56 @@ test("Non-streaming: converts ChatGPT Web textual tool output into OpenAI tool_c
   }
 });
 
+test("Non-streaming: vague follow-up to a mentioned file is routed to read before ChatGPT Web", async () => {
+  reset();
+  const m = installMockFetch();
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.5-thinking",
+      body: {
+        messages: [
+          { role: "user", content: "could you check pnpm dev?" },
+          {
+            role: "assistant",
+            content:
+              "pnpm dev delegates to bash scripts/dev.sh. Next thing to inspect is scripts/dev.sh.",
+          },
+          { role: "user", content: "yes please inspect that" },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "read",
+              description: "Read file contents",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+              },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    assert.equal(m.calls.conv, 0, "pre-provider routing should skip ChatGPT conversation call");
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "tool_calls");
+    assert.equal(json.choices[0].message.tool_calls[0].function.name, "read");
+    assert.deepEqual(JSON.parse(json.choices[0].message.tool_calls[0].function.arguments), {
+      path: "scripts/dev.sh",
+    });
+  } finally {
+    m.restore();
+  }
+});
+
 test("Non-streaming: converts filesystem-unavailable excuses into local project tool calls", async () => {
   reset();
   const m = installMockFetch({
