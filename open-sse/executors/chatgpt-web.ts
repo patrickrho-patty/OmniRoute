@@ -937,6 +937,8 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
   let systemMsg = "";
   const history: Array<{ role: string; content: string }> = [];
   let latestImageContext: ChatGptImageConversationContext | null = null;
+  // Track tool call id→name for folding tool results (mirrors deepseek-web / grok-web pattern)
+  const callNameById = new Map<string, string>();
 
   for (const msg of messages) {
     let role = String(msg.role || "user");
@@ -947,19 +949,59 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
       content = msg.content;
     } else if (Array.isArray(msg.content)) {
       content = (msg.content as Array<Record<string, unknown>>)
-        .filter((c) => c.type === "text")
-        .map((c) => String(c.text || ""))
+        .filter((c) => c["text"] !== "")
+        .map((c) => String(c["text"] || ""))
         .join(" ");
     }
+
     content = stripInlinedImages(content);
     const imageContext = findCachedImageContext(content);
-    if (imageContext) latestImageContext = imageContext;
-    if (!content.trim()) continue;
+    if (imageContext) {
+      latestImageContext = imageContext;
+      content = content.trim();
+      continue;
+    }
 
     if (role === "system") {
-      systemMsg += (systemMsg ? "\n" : "") + content;
-    } else if (role === "user" || role === "assistant") {
-      history.push({ role, content });
+      systemMsg += systemMsg ? "\n" + content : content;
+    } else if (role === "assistant") {
+      // Track tool_calls id→name so tool result messages can label themselves
+      const rawToolCalls = (msg as Record<string, unknown>)["tool_calls"];
+      const toolCalls = Array.isArray(rawToolCalls)
+        ? (rawToolCalls as Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>)
+        : [];
+      for (const c of toolCalls) {
+        if (c?.id && typeof c.function?.name === "string") {
+          callNameById.set(c.id, c.function.name);
+        }
+      }
+
+      // Serialize tool_calls into the assistant turn so the model sees what it previously called
+      if (toolCalls.length > 0) {
+        const callsSummary = toolCalls
+          .map((c) => {
+            const name = c.function?.name ?? "unknown";
+            const args = c.function?.arguments !== undefined ? String(c.function.arguments) : "";
+            return args ? `${name}(${args})` : name;
+          })
+          .join("\n");
+        const combined = [content.trim(), callsSummary ? `Previous tool calls:\n${callsSummary}` : ""]
+          .filter(Boolean)
+          .join("\n");
+        if (combined.trim()) history.push({ role: "assistant", content: combined });
+      } else if (content.trim()) {
+        history.push({ role: "assistant", content });
+      }
+    } else if (role === "tool" || role === "function") {
+      // Fold tool results as user-side context (ChatGPT web has no native tool-result slot)
+      const toolCallId = String((msg as Record<string, unknown>)["tool_call_id"] ?? "");
+      const toolName = callNameById.get(toolCallId) ?? (toolCallId || "tool");
+      const resultText = content.trim();
+      if (resultText) {
+        history.push({ role: "user", content: `(${toolName}) ${resultText}` });
+      }
+    } else if (role === "user") {
+      history.push({ role: "user", content });
     }
   }
 
