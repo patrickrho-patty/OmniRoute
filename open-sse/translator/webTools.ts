@@ -368,9 +368,14 @@ export function serializeToolsToPrompt(tools: unknown): string {
   if (lines.length === 0) return "";
 
   return [
-    "You can call tools. To call a tool, reply with a single line containing a <tool> block",
-    'with JSON: <tool>{"name": "<tool_name>", "arguments": { ... }}</tool>',
-    "Only emit the <tool> block when you actually want to call a tool; otherwise answer normally.",
+    "TOOL USE PROTOCOL — follow exactly, no exceptions:",
+    "- When you need to call a tool, output ONLY a <tool> block on its own line:",
+    '  <tool>{"name": "<tool_name>", "arguments": {...}}</tool>',
+    "- Do NOT describe what you are going to do. Do NOT write prose before or after the block.",
+    "- Do NOT use code fences, markdown, or any wrapper around the <tool> block.",
+    "- Output exactly one <tool> block per tool call, then STOP.",
+    "- Only after you receive the tool result should you continue.",
+    "- If you do not need a tool, answer normally without any <tool> block.",
     "",
     "Available tools:",
     ...lines,
