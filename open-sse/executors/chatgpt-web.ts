@@ -893,7 +893,7 @@ async function solveProofOfWork(
 
 interface ParsedMessages {
   systemMsg: string;
-  history: Array<{ role: string; content: string }>;
+  history: Array<{ role: "assistant" | "tool" | "user"; content: string }>;
   currentMsg: string;
   latestImageContext: ChatGptImageConversationContext | null;
   hadToolActivity: boolean;
@@ -936,7 +936,7 @@ function findCachedImageContext(content: string): ChatGptImageConversationContex
 
 function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMessages {
   let systemMsg = "";
-  const history: Array<{ role: string; content: string }> = [];
+  const history: Array<{ role: "assistant" | "tool" | "user"; content: string }> = [];
   let latestImageContext: ChatGptImageConversationContext | null = null;
   // Track tool call id→name for labelling folded tool results (mirrors deepseek-web pattern)
   const callNameById = new Map<string, string>();
@@ -1007,7 +1007,7 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
       const toolName = callNameById.get(toolCallId) ?? (toolCallId || "tool");
       const resultText = content.trim();
       if (resultText) {
-        history.push({ role: "assistant", content: `Tool result (${toolName}):\n${resultText}` });
+        history.push({ role: "tool", content: `Tool result (${toolName}):\n${resultText}` });
       }
     } else if (role === "user") {
       history.push({ role: "user", content });
@@ -1145,7 +1145,11 @@ function buildConversationBody(
   }
   if (!continuation && parsed.history.length > 0) {
     const formatted = parsed.history
-      .map((h) => `${h.role === "assistant" ? "Assistant" : "User"}: ${h.content}`)
+      .map((h) => {
+        if (h.role === "assistant") return `Assistant: ${h.content}`;
+        if (h.role === "tool") return h.content;
+        return `User: ${h.content}`;
+      })
       .join("\n\n");
     systemParts.push(
       `Prior conversation (for context — answer only the new user message below):\n\n${formatted}`
@@ -1166,7 +1170,7 @@ function buildConversationBody(
     : parsed.hadToolActivity
       ? [
           parsed.currentMsg?.trim(),
-          "Continue the task using the tool results above. Do NOT repeat tool calls that already succeeded. If the available results already answer the user's request, answer directly; otherwise make the next necessary tool call.",
+          "The transcript above contains real tool execution results from this environment. Continue the task using those tool results. Do NOT repeat tool calls that already succeeded. If the available results already answer the user's request, answer directly; otherwise make the next necessary tool call. If the current request asks about files, repositories, package scripts, commands, or local project state, use read or bash instead of claiming the filesystem is unavailable.",
         ]
           .filter(Boolean)
           .join("\n\n")

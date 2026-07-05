@@ -813,8 +813,11 @@ test("Conversation body: follow-up turns after tool results are anchored to cont
     const userPart = sentBody.messages.at(-1).content.parts[0];
 
     assert.match(systemPart, /Tool result \(bash\):\nAGENTS\.md/);
-    assert.match(userPart, /Continue the task using the tool results above/i);
+    assert.doesNotMatch(systemPart, /Assistant: Tool result \(bash\)/);
+    assert.match(userPart, /real tool execution results from this environment/i);
+    assert.match(userPart, /Continue the task using those tool results/i);
     assert.match(userPart, /Do NOT repeat tool calls that already succeeded/i);
+    assert.match(userPart, /use read or bash instead of claiming the filesystem is unavailable/i);
   } finally {
     m.restore();
   }
