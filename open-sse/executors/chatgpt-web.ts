@@ -35,6 +35,8 @@ import {
   type OpenAIToolCall,
 } from "../translator/webTools.ts";
 
+type JsonRecord = Record<string, unknown>;
+
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const CHATGPT_BASE = "https://chatgpt.com";
@@ -1890,17 +1892,8 @@ function makeSyntheticToolCall(name: string, args: Record<string, unknown>): Ope
   ];
 }
 
-function synthesizeLocalProjectToolCall(
-  content: string,
-  currentMsg: string,
-  requestedTools: unknown
-): OpenAIToolCall[] | null {
-  const toolNames = getRequestedToolNameSet(requestedTools);
-  if (toolNames.size === 0) return null;
-
-  const response = content.toLowerCase();
-  const prompt = currentMsg.toLowerCase();
-  const looksLikeToolExcuse =
+function isLocalProjectToolExcuse(content: string): boolean {
+  return (
     /(filesystem|file system|repository|repo|workspace|project files|package\.json).{0,160}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste)/i.test(
       content
     ) ||
@@ -1909,13 +1902,64 @@ function synthesizeLocalProjectToolCall(
     ) ||
     /(package\.json|file|repo|repository|folder|tree|output|workspace).{0,120}(paste|provide|send|point me at)/i.test(
       content
-    );
-  const asksLocalProject =
-    /(repo|repository|workspace|project|file|folder|directory|package\.json|pnpm|npm|yarn|script|dev command|local state|read|list|ls|cat)/i.test(
-      currentMsg
-    );
+    )
+  );
+}
 
-  if (!looksLikeToolExcuse || !asksLocalProject) return null;
+function asksAboutLocalProject(currentMsg: string): boolean {
+  return /(repo|repository|workspace|project|file|folder|directory|package\.json|pnpm|npm|yarn|script|dev command|local state|read|list|ls|cat)/i.test(
+    currentMsg
+  );
+}
+
+function tryParsePackageJsonFromToolHistory(parsed: ParsedMessages | null | undefined): JsonRecord | null {
+  if (!parsed) return null;
+  for (const item of [...parsed.history].reverse()) {
+    if (item.role !== "tool") continue;
+    const start = item.content.indexOf("{");
+    const end = item.content.lastIndexOf("}");
+    if (start < 0 || end <= start) continue;
+    try {
+      const candidate = JSON.parse(item.content.slice(start, end + 1));
+      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
+        const record = candidate as JsonRecord;
+        if (record.scripts && typeof record.scripts === "object") return record;
+      }
+    } catch {
+      // Try older tool results first, if any.
+    }
+  }
+  return null;
+}
+
+function synthesizeLocalProjectAnswer(
+  content: string,
+  currentMsg: string,
+  parsed: ParsedMessages | null | undefined
+): string | null {
+  if (!isLocalProjectToolExcuse(content)) return null;
+  if (!/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(currentMsg)) {
+    return null;
+  }
+
+  const packageJson = tryParsePackageJsonFromToolHistory(parsed);
+  const scripts = packageJson?.scripts as JsonRecord | undefined;
+  const devScript = typeof scripts?.dev === "string" ? scripts.dev : "";
+  if (!devScript) return null;
+
+  return `In package.json, \`pnpm dev\` runs:\n\n\`\`\`bash\n${devScript}\n\`\`\`\n\nThat is the root dev script. If you want a deeper trace of what that command fans out to, the next file to inspect is usually \`turbo.json\` or the relevant workspace package scripts.`;
+}
+
+function synthesizeLocalProjectToolCall(
+  content: string,
+  currentMsg: string,
+  requestedTools: unknown
+): OpenAIToolCall[] | null {
+  const toolNames = getRequestedToolNameSet(requestedTools);
+  if (toolNames.size === 0) return null;
+
+  const prompt = currentMsg.toLowerCase();
+  if (!isLocalProjectToolExcuse(content) || !asksAboutLocalProject(currentMsg)) return null;
 
   const hasRead = toolNames.has("read");
   const hasBash = toolNames.has("bash");
@@ -1995,7 +2039,8 @@ async function buildToolAwareChatGptResponse(
   currentMsg: string,
   requestedTools: unknown,
   stream: boolean,
-  signal?: AbortSignal | null
+  signal?: AbortSignal | null,
+  parsed?: ParsedMessages | null
 ): Promise<Response> {
   let fullAnswer = "";
 
@@ -2022,11 +2067,17 @@ async function buildToolAwareChatGptResponse(
   );
 
   if (!toolCalls?.length) {
-    const fallbackToolCalls = synthesizeLocalProjectToolCall(content, currentMsg, requestedTools);
-    if (fallbackToolCalls?.length) {
-      content = "";
-      toolCalls = fallbackToolCalls;
-      finishReason = "tool_calls";
+    const fallbackAnswer = synthesizeLocalProjectAnswer(content, currentMsg, parsed);
+    if (fallbackAnswer) {
+      content = fallbackAnswer;
+      finishReason = "stop";
+    } else {
+      const fallbackToolCalls = synthesizeLocalProjectToolCall(content, currentMsg, requestedTools);
+      if (fallbackToolCalls?.length) {
+        content = "";
+        toolCalls = fallbackToolCalls;
+        finishReason = "tool_calls";
+      }
     }
   }
 
@@ -3113,7 +3164,8 @@ export class ChatGptWebExecutor extends BaseExecutor {
         parsed.currentMsg,
         requestedTools,
         stream !== false,
-        signal
+        signal,
+        parsed
       );
     } else if (stream) {
       const sseStream = buildStreamingResponse(

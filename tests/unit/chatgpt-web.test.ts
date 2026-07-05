@@ -765,6 +765,82 @@ test("Non-streaming: converts filesystem-unavailable excuses into local project 
   }
 });
 
+test("Non-streaming: answers from package.json tool result instead of re-reading after an excuse", async () => {
+  reset();
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: ["I can’t inspect package.json from this sandbox. Please paste it."],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.5-thinking",
+      body: {
+        messages: [
+          { role: "user", content: "can you see the pnpm dev and check what it does?" },
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "read-package-json",
+                type: "function",
+                function: { name: "read", arguments: '{"path":"package.json"}' },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "read-package-json",
+            content: '{"scripts":{"dev":"turbo run dev --parallel"}}',
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "read",
+              description: "Read file contents",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+              },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "stop");
+    assert.equal(json.choices[0].message.tool_calls, undefined);
+    assert.match(json.choices[0].message.content, /pnpm dev` runs/i);
+    assert.match(json.choices[0].message.content, /turbo run dev --parallel/);
+  } finally {
+    m.restore();
+  }
+});
+
 test("Streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls", async () => {
   reset();
   const toolText = '<tool>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool>';
