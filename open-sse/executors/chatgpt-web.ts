@@ -896,6 +896,7 @@ interface ParsedMessages {
   history: Array<{ role: string; content: string }>;
   currentMsg: string;
   latestImageContext: ChatGptImageConversationContext | null;
+  hadToolActivity: boolean;
 }
 
 /**
@@ -941,6 +942,7 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
   const callNameById = new Map<string, string>();
   // Track last actual user message — used as currentMsg even when the turn ends with tool results
   let lastUserContent = "";
+  let hadToolActivity = false;
 
   for (const msg of messages) {
     let role = String(msg.role || "user");
@@ -972,6 +974,7 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
       const toolCalls = Array.isArray(rawToolCalls)
         ? (rawToolCalls as Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>)
         : [];
+      if (toolCalls.length > 0) hadToolActivity = true;
       for (const c of toolCalls) {
         if (c?.id && typeof c.function?.name === "string") {
           callNameById.set(c.id, c.function.name);
@@ -995,6 +998,7 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
         history.push({ role: "assistant", content });
       }
     } else if (role === "tool" || role === "function") {
+      hadToolActivity = true;
       // Fold tool results into history as context — do NOT use as currentMsg.
       // ChatGPT web has no native tool-result slot; fold as assistant-side context
       // so the model sees the result and the original user question remains currentMsg
@@ -1023,7 +1027,7 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
     }
   }
 
-  return { systemMsg, history, currentMsg, latestImageContext };
+  return { systemMsg, history, currentMsg, latestImageContext, hadToolActivity };
 }
 
 interface ChatGptMessage {
@@ -1159,7 +1163,14 @@ function buildConversationBody(
 
   const currentUserContent = hasOpenWebUIImageContext(parsed)
     ? "Briefly acknowledge the image result described in the system context. Do not generate, edit, or request another image."
-    : parsed.currentMsg || "";
+    : parsed.hadToolActivity
+      ? [
+          parsed.currentMsg?.trim(),
+          "Continue the task using the tool results above. Do NOT repeat tool calls that already succeeded. If the available results already answer the user's request, answer directly; otherwise make the next necessary tool call.",
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : parsed.currentMsg || "";
 
   messages.push({
     id: randomUUID(),

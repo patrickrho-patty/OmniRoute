@@ -757,6 +757,69 @@ test("Streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls
   }
 });
 
+test("Conversation body: follow-up turns after tool results are anchored to continue instead of restart", async () => {
+  reset();
+  const m = installMockFetch();
+  try {
+    const executor = new ChatGptWebExecutor();
+    await executor.execute({
+      model: "gpt-5.5-thinking",
+      body: {
+        messages: [
+          { role: "user", content: "check out repository? see what here" },
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: { name: "bash", arguments: '{"command":"ls"}' },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "c1", content: "AGENTS.md\npackage.json\npackages\n" },
+          { role: "user", content: "think should try, could use tools," },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "bash",
+              description: "run shell command",
+              parameters: {
+                type: "object",
+                properties: { command: { type: "string" } },
+                required: ["command"],
+              },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    const convIdx = m.calls.urls.findIndex(
+      (u) =>
+        u.endsWith("/backend-api/f/conversation") ||
+        u.endsWith("/backend-api/conversation") ||
+        /\/backend-api\/(f\/)?conversation\?/.test(u)
+    );
+    const sentBody = JSON.parse(m.calls.bodies[convIdx]);
+    const systemPart = sentBody.messages[0].content.parts[0];
+    const userPart = sentBody.messages.at(-1).content.parts[0];
+
+    assert.match(systemPart, /Tool result \(bash\):\nAGENTS\.md/);
+    assert.match(userPart, /Continue the task using the tool results above/i);
+    assert.match(userPart, /Do NOT repeat tool calls that already succeeded/i);
+  } finally {
+    m.restore();
+  }
+});
+
 test("Streaming: produces valid SSE chunks ending with [DONE]", async () => {
   reset();
   const m = installMockFetch({
