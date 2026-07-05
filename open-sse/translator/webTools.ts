@@ -375,6 +375,8 @@ export function serializeToolsToPrompt(tools: unknown): string {
     "- Do NOT use code fences, markdown, or any wrapper around the <tool> block.",
     "- Output exactly one <tool> block per tool call, then STOP.",
     "- Only after you receive the tool result should you continue.",
+    "- If the user asks about files, repositories, folders, package scripts, commands, or local project state, call an appropriate tool such as read or bash.",
+    "- While tools are available, NEVER claim that the filesystem/repository is unavailable, unmounted, hidden, or sandboxed. Do NOT ask the user to paste files that can be read with tools.",
     "- If you do not need a tool, answer normally without any <tool> block.",
     "",
     "Available tools:",

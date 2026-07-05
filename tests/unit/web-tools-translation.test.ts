@@ -34,6 +34,9 @@ describe("webTools — serializeToolsToPrompt", () => {
     assert.ok(prompt.includes("Available tools:"));
     assert.ok(prompt.includes("- get_weather: Get the weather for a city"));
     assert.ok(prompt.includes("<tool>"), "must teach the <tool> wrapper contract");
+    assert.match(prompt, /files, repositories, folders, package scripts/i);
+    assert.match(prompt, /NEVER claim that the filesystem\/repository is unavailable/i);
+    assert.match(prompt, /Do NOT ask the user to paste files/i);
   });
 });
 
