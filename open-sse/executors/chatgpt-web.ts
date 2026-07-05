@@ -1861,6 +1861,84 @@ function emitToolAwareSseChunk(
   );
 }
 
+function getRequestedToolNameSet(tools: unknown): Set<string> {
+  if (!Array.isArray(tools)) return new Set();
+  return new Set(
+    tools
+      .map((tool) => {
+        if (!tool || typeof tool !== "object" || Array.isArray(tool)) return "";
+        const record = tool as Record<string, unknown>;
+        const fn = record.function;
+        if (fn && typeof fn === "object" && !Array.isArray(fn)) {
+          return typeof (fn as Record<string, unknown>).name === "string"
+            ? String((fn as Record<string, unknown>).name)
+            : "";
+        }
+        return typeof record.name === "string" ? record.name : "";
+      })
+      .filter(Boolean)
+  );
+}
+
+function makeSyntheticToolCall(name: string, args: Record<string, unknown>): OpenAIToolCall[] {
+  return [
+    {
+      id: `cgpt-fallback-${Date.now()}_0`,
+      type: "function",
+      function: { name, arguments: JSON.stringify(args) },
+    },
+  ];
+}
+
+function synthesizeLocalProjectToolCall(
+  content: string,
+  currentMsg: string,
+  requestedTools: unknown
+): OpenAIToolCall[] | null {
+  const toolNames = getRequestedToolNameSet(requestedTools);
+  if (toolNames.size === 0) return null;
+
+  const response = content.toLowerCase();
+  const prompt = currentMsg.toLowerCase();
+  const looksLikeToolExcuse =
+    /(filesystem|file system|repository|repo|workspace|project files|package\.json).{0,160}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste)/i.test(
+      content
+    ) ||
+    /(paste|provide|send|point me at).{0,120}(package\.json|file|repo|repository|folder|tree|output|workspace)/i.test(
+      content
+    ) ||
+    /(package\.json|file|repo|repository|folder|tree|output|workspace).{0,120}(paste|provide|send|point me at)/i.test(
+      content
+    );
+  const asksLocalProject =
+    /(repo|repository|workspace|project|file|folder|directory|package\.json|pnpm|npm|yarn|script|dev command|local state|read|list|ls|cat)/i.test(
+      currentMsg
+    );
+
+  if (!looksLikeToolExcuse || !asksLocalProject) return null;
+
+  const hasRead = toolNames.has("read");
+  const hasBash = toolNames.has("bash");
+
+  if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(prompt)) {
+    if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
+    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
+  }
+
+  const pathMatch = currentMsg.match(/(?:read|open|check|see|inspect)\s+([\w./-]+\.[\w-]+)/i);
+  if (pathMatch?.[1] && hasRead) {
+    return makeSyntheticToolCall("read", { path: pathMatch[1] });
+  }
+
+  if (/\bpackages\b/i.test(prompt) && hasBash) {
+    return makeSyntheticToolCall("bash", { command: "ls packages", timeout: 120 });
+  }
+
+  if (hasBash) return makeSyntheticToolCall("bash", { command: "ls", timeout: 120 });
+  if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
+  return null;
+}
+
 function buildToolAwareStreamingResponse(
   cid: string,
   created: number,
@@ -1937,11 +2015,20 @@ async function buildToolAwareChatGptResponse(
     if (chunk.answer) fullAnswer = chunk.answer;
   }
 
-  const { content, toolCalls, finishReason } = buildToolAwareResult(
+  let { content, toolCalls, finishReason } = buildToolAwareResult(
     cleanChatGptText(fullAnswer),
     requestedTools,
     "cgpt"
   );
+
+  if (!toolCalls?.length) {
+    const fallbackToolCalls = synthesizeLocalProjectToolCall(content, currentMsg, requestedTools);
+    if (fallbackToolCalls?.length) {
+      content = "";
+      toolCalls = fallbackToolCalls;
+      finishReason = "tool_calls";
+    }
+  }
 
   if (stream) {
     return buildToolAwareStreamingResponse(cid, created, model, content, toolCalls, finishReason);

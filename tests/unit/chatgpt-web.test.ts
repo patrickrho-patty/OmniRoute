@@ -691,6 +691,80 @@ test("Non-streaming: converts ChatGPT Web textual tool output into OpenAI tool_c
   }
 });
 
+test("Non-streaming: converts filesystem-unavailable excuses into local project tool calls", async () => {
+  reset();
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: [
+                "I don’t see the repo filesystem here, so I can’t inspect package.json. Please paste it.",
+              ],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.5-thinking",
+      body: {
+        messages: [{ role: "user", content: "can you see the pnpm dev and check what it does?" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "read",
+              description: "Read file contents",
+              parameters: {
+                type: "object",
+                properties: { path: { type: "string" } },
+                required: ["path"],
+              },
+            },
+          },
+          {
+            type: "function",
+            function: {
+              name: "bash",
+              description: "Run shell command",
+              parameters: {
+                type: "object",
+                properties: { command: { type: "string" } },
+                required: ["command"],
+              },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "tool_calls");
+    assert.equal(json.choices[0].message.content, null);
+    assert.equal(json.choices[0].message.tool_calls[0].function.name, "read");
+    assert.deepEqual(JSON.parse(json.choices[0].message.tool_calls[0].function.arguments), {
+      path: "package.json",
+    });
+  } finally {
+    m.restore();
+  }
+});
+
 test("Streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls", async () => {
   reset();
   const toolText = '<tool>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool>';
