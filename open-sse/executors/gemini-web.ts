@@ -112,8 +112,11 @@ function parseCookies(raw: string): Array<{ name: string; value: string }> {
  *   [["wrb.fr", null, "<JSON string>"]]
  *
  * The JSON string contains nested array: inner[4][0][1] = ["text chunks"].
- * We concatenate text from every wrb.fr line because Gemini can split one
- * assistant answer across multiple StreamGenerate chunks.
+ * Gemini streams CUMULATIVE snapshots — each wrb.fr line repeats the full text
+ * so far plus the new delta. Concatenating them duplicates the growing prefix
+ * ("Hey!..." ×N). If the chunks are cumulative (each extends the previous),
+ * return the longest (the final complete snapshot); otherwise (true fragments)
+ * concatenate.
  */
 export function parseStreamResponse(raw: string): string {
   const lines = raw.split("\n");
@@ -137,6 +140,16 @@ export function parseStreamResponse(raw: string): string {
     } catch {
       // Skip unparseable lines
     }
+  }
+  if (textChunks.length === 0) return "";
+  // Cumulative snapshots: each chunk is a prefix-superset of its predecessor.
+  // Take the longest (the final, complete snapshot). Only concatenate when the
+  // chunks are genuinely disjoint fragments.
+  const isCumulative = textChunks.every((chunk, i) =>
+    i === 0 || chunk.startsWith(textChunks[i - 1]) || textChunks[i - 1].startsWith(chunk)
+  );
+  if (isCumulative) {
+    return textChunks.reduce((longest, chunk) => (chunk.length > longest.length ? chunk : longest));
   }
   return textChunks.join("");
 }
