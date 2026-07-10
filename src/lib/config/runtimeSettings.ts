@@ -541,10 +541,6 @@ export async function applyRuntimeSettings(
   return changes;
 }
 
-export function getLastAppliedRuntimeSettingsSnapshotForTests() {
-  return lastAppliedSnapshot;
-}
-
 export function resetRuntimeSettingsStateForTests() {
   lastAppliedSnapshot = null;
   currentAuthzBypass = DEFAULT_AUTHZ_BYPASS_SNAPSHOT;

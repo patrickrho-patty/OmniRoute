@@ -1,9 +1,9 @@
 import {
-  PUBLIC_API_ROUTE_PREFIXES,
   PUBLIC_READONLY_API_ROUTE_PREFIXES,
   PUBLIC_READONLY_METHODS,
+  isPublicApiRoute,
 } from "../../shared/constants/publicApiRoutes";
-import type { ClassificationReason, RouteClass, RouteClassification } from "./types";
+import type { ClassificationReason, RouteClassification } from "./types";
 
 const CLIENT_API_ALIAS_PREFIXES: ReadonlyArray<{ alias: string; canonical: string }> = [
   { alias: "/chat/completions", canonical: "/api/v1/chat/completions" },
@@ -23,6 +23,11 @@ function normalizePathname(rawPath: string): { path: string; reason?: Classifica
   if (path === "/v1/v1" || path.startsWith("/v1/v1/")) {
     const tail = path.slice("/v1/v1".length) || "";
     return { path: "/api/v1" + tail, reason: "client_api_double_prefix" };
+  }
+
+  if (path === "/v1beta" || path.startsWith("/v1beta/")) {
+    const tail = path.slice("/v1beta".length) || "";
+    return { path: "/api/v1beta" + tail, reason: "client_api_alias" };
   }
 
   if (path === "/v1" || path.startsWith("/v1/")) {
@@ -61,6 +66,17 @@ export function classifyRoute(rawPath: string, method: string = "GET"): RouteCla
     };
   }
 
+  // The login page must always be reachable so an unauthenticated operator can
+  // establish a dashboard session. Without this it falls through to MANAGEMENT
+  // and is gated by requireLogin — making login impossible (AUTH_001 on /login).
+  if (normalizedPath === "/login") {
+    return {
+      routeClass: "PUBLIC",
+      reason: "login_page",
+      normalizedPath,
+    };
+  }
+
   // Public, ticket-gated device-flow connect pages (e.g. /connect/codex/{token}).
   // Anyone with the shared link completes the provider login in their own browser.
   if (normalizedPath === "/connect" || normalizedPath.startsWith("/connect/")) {
@@ -80,6 +96,14 @@ export function classifyRoute(rawPath: string, method: string = "GET"): RouteCla
   }
 
   if (normalizedPath === "/api/v1" || normalizedPath.startsWith("/api/v1/")) {
+    return {
+      routeClass: "CLIENT_API",
+      reason: aliasReason ?? "client_api_v1",
+      normalizedPath,
+    };
+  }
+
+  if (normalizedPath === "/api/v1beta" || normalizedPath.startsWith("/api/v1beta/")) {
     return {
       routeClass: "CLIENT_API",
       reason: aliasReason ?? "client_api_v1",
@@ -118,23 +142,5 @@ function matchesReadonlyPublic(path: string, method: string): boolean {
 }
 
 function isClassifiedAsPublic(path: string, method: string): boolean {
-  const isV1ApiPrefix = (p: string) =>
-    p === "/api/v1" || p === "/api/v1/" || p.startsWith("/api/v1/");
-  const filtered = PUBLIC_API_ROUTE_PREFIXES.filter((p) => p !== "/api/v1/");
-  if (filtered.some((prefix) => path.startsWith(prefix)) && !isV1ApiPrefix(path)) {
-    return true;
-  }
-  return matchesReadonlyPublic(path, method);
-}
-
-export function isClientApi(routeClass: RouteClass): boolean {
-  return routeClass === "CLIENT_API";
-}
-
-export function isManagement(routeClass: RouteClass): boolean {
-  return routeClass === "MANAGEMENT";
-}
-
-export function isPublic(routeClass: RouteClass): boolean {
-  return routeClass === "PUBLIC";
+  return isPublicApiRoute(path, method);
 }

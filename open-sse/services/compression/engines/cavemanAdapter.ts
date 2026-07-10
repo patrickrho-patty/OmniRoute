@@ -289,14 +289,20 @@ export const cavemanEngine: CompressionEngine = {
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);
+    // Precedence: stepConfig.enabled > per-engine toggle (engines.caveman.enabled) >
+    // cavemanConfig.enabled. Default `enabled: true` when none is explicit — mirrors
+    // rtkAdapter so the rules actually run instead of being a silent no-op
+    // (DEFAULT_CAVEMAN_CONFIG.enabled=false, Issue #6425).
     const stepEnabled = options?.stepConfig?.enabled;
     const engineToggleEnabled = options?.config?.engines?.caveman?.enabled;
     const effectiveEnabled =
       stepEnabled === false
         ? false
-        : stepEnabled === true || engineToggleEnabled === true
+        : stepEnabled === true
           ? true
-          : undefined;
+          : engineToggleEnabled !== undefined
+            ? engineToggleEnabled
+            : true;
     const cavemanConfig = {
       ...(options?.config?.cavemanConfig ?? {}),
       ...(options?.stepConfig ?? {}),

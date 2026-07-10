@@ -7,6 +7,13 @@ export type WebSessionCredentialRequirement =
       placeholder: string;
       acceptsFullCookieHeader: boolean;
       storageKeys: readonly string[];
+      /**
+       * #5465 — Optional i18n key for a provider-specific credential hint that
+       * REPLACES the generic "Required cookie: {credential}…" copy. Use when the
+       * generic template is confusing (e.g. t3.chat needs a localStorage value
+       * AND the Cookie header, so the one-line cookie hint reads circular).
+       */
+      hintKey?: string;
     }
   | {
       kind: "none";
@@ -94,12 +101,23 @@ export const WEB_SESSION_CREDENTIAL_REQUIREMENTS = {
     acceptsFullCookieHeader: false,
     storageKeys: ["token", "access_token", "accessToken"],
   },
+  "copilot-m365-web": {
+    kind: "token",
+    credentialName: "access_token + chathubPath",
+    placeholder: "access_token=...; chathubPath=redacted",
+    acceptsFullCookieHeader: false,
+    storageKeys: ["token", "access_token", "accessToken", "chathubPath", "userTenant"],
+  },
   "t3-web": {
     kind: "cookie",
     credentialName: "convex-session-id + Cookie header",
     placeholder: "convex-session-id=abc123...; Cookie: ...",
     acceptsFullCookieHeader: true,
     storageKeys: ["cookie", "convex-session-id", "convexSessionId"],
+    // #5465 — the generic cookie hint reads circular for t3.chat (needs a
+    // localStorage value AND the Cookie header); use the step-by-step DevTools
+    // copy that already ships translated in every locale.
+    hintKey: "t3ChatWebCookieHint",
   },
   "adapta-web": {
     kind: "cookie",
@@ -117,17 +135,18 @@ export const WEB_SESSION_CREDENTIAL_REQUIREMENTS = {
   },
   huggingchat: {
     kind: "cookie",
-    credentialName: "hf-chat",
-    placeholder: "hf-chat=... or full Cookie header from huggingface.co",
+    credentialName: "full Cookie header (hf-chat + token)",
+    placeholder:
+      "hf-chat=...; token=...; aws-waf-token=... (full Cookie header from huggingface.co)",
     acceptsFullCookieHeader: true,
     storageKeys: ["cookie", "hf-chat"],
   },
-  phind: {
+  "yuanbao-web": {
     kind: "cookie",
-    credentialName: "phind_session",
-    placeholder: "phind_session=... or full Cookie header from phind.com",
+    credentialName: "full Cookie header (hy_user + hy_token)",
+    placeholder: "hy_user=...; hy_token=... (full Cookie header from yuanbao.tencent.com)",
     acceptsFullCookieHeader: true,
-    storageKeys: ["cookie", "phind_session"],
+    storageKeys: ["cookie", "hy_user", "hy_token"],
   },
   "poe-web": {
     kind: "cookie",
@@ -152,17 +171,18 @@ export const WEB_SESSION_CREDENTIAL_REQUIREMENTS = {
   },
   "kimi-web": {
     kind: "cookie",
-    credentialName: "session",
-    placeholder: "session=... or full Cookie header from kimi.moonshot.cn",
+    credentialName: "kimi-auth",
+    placeholder: "kimi-auth=eyJ... (full Cookie header from www.kimi.com)",
     acceptsFullCookieHeader: true,
-    storageKeys: ["cookie", "session"],
+    storageKeys: ["cookie", "kimi-auth", "session"],
   },
   "doubao-web": {
     kind: "cookie",
-    credentialName: "session",
-    placeholder: "session=... or full Cookie header from doubao.com",
+    credentialName: "full Cookie header (sessionid + ttwid + s_v_web_id)",
+    placeholder:
+      "sessionid=...; ttwid=...; s_v_web_id=... (or fp=verify_... fallback from www.dola.com)",
     acceptsFullCookieHeader: true,
-    storageKeys: ["cookie", "session"],
+    storageKeys: ["cookie", "sessionid", "ttwid", "s_v_web_id", "fp"],
   },
   "qwen-web": {
     kind: "cookie",
@@ -260,4 +280,29 @@ export function hasUsableWebSessionCredential(
 
   const data = providerSpecificData as Record<string, unknown>;
   return requirement.storageKeys.some((key) => hasNonEmptyString(data[key]));
+}
+
+/**
+ * Resolve the value that a web-session import must store in the connection's
+ * `apiKey` column.
+ *
+ * `token`-kind providers (deepseek-web, copilot-web, copilot-m365-web,
+ * t3-chat-web, …) are authenticated from `apiKey`: both the connection
+ * validator (`validateDeepSeekWebProvider({ apiKey })`) and the executor
+ * (`extractUserToken` → `credentials.apiKey`) read the token there — never from
+ * `providerSpecificData`. The bulk web-session import used to leave `apiKey`
+ * null and stash the token only in `providerSpecificData`, so imported token-kind
+ * connections were never recognized. Return the credential for token-kind so the
+ * import stores it where those readers look.
+ *
+ * `cookie`-kind providers keep `apiKey` null — their executors read the full
+ * cookie from `providerSpecificData.cookie`.
+ */
+export function resolveWebSessionImportApiKey(
+  requirement: WebSessionCredentialRequirement | null,
+  credential: string
+): string | null {
+  if (!requirement || requirement.kind !== "token") return null;
+  const trimmed = typeof credential === "string" ? credential.trim() : "";
+  return trimmed.length > 0 ? trimmed : null;
 }

@@ -81,6 +81,7 @@ export const updateSettingsSchema = z
       .optional(),
     customBannedSignals: z.array(z.string().max(200)).optional(),
     debugMode: z.boolean().optional(),
+    logToolSources: z.boolean().optional(),
     hiddenSidebarItems: z.array(z.enum(HIDEABLE_SIDEBAR_ITEM_IDS)).optional(),
     hiddenSidebarGroupLabels: z.array(z.enum(HIDEABLE_SIDEBAR_GROUP_IDS)).optional(),
     sidebarSectionOrder: z
@@ -102,6 +103,7 @@ export const updateSettingsSchema = z
     // Opus models are gated by the Anthropic binary KT() check. Schema is
     // intentionally permissive on supportedModels so additional eligible model
     // ids can be enabled without a schema bump.
+    claudeClassifierCompat: z.enum(["off", "auto", "always"]).optional(),
     claudeFastMode: z
       .object({
         enabled: z.boolean().optional(),
@@ -114,6 +116,7 @@ export const updateSettingsSchema = z
     fallbackStrategy: z.enum(ACCOUNT_FALLBACK_STRATEGY_VALUES).optional(),
     wildcardAliases: z.array(z.object({ pattern: z.string(), target: z.string() })).optional(),
     stickyRoundRobinLimit: z.number().int().min(0).max(1000).optional(),
+    disableSessionStickiness: z.boolean().optional(),
     requestRetry: z.number().int().min(0).max(10).optional(),
     maxRetryIntervalSec: z.number().int().min(0).max(300).optional(),
     maxBodySizeMb: z

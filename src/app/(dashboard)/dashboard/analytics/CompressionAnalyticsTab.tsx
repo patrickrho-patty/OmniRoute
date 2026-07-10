@@ -16,10 +16,14 @@ interface CompressionAnalyticsSummary {
   totalTokensSaved: number;
   avgSavingsPct: number;
   avgDurationMs: number;
-  byMode: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }>;
-  byEngine: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }>;
+  byMode: Record<
+    string,
+    { count: number; tokensSaved: number; avgSavingsPct: number; skipped?: number }
+  >;
   byProvider: Record<string, { count: number; tokensSaved: number }>;
   last24h: Array<{ hour: string; count: number; tokensSaved: number }>;
+  totalSkipped?: number;
+  bySkipReason?: Record<string, number>;
   validationFallbacks: number;
   realUsage: {
     requestsWithReceipts: number;
@@ -61,13 +65,13 @@ function ModeBar({
   count,
   total,
   tokensSaved,
-  avgSavingsPct,
+  skipped = 0,
 }: {
   mode: string;
   count: number;
   total: number;
   tokensSaved: number;
-  avgSavingsPct?: number;
+  skipped?: number;
 }) {
   const pct = total > 0 ? Math.round((count / total) * 100) : 0;
   return (
@@ -76,7 +80,11 @@ function ModeBar({
         <span className="font-medium text-text capitalize">{mode}</span>
         <span className="text-text-muted">
           {count} requests · {tokensSaved.toLocaleString()} tokens saved
-          {avgSavingsPct !== undefined ? ` · ${avgSavingsPct}% avg` : ""}
+          {skipped > 0 && (
+            // #4268: attempted-but-no-op runs (e.g. Stacked saved nothing) are
+            // recorded now, so this mode is visible even when count is 0.
+            <span className="text-text-muted/70"> · {skipped.toLocaleString()} skipped (no-op)</span>
+          )}
         </span>
       </div>
       <div className="h-2 rounded-full bg-bg-muted overflow-hidden">
@@ -165,10 +173,6 @@ export default function CompressionAnalyticsTab() {
   }
 
   const modes = Object.entries(stats.byMode).sort(([, a], [, b]) => b.count - a.count);
-  const engines = Object.entries(stats.byEngine ?? {})
-    .filter(([id]) => id !== "ponytail")
-    .sort(([, a], [, b]) => b.tokensSaved - a.tokensSaved);
-  const engineTotalRequests = engines.reduce((sum, [, entry]) => sum + entry.count, 0);
   const providers = Object.entries(stats.byProvider).sort(([, a], [, b]) => b.count - a.count);
 
   // Calculate max tokens for hourly chart scaling
@@ -296,36 +300,10 @@ export default function CompressionAnalyticsTab() {
                 count={data.count}
                 total={stats.totalRequests}
                 tokensSaved={data.tokensSaved}
-                avgSavingsPct={data.avgSavingsPct}
+                skipped={data.skipped ?? 0}
               />
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Engine Breakdown */}
-      {engines.length > 0 && (
-        <div className="card p-5">
-          <h3 className="font-semibold text-text mb-4 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-[20px]">account_tree</span>
-            Engine Breakdown
-          </h3>
-          <div className="flex flex-col gap-4">
-            {engines.map(([engine, data]) => (
-              <ModeBar
-                key={engine}
-                mode={engine}
-                count={data.count}
-                total={engineTotalRequests}
-                tokensSaved={data.tokensSaved}
-                avgSavingsPct={data.avgSavingsPct}
-              />
-            ))}
-          </div>
-          <p className="mt-3 text-xs text-text-muted">
-            Stacked runs are split by compression_engine_breakdown rows, so RTK/Caveman/Ponytail
-            contributions are visible separately from the combined stacked request.
-          </p>
         </div>
       )}
 

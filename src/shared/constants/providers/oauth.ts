@@ -36,18 +36,6 @@ export const OAUTH_PROVIDERS = {
     deprecationReason:
       "Qwen OAuth free tier was discontinued on 2026-04-15. Use 'bailian-coding-plan', 'alibaba', 'alibaba-cn', or 'openrouter' provider with API key instead.",
   },
-  "gemini-cli": {
-    id: "gemini-cli",
-    alias: "gemini-cli",
-    name: "Gemini CLI",
-    icon: "terminal",
-    color: "#4285F4",
-    subscriptionRisk: true,
-    riskNoticeVariant: "deprecated",
-    hasFree: true,
-    authHint:
-      "Uses Gemini CLI OAuth / Cloud Code credentials. Pro models require an eligible Google account or paid plan.",
-  },
   agy: {
     id: "agy",
     alias: "agy",
@@ -145,6 +133,19 @@ export const OAUTH_PROVIDERS = {
     authHint:
       "Zed stores LLM provider credentials (OpenAI, Anthropic, Google, Mistral, xAI) in the OS keychain. Use the Import button below to discover and import them automatically.",
   },
+  "zed-hosted": {
+    id: "zed-hosted",
+    alias: undefined,
+    name: "Zed Hosted Models",
+    icon: "code_blocks",
+    color: "#101010",
+    textIcon: "ZH",
+    website: "https://zed.dev",
+    subscriptionRisk: true,
+    riskNoticeVariant: "oauth",
+    authHint:
+      "Sign in with your Zed account (native-app sign-in). OmniRoute generates a one-time RSA keypair and opens zed.dev to authorize it — on a remote/headless install, copy the resulting 127.0.0.1 callback URL from your browser's address bar and paste it back here. Distinct from the 'Zed IDE' credential-import entry above: this proxies chat completions through Zed's own hosted model aggregator (cloud.zed.dev), fronting Anthropic/OpenAI/Google/xAI models under your Zed plan.",
+  },
   trae: {
     id: "trae",
     alias: "tr",
@@ -175,6 +176,10 @@ export const OAUTH_PROVIDERS = {
     textIcon: "KC",
     subscriptionRisk: true,
     riskNoticeVariant: "oauth",
+    // #4019: serve Kilo's free models without signup. With no account connected,
+    // getProviderCredentials synthesizes a noauth credential and the executor
+    // sends `Bearer anonymous` (see the kilocode registry `anonymousApiKey`).
+    anonymousFallback: true,
   },
   cline: {
     id: "cline",

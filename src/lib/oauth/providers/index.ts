@@ -12,7 +12,6 @@
 
 import { claude } from "./claude";
 import { codex } from "./codex";
-import { gemini } from "./gemini";
 import { antigravity } from "./antigravity";
 import { agy } from "./agy";
 import { qoder } from "./qoder";
@@ -28,11 +27,12 @@ import { cline } from "./cline";
 import { windsurf } from "./windsurf";
 import { grokCli } from "./grok-cli";
 import { codebuddyCn } from "./codebuddy-cn";
+import { zed } from "./zed";
+import { zedHosted } from "./zed-hosted";
 
 export const PROVIDERS = {
   claude,
   codex,
-  "gemini-cli": gemini,
   antigravity,
   agy,
   qoder,
@@ -51,6 +51,9 @@ export const PROVIDERS = {
   "devin-cli": windsurf,
   "grok-cli": grokCli,
   "codebuddy-cn": codebuddyCn,
+  // Zed IDE credential bridge — uses keychain import, not standard OAuth
+  zed,
+  "zed-hosted": zedHosted,
 };
 
 export default PROVIDERS;

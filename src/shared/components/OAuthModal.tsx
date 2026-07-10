@@ -5,10 +5,12 @@ import { useTranslations } from "next-intl";
 import Modal from "./Modal";
 import Button from "./Button";
 import Input from "./Input";
+import LinkifiedText from "./LinkifiedText";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { parseResponseBody, getErrorMessage } from "@/shared/utils/api";
+import { isCredentialBlob, submitCredentialBlob } from "@/shared/components/oauthBlobSubmit";
 
-const GOOGLE_OAUTH_PROVIDERS = new Set(["antigravity", "agy", "gemini-cli"]);
+const GOOGLE_OAUTH_PROVIDERS = new Set(["antigravity", "agy"]);
 
 /** Providers that use a local callback server on a random port (PKCE browser flow). */
 const PKCE_CALLBACK_SERVER_PROVIDERS = new Set(["codex"]);
@@ -17,7 +19,7 @@ const PKCE_CALLBACK_SERVER_PROVIDERS = new Set(["codex"]);
  * Phase 1 hotfix (2026-05-29): windsurf & devin-cli only support import-token.
  * Their PKCE flow targeting app.devin.ai/editor/signin returned 404 post-rebrand.
  * Phase 2 will reintroduce browser login via Firebase OAuth + RegisterUser.
- * Spec: docs/superpowers/specs/2026-05-29-windsurf-login-fix-design.md.
+ * Spec: _tasks/superpowers/specs/2026-05-29-windsurf-login-fix-design.md.
  */
 const IMPORT_TOKEN_ONLY_PROVIDERS = new Set(["windsurf", "devin-cli", "grok-cli"]);
 
@@ -159,9 +161,7 @@ export default function OAuthModal({
           setError(
             "redirect_uri_mismatch: The default Google OAuth credentials only work on localhost. " +
               "For remote use, configure your own OAuth credentials via environment variables: " +
-              (provider === "antigravity"
-                ? "ANTIGRAVITY_OAUTH_CLIENT_ID and ANTIGRAVITY_OAUTH_CLIENT_SECRET"
-                : "GEMINI_CLI_OAUTH_CLIENT_ID and GEMINI_CLI_OAUTH_CLIENT_SECRET") +
+              "ANTIGRAVITY_OAUTH_CLIENT_ID and ANTIGRAVITY_OAUTH_CLIENT_SECRET" +
               ". See the README section 'OAuth on a Remote Server'."
           );
         } else {
@@ -322,7 +322,11 @@ export default function OAuthModal({
       // Claude Code and Cline OAuth flows can finish on provider-hosted pages that
       // show an auth code instead of redirecting back to OmniRoute.
       // Start directly in manual mode so users always have an input to paste code/url.
-      if (provider === "claude" || provider === "cline") {
+      // zed-hosted's native-app sign-in always redirects the browser to a local
+      // 127.0.0.1:<port> callback that OmniRoute never listens on (the port is
+      // arbitrary and unrelated to the dashboard's own port) — nothing can
+      // auto-close the popup, so always show the manual paste-URL input.
+      if (provider === "claude" || provider === "cline" || provider === "zed-hosted") {
         forceManual = true;
       }
 
@@ -392,7 +396,7 @@ export default function OAuthModal({
       // - Codex/OpenAI: always port 1455 (registered in OAuth app)
       // - Windsurf/Devin CLI (remote fallback): use localhost with OmniRoute port + /auth/callback
       //   (on true localhost the callback server handles it; this is only reached on remote)
-      // - Google OAuth providers (antigravity, gemini-cli): default to loopback so the
+      // - Google OAuth providers (antigravity/agy): default to loopback so the
       //   bundled native/desktop credentials keep working. Prefer 127.0.0.1 over
       //   localhost for the Google native-app handoff; Google documents that localhost
       //   can run into local firewall/name-resolution edge cases. The authorize route
@@ -653,6 +657,29 @@ export default function OAuthModal({
   const handleManualSubmit = async () => {
     try {
       setError(null);
+      if (isCredentialBlob(callbackUrl)) {
+        await submitCredentialBlob(provider, callbackUrl, reauthConnection, setStep, onSuccess);
+        return;
+      }
+
+      // Codex: a bare ChatGPT access token (JWT, no refresh token) pasted
+      // directly instead of a callback URL/code — mirrors the grok-cli
+      // raw-token paste pattern. Routed through the access-token-only import
+      // endpoint (#1290) instead of the authorization-code exchange below.
+      if (provider === "codex" && /^eyJ/.test(callbackUrl.trim())) {
+        const res = await fetch("/api/oauth/codex/import-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accessToken: callbackUrl.trim() }),
+        });
+        const data = (await parseResponseBody(res)) as Record<string, unknown>;
+        if (!res.ok) {
+          throw new Error(getErrorMessage(data, res.status, "Failed to import access token"));
+        }
+        setStep("success");
+        onSuccess?.();
+        return;
+      }
 
       if (!authData) {
         throw new Error(
@@ -849,8 +876,16 @@ export default function OAuthModal({
                       </strong>
                     </div>
                   )}
-                  {/* Generic remote info for other providers */}
-                  {!isTrueLocalhost && !GOOGLE_OAUTH_PROVIDERS.has(provider) && (
+                  {/* Actionable remote paste instruction — shown for ALL remote providers,
+                      including Google OAuth (antigravity/agy). The Google
+                      loopback creds redirect to 127.0.0.1:<port>/callback, which on a
+                      remotely-accessed dashboard lands on the operator's own machine and
+                      shows a "can't reach this page" error. That is expected: the URL bar
+                      still carries ?code=…, and pasting it below completes the login. Before
+                      this, Google providers only saw the discouraging loopback warning and
+                      never the "copy the URL and paste it" step, so remote login appeared to
+                      hang. */}
+                  {!isTrueLocalhost && (
                     <div className="rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-xs text-blue-200">
                       <span className="material-symbols-outlined text-sm align-middle mr-1">
                         info
@@ -900,7 +935,7 @@ export default function OAuthModal({
                   <Button
                     onClick={handleManualSubmit}
                     fullWidth
-                    disabled={!callbackUrl || !authData}
+                    disabled={!callbackUrl || (!authData && !isCredentialBlob(callbackUrl))}
                   >
                     {t("connect")}
                   </Button>
@@ -938,7 +973,9 @@ export default function OAuthModal({
               <span className="material-symbols-outlined text-3xl text-red-600">error</span>
             </div>
             <h3 className="text-lg font-semibold mb-2">{t("error")}</h3>
-            <p className="text-sm text-red-600 mb-4">{error}</p>
+            <p className="text-sm text-red-600 mb-4">
+              <LinkifiedText text={error} />
+            </p>
             <div className="flex gap-2">
               <Button onClick={startOAuthFlow} variant="secondary" fullWidth>
                 {t("tryAgain")}

@@ -182,17 +182,6 @@ const CLI_TOOLS: Record<string, any> = {
       env: ".qwen/.env",
     },
   },
-  "gemini-cli": {
-    defaultCommand: "gemini",
-    envBinKey: "CLI_GEMINI_BIN",
-    requiresBinary: true,
-    healthcheckTimeoutMs: 8000,
-    paths: {
-      auth: ".gemini/oauth_creds.json",
-      accounts: ".gemini/google_accounts.json",
-      settings: ".gemini/settings.json",
-    },
-  },
   // ── Plan 14 — new "custom" configType tools ───────────────────────────────
   forge: {
     defaultCommand: "forge",
@@ -221,6 +210,15 @@ const CLI_TOOLS: Record<string, any> = {
       config: ".config/deepseek-tui/config.toml",
     },
   },
+  codewhale: {
+    defaultCommand: "codewhale",
+    envBinKey: "CLI_CODEWHALE_BIN",
+    requiresBinary: true,
+    healthcheckTimeoutMs: 8000,
+    paths: {
+      config: ".codewhale/config.toml",
+    },
+  },
   smelt: {
     defaultCommand: "smelt",
     envBinKey: "CLI_SMELT_BIN",
@@ -237,6 +235,18 @@ const CLI_TOOLS: Record<string, any> = {
     healthcheckTimeoutMs: 8000,
     paths: {
       config: ".pi/config.json",
+    },
+  },
+  // Config path reconciled with bin/cli/commands/setup-crush.mjs::resolveCrushTarget's
+  // default (~/.config/crush/crush.json) so the dashboard and `omniroute setup-crush`
+  // agree on one canonical config location.
+  crush: {
+    defaultCommand: "crush",
+    envBinKey: "CLI_CRUSH_BIN",
+    requiresBinary: true,
+    healthcheckTimeoutMs: 8000,
+    paths: {
+      config: ".config/crush/crush.json",
     },
   },
 };
@@ -518,7 +528,7 @@ const getExtraPaths = () =>
  * Checks npm global prefix, NVM locations, standalone installer paths.
  * Works on all platforms — Windows checks .cmd wrappers, Linux/macOS checks bare names.
  */
-const getKnownToolPaths = (toolId: string): string[] => {
+export const getKnownToolPaths = (toolId: string): string[] => {
   const home = os.homedir();
   const paths: string[] = [];
 
@@ -643,7 +653,7 @@ const getNvmNodePath = (): string | null => {
   return null;
 };
 
-const getLookupEnv = () => {
+export const getLookupEnv = () => {
   const env = { ...process.env };
   const extraPaths = getExtraPaths();
   const basePath = env.PATH || env.Path || "";
@@ -1066,7 +1076,7 @@ export const getCliRuntimeStatus = async (toolId: string) => {
   }
 
   const healthcheck = await checkRunnable(
-    located.commandPath,
+    located.commandPath || command || "", // located + executable ⇒ commandPath set
     env,
     Number(tool.healthcheckTimeoutMs || 4000)
   );

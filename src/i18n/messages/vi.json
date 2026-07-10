@@ -1072,7 +1072,8 @@
     "settingsAuthzSubtitle": "__MISSING__:Route inventory and bypass policy",
     "docsSubtitle": "Documentation",
     "issuesSubtitle": "Report a bug",
-    "changelogSubtitle": "Release notes"
+    "changelogSubtitle": "Release notes",
+    "gamificationGroup": "Gamification"
   },
   "webhooks": {
     "title": "Webhook",
@@ -4428,7 +4429,12 @@
     "webNoAuthGuideBody": "{provider} không cần khóa API hoặc cookie. Lưu kết nối để sử dụng điểm cuối web miễn phí của nó.",
     "webSessionCredentialValidationFailed": "Xác thực thông tin xác thực phiên không thành công. Đăng nhập lại, sao chép thông tin xác thực mới và thử lại.",
     "checkCookie": "Kiểm tra cookie",
-    "checkWebToken": "Kiểm tra mã thông báo"
+    "checkWebToken": "Kiểm tra mã thông báo",
+    "filterAll": "Tất cả",
+    "filterActive": "Hoạt động",
+    "filterError": "Lỗi",
+    "filterBanned": "Bị cấm",
+    "filterCreditsExhausted": "Hết tín dụng"
   },
   "settings": {
     "title": "Cài đặt",
@@ -6354,7 +6360,9 @@
     "nodeIncompatibleTitle": "Incompatible Node.js Version",
     "nodeIncompatibleDesc": "You are running Node.js {version}, which is outside the supported secure runtime policy. Use a patched Node.js 20.x or 22.x LTS release.",
     "nodeIncompatibleFixLabel": "Fix: install a patched Node.js 22 LTS release",
-    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended."
+    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended.",
+    "forgotPassword": "Quên mật khẩu?",
+    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)"
   },
   "landing": {
     "brandName": "OmniRoute",

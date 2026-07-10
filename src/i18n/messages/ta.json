@@ -1072,7 +1072,8 @@
     "settingsAuthzSubtitle": "__MISSING__:Route inventory and bypass policy",
     "docsSubtitle": "Documentation",
     "issuesSubtitle": "Report a bug",
-    "changelogSubtitle": "Release notes"
+    "changelogSubtitle": "Release notes",
+    "gamificationGroup": "Gamification"
   },
   "webhooks": {
     "title": "வெப்ஹூக்ஸ்",
@@ -4428,7 +4429,12 @@
     "webNoAuthGuideBody": "{provider}க்கு API விசை அல்லது குக்கீ தேவையில்லை. இலவச இணைய இறுதிப் புள்ளியைப் பயன்படுத்த இணைப்பைச் சேமிக்கவும்.",
     "webSessionCredentialValidationFailed": "அமர்வு நற்சான்றிதழ் சரிபார்ப்பு தோல்வியடைந்தது. மீண்டும் உள்நுழைந்து, புதிய நற்சான்றிதழை நகலெடுத்து, மீண்டும் முயற்சிக்கவும்.",
     "checkCookie": "குக்கீயை சரிபார்க்கவும்",
-    "checkWebToken": "டோக்கனை சரிபார்க்கவும்"
+    "checkWebToken": "டோக்கனை சரிபார்க்கவும்",
+    "filterAll": "அனைத்தும்",
+    "filterActive": "செயலில்",
+    "filterError": "பிழை",
+    "filterBanned": "தடைசெய்யப்பட்டது",
+    "filterCreditsExhausted": "கிரெடிட் தீர்ந்தது"
   },
   "settings": {
     "title": "Settings",
@@ -6354,7 +6360,9 @@
     "nodeIncompatibleTitle": "Incompatible Node.js Version",
     "nodeIncompatibleDesc": "You are running Node.js {version}, which is outside the supported secure runtime policy. Use a patched Node.js 20.x or 22.x LTS release.",
     "nodeIncompatibleFixLabel": "Fix: install a patched Node.js 22 LTS release",
-    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended."
+    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended.",
+    "forgotPassword": "Forgot password?",
+    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)"
   },
   "landing": {
     "brandName": "OmniRoute",

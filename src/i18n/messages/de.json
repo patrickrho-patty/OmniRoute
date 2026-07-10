@@ -1072,7 +1072,8 @@
     "settingsAuthzSubtitle": "__MISSING__:Route inventory and bypass policy",
     "docsSubtitle": "Documentation",
     "issuesSubtitle": "Report a bug",
-    "changelogSubtitle": "Release notes"
+    "changelogSubtitle": "Release notes",
+    "gamificationGroup": "Gamification"
   },
   "webhooks": {
     "title": "Webhooks",
@@ -4433,7 +4434,12 @@
     "webNoAuthGuideBody": "{provider} benötigt keinen API-Schlüssel und kein Cookie. Speichern Sie die Verbindung, um den kostenlosen Web-Endpunkt zu verwenden.",
     "webSessionCredentialValidationFailed": "Validierung der Session-Zugangsdaten fehlgeschlagen. Melden Sie sich erneut an, kopieren Sie frische Zugangsdaten und versuchen Sie es noch einmal.",
     "checkCookie": "Cookie prüfen",
-    "checkWebToken": "Token prüfen"
+    "checkWebToken": "Token prüfen",
+    "filterAll": "Alle",
+    "filterActive": "Aktiv",
+    "filterError": "Fehler",
+    "filterBanned": "Gesperrt",
+    "filterCreditsExhausted": "Guthaben aufgebraucht"
   },
   "settings": {
     "title": "Einstellungen",
@@ -6238,7 +6244,12 @@
     "updatedShort": "__MISSING__:Updated",
     "lastRefreshed": "__MISSING__:Last refreshed",
     "providerQuota": "__MISSING__:Provider Quota",
-    "providerQuotaHomeHint": "__MISSING__:Live status across connected accounts"
+    "providerQuotaHomeHint": "__MISSING__:Live status across connected accounts",
+    "resetCreditsLabel": "Reset-Credits",
+    "redeemResetCredit": "Reset einlösen",
+    "confirmRedeemResetCredit": "Einen Codex-Reset-Credit für dieses Konto einlösen? Dabei wird genau ein Reset-Credit verbraucht.",
+    "resetCreditRedeemed": "Reset eingelöst",
+    "resetCreditRedeemFailed": "Reset-Credit konnte nicht eingelöst werden"
   },
   "modals": {
     "waitingAuth": "Warten auf Autorisierung",
@@ -6367,7 +6378,9 @@
     "nodeIncompatibleTitle": "Incompatible Node.js Version",
     "nodeIncompatibleDesc": "You are running Node.js {version}, which is outside the supported secure runtime policy. Use a patched Node.js 20.x or 22.x LTS release.",
     "nodeIncompatibleFixLabel": "Fix: install a patched Node.js 22 LTS release",
-    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended."
+    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended.",
+    "forgotPassword": "Passwort vergessen?",
+    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)"
   },
   "landing": {
     "brandName": "OmniRoute",

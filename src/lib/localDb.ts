@@ -12,6 +12,7 @@ export {
   getProviderConnectionById,
   createProviderConnection,
   updateProviderConnection,
+  clearConnectionErrorIfUnchanged,
   deleteProviderConnection,
   deleteProviderConnections,
   deleteProviderConnectionsByProvider,
@@ -93,6 +94,7 @@ export {
 export * from "./db/compressionCacheStats";
 export * from "./db/compressionCombos";
 export * from "./db/compressionRunTelemetry";
+export * from "./db/modelContextOverrides";
 
 export {
   // API Keys
@@ -105,6 +107,7 @@ export {
   updateApiKeyPermissions,
   regenerateApiKey,
   isModelAllowedForKey,
+  pickApiKeyForInternalUse,
   clearApiKeyCaches,
   resetApiKeyState,
 } from "./db/apiKeys";
@@ -180,6 +183,11 @@ export {
   getProxyAssignments,
   getProxyWhereUsed,
   assignProxyToScope,
+  addProxyToScopePool,
+  removeProxyFromScopePool,
+  getScopeProxyPool,
+  setScopeRotationStrategy,
+  getScopeRotationStrategy,
   resolveProxyForConnectionFromRegistry,
   resolveProxyForProvider,
   resolveProxyForScopeFromRegistry,
@@ -290,12 +298,18 @@ export {
   countBatches,
   getPendingBatches,
   getTerminalBatches,
+  ensureBatchItemCheckpoints,
+  countBatchItemCheckpoints,
+  listBatchItemCheckpoints,
+  markBatchItemProcessing,
+  markBatchItemResult,
+  markBatchItemError,
   deleteBatch,
   deleteCompletedBatches,
 } from "./db/batches";
 
 export type { FileRecord } from "./db/files";
-export type { BatchRecord } from "./db/batches";
+export type { BatchItemCheckpoint, BatchRecord } from "./db/batches";
 
 export type { ModelComboMapping } from "./db/modelComboMappings";
 
@@ -314,6 +328,22 @@ export {
 export type { Webhook, WebhookKind } from "./db/webhooks";
 
 export { insertDelivery, getDeliveries } from "./db/webhookDeliveries";
+
+export {
+  upsertDiscoveryResult,
+  getDiscoveryResults,
+  getDiscoveryResultById,
+  markVerified,
+  deleteDiscoveryResult,
+} from "./db/discoveryResults";
+
+export type {
+  DiscoveryResult,
+  DiscoveryMethod,
+  DiscoveryAuthType,
+  DiscoveryRiskLevel,
+  DiscoveryStatus,
+} from "./db/discoveryResults";
 export type { WebhookDelivery } from "./db/webhookDeliveries";
 
 export {
@@ -416,6 +446,7 @@ export {
   upsertSessionAccountAffinity,
   touchSessionAccountAffinity,
   deleteSessionAccountAffinity,
+  evictSessionAccountAffinityForConnection,
   cleanupStaleSessionAccountAffinities,
   startSessionAccountAffinityCleanup,
   stopSessionAccountAffinityCleanupForTests,
@@ -534,6 +565,7 @@ export {
   promoteFreeProxyToPool,
   deleteFreeProxy,
   clearFreeProxiesBySource,
+  pruneStaleFreeProxies,
   getFreeProxyStats,
   recordFreeProxySync,
 } from "./db/freeProxies";
@@ -578,12 +610,7 @@ export {
   listAllocationsForApiKey,
 } from "./db/quotaPools";
 // Quota per-(key, model) caps — Group B Fase 3 #7
-export {
-  getModelCap,
-  listModelCaps,
-  setModelCap,
-  deleteModelCap,
-} from "./db/quotaModelCaps";
+export { getModelCap, listModelCaps, setModelCap, deleteModelCap } from "./db/quotaModelCaps";
 
 export {
   // Quota Groups (B2)
@@ -761,3 +788,10 @@ export type {
 // proxy_logs — export query (#3500 slice 4)
 // ---------------------------------------------------------------------------
 export { exportProxyLogsSince } from "./db/proxyLogs";
+
+// ---------------------------------------------------------------------------
+// Per-connection 429 cooldown wrappers (#5957 / #5958 — Issue 1 follow-ups)
+// Logic lives in db/providers/rateLimit.ts (Hard Rule #2 — localDb is re-export
+// only); re-exported here for the historical localDb import contract.
+// ---------------------------------------------------------------------------
+export { markConnectionRateLimitedUntil, clearConnectionRateLimit } from "./db/providers";

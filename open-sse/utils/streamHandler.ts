@@ -220,6 +220,7 @@ export function createStreamController({
   const abortController = new AbortController();
   const startTime = Date.now();
   let disconnected = false;
+  let clientTerminalSeen = false;
   let pendingRequestCleared = false;
   let cleanupClientAbortSignal: (() => void) | null = null;
 
@@ -275,6 +276,10 @@ export function createStreamController({
     // Call when client disconnects
     handleDisconnect: (reason = "client_closed") => {
       if (disconnected) return;
+      if (clientTerminalSeen) {
+        controller.handleComplete();
+        return;
+      }
       disconnected = true;
       cleanupClientAbortListener();
 
@@ -296,6 +301,10 @@ export function createStreamController({
       cleanupClientAbortListener();
 
       logStream("complete");
+    },
+
+    markClientTerminalSeen: () => {
+      clientTerminalSeen = true;
     },
 
     // Call on error
@@ -462,6 +471,9 @@ export function createDisconnectAwareStream(transformStream, streamController) {
       terminalTail,
       streamController.clientResponseFormat
     );
+    if (clientTerminalSeen) {
+      streamController.markClientTerminalSeen?.();
+    }
   };
 
   return new ReadableStream(
@@ -537,7 +549,11 @@ export function createDisconnectAwareStream(transformStream, streamController) {
       },
 
       async cancel(reason) {
-        streamController.handleDisconnect(reason || "cancelled");
+        if (clientTerminalSeen) {
+          streamController.handleComplete();
+        } else {
+          streamController.handleDisconnect(reason || "cancelled");
+        }
         await Promise.allSettled([reader.cancel(reason), writer.abort(reason)]);
       },
     },

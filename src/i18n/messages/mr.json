@@ -1114,7 +1114,8 @@
     "dragReorderItem": "__MISSING__:Drag to reorder",
     "cannotHide": "__MISSING__:This item cannot be hidden",
     "alwaysVisible": "__MISSING__:Always visible",
-    "groupSeparatorLabel": "__MISSING__:Separator"
+    "groupSeparatorLabel": "__MISSING__:Separator",
+    "gamificationGroup": "Gamification"
   },
   "webhooks": {
     "title": "वेबहुक",
@@ -7006,7 +7007,9 @@
     "nodeIncompatibleTitle": "Incompatible Node.js Version",
     "nodeIncompatibleDesc": "You are running Node.js {version}, which is outside the supported secure runtime policy. Use a patched Node.js 20.x or 22.x LTS release.",
     "nodeIncompatibleFixLabel": "Fix: install a patched Node.js 22 LTS release",
-    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended."
+    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended.",
+    "forgotPassword": "Forgot password?",
+    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)"
   },
   "landing": {
     "brandName": "OmniRoute",

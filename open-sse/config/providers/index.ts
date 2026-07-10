@@ -41,6 +41,8 @@ import { yiProvider } from "./registry/yi/index.ts";
 import { deepseekProvider } from "./registry/deepseek/index.ts";
 import { deepseek_webProvider } from "./registry/deepseek/web/index.ts";
 import { dgridProvider } from "./registry/dgrid/index.ts";
+import { baiProvider } from "./registry/bai/index.ts";
+import { qiniuProvider } from "./registry/qiniu/index.ts";
 import { kimi_coding_apikeyProvider } from "./registry/kimi/coding-apikey/index.ts";
 import { kimi_codingProvider } from "./registry/kimi/coding/index.ts";
 import { kimiProvider } from "./registry/kimi/index.ts";
@@ -49,6 +51,9 @@ import { groqProvider } from "./registry/groq/index.ts";
 import { inference_netProvider } from "./registry/inference-net/index.ts";
 import { llm7Provider } from "./registry/llm7/index.ts";
 import { cerebrasProvider } from "./registry/cerebras/index.ts";
+import { charmHyperProvider } from "./registry/charm-hyper/index.ts";
+import { nubeProvider } from "./registry/nube/index.ts";
+import { clinepassProvider } from "./registry/clinepass/index.ts";
 import { sparkdeskProvider } from "./registry/sparkdesk/index.ts";
 import { nlpcloudProvider } from "./registry/nlpcloud/index.ts";
 import { nvidiaProvider } from "./registry/nvidia/index.ts";
@@ -78,10 +83,10 @@ import { leonardoProvider } from "./registry/leonardo/index.ts";
 import { grok_webProvider } from "./registry/grok-web/index.ts";
 import { kieProvider } from "./registry/kie/index.ts";
 import { monsterapiProvider } from "./registry/monsterapi/index.ts";
+import { modelscopeProvider } from "./registry/modelscope/index.ts";
 import { sensenovaProvider } from "./registry/sensenova/index.ts";
 import { hyperbolicProvider } from "./registry/hyperbolic/index.ts";
 import { lambda_aiProvider } from "./registry/lambda-ai/index.ts";
-import { phindProvider } from "./registry/phind/index.ts";
 import { t3_webProvider } from "./registry/t3-web/index.ts";
 import { klusterProvider } from "./registry/kluster/index.ts";
 import { iflytekProvider } from "./registry/iflytek/index.ts";
@@ -103,6 +108,7 @@ import { openrouterProvider } from "./registry/openrouter/index.ts";
 import { orcarouterProvider } from "./registry/orcarouter/index.ts";
 import { glhfProvider } from "./registry/glhf/index.ts";
 import { copilot_webProvider } from "./registry/copilot-web/index.ts";
+import { copilot_m365_webProvider } from "./registry/copilot-m365-web/index.ts";
 import { stepfunProvider } from "./registry/stepfun/index.ts";
 import { freemodel_devProvider } from "./registry/freemodel-dev/index.ts";
 import { gitlawb_gmiProvider } from "./registry/gitlawb/gmi/index.ts";
@@ -122,12 +128,14 @@ import { gitlab_duoProvider } from "./registry/gitlab-duo/index.ts";
 import { command_codeProvider } from "./registry/command-code/index.ts";
 import { novitaProvider } from "./registry/novita/index.ts";
 import { windsurfProvider } from "./registry/windsurf/index.ts";
+import { zed_hostedProvider } from "./registry/zed-hosted/index.ts";
 import { nanogptProvider } from "./registry/nanogpt/index.ts";
 import { scalewayProvider } from "./registry/scaleway/index.ts";
 import { agentrouterProvider } from "./registry/agentrouter/index.ts";
 import { zaiProvider } from "./registry/zai/index.ts";
 import { waferProvider } from "./registry/wafer/index.ts";
 import { huggingchatProvider } from "./registry/huggingchat/index.ts";
+import { yuanbao_webProvider } from "./registry/yuanbao-web/index.ts";
 import { galadrielProvider } from "./registry/galadriel/index.ts";
 import { qianfanProvider } from "./registry/qianfan/index.ts";
 import { meta_llamaProvider } from "./registry/meta-llama/index.ts";
@@ -141,6 +149,7 @@ import { kilo_gatewayProvider } from "./registry/kilo-gateway/index.ts";
 import { bailian_coding_planProvider } from "./registry/bailian-coding-plan/index.ts";
 import { gigachatProvider } from "./registry/gigachat/index.ts";
 import { devin_cliProvider } from "./registry/devin-cli/index.ts";
+import { auggieProvider } from "./registry/auggie/index.ts";
 import { chutesProvider } from "./registry/chutes/index.ts";
 import { factoryProvider } from "./registry/factory/index.ts";
 import { databricksProvider } from "./registry/databricks/index.ts";
@@ -152,7 +161,6 @@ import { opencode_goProvider } from "./registry/opencode/go/index.ts";
 import { opencodeProvider } from "./registry/opencode/index.ts";
 import { maritalkProvider } from "./registry/maritalk/index.ts";
 import { basetenProvider } from "./registry/baseten/index.ts";
-import { gemini_cliProvider } from "./registry/gemini/cli/index.ts";
 import { geminiProvider } from "./registry/gemini/index.ts";
 import { gemini_webProvider } from "./registry/gemini/web/index.ts";
 import { clineProvider } from "./registry/cline/index.ts";
@@ -172,6 +180,12 @@ import { grok_cliProvider } from "./registry/grok-cli/index.ts";
 import { codebuddy_cnProvider } from "./registry/codebuddy-cn/index.ts";
 import { pioneerProvider } from "./registry/pioneer/index.ts";
 import { zenmux_freeProvider } from "./registry/zenmux-free/index.ts";
+import { sumopodProvider } from "./registry/sumopod/index.ts";
+import { x5labProvider } from "./registry/x5lab/index.ts";
+import { kenariProvider } from "./registry/kenari/index.ts";
+import { requestyProvider } from "./registry/requesty/index.ts";
+import { digitaloceanProvider } from "./registry/digitalocean/index.ts";
+import { hcnsecProvider } from "./registry/hcnsec/index.ts";
 
 export const REGISTRY: Record<string, RegistryEntry> = {
   aimlapi: aimlapiProvider,
@@ -213,6 +227,8 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   deepseek: deepseekProvider,
   "deepseek-web": deepseek_webProvider,
   dgrid: dgridProvider,
+  bai: baiProvider,
+  qiniu: qiniuProvider,
   "kimi-coding-apikey": kimi_coding_apikeyProvider,
   "kimi-coding": kimi_codingProvider,
   kimi: kimiProvider,
@@ -221,6 +237,9 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "inference-net": inference_netProvider,
   llm7: llm7Provider,
   cerebras: cerebrasProvider,
+  "charm-hyper": charmHyperProvider,
+  nube: nubeProvider,
+  clinepass: clinepassProvider,
   sparkdesk: sparkdeskProvider,
   nlpcloud: nlpcloudProvider,
   nvidia: nvidiaProvider,
@@ -250,10 +269,10 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "grok-web": grok_webProvider,
   kie: kieProvider,
   monsterapi: monsterapiProvider,
+  modelscope: modelscopeProvider,
   sensenova: sensenovaProvider,
   hyperbolic: hyperbolicProvider,
   "lambda-ai": lambda_aiProvider,
-  phind: phindProvider,
   "t3-web": t3_webProvider,
   kluster: klusterProvider,
   iflytek: iflytekProvider,
@@ -275,6 +294,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   orcarouter: orcarouterProvider,
   glhf: glhfProvider,
   "copilot-web": copilot_webProvider,
+  "copilot-m365-web": copilot_m365_webProvider,
   stepfun: stepfunProvider,
   "freemodel-dev": freemodel_devProvider,
   "gitlawb-gmi": gitlawb_gmiProvider,
@@ -294,11 +314,13 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "command-code": command_codeProvider,
   novita: novitaProvider,
   windsurf: windsurfProvider,
+  "zed-hosted": zed_hostedProvider,
   nanogpt: nanogptProvider,
   scaleway: scalewayProvider,
   agentrouter: agentrouterProvider,
   zai: zaiProvider,
   huggingchat: huggingchatProvider,
+  "yuanbao-web": yuanbao_webProvider,
   galadriel: galadrielProvider,
   qianfan: qianfanProvider,
   "meta-llama": meta_llamaProvider,
@@ -312,6 +334,7 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "bailian-coding-plan": bailian_coding_planProvider,
   gigachat: gigachatProvider,
   "devin-cli": devin_cliProvider,
+  auggie: auggieProvider,
   chutes: chutesProvider,
   factory: factoryProvider,
   databricks: databricksProvider,
@@ -323,7 +346,6 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   opencode: opencodeProvider,
   maritalk: maritalkProvider,
   baseten: basetenProvider,
-  "gemini-cli": gemini_cliProvider,
   gemini: geminiProvider,
   "gemini-web": gemini_webProvider,
   cline: clineProvider,
@@ -346,4 +368,10 @@ export const REGISTRY: Record<string, RegistryEntry> = {
   "codebuddy-cn": codebuddy_cnProvider,
   pioneer: pioneerProvider,
   "zenmux-free": zenmux_freeProvider,
+  sumopod: sumopodProvider,
+  x5lab: x5labProvider,
+  kenari: kenariProvider,
+  requesty: requestyProvider,
+  digitalocean: digitaloceanProvider,
+  hcnsec: hcnsecProvider,
 };

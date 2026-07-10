@@ -25,6 +25,7 @@ Current shipped packs (verified against `rules/` directory contents):
 | English             | `rules/en/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
 | Spanish             | `rules/es/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
 | Portuguese (Brazil) | `rules/pt-BR/` | `context`, `dedup`, `filler`, `structural`, `ultra` |
+| Indonesian          | `rules/id/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
 | German              | `rules/de/`    | `context`, `filler`, `structural`                   |
 | French              | `rules/fr/`    | `context`, `filler`, `structural`                   |
 | Japanese            | `rules/ja/`    | `context`, `filler`, `structural`                   |
@@ -55,12 +56,12 @@ Compression settings can include:
     "enabled": true,
     "defaultLanguage": "en",
     "autoDetect": true,
-    "enabledPacks": ["en", "pt-BR", "es", "de", "fr", "ja", "ko"]
+    "enabledPacks": ["en", "pt-BR", "es", "id", "de", "fr", "ja", "ko"]
   },
   "cavemanConfig": {
     "language": "en",
     "autoDetectLanguage": true,
-    "enabledLanguagePacks": ["en", "pt-BR", "es", "de", "fr", "ja", "ko"]
+    "enabledLanguagePacks": ["en", "pt-BR", "es", "id", "de", "fr", "ja", "ko"]
   }
 }
 ```

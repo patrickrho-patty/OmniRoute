@@ -4,6 +4,7 @@ import os from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseBooleanEnv, parsePositiveIntegerEnv } from "./scripts/build/buildEnv.mjs";
+import { mitmManagerAliasFor } from "./scripts/build/mitm-stub-flag.mjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 const distDir = process.env.NEXT_DIST_DIR || ".build/next";
@@ -23,7 +24,11 @@ const contentSecurityPolicy = [
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
   "media-src 'self' data: blob:",
-  "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https: wss:",
+  // `ws:` is permitted scheme-wide (mirroring the bare `wss:` already allowed) so the
+  // dashboard can open `ws://<lan-or-tailscale-host>:*` to its own Live WS server when
+  // OmniRoute is reached from a non-loopback host. Same-origin HTTP fetches stay covered
+  // by `'self'`; the loopback origins remain listed explicitly for clarity. (#5083)
+  "connect-src 'self' http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* https: ws: wss:",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
 ].join("; ");
@@ -85,15 +90,37 @@ const minimalBuildAliases = isMinimalBuild
     }
   : {};
 
+function readTimeoutMs(...values) {
+  for (const value of values) {
+    const normalized = typeof value === "string" ? value.trim() : value;
+    if (normalized == null || normalized === "") continue;
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed) && parsed >= 0) return Math.floor(parsed);
+  }
+  return 600_000;
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Opt-in subpath deployment behind a reverse proxy (e.g. nginx/Caddy serving
+  // OmniRoute under https://host/omniroute/). Empty by default so root-path
+  // deployments are unaffected. Next.js strips this prefix from `pathname`
+  // before route matching, so authz classification (classifyRoute/isLocalOnlyPath)
+  // keeps operating on un-prefixed paths — see src/server/authz/pipeline.ts for
+  // the two redirect call sites that re-add it via `request.nextUrl.basePath`.
+  basePath: process.env.OMNIROUTE_BASE_PATH || "",
   distDir,
   // Turbopack config: redirect native modules to stubs at build time
   turbopack: {
     root: projectRoot,
     resolveAlias: {
-      // Point mitm/manager to a stub during build (native child_process/fs can't be bundled)
-      "@/mitm/manager": "./src/mitm/manager.stub.ts",
+      // @/mitm/manager → stub ONLY where the runtime can't run the MITM stack
+      // (Docker sets OMNIROUTE_MITM_STUB=1 — #3390 graceful degradation). The
+      // alias used to be unconditional, which was fine while Docker was the
+      // only Turbopack consumer — but the v3.8.45 bundler-default flip shipped
+      // the stub to every npm/Electron/VPS artifact and broke Agent Bridge
+      // start for all non-Docker users (#6344). See scripts/build/mitm-stub-flag.mjs.
+      ...mitmManagerAliasFor(process.env),
       ...minimalBuildAliases,
     },
   },
@@ -127,6 +154,10 @@ const nextConfig = {
     // uploads (OpenAI-compatible /v1/files) routinely exceed this. Match the
     // 512 MB server-side cap; tune via env if needed.
     proxyClientMaxBodySize: process.env.NEXT_PROXY_BODY_LIMIT || "512mb",
+    // Next's internal router proxy defaults to 30s when this is unset. OmniRoute
+    // can legitimately hold non-streaming chat requests open for minutes while an
+    // upstream provider finishes, so reuse the existing request-timeout knobs.
+    proxyTimeout: readTimeoutMs(process.env.REQUEST_TIMEOUT_MS, process.env.FETCH_TIMEOUT_MS),
     // PR-2 of diegosouzapw/OmniRoute#3932: tree-shake barrel re-exports so
     // route bundles don't pull in 14 locale files, every lucide-react icon,
     // or the full date-fns surface when only one helper is used.
@@ -206,6 +237,13 @@ const nextConfig = {
     "tough-cookie",
     "@ngrok/ngrok",
     "@huggingface/transformers",
+    // copilot-m365-web.ts imports 'ws' as a client-side WebSocket. When bundled,
+    // ws cannot resolve its 'bufferutil' native addon (frame masking) and throws
+    // TypeError: b.mask is not a function on the first outgoing frame, causing
+    // every chat request to time out at the stream-readiness watchdog. (#6062)
+    "ws",
+    "bufferutil",
+    "utf-8-validate",
     "child_process",
     "fs",
     "path",

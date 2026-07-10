@@ -10,6 +10,7 @@ import {
   createSSEDataLineNormalizer,
   isKnownNonClaudeStreamPayload,
 } from "../../utils/streamHelpers.ts";
+import { evaluateResponseValidation, type ResponseValidationConfig } from "./responseValidation.ts";
 import { getReasoningTokens } from "../../../src/lib/usage/tokenAccounting.ts";
 import type { ComboRetryAfter } from "./types.ts";
 
@@ -19,6 +20,28 @@ export function toRetryAfterDisplayValue(value: ComboRetryAfter): string | Date 
     return new Date(Date.now() + value * 1000);
   }
   return new Date(value);
+}
+
+function responsesApiOutputHasContent(output: unknown): boolean {
+  return (
+    Array.isArray(output) &&
+    output.some((item) => {
+      if (!item || typeof item !== "object") return false;
+      const record = item as Record<string, unknown>;
+      if (record.type !== "message") return Boolean(record.type);
+      const content = record.content;
+      return (
+        Array.isArray(content) &&
+        content.some(
+          (part) =>
+            !!part &&
+            typeof part === "object" &&
+            typeof (part as Record<string, unknown>).text === "string" &&
+            ((part as Record<string, string>).text as string).length > 0
+        )
+      );
+    })
+  );
 }
 
 /**
@@ -35,7 +58,8 @@ export function toRetryAfterDisplayValue(value: ComboRetryAfter): string | Date 
 export async function validateResponseQuality(
   response: Response,
   isStreaming: boolean,
-  log: { warn?: (...args: unknown[]) => void }
+  log: { warn?: (...args: unknown[]) => void },
+  responseValidation?: ResponseValidationConfig | null
 ): Promise<{ valid: boolean; reason?: string; clonedResponse?: Response }> {
   // Issue #3685: For Claude SSE streaming responses, use a BOUNDED PEEK to
   // detect the empty-content-block pattern (content_filter stop_reason with
@@ -72,6 +96,8 @@ export async function validateResponseQuality(
     let hasMessageStart = false;
     let hasContentBlock = false;
     let hasLifecycleEnd = false;
+    let anyContentFound = false;
+    let sawAnyBytes = false;
     const sseLineNormalizer = createSSEDataLineNormalizer();
     let pendingEventType = "";
 
@@ -209,6 +235,20 @@ export async function validateResponseQuality(
             return { valid: false, reason: "streaming empty content block" };
           }
 
+          // Stream ended with a truly EMPTY body (e.g. Gemini returning HTTP
+          // 200 with zero bytes) — mark as invalid for combo failover so the
+          // sibling model gets tried. Streams that carried ANY SSE activity
+          // (an explicit `data: [DONE]`, ping/metadata events, an incomplete
+          // Claude lifecycle) keep the pass-through contract (#3399/#3685):
+          // those are handled by the stream-readiness timeout, not failover.
+          if (!anyContentFound && !hasContentBlock && !sawAnyBytes) {
+            log.warn?.(
+              "COMBO",
+              "Streaming response ended with no recognized content — marking as invalid for combo failover"
+            );
+            return { valid: false, reason: "streaming no recognized content" };
+          }
+
           // Incomplete lifecycle or non-Claude stream — replay all buffered
           // bytes. The reader is exhausted so the forwarding reader will
           // immediately signal done.
@@ -218,12 +258,14 @@ export async function validateResponseQuality(
 
         // Accumulate raw bytes for potential replay.
         bufferedChunks.push(value);
+        if (value && value.length > 0) sawAnyBytes = true;
 
         // Decode incrementally (stream:true keeps multi-byte char state).
         decodedSoFar += decoder.decode(value, { stream: true });
         const foundContent = parseAccumulatedSse();
 
         if (foundContent) {
+          anyContentFound = true;
           // A content_block_* event was found — stop peeking. Return a
           // clonedResponse that replays all buffered bytes (the current chunk
           // is already in bufferedChunks) and then forwards the remainder of
@@ -232,9 +274,23 @@ export async function validateResponseQuality(
           return { valid: true, clonedResponse };
         }
       }
-    } catch {
-      // If reading the stream fails, pass through — other mechanisms
-      // (stream readiness timeout) will catch truly broken streams.
+    } catch (streamErr) {
+      // If reading the stream fails due to a locked stream or pipe error,
+      // the content cannot be verified — mark as invalid for combo failover.
+      // A locked ReadableStream means the response body is already consumed
+      // or corrupted (e.g. "Invalid state: The ReadableStream is locked").
+      // Broad match: Chrome/V8 throws "body used already", Firefox throws
+      // "ReadableStream is locked", etc.
+      const errMsg = streamErr instanceof Error ? streamErr.message : String(streamErr);
+      if (
+        streamErr instanceof TypeError &&
+        (errMsg.includes("locked") ||
+          errMsg.includes("disturbed") ||
+          errMsg.includes("used already"))
+      ) {
+        return { valid: false, reason: "stream locked or disturbed" };
+      }
+      // Other read errors — pass through (stream readiness timeout will catch truly broken streams)
       return { valid: true };
     }
   }
@@ -270,7 +326,33 @@ export async function validateResponseQuality(
     return { valid: false, reason: "response is not valid JSON" };
   }
 
+  // Feature 4985: apply the combo's configured response-body predicate. A failure here
+  // fails over to the next target via the same path as the built-in empty-content checks.
+  if (responseValidation) {
+    const verdict = evaluateResponseValidation(json, responseValidation);
+    if (!verdict.valid) {
+      return { valid: false, reason: verdict.reason };
+    }
+  }
+
   const choices = json?.choices;
+  if (json?.object === "response") {
+    if (!responsesApiOutputHasContent(json.output))
+      return { valid: false, reason: "empty_choices" };
+    const status = typeof json.status === "string" ? json.status : "";
+    if (status && !["completed", "done"].includes(status)) {
+      return { valid: false, reason: "no_terminal" };
+    }
+    return {
+      valid: true,
+      clonedResponse: new Response(text, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      }),
+    };
+  }
+
   if (!Array.isArray(choices) || choices.length === 0) {
     if (json?.output || json?.result || json?.data || json?.response) return { valid: true };
     if (json?.error) {
@@ -336,4 +418,28 @@ export async function validateResponseQuality(
       headers: response.headers,
     }),
   };
+}
+
+/**
+ * Release the peek-and-abandon clone used by {@link validateResponseQuality}.
+ *
+ * The quality check clones the upstream response, reads the clone only until the
+ * first content block, then hands back a `clonedResponse` that callers on the
+ * streaming path DISCARD (they forward the original, untouched response). Because
+ * a `Response.clone()` tees the body, that abandoned branch would otherwise buffer
+ * the entire remaining body in memory until the original finishes streaming.
+ *
+ * Cancelling the abandoned branch releases that buffer. Per the ReadableStream tee
+ * contract, cancelling one branch does NOT cancel the shared source while the other
+ * branch (the original response being streamed to the client) is still active, so
+ * this is safe. No-op when the clone fell back to the original (clone unsupported)
+ * or when quality reading already exhausted the body (no `clonedResponse`).
+ */
+export function releaseQualityClone(
+  clone: Response,
+  original: Response,
+  quality: { clonedResponse?: Response }
+): void {
+  if (clone === original) return;
+  void quality.clonedResponse?.body?.cancel().catch(() => {});
 }

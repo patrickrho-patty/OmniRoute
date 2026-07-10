@@ -12,8 +12,11 @@ import {
   buildModelSyncInternalHeaders,
   isModelSyncInternalRequest,
 } from "@/shared/services/modelSyncScheduler";
+import { autoSyncCodexProfilesFromLiveCatalog } from "@/lib/cli-helper/codexProfileAutoSync";
+import { autoSyncClaudeProfilesFromLiveCatalog } from "@/lib/cli-helper/claudeProfileAutoSync";
 import { GET as getProviderModels } from "../models/route";
 import { getRuntimePorts } from "@/lib/runtime/ports";
+import { isDegradedLocalCatalog } from "./degradedLocalCatalog";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 
 type JsonRecord = Record<string, unknown>;
@@ -443,7 +446,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const modelSource = toNonEmptyString(modelsData.source)?.toLowerCase() || "unknown";
     const modelWarning = toNonEmptyString(modelsData.warning);
-    if (modelSource === "local_catalog") {
+    if (isDegradedLocalCatalog(modelsData)) {
       const responseError =
         modelWarning || "Remote model discovery failed; local catalog fallback not synced";
       await saveCallLog({
@@ -520,6 +523,46 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const importedCount = importedChanges.added;
     const updatedCount = importedChanges.updated;
     const shouldLog = modelChanges.total > 0 || customModelChanges.total > 0;
+
+    if (shouldLog) {
+      void autoSyncCodexProfilesFromLiveCatalog(request, `model-sync:${logProvider}`)
+        .then((syncResult) => {
+          if (syncResult.ok) {
+            console.log(
+              `[ModelSync] Codex profile auto-sync wrote ${syncResult.written} profile(s), skipped ${syncResult.skipped} (${logProvider})`
+            );
+          } else {
+            console.log(
+              `[ModelSync] Codex profile auto-sync skipped for ${logProvider}: ${syncResult.reason}`
+            );
+          }
+        })
+        .catch((err) => {
+          console.log(
+            `[ModelSync] Codex profile auto-sync failed for ${logProvider}:`,
+            err?.message || err
+          );
+        });
+
+      void autoSyncClaudeProfilesFromLiveCatalog(request, `model-sync:${logProvider}`)
+        .then((syncResult) => {
+          if (syncResult.ok) {
+            console.log(
+              `[ModelSync] Claude profile auto-sync wrote ${syncResult.written} profile(s), skipped ${syncResult.skipped} (${logProvider})`
+            );
+          } else {
+            console.log(
+              `[ModelSync] Claude profile auto-sync skipped for ${logProvider}: ${syncResult.reason}`
+            );
+          }
+        })
+        .catch((err) => {
+          console.log(
+            `[ModelSync] Claude profile auto-sync failed for ${logProvider}:`,
+            err?.message || err
+          );
+        });
+    }
 
     if (shouldLog) {
       await saveCallLog({

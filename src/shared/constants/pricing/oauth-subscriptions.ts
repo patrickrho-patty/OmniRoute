@@ -1,11 +1,8 @@
 /**
- * Pricing data — oauth-subscriptions family (OAuth / IDE subscription aliases (cc, codex, gemini-cli, antigravity, copilot, kiro…)).
+ * Pricing data — oauth-subscriptions family (OAuth / IDE subscription aliases (cc, codex, antigravity, copilot, kiro…)).
  * Pure data; merged by default-pricing.ts via spread (god-file decomposition; semantic split).
  */
-import {
-  GPT_5_3_CODEX_PRICING,
-  GPT_5_5_PRICING,
-} from "./shared-tiers";
+import { GPT_5_3_CODEX_PRICING, GPT_5_5_PRICING } from "./shared-tiers";
 
 export const DEFAULT_PRICING_OAUTH = {
   cc: {
@@ -38,6 +35,13 @@ export const DEFAULT_PRICING_OAUTH = {
       cache_creation: 6.25,
     },
     "claude-sonnet-4-6": {
+      input: 3.0,
+      output: 15.0,
+      cached: 0.3,
+      reasoning: 15.0,
+      cache_creation: 3.75,
+    },
+    "claude-sonnet-5": {
       input: 3.0,
       output: 15.0,
       cached: 0.3,
@@ -182,59 +186,6 @@ export const DEFAULT_PRICING_OAUTH = {
       cached: 0.5,
       reasoning: 6.0,
       cache_creation: 1.0,
-    },
-  },
-  "gemini-cli": {
-    "gemini-3-flash-preview": {
-      input: 0.5,
-      output: 3.0,
-      cached: 0.03,
-      reasoning: 4.5,
-      cache_creation: 0.5,
-    },
-    "gemini-3.1-flash-lite-preview": {
-      input: 0.5,
-      output: 3.0,
-      cached: 0.03,
-      reasoning: 4.5,
-      cache_creation: 0.5,
-    },
-    "gemini-3-pro-preview": {
-      input: 2.0,
-      output: 12.0,
-      cached: 0.25,
-      reasoning: 18.0,
-      cache_creation: 2.0,
-    },
-    "gemini-3.1-pro-preview": {
-      input: 2.0,
-      output: 12.0,
-      cached: 0.25,
-      reasoning: 18.0,
-      cache_creation: 2.0,
-    },
-
-    "gemini-2.5-pro": {
-      input: 2.0,
-      output: 12.0,
-      cached: 0.25,
-      reasoning: 18.0,
-      cache_creation: 2.0,
-    },
-    "gemini-2.5-flash": {
-      input: 0.3,
-      output: 2.5,
-      cached: 0.03,
-      reasoning: 3.75,
-      cache_creation: 0.3,
-    },
-    // Gemini 2.5 Flash Lite — preco corrigido via ClawRouter: $0.10/$0.40 (era $0.15/$1.25)
-    "gemini-2.5-flash-lite": {
-      input: 0.1,
-      output: 0.4,
-      cached: 0.025,
-      reasoning: 0.6,
-      cache_creation: 0.1,
     },
   },
   qw: {
@@ -582,6 +533,13 @@ export const DEFAULT_PRICING_OAUTH = {
       reasoning: 15.0,
       cache_creation: 3.0,
     },
+    "claude-sonnet-5": {
+      input: 3.0,
+      output: 15.0,
+      cached: 1.5,
+      reasoning: 15.0,
+      cache_creation: 3.0,
+    },
     "deepseek-v3.2": {
       input: 0.27,
       output: 1.1,
@@ -626,16 +584,11 @@ export const DEFAULT_PRICING_OAUTH = {
       reasoning: 8.0,
       cache_creation: 2.0,
     },
-    // Kiro "Auto" model — routes to best available
+    // Kiro "Auto" pricing — retained as a fallback price for any legacy "auto"
+    // reference. The "auto-kiro" registry model was removed (Kiro's API has no
+    // "auto" model id — it 400'd "Invalid model"), so its dedicated price key
+    // was dropped with it. See kiro cluster #6112/#6113/#6099.
     auto: {
-      input: 3.0,
-      output: 15.0,
-      cached: 1.5,
-      reasoning: 15.0,
-      cache_creation: 3.0,
-    },
-    // Registry exposes the Auto model as id "auto-kiro" — keep both keys priced.
-    "auto-kiro": {
       input: 3.0,
       output: 15.0,
       cached: 1.5,

@@ -134,6 +134,75 @@ test("createDisconnectAwareStream: a 'Controller is already closed' lifecycle er
   assert.equal(onDisconnectCalls.length, 1, "should be recorded as a disconnect");
 });
 
+test("createDisconnectAwareStream treats cancel after OpenAI DONE as successful completion", async () => {
+  let disconnectHandled = false;
+  const transformStream = {
+    readable: new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      },
+    }),
+    writable: {
+      getWriter() {
+        return {
+          abort() {},
+        };
+      },
+    },
+  };
+
+  const stream = createDisconnectAwareStream(
+    transformStream,
+    createStreamController({
+      onDisconnect() {
+        disconnectHandled = true;
+      },
+    })
+  );
+  const reader = stream.getReader();
+  const first = await reader.read();
+  assert.equal(decoder.decode(first.value), "data: [DONE]\n\n");
+  await reader.cancel("request_signal_aborted");
+
+  assert.equal(disconnectHandled, false);
+});
+
+test("createDisconnectAwareStream treats cancel after Responses completed as successful completion", async () => {
+  let disconnectHandled = false;
+  const transformStream = {
+    readable: new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode('event: response.completed\ndata: {"type":"response.completed"}\n\n')
+        );
+      },
+    }),
+    writable: {
+      getWriter() {
+        return {
+          abort() {},
+        };
+      },
+    },
+  };
+
+  const stream = createDisconnectAwareStream(
+    transformStream,
+    createStreamController({
+      clientResponseFormat: FORMATS.OPENAI_RESPONSES,
+      onDisconnect() {
+        disconnectHandled = true;
+      },
+    })
+  );
+  const reader = stream.getReader();
+  const first = await reader.read();
+  assert.match(decoder.decode(first.value), /response\.completed/);
+  await reader.cancel("request_signal_aborted");
+
+  assert.equal(disconnectHandled, false);
+});
+
 test("createDisconnectAwareStream: Gemini 503 high-demand error becomes SSE error chunk with message preserved", async () => {
   const geminiMsg =
     "[503]: This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.";

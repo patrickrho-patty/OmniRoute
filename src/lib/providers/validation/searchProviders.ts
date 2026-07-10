@@ -6,21 +6,6 @@ import { getProviderOutboundGuard } from "@/shared/network/outboundUrlGuard";
 import { withCustomUserAgent } from "./headers";
 import { toValidationErrorResult, validationWrite } from "./transport";
 
-export async function validateGenericProvider(
-  baseUrl: string,
-  apiKey: string,
-  providerSpecificData: any = {},
-  provider: string,
-  isLocal: boolean = false
-) {
-  const config = SEARCH_VALIDATOR_CONFIGS[provider];
-  if (!config) {
-    return { valid: false, error: "Validator not found", unsupported: true };
-  }
-  const { url, init } = config(apiKey, providerSpecificData);
-  return validateSearchProvider(url, init, providerSpecificData, isLocal);
-}
-
 export async function validateSearchProvider(
   url: string,
   init: RequestInit,
@@ -201,6 +186,14 @@ export const SEARCH_VALIDATOR_CONFIGS: Record<
     init: {
       method: "GET",
       headers: { Authorization: `Bearer ${apiKey}` },
+    },
+  }),
+  tinyfish: (apiKey) => ({
+    url: "https://api.fetch.tinyfish.ai",
+    init: {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ urls: ["https://example.com"], format: "markdown" }),
     },
   }),
 };

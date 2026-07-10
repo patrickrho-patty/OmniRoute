@@ -1072,7 +1072,8 @@
     "settingsAuthzSubtitle": "__MISSING__:Route inventory and bypass policy",
     "docsSubtitle": "Documentation",
     "issuesSubtitle": "Report a bug",
-    "changelogSubtitle": "Release notes"
+    "changelogSubtitle": "Release notes",
+    "gamificationGroup": "Gamification"
   },
   "webhooks": {
     "title": "ویب ہکس",
@@ -4428,7 +4429,12 @@
     "webNoAuthGuideBody": "{provider} کو API کلید یا کوکی کی ضرورت نہیں ہے۔ اس کے مفت ویب اینڈ پوائنٹ کو استعمال کرنے کے لیے کنکشن کو محفوظ کریں۔",
     "webSessionCredentialValidationFailed": "سیشن کی اسناد کی توثیق ناکام ہو گئی۔ دوبارہ سائن ان کریں، ایک تازہ سند کاپی کریں، اور دوبارہ کوشش کریں۔",
     "checkCookie": "کوکی چیک کریں۔",
-    "checkWebToken": "ٹوکن چیک کریں۔"
+    "checkWebToken": "ٹوکن چیک کریں۔",
+    "filterAll": "سب",
+    "filterActive": "فعال",
+    "filterError": "خرابی",
+    "filterBanned": "پابندی شدہ",
+    "filterCreditsExhausted": "کریڈٹ ختم"
   },
   "settings": {
     "title": "Settings",
@@ -6354,7 +6360,9 @@
     "nodeIncompatibleTitle": "Incompatible Node.js Version",
     "nodeIncompatibleDesc": "You are running Node.js {version}, which is outside the supported secure runtime policy. Use a patched Node.js 20.x or 22.x LTS release.",
     "nodeIncompatibleFixLabel": "Fix: install a patched Node.js 22 LTS release",
-    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended."
+    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended.",
+    "forgotPassword": "Forgot password?",
+    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)"
   },
   "landing": {
     "brandName": "OmniRoute",

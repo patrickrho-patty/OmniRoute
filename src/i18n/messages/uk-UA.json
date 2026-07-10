@@ -1072,7 +1072,8 @@
     "settingsAuthzSubtitle": "Інвентар маршрутів та політика обходу",
     "docsSubtitle": "Документація",
     "issuesSubtitle": "Повідомити про помилку",
-    "changelogSubtitle": "Примітки до випуску"
+    "changelogSubtitle": "Примітки до випуску",
+    "gamificationGroup": "Gamification"
   },
   "webhooks": {
     "title": "Веб-хуки",
@@ -4428,7 +4429,12 @@
     "webNoAuthGuideBody": "{provider} не потребує ключа API або файлу cookie. Збережіть підключення, щоб використовувати його безкоштовну веб-кінцеву точку.",
     "webSessionCredentialValidationFailed": "Помилка перевірки облікових даних сеансу. Увійдіть знову, скопіюйте нові облікові дані та повторіть спробу.",
     "checkCookie": "Перевірте cookie",
-    "checkWebToken": "Чек жетона"
+    "checkWebToken": "Чек жетона",
+    "filterAll": "Усі",
+    "filterActive": "Активні",
+    "filterError": "Помилка",
+    "filterBanned": "Заблоковано",
+    "filterCreditsExhausted": "Кредити вичерпано"
   },
   "settings": {
     "title": "Налаштування",
@@ -6354,7 +6360,9 @@
     "nodeIncompatibleTitle": "Incompatible Node.js Version",
     "nodeIncompatibleDesc": "You are running Node.js {version}, which is outside the supported secure runtime policy. Use a patched Node.js 20.x or 22.x LTS release.",
     "nodeIncompatibleFixLabel": "Fix: install a patched Node.js 22 LTS release",
-    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended."
+    "nodeIncompatibleHint": "This application requires Node.js 20.20.2+ (20.x LTS), 22.22.2+ (22.x LTS) or 24.0.0+ (24.x LTS). Node 24 LTS is recommended.",
+    "forgotPassword": "Забули пароль?",
+    "defaultPasswordHint": "Default password: CHANGEME (unless INITIAL_PASSWORD was set)"
   },
   "landing": {
     "brandName": "OmniRoute",

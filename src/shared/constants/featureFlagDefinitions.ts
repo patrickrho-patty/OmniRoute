@@ -234,7 +234,19 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     warningLevel: "info",
   },
 
-  // ──────────────── Runtime (12) ────────────────
+  // ──────────────── Runtime (13) ────────────────
+  {
+    key: "RESPONSES_PASSTHROUGH_DROP_COMMENTARY",
+    label: "Drop Responses Commentary",
+    description:
+      "Drop internal commentary-phase output items from Responses API passthrough streams before forwarding to clients. Disable to receive raw upstream commentary.",
+    descriptionI18nKey: "featureFlagResponsesPassthroughDropCommentaryDescription",
+    category: "runtime",
+    defaultValue: "true",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "info",
+  },
   {
     key: "OMNIROUTE_MCP_ENFORCE_SCOPES",
     label: "MCP Enforce Scopes",
@@ -386,7 +398,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     warningLevel: "info",
   },
 
-  // ──────────────── CLI (3) ────────────────
+  // ──────────────── CLI (5) ────────────────
   {
     key: "CLI_COMPAT_ALL",
     label: "CLI Compat All",
@@ -420,6 +432,30 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     type: "boolean",
     requiresRestart: false,
     warningLevel: "info",
+  },
+  {
+    key: "OMNIROUTE_AUTO_SYNC_CODEX_PROFILES",
+    label: "Auto-Sync Codex Profiles",
+    description:
+      "After a provider model sync, automatically (re)write ~/.codex/*.config.toml profile files from the live catalog. Never changes the active/default Codex config. Off by default.",
+    descriptionI18nKey: "featureFlagOmnirouteAutoSyncCodexProfilesDescription",
+    category: "cli",
+    defaultValue: "false",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "caution",
+  },
+  {
+    key: "OMNIROUTE_AUTO_SYNC_CLAUDE_PROFILES",
+    label: "Auto-Sync Claude Code Profiles",
+    description:
+      "After a provider model sync, automatically (re)write ~/.claude/profiles/<name>/settings.json Claude Code profiles from the live catalog. Never changes the active/default Claude config. Off by default.",
+    descriptionI18nKey: "featureFlagOmnirouteAutoSyncClaudeProfilesDescription",
+    category: "cli",
+    defaultValue: "false",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "caution",
   },
 
   // ──────────────── Health (3) ────────────────

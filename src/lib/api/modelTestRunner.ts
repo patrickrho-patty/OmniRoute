@@ -9,6 +9,9 @@ import { withRateLimit } from "@omniroute/open-sse/services/rateLimitManager";
 
 const INTERNAL_ORIGIN = "http://omniroute.internal";
 const DEFAULT_TEST_TIMEOUT_MS = 10_000;
+const DOLA_PRO_TEST_TIMEOUT_MS = 90_000;
+const DOUBAO_WEB_PROVIDER_ID = "doubao-web";
+const SLOW_WEB_TEST_MODELS = new Set(["dola-pro"]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -24,19 +27,70 @@ function getErrorName(error: unknown): string {
   return error instanceof Error ? error.name : "";
 }
 
-function extractProviderErrorMessage(body: unknown, fallback: string) {
+function extractUpstreamDetailMessage(value: unknown): string | null {
+  const record = asRecord(value);
+  const message = record.message;
+  if (typeof message === "string" && message.trim()) return message.trim();
+
+  const error = record.error;
+  if (typeof error === "string" && error.trim()) return error.trim();
+
+  const errorRecord = asRecord(error);
+  const nestedMessage = errorRecord.message;
+  if (typeof nestedMessage === "string" && nestedMessage.trim()) return nestedMessage.trim();
+
+  const body = record.body;
+  if (typeof body === "string" && body.trim()) return body.trim();
+
+  return null;
+}
+
+function isGenericHttpProviderError(message: string): boolean {
+  return /\b(?:returned|provider returned)\s+HTTP\s+\d{3}\b/i.test(message);
+}
+
+export function extractProviderErrorMessage(body: unknown, fallback: string) {
   const record = asRecord(body);
   const error = record.error;
   if (typeof error === "string" && error.trim()) return error;
 
   const errorRecord = asRecord(error);
   const message = errorRecord.message;
-  return typeof message === "string" && message.trim() ? message : fallback;
+  const baseMessage = typeof message === "string" && message.trim() ? message.trim() : fallback;
+  const upstreamMessage = extractUpstreamDetailMessage(record.upstream_details);
+  if (
+    upstreamMessage &&
+    upstreamMessage !== baseMessage &&
+    (isGenericHttpProviderError(baseMessage) || baseMessage === fallback)
+  ) {
+    return `${baseMessage}: ${sanitizeErrorMessage(upstreamMessage)}`;
+  }
+  return baseMessage;
 }
 
 function stripFirstSegment(modelId: string): string | null {
   const slashIdx = modelId.indexOf("/");
   return slashIdx > 0 ? modelId.slice(slashIdx + 1) : null;
+}
+
+function getModelLeafId(modelId: string): string {
+  const segments = modelId.trim().toLowerCase().split("/").filter(Boolean);
+  return segments[segments.length - 1] || "";
+}
+
+export function resolveModelTestTimeoutMs(
+  providerId: string,
+  modelId: string,
+  requestedTimeoutMs: number = DEFAULT_TEST_TIMEOUT_MS
+) {
+  if (
+    providerId.trim().toLowerCase() === DOUBAO_WEB_PROVIDER_ID &&
+    SLOW_WEB_TEST_MODELS.has(getModelLeafId(modelId))
+  ) {
+    return Math.max(requestedTimeoutMs, DOLA_PRO_TEST_TIMEOUT_MS);
+  }
+
+  return requestedTimeoutMs;
 }
 
 async function findCustomModelMetadata(providerId: string, modelId: string) {
@@ -167,6 +221,7 @@ export async function runSingleModelTest(
   if (!fullModelStr.includes("/")) {
     fullModelStr = `${providerId}/${modelId}`;
   }
+  const effectiveTimeoutMs = resolveModelTestTimeoutMs(providerId, fullModelStr, timeoutMs);
 
   const startTime = Date.now();
   const customModel = await findCustomModelMetadata(providerId, fullModelStr);
@@ -193,7 +248,7 @@ export async function runSingleModelTest(
   const timeoutHandle = setTimeout(() => {
     timedOut = true;
     controller.abort();
-  }, timeoutMs);
+  }, effectiveTimeoutMs);
 
   const runInner = async (signal: AbortSignal): Promise<Response> => {
     if (isEmbedding) {
@@ -231,7 +286,7 @@ export async function runSingleModelTest(
           status: "error",
           latencyMs,
           httpStatus: 500,
-          error: `Timeout (${Math.round(timeoutMs / 1000)}s)`,
+          error: `Timeout (${Math.round(effectiveTimeoutMs / 1000)}s)`,
           isTimeout: true,
         };
       }

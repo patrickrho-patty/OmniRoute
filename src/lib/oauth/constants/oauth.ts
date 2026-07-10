@@ -13,10 +13,7 @@ import {
   GITHUB_COPILOT_CHAT_USER_AGENT,
   GITHUB_COPILOT_EDITOR_VERSION,
 } from "@omniroute/open-sse/config/providerHeaderProfiles.ts";
-import {
-  resolvePublicCred,
-  resolvePublicCredMulti,
-} from "@omniroute/open-sse/utils/publicCreds.ts";
+import { resolvePublicCred } from "@omniroute/open-sse/utils/publicCreds.ts";
 import { buildGitLabOAuthEndpoints, GITLAB_DUO_DEFAULT_BASE_URL } from "../gitlab";
 
 /**
@@ -72,28 +69,6 @@ export const CODEX_CONFIG = {
     // the only known tool that sustains multiple Codex OAuth accounts.
     prompt: "login",
   },
-};
-
-// Gemini (Google) OAuth Configuration (Standard OAuth2)
-// clientId/clientSecret are public values shipped in the Gemini CLI binary;
-// resolved through resolvePublicCred so they don't appear as literals here.
-export const GEMINI_CONFIG = {
-  clientId: resolvePublicCredMulti("gemini_id", [
-    "GEMINI_CLI_OAUTH_CLIENT_ID",
-    "GEMINI_OAUTH_CLIENT_ID",
-  ]),
-  clientSecret: resolvePublicCredMulti("gemini_alt", [
-    "GEMINI_CLI_OAUTH_CLIENT_SECRET",
-    "GEMINI_OAUTH_CLIENT_SECRET",
-  ]),
-  authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
-  tokenUrl: "https://oauth2.googleapis.com/token",
-  userInfoUrl: "https://www.googleapis.com/oauth2/v1/userinfo",
-  scopes: [
-    "https://www.googleapis.com/auth/cloud-platform",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-  ],
 };
 
 // Qwen OAuth Configuration (Device Code Flow with PKCE)
@@ -183,8 +158,10 @@ export const ANTIGRAVITY_CONFIG = {
   authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
   tokenUrl: "https://oauth2.googleapis.com/token",
   userInfoUrl: "https://www.googleapis.com/oauth2/v1/userinfo",
+  // No "openid" scope — the working 9router flow requests only the Cloud Code /
+  // userinfo scopes below. "openid" (with PKCE) routed Google into the hanging
+  // `firstparty/nativeapp` consent. Match 9router exactly (antigravity login fix).
   scopes: [
-    "openid",
     "https://www.googleapis.com/auth/cloud-platform",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
@@ -410,7 +387,7 @@ export const TRAE_CONFIG = {
 //
 //   Phase 2 will reintroduce browser login via Firebase OAuth + RegisterUser
 //   (ported from fendoushaonian/WindSurf-gRPC-API).
-//   Spec: docs/superpowers/specs/2026-05-29-windsurf-login-fix-design.md.
+//   Spec: _tasks/superpowers/specs/2026-05-29-windsurf-login-fix-design.md.
 //
 // Active fields:
 //   - inferenceUrl       → used by WindsurfExecutor (open-sse/executors/windsurf.ts)
@@ -452,6 +429,40 @@ export const WINDSURF_CONFIG = {
   extensionVersion: "3.14.0",
 };
 
+// Zed IDE credential import — no standard OAuth flow.
+// Credentials are extracted from the OS keychain via POST /api/providers/zed/import.
+// Docker environments fall back to manual token paste via POST /api/providers/zed/manual-import.
+// This config is a placeholder so that getProvider("zed") doesn't throw
+// "Unknown provider: zed" when the UI probes the OAuth capability endpoint.
+export const ZED_CONFIG = {
+  importUrl: "/api/providers/zed/import",
+  discoverUrl: "/api/providers/zed/discover",
+  manualImportUrl: "/api/providers/zed/manual-import",
+};
+
+// Zed Hosted Models Configuration (native-app RSA-keypair sign-in)
+//
+// Zed's cloud aggregator (cloud.zed.dev) does not use a registered OAuth
+// client_id/secret. The client generates a fresh RSA keypair per login
+// attempt and sends the public key to zed.dev/native_app_signin; Zed
+// encrypts the resulting access token against that public key and redirects
+// the browser to a local "native app" callback
+// (http://127.0.0.1:<port>/?user_id=...&access_token=...). OmniRoute decrypts
+// the token with the matching private key — see open-sse/shared/zedAuth.ts.
+// No client_id/secret/Firebase key is embedded here (Hard Rule #11 does not
+// apply — there is no upstream secret to embed).
+export const ZED_HOSTED_CONFIG = {
+  webBaseUrl: "https://zed.dev",
+  cloudBaseUrl: "https://cloud.zed.dev",
+  llmBaseUrl: "https://cloud.zed.dev",
+  nativeSignInPath: "/native_app_signin",
+  userInfoUrl: "https://cloud.zed.dev/client/users/me",
+  llmTokenUrl: "https://cloud.zed.dev/client/llm_tokens",
+  modelsUrl: "https://cloud.zed.dev/models",
+  completionsUrl: "https://cloud.zed.dev/completions",
+  defaultNativeAppPort: 58443,
+};
+
 // OAuth timeout (5 minutes)
 export const OAUTH_TIMEOUT = 300000;
 
@@ -459,7 +470,7 @@ export const OAUTH_TIMEOUT = 300000;
 export const PROVIDERS = {
   CLAUDE: "claude",
   CODEX: "codex",
-  GEMINI: "gemini-cli",
+  GEMINI: "gemini",
   QWEN: "qwen",
   QODER: "qoder",
   ANTIGRAVITY: "antigravity",
@@ -478,4 +489,6 @@ export const PROVIDERS = {
   TRAE: "trae",
   CODEBUDDY_CN: "codebuddy-cn",
   GROK_CLI: "grok-cli",
+  ZED: "zed",
+  ZED_HOSTED: "zed-hosted",
 };
