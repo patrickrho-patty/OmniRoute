@@ -218,7 +218,19 @@ export class GeminiWebExecutor extends BaseExecutor {
 
     const messages = requestBody.messages || [];
     const lastUserMsg = messages.filter((m) => m.role === "user").pop();
-    const prompt = lastUserMsg?.content || "";
+    // Content may be a plain string OR an array of parts (e.g.
+    // [{type:"text",text:"..."}, ...] from /v1/responses or multimodal clients).
+    // keyboard.type() requires a string, so flatten to text only — gemini-web
+    // drives a browser via the keyboard and cannot type non-text parts.
+    const rawContent = lastUserMsg?.content;
+    const prompt =
+      typeof rawContent === "string"
+        ? rawContent
+        : Array.isArray(rawContent)
+          ? rawContent
+              .map((part: any) => (typeof part === "string" ? part : part?.text ?? ""))
+              .join("")
+          : "";
 
     if (!prompt) {
       return {
