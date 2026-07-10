@@ -15,6 +15,7 @@
 
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
+import { serializeToolsToPrompt, buildToolAwareResult } from "../translator/webTools.ts";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -236,7 +237,7 @@ export class GeminiWebExecutor extends BaseExecutor {
     // keyboard.type() requires a string, so flatten to text only — gemini-web
     // drives a browser via the keyboard and cannot type non-text parts.
     const rawContent = lastUserMsg?.content;
-    const prompt =
+    const userPromptText =
       typeof rawContent === "string"
         ? rawContent
         : Array.isArray(rawContent)
@@ -244,6 +245,16 @@ export class GeminiWebExecutor extends BaseExecutor {
               .map((part: any) => (typeof part === "string" ? part : part?.text ?? ""))
               .join("")
           : "";
+
+    // Tool-call support: serialize the OpenAI `tools` array into a system-prompt
+    // contract (the Gemini web UI has no native function-calling). The model is
+    // asked to emit <tool>{"name":...,"arguments":{...}}</tool> blocks, which are
+    // parsed back into OpenAI tool_calls on the response side. Mirrors the
+    // chatgpt-web / qwen-web / deepseek-web wiring via shared webTools.
+    const tools = requestBody.tools;
+    const hasTools = Array.isArray(tools) && tools.length > 0;
+    const toolContract = hasTools ? serializeToolsToPrompt(tools) : "";
+    const prompt = hasTools && toolContract ? `${toolContract}\n\n${userPromptText}` : userPromptText;
 
     if (!prompt) {
       return {
@@ -337,6 +348,77 @@ export class GeminiWebExecutor extends BaseExecutor {
       }
 
       const modelId = model || "gemini-2.5-pro";
+
+      // Tool-call response: parse <tool>{...}</tool> blocks from the raw model
+      // output into OpenAI tool_calls (the web UI has no native function-calling).
+      if (hasTools) {
+        const { content, toolCalls, finishReason } = buildToolAwareResult(
+          responseText,
+          tools,
+          "gemini-web"
+        );
+        const message: Record<string, unknown> = { role: "assistant", content: content || null };
+        if (toolCalls) message.tool_calls = toolCalls;
+
+        if (stream) {
+          const encoder = new TextEncoder();
+          const readable = new ReadableStream(
+            {
+              start(controller) {
+                if (content) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify(formatStreamChunk(content, modelId))}\n\n`
+                    )
+                  );
+                }
+                if (toolCalls) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `data: ${JSON.stringify({ id: `chatcmpl-${Date.now()}`, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, delta: { role: "assistant", tool_calls: toolCalls }, finish_reason: null }] })}\n\n`
+                    )
+                  );
+                }
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify(formatStreamChunk("", modelId, finishReason))}\n\n`
+                  )
+                );
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.close();
+              },
+            },
+            { highWaterMark: 16384 }
+          );
+          return {
+            response: new Response(readable, {
+              status: 200,
+              headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+            }),
+            url: GEMINI_URL,
+            headers: {},
+            transformedBody: body,
+          };
+        }
+
+        const completion = {
+          id: `chatcmpl-${Date.now()}`,
+          object: "chat.completion",
+          created: Math.floor(Date.now() / 1000),
+          model: modelId,
+          choices: [{ index: 0, message, finish_reason: finishReason }],
+          usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+        };
+        return {
+          response: new Response(JSON.stringify(completion), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+          url: GEMINI_URL,
+          headers: {},
+          transformedBody: body,
+        };
+      }
 
       if (stream) {
         // Pseudo-streaming: send complete response as single SSE chunk
