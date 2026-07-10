@@ -194,7 +194,11 @@ RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
 
 USER node
 
-FROM runner-base AS runner-cli
+# Inherit from runner-web (not runner-base) so the CLI image ALSO ships the
+# Playwright Chromium browser — required by web-cookie providers (gemini-web,
+# chatgpt-web, claude-web/turnstile, etc.). Otherwise those providers 503 with
+# "Playwright Chromium browser is not installed".
+FROM runner-web AS runner-cli
 
 # Drop back to root briefly so we can install system + global npm packages,
 # then return to the `node` non-root user before the CMD inherited from
