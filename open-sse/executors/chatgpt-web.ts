@@ -2102,6 +2102,17 @@ function synthesizePreProviderToolCall(
     }
   }
 
+  // "list files / list directory / ls / show files" — synthesize a bash ls
+  // before calling ChatGPT so the model doesn't confabulate a listing.
+  if (hasBash && /\b(list|show|enumerate)\s+(the\s+)?(files|directory|dir|contents?)\b/i.test(currentMsg)) {
+    const lsDir = currentMsg.match(/(?:in|from|of|under)\s+([\w./-]+)/i)?.[1] ?? ".";
+    return makeSyntheticToolCall("bash", { command: `ls -la ${lsDir}`, timeout: 120 });
+  }
+  if (hasBash && /\b(list files|show files|ls\b|ll\b|dir\b)\s*(in\s+([\w./-]+))?/i.test(currentMsg)) {
+    const lsDir = currentMsg.match(/(?:in|from|of|under)\s+([\w./-]+)/i)?.[1] ?? ".";
+    return makeSyntheticToolCall("bash", { command: `ls -la ${lsDir}`, timeout: 120 });
+  }
+
   // Direct "Read/open <path>" requests — synthesize before calling ChatGPT
   // so the model never gets a chance to confabulate file contents.
   const directPathMatch = currentMsg.match(
