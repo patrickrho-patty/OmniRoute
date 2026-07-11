@@ -312,7 +312,11 @@ export class GeminiWebExecutor extends BaseExecutor {
           if (captured || !resp.url().includes("StreamGenerate")) return;
           captured = true;
           try {
-            const raw = await resp.text();          }
+            const raw = await resp.text();
+            responseText = parseStreamResponse(raw);
+          } catch {
+            /* ignore */
+          }
           resolve();
         });
       });
@@ -327,7 +331,8 @@ export class GeminiWebExecutor extends BaseExecutor {
       const inputEl = await page.waitForSelector(".ql-editor, [contenteditable='true']", {
         timeout: 10000,
       });
-      await inputEl.click();      // characters on long prompts (tool contracts ~1-5KB). The Quill editor
+      await inputEl.click();
+      // Set the prompt via execCommand('insertText') — keyboard.type drops
       // can't keep up with rapid key events, truncating the message. Gemini then
       // sees only the first few chars ("system tag without any text").
       // execCommand inserts the full text atomically + triggers Quill's input
