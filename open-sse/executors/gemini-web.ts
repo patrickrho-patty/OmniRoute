@@ -34,7 +34,21 @@ export function isMissingBrowserExecutable(message: string): boolean {
   );
 }
 const GEMINI_USER_AGENT =
+  process.env.GEMINI_WEB_USER_AGENT ||
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+
+// When GEMINI_WEB_MASK_AS_ANTIGRAVITY is set, the User-Agent mimics Antigravity
+// (Google's coding agent) so the traffic looks like a coding-agent client.
+// Transport (Playwright → gemini.google.com) stays the same — only the UA
+// identification layer changes.
+const MASK_AS_ANTIGRAVITY = process.env.GEMINI_WEB_MASK_AS_ANTIGRAVITY === "true" ||
+  process.env.GEMINI_WEB_MASK_AS_ANTIGRAVITY === "1";
+const ANTIGRAVITY_MASK_VERSION = process.env.ANTIGRAVITY_VERSION || "4.2.0";
+const ANTIGRAVITY_CHROME_VERSION = "142.0.7444.175";
+const ANTIGRAVITY_ELECTRON_VERSION = "39.2.3";
+const GEMINI_EFFECTIVE_UA = MASK_AS_ANTIGRAVITY
+  ? `Antigravity/${ANTIGRAVITY_MASK_VERSION} (X11; Linux x86_64) Chrome/${ANTIGRAVITY_CHROME_VERSION} Electron/${ANTIGRAVITY_ELECTRON_VERSION}`
+  : GEMINI_USER_AGENT;
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -288,7 +302,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       };
       signal?.addEventListener("abort", abortBrowser, { once: true });
 
-      const context = await browser.newContext({ userAgent: GEMINI_USER_AGENT });
+      const context = await browser.newContext({ userAgent: GEMINI_EFFECTIVE_UA });
 
       // Parse cookies — strips attributes like Path, Domain, Expires
       const cookiePairs = parseCookies(cookie);
