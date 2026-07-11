@@ -53,19 +53,7 @@ const CONV_URL = `${CHATGPT_BASE}/backend-api/f/conversation`;
 const USER_LAST_USED_MODEL_CONFIG_URL = `${CHATGPT_BASE}/backend-api/settings/user_last_used_model_config`;
 
 const CHATGPT_USER_AGENT =
-  process.env.CHATGPT_WEB_USER_AGENT ||
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0";
-
-// When CHATGPT_WEB_MASK_AS_CODEX is set, the User-Agent and identity headers
-// mimic Codex CLI so ChatGPT's risk model sees a coding-agent client instead
-// of a raw browser. The transport (web conversation endpoint + cookies) stays
-// the same — only the identification layer changes.
-const MASK_AS_CODEX = process.env.CHATGPT_WEB_MASK_AS_CODEX === "true" ||
-  process.env.CHATGPT_WEB_MASK_AS_CODEX === "1";
-const CODEX_MASK_VERSION = process.env.CODEX_CLIENT_VERSION || "0.142.0";
-const CODEX_MASK_UA = MASK_AS_CODEX
-  ? `codex-cli/${CODEX_MASK_VERSION} (Windows 10.0.26200; x64)`
-  : CHATGPT_USER_AGENT;
 
 // Captured from a real chatgpt.com browser session (April 2026).
 const OAI_CLIENT_VERSION = "prod-81e0c5cdf6140e8c5db714d613337f4aeab94029";
@@ -140,7 +128,7 @@ const THINKING_CAPABLE_SLUGS: ReadonlySet<string> = new Set(
 // ─── Browser-like default headers ──────────────────────────────────────────
 
 function browserHeaders(): Record<string, string> {
-  const base: Record<string, string> = {
+  return {
     Accept: "*/*",
     "Accept-Language": "en-US,en;q=0.9",
     "Cache-Control": "no-cache",
@@ -150,17 +138,8 @@ function browserHeaders(): Record<string, string> {
     "Sec-Fetch-Dest": "empty",
     "Sec-Fetch-Mode": "cors",
     "Sec-Fetch-Site": "same-origin",
-    "User-Agent": CODEX_MASK_UA,
+    "User-Agent": CHATGPT_USER_AGENT,
   };
-  // When masking as Codex, add Codex CLI identity headers so ChatGPT's risk
-  // model recognizes the client as a coding agent.
-  if (MASK_AS_CODEX) {
-    base["Version"] = CODEX_MASK_VERSION;
-    base["Openai-Beta"] = "responses=experimental";
-    base["X-Codex-Beta-Features"] = "responses_websockets";
-    base["originator"] = "codex_cli_rs";
-  }
-  return base;
 }
 
 /** Headers ChatGPT's web client sends on backend-api requests. */
