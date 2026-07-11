@@ -1955,6 +1955,23 @@ function makeSyntheticToolCall(name: string, args: Record<string, unknown>): Ope
   ];
 }
 
+/**
+ * Shell-quote a path/argument captured from user input before interpolating it
+ * into a synthesized bash command. Defense-in-depth: the capture regexes also
+ * restrict the character set, but this ensures safety even if a regex is later
+ * loosened. Strips quotes and wraps in single quotes so the value is treated as
+ * a literal by the shell.
+ */
+function shellQuote(arg: string): string {
+  // Remove any embedded single quotes (defensively — regex char class should
+  // already block them) then wrap in single quotes for literal treatment.
+  const cleaned = arg.replace(/'/g, "");
+  return `'${cleaned}'`;
+}
+
+/** Timeout (ms) for synthesized bash commands — matches the web-tool contract. */
+const SYNTH_BASH_TIMEOUT = 120;
+
 function buildSyntheticToolCallResponse(
   model: string,
   stream: boolean,
@@ -2085,36 +2102,38 @@ function synthesizePreProviderToolCall(
   const hasBash = toolNames.has("bash");
   const currentMsg = parsed.currentMsg || "";
 
+  // Early exit: all patterns below produce read/bash calls. If neither tool is
+  // available, skip the regex scans entirely to avoid wasted work.
+  if (!hasRead && !hasBash) return null;
+
   if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev)\b/i.test(currentMsg)) {
     const packageJson = tryParsePackageJsonFromToolHistory(parsed);
     const scripts = packageJson?.scripts as JsonRecord | undefined;
     if (typeof scripts?.dev === "string") return null;
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
     if (hasBash)
-      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
+      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: SYNTH_BASH_TIMEOUT });
   }
 
   if (isVagueFileFollowup(currentMsg)) {
     const path = findLastMentionedReadablePath(parsed);
     if (path) {
       if (hasRead) return makeSyntheticToolCall("read", { path });
-      if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${path}`, timeout: 120 });
+      if (hasBash)
+        return makeSyntheticToolCall("bash", { command: `cat ${shellQuote(path)}`, timeout: SYNTH_BASH_TIMEOUT });
     }
   }
 
   // "list files / list directory / ls / show files" — synthesize a bash ls
   // before calling ChatGPT so the model doesn't confabulate a listing.
-  if (hasBash && /\b(list|show|enumerate)\s+(?:the\s+)?(?:files|directory|dir|contents?)\b/i.test(currentMsg)) {
-    // Only capture a directory if it looks like a real path (has /, ., or is a
-    // known dir name) — NOT common English words like "the" or "current".
+  // Only fire when the message reads as a request (verb + files/dir noun),
+  // not a passing mention. Bare `ls`/`ll` also triggers.
+  if (hasBash && /\b(?:(?:list|show|enumerate)\s+(?:the\s+)?(?:files|directory|dir|contents?)|(?:ls|ll))\b/i.test(currentMsg)) {
+    // Only capture a directory if it looks like a real path (starts with / or
+    // contains /) — NOT common English words like "the" or "current".
     const dirMatch = currentMsg.match(/(?:in|from|of|under)\s+(?:the\s+)?([./][\w./-]+|[\w./-]*\/[\w./-]+)/i)?.[1];
     const lsDir = dirMatch ?? ".";
-    return makeSyntheticToolCall("bash", { command: `ls -la ${lsDir}`, timeout: 120 });
-  }
-  if (hasBash && /\b(?:list files|show files|ls\b|ll\b)\b/i.test(currentMsg)) {
-    const dirMatch = currentMsg.match(/(?:in|from|of|under)\s+(?:the\s+)?([./][\w./-]+|[\w./-]*\/[\w./-]+)/i)?.[1];
-    const lsDir = dirMatch ?? ".";
-    return makeSyntheticToolCall("bash", { command: `ls -la ${lsDir}`, timeout: 120 });
+    return makeSyntheticToolCall("bash", { command: `ls -la ${shellQuote(lsDir)}`, timeout: SYNTH_BASH_TIMEOUT });
   }
 
   // Direct "Read/open <path>" requests — synthesize before calling ChatGPT
@@ -2123,32 +2142,23 @@ function synthesizePreProviderToolCall(
   // with extension (foo.json), or relative with slash (src/foo). Bare words
   // like "the" or "repo" are rejected to avoid false positives.
   const directPathMatch = currentMsg.match(
-    /(?:read|open|check|see|inspect|cat)\s+(?:the\s+)?(?:file\s+)?(\/[\w./-]+|[\w./-]+\.[\w-]+|[\w./-]*\/[\w./-]+)/i
+    /(?:read|open|inspect|cat)\s+(?:the\s+)?(?:file\s+)?(\/[\w./-]+|[\w./-]+\.[\w-]+|[\w./-]*\/[\w./-]+)/i
   );
   if (directPathMatch?.[1] && directPathMatch[1].length > 1) {
     const path = directPathMatch[1];
     if (hasRead) return makeSyntheticToolCall("read", { path });
-    if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${path}`, timeout: 120 });
+    if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${shellQuote(path)}`, timeout: SYNTH_BASH_TIMEOUT });
   }
 
-  // Absolute path mentioned in user message
-  const absPathMatch = currentMsg.match(/(\/[\w./-]{2,})/);
-  if (absPathMatch?.[1] && (hasRead || hasBash)) {
-    if (hasRead) return makeSyntheticToolCall("read", { path: absPathMatch[1] });
-    if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${absPathMatch[1]}`, timeout: 120 });
-  }
-
-  // "git status" / "git diff" / "git log" — synthesize before ChatGPT so the
-  // model doesn't claim the repository is unavailable.
+  // "run/execute/show git <subcommand>" — synthesize before ChatGPT so the
+  // model doesn't claim the repository is unavailable. Requires a leading
+  // action verb so conversational mentions ("the git log shows...") don't fire.
   if (hasBash) {
-    const gitCmdMatch = currentMsg.match(/\b(run|execute|do|check|show)\s+(git\s+(?:status|diff|log|branch|fetch|pull))\b/i);
-    if (gitCmdMatch?.[2]) {
-      return makeSyntheticToolCall("bash", { command: gitCmdMatch[2], timeout: 120 });
-    }
-    // Bare "git status" etc. in the message
-    const bareGitMatch = currentMsg.match(/\b(git\s+(?:status|diff|log|branch))\b/i);
-    if (bareGitMatch?.[1]) {
-      return makeSyntheticToolCall("bash", { command: bareGitMatch[1], timeout: 120 });
+    const gitCmdMatch = currentMsg.match(
+      /\b(?:run|execute|do|check|show)\s+(git\s+(?:status|diff|log|branch|fetch|pull))\b/i
+    );
+    if (gitCmdMatch?.[1]) {
+      return makeSyntheticToolCall("bash", { command: gitCmdMatch[1], timeout: SYNTH_BASH_TIMEOUT });
     }
   }
 
@@ -2172,23 +2182,20 @@ function synthesizeLocalProjectToolCall(
   if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(prompt)) {
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
     if (hasBash)
-      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
+      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: SYNTH_BASH_TIMEOUT });
   }
 
-  const pathMatch =
-    currentMsg.match(/(?:read|open|check|see|inspect|cat)\s+(?:the\s+)?(?:file\s+)?([\w./-]+(?:\.[\w-]+)?)/i);
+  // Path extraction — require path-shaped captures (absolute, extension, or
+  // slash) to avoid false positives like "read the changelog" → read("the").
+  const pathMatch = currentMsg.match(
+    /(?:read|open|inspect|cat)\s+(?:the\s+)?(?:file\s+)?(\/[\w./-]+|[\w./-]+\.[\w-]+|[\w./-]*\/[\w./-]+)/i
+  );
   if (pathMatch?.[1] && hasRead) {
     return makeSyntheticToolCall("read", { path: pathMatch[1] });
   }
 
-  // Also try to extract absolute paths from the user message directly
-  const absPathMatch = currentMsg.match(/(\/[\w./-]+)/);
-  if (absPathMatch?.[1] && hasRead) {
-    return makeSyntheticToolCall("read", { path: absPathMatch[1] });
-  }
-
   if (/\bpackages\b/i.test(prompt) && hasBash) {
-    return makeSyntheticToolCall("bash", { command: "ls packages", timeout: 120 });
+    return makeSyntheticToolCall("bash", { command: "ls packages", timeout: SYNTH_BASH_TIMEOUT });
   }
 
   if (hasBash) return makeSyntheticToolCall("bash", { command: "ls", timeout: 120 });
