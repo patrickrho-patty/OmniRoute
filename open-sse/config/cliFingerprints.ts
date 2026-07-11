@@ -16,6 +16,7 @@ import {
   getQwenOauthHeaders,
 } from "./providerHeaderProfiles.ts";
 import { normalizeCliCompatProviderId } from "@/shared/utils/cliCompat";
+import { getCodexUserAgent, getCodexDefaultHeaders } from "./codexClient.ts";
 
 export interface CliFingerprint {
   /** Ordered list of header names (case-sensitive). Unlisted headers are appended. */
@@ -235,6 +236,51 @@ export const CLI_FINGERPRINTS: Record<string, CliFingerprint> = {
     ],
     userAgent: getQwenOauthHeaders()["User-Agent"],
     extraHeaders: getQwenOauthHeaders(),
+  },
+  "chatgpt-web": {
+    // When CLI_COMPAT_CHATGPT_WEB=1, mask the web-cookie executor's identity
+    // as Codex CLI so ChatGPT's risk model sees a coding-agent client. The
+    // transport (web conversation endpoint + cookies) stays unchanged — only
+    // the UA + identity headers are swapped via the existing fingerprint path.
+    headerOrder: [
+      "Host",
+      "Content-Type",
+      "Authorization",
+      "Accept",
+      "User-Agent",
+      "Accept-Encoding",
+      "OAI-Language",
+      "OAI-Device-Id",
+      "OAI-Client-Version",
+      "OAI-Client-Build-Number",
+      "OAI-Session-Id",
+    ],
+    bodyFieldOrder: [],
+    userAgent: getCodexUserAgent,
+    extraHeaders: getCodexDefaultHeaders(),
+  },
+  "gemini-web": {
+    // When CLI_COMPAT_GEMINI_WEB=1, mask the Playwright executor's identity
+    // as Antigravity so Gemini sees a coding-agent client. Transport stays
+    // Playwright → gemini.google.com.
+    headerOrder: [
+      "Accept",
+      "Accept-Encoding",
+      "Content-Type",
+      "User-Agent",
+      "x-goog-api-client",
+      "x-client-name",
+      "x-client-version",
+      "x-machine-id",
+      "x-vscode-sessionid",
+      "Host",
+      "Connection",
+    ],
+    bodyFieldOrder: [],
+    userAgent: getAntigravityUserAgent,
+    extraHeaders: {
+      "x-client-name": "antigravity",
+    },
   },
 };
 

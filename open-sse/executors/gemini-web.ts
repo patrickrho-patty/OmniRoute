@@ -16,6 +16,7 @@
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 import { serializeToolsToPrompt, buildToolAwareResult } from "../translator/webTools.ts";
+import { isCliCompatEnabled, CLI_FINGERPRINTS } from "../config/cliFingerprints.ts";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -35,6 +36,21 @@ export function isMissingBrowserExecutable(message: string): boolean {
 }
 const GEMINI_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
+
+/**
+ * Effective User-Agent for the Playwright browser context. When
+ * CLI_COMPAT_GEMINI_WEB is enabled, uses Antigravity's UA so traffic looks
+ * like a coding-agent client. Otherwise uses the default Chrome browser UA.
+ */
+function getEffectiveUserAgent(): string {
+  if (isCliCompatEnabled("gemini-web")) {
+    const fp = CLI_FINGERPRINTS["gemini-web"];
+    if (fp?.userAgent) {
+      return typeof fp.userAgent === "function" ? fp.userAgent() : fp.userAgent;
+    }
+  }
+  return GEMINI_USER_AGENT;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -288,7 +304,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       };
       signal?.addEventListener("abort", abortBrowser, { once: true });
 
-      const context = await browser.newContext({ userAgent: GEMINI_USER_AGENT });
+      const context = await browser.newContext({ userAgent: getEffectiveUserAgent() });
 
       // Parse cookies — strips attributes like Path, Domain, Expires
       const cookiePairs = parseCookies(cookie);

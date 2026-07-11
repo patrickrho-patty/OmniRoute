@@ -40,6 +40,7 @@ import {
   buildToolAwareResult,
   type OpenAIToolCall,
 } from "../translator/webTools.ts";
+import { isCliCompatEnabled, CLI_FINGERPRINTS } from "../config/cliFingerprints.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -128,7 +129,7 @@ const THINKING_CAPABLE_SLUGS: ReadonlySet<string> = new Set(
 // ─── Browser-like default headers ──────────────────────────────────────────
 
 function browserHeaders(): Record<string, string> {
-  return {
+  const base: Record<string, string> = {
     Accept: "*/*",
     "Accept-Language": "en-US,en;q=0.9",
     "Cache-Control": "no-cache",
@@ -140,6 +141,21 @@ function browserHeaders(): Record<string, string> {
     "Sec-Fetch-Site": "same-origin",
     "User-Agent": CHATGPT_USER_AGENT,
   };
+  // When CLI_COMPAT_CHATGPT_WEB is enabled, apply the Codex CLI fingerprint
+  // (UA + identity headers) so traffic looks like a coding-agent client.
+  if (isCliCompatEnabled("chatgpt-web")) {
+    const fp = CLI_FINGERPRINTS["chatgpt-web"];
+    if (fp) {
+      if (fp.userAgent) {
+        base["User-Agent"] =
+          typeof fp.userAgent === "function" ? fp.userAgent() : fp.userAgent;
+      }
+      if (fp.extraHeaders) {
+        Object.assign(base, fp.extraHeaders);
+      }
+    }
+  }
+  return base;
 }
 
 /** Headers ChatGPT's web client sends on backend-api requests. */
