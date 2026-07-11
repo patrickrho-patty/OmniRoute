@@ -325,7 +325,10 @@ export class GeminiWebExecutor extends BaseExecutor {
         timeout: 10000,
       });
       await inputEl.click();
-      await page.keyboard.type(prompt, { delay: 10 });
+      // Type without per-char delay: with tool contracts the prompt can be ~5KB,
+      // and {delay:10} would take ~50s (request timeout + Playwright hang). No
+      // delay types 5KB in ~1-2s — well under the 30s response window.
+      await page.keyboard.type(prompt);
       await page.waitForTimeout(300);
       await page.keyboard.press("Enter");
 
