@@ -30,6 +30,12 @@ import {
   type ChatGptImageConversationContext,
 } from "../services/chatgptImageCache.ts";
 import {
+  extractCurrentTurnImageUrls,
+  uploadCurrentTurnImages,
+  type UploadedChatGptImage,
+  type ChatGptUploadAuthContext,
+} from "../services/chatgptImageUpload.ts";
+import {
   prepareToolMessages,
   buildToolAwareResult,
   type OpenAIToolCall,
@@ -1038,10 +1044,21 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
   return { systemMsg, history, currentMsg, latestImageContext, hadToolActivity };
 }
 
+interface ChatGptImageAssetPointer {
+  content_type: "image_asset_pointer";
+  asset_pointer: string;
+  size_bytes: number;
+  width: number;
+  height: number;
+}
+
 interface ChatGptMessage {
   id: string;
   author: { role: string };
-  content: { content_type: "text"; parts: string[] };
+  content:
+    | { content_type: "text"; parts: string[] }
+    | { content_type: "multimodal_text"; parts: Array<string | ChatGptImageAssetPointer> };
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -1136,7 +1153,11 @@ function buildConversationBody(
   // is available. When false (default), use Temporary Chat to keep chats
   // out of the user's chatgpt.com history.
   forImageGen: boolean,
-  continuation: ChatGptImageConversationContext | null = null
+  continuation: ChatGptImageConversationContext | null = null,
+  // Inbound images the user sent, already uploaded to chatgpt.com. When
+  // present, the current user turn becomes a multimodal_text message that
+  // references each uploaded file so GPT actually sees the images.
+  uploadedImages: UploadedChatGptImage[] = []
 ): Record<string, unknown> {
   // Critical: do NOT send prior turns as separate `assistant` and `user`
   // messages in the `messages` array. ChatGPT's web API ("action: next")
@@ -1184,11 +1205,47 @@ function buildConversationBody(
           .join("\n\n")
       : parsed.currentMsg || "";
 
-  messages.push({
-    id: randomUUID(),
-    author: { role: "user" },
-    content: { content_type: "text", parts: [currentUserContent] },
-  });
+  if (uploadedImages.length > 0) {
+    // Multimodal turn: text first, then one image_asset_pointer per uploaded
+    // file, plus a metadata.attachments entry — exactly what chatgpt.com's
+    // browser client sends when a user attaches images. Image-only turns have
+    // empty text; give the model a minimal instruction so it responds to the
+    // image instead of an empty prompt.
+    const multimodalText = currentUserContent.trim()
+      ? currentUserContent
+      : "What is in this image?";
+    const parts: Array<string | ChatGptImageAssetPointer> = [multimodalText];
+    for (const img of uploadedImages) {
+      parts.push({
+        content_type: "image_asset_pointer",
+        asset_pointer: `file-service://${img.fileId}`,
+        size_bytes: img.sizeBytes,
+        width: img.width,
+        height: img.height,
+      });
+    }
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "multimodal_text", parts },
+      metadata: {
+        attachments: uploadedImages.map((img) => ({
+          id: img.fileId,
+          size: img.sizeBytes,
+          name: img.name,
+          mime_type: img.mimeType,
+          width: img.width,
+          height: img.height,
+        })),
+      },
+    });
+  } else {
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "text", parts: [currentUserContent] },
+    });
+  }
 
   return {
     action: "next",
@@ -3049,7 +3106,10 @@ export class ChatGptWebExecutor extends BaseExecutor {
       messages as Array<{ role: string; content: unknown }>
     );
     const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
-    if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
+    const inboundImageUrls = extractCurrentTurnImageUrls(
+      messages as Array<Record<string, unknown>>
+    );
+    if (!parsed.currentMsg.trim() && parsed.history.length === 0 && inboundImageUrls.length === 0) {
       return {
         response: errorResponse(400, "Empty user message"),
         url: CONV_URL,
@@ -3080,6 +3140,44 @@ export class ChatGptWebExecutor extends BaseExecutor {
           ? "Image edit intent detected — continuing saved image conversation"
           : "Image-gen intent detected — disabling Temporary Chat for this turn"
       );
+    }
+
+    let uploadedImages: UploadedChatGptImage[] = [];
+    if (inboundImageUrls.length > 0) {
+      log?.info?.(
+        "CGPT-WEB",
+        `Detected ${inboundImageUrls.length} inbound image(s) — uploading to chatgpt.com`
+      );
+      const uploadCtx: ChatGptUploadAuthContext = {
+        accessToken: tokenEntry.accessToken,
+        accountId: tokenEntry.accountId ?? null,
+        sessionId,
+        deviceId,
+        baseHeaders: {
+          ...browserHeaders(),
+          ...oaiHeaders(sessionId, deviceId),
+          Cookie: buildSessionCookieHeader(cookie),
+        },
+        signal,
+        log,
+      };
+      uploadedImages = await uploadCurrentTurnImages(inboundImageUrls, uploadCtx);
+      if (uploadedImages.length !== inboundImageUrls.length) {
+        log?.warn?.(
+          "CGPT-WEB",
+          `Inbound image upload failed (${uploadedImages.length}/${inboundImageUrls.length}); returning non-OK so combo fallback can try the next target`
+        );
+        return {
+          response: errorResponse(
+            502,
+            "ChatGPT Web could not upload the attached image(s); falling back to the next combo target if available.",
+            "CGPT_IMAGE_UPLOAD_FAILED"
+          ),
+          url: `${CHATGPT_BASE}/backend-api/files`,
+          headers: {},
+          transformedBody: body,
+        };
+      }
     }
 
     // 2c. Sentinel chat-requirements
@@ -3159,7 +3257,8 @@ export class ChatGptWebExecutor extends BaseExecutor {
       modelSlug,
       parentMessageId,
       forImageGen,
-      continuation
+      continuation,
+      uploadedImages
     );
 
     const headers: Record<string, string> = {

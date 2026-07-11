@@ -8,16 +8,23 @@ export const chatgpt_webProvider: RegistryEntry = {
   baseUrl: "https://chatgpt.com/backend-api/conversation",
   authType: "apikey",
   authHeader: "cookie",
+  // All chatgpt.com web models accept native image input (the composer lets
+  // you attach images to every model). supportsVision:true lets the vision
+  // bridge SKIP describe-to-text and route images through the native upload
+  // path in the chatgpt-web executor instead.
   models: [
-    { id: "gpt-5.5-pro", name: "GPT-5.5 Pro" }, // pro tier only, standard effort
-    { id: "gpt-5.5-pro-extended", name: "GPT-5.5 Pro Extended" }, // pro tier only, extended effort
-    { id: "gpt-5.5-thinking", name: "GPT-5.5 Thinking" }, // plus, pro tier
-    { id: "gpt-5.5", name: "GPT-5.5 Instant" }, // free, plus, pro tier
-    { id: "gpt-5.4-pro", name: "GPT-5.4 Pro" }, // pro tier only
-    { id: "gpt-5.4-thinking", name: "GPT-5.4 Thinking" }, // plus, pro tier
-    { id: "gpt-5.4-thinking-mini", name: "GPT-5.4 Thinking Mini" }, // free-login only
-    { id: "gpt-5.3", name: "GPT-5.3 Instant" }, // free, free-login, plus, pro tier
-    { id: "gpt-5.3-mini", name: "GPT-5.3 Mini" }, // limit fallback
-    { id: "o3", name: "o3" }, // plus ~ tier
+    { id: "gpt-5.5-pro", name: "GPT-5.5 Pro", supportsVision: true }, //pro tier only
+    { id: "gpt-5.5-thinking", name: "GPT-5.5 Thinking", supportsVision: true }, //plus, pro tier
+    { id: "gpt-5.5", name: "GPT-5.5 Instant", supportsVision: true }, //free, plus, pro tier
+    { id: "gpt-5.4-pro", name: "GPT-5.4 Pro", supportsVision: true }, //pro tier only
+    { id: "gpt-5.4-thinking", name: "GPT-5.4 Thinking", supportsVision: true }, //plus, pro tier
+    { id: "gpt-5.4-thinking-mini", name: "GPT-5.4 Thinking Mini", supportsVision: true }, //free-login only
+    { id: "gpt-5.3", name: "GPT-5.3 Instant", supportsVision: true }, //free, free-login, plus, pro tier
+    { id: "gpt-5.3-mini", name: "GPT-5.3 Mini", supportsVision: true }, //limit fallback
+    { id: "gpt-5.2-pro", name: "GPT-5.2 Pro", supportsVision: true }, //pro tier only
+    { id: "gpt-5.2-thinking", name: "GPT-5.2 Thinking", supportsVision: true }, //plus ~ tier
+    { id: "gpt-5.2-instant", name: "GPT-5.2 Instant", supportsVision: true }, //plus ~ tier
+    { id: "o3", name: "o3", supportsVision: true }, //plus ~ tier
+    { id: "gpt-4-5", name: "GPT-4.5", supportsVision: true }, //pro tier only
   ],
 };
