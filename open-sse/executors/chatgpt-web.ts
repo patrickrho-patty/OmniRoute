@@ -1988,13 +1988,16 @@ function buildSyntheticToolCallResponse(
 
 function isLocalProjectToolExcuse(content: string): boolean {
   return (
-    /(filesystem|file system|repository|repo|workspace|project files|package\.json).{0,160}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste)/i.test(
+    /(filesystem|file system|repository|repo|workspace|project files|package\.json|tool|this chat|this environment|this runtime|this session).{0,200}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste|isn't available|not accessible|doesn't have access)/i.test(
       content
     ) ||
     /(paste|provide|send|point me at).{0,120}(package\.json|file|repo|repository|folder|tree|output|workspace)/i.test(
       content
     ) ||
     /(package\.json|file|repo|repository|folder|tree|output|workspace).{0,120}(paste|provide|send|point me at)/i.test(
+      content
+    ) ||
+    /\b(couldn't read|couldn't open|couldn't access|could not read|could not open|could not access|can't read|can't open|can't access|cannot read|cannot open|cannot access|not able to read|not able to access|unable to read|unable to access|i tried to open|i tried to read|read attempt|does not exist at that path|no such file|not a tool|isn't available in this chat|can't call a .* tool|don't have access to .* file|don't have .* tool access|connector.*returning|can't inspect live files)\b/i.test(
       content
     )
   );
@@ -2099,6 +2102,24 @@ function synthesizePreProviderToolCall(
     }
   }
 
+  // Direct "Read/open <path>" requests — synthesize before calling ChatGPT
+  // so the model never gets a chance to confabulate file contents.
+  const directPathMatch = currentMsg.match(
+    /(?:read|open|check|see|inspect|cat)\s+(?:the\s+)?(?:file\s+)?([\w./-]+(?:\.[\w-]+)?)/i
+  );
+  if (directPathMatch?.[1] && directPathMatch[1].length > 1) {
+    const path = directPathMatch[1];
+    if (hasRead) return makeSyntheticToolCall("read", { path });
+    if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${path}`, timeout: 120 });
+  }
+
+  // Absolute path mentioned in user message
+  const absPathMatch = currentMsg.match(/(\/[\w./-]{2,})/);
+  if (absPathMatch?.[1] && (hasRead || hasBash)) {
+    if (hasRead) return makeSyntheticToolCall("read", { path: absPathMatch[1] });
+    if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${absPathMatch[1]}`, timeout: 120 });
+  }
+
   return null;
 }
 
@@ -2122,9 +2143,16 @@ function synthesizeLocalProjectToolCall(
       return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
   }
 
-  const pathMatch = currentMsg.match(/(?:read|open|check|see|inspect)\s+([\w./-]+\.[\w-]+)/i);
+  const pathMatch =
+    currentMsg.match(/(?:read|open|check|see|inspect|cat)\s+(?:the\s+)?(?:file\s+)?([\w./-]+(?:\.[\w-]+)?)/i);
   if (pathMatch?.[1] && hasRead) {
     return makeSyntheticToolCall("read", { path: pathMatch[1] });
+  }
+
+  // Also try to extract absolute paths from the user message directly
+  const absPathMatch = currentMsg.match(/(\/[\w./-]+)/);
+  if (absPathMatch?.[1] && hasRead) {
+    return makeSyntheticToolCall("read", { path: absPathMatch[1] });
   }
 
   if (/\bpackages\b/i.test(prompt) && hasBash) {
