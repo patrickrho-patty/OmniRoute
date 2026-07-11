@@ -251,10 +251,17 @@ export class GeminiWebExecutor extends BaseExecutor {
     // asked to emit <tool>{"name":...,"arguments":{...}}</tool> blocks, which are
     // parsed back into OpenAI tool_calls on the response side. Mirrors the
     // chatgpt-web / qwen-web / deepseek-web wiring via shared webTools.
+    //
+    // FRAMING: the contract is wrapped in <system> tags and the user's actual
+    // request in <task> tags so Gemini treats them as distinct (instructions vs.
+    // the thing to do). A final action-forcing directive prevents the model from
+    // acknowledging the protocol without acting ("I am ready…").
     const tools = requestBody.tools;
     const hasTools = Array.isArray(tools) && tools.length > 0;
     const toolContract = hasTools ? serializeToolsToPrompt(tools) : "";
-    const prompt = hasTools && toolContract ? `${toolContract}\n\n${userPromptText}` : userPromptText;
+    const prompt = hasTools && toolContract
+      ? `<system>\n${toolContract}\n</system>\n\n<task>\n${userPromptText}\n</task>\n\nYou MUST act on the task above NOW using the TOOL USE PROTOCOL. Do NOT say "I am ready" or ask for the task — the task is already given. If a tool is needed, emit ONLY the <tool> block immediately.`
+      : userPromptText;
 
     if (!prompt) {
       return {
@@ -305,11 +312,7 @@ export class GeminiWebExecutor extends BaseExecutor {
           if (captured || !resp.url().includes("StreamGenerate")) return;
           captured = true;
           try {
-            const raw = await resp.text();
-            responseText = parseStreamResponse(raw);
-          } catch {
-            /* ignore */
-          }
+            const raw = await resp.text();          }
           resolve();
         });
       });
@@ -324,11 +327,19 @@ export class GeminiWebExecutor extends BaseExecutor {
       const inputEl = await page.waitForSelector(".ql-editor, [contenteditable='true']", {
         timeout: 10000,
       });
-      await inputEl.click();
-      // Type without per-char delay: with tool contracts the prompt can be ~5KB,
-      // and {delay:10} would take ~50s (request timeout + Playwright hang). No
-      // delay types 5KB in ~1-2s — well under the 30s response window.
-      await page.keyboard.type(prompt);
+      await inputEl.click();      // characters on long prompts (tool contracts ~1-5KB). The Quill editor
+      // can't keep up with rapid key events, truncating the message. Gemini then
+      // sees only the first few chars ("system tag without any text").
+      // execCommand inserts the full text atomically + triggers Quill's input
+      // listener reliably.
+      await page.evaluate((text) => {
+        const editor = document.querySelector('.ql-editor, [contenteditable="true"]');
+        if (editor) {
+          editor.focus();
+          document.execCommand("selectAll");
+          document.execCommand("insertText", false, text);
+        }
+      }, prompt);
       await page.waitForTimeout(300);
       await page.keyboard.press("Enter");
 
