@@ -2104,19 +2104,26 @@ function synthesizePreProviderToolCall(
 
   // "list files / list directory / ls / show files" — synthesize a bash ls
   // before calling ChatGPT so the model doesn't confabulate a listing.
-  if (hasBash && /\b(list|show|enumerate)\s+(the\s+)?(files|directory|dir|contents?)\b/i.test(currentMsg)) {
-    const lsDir = currentMsg.match(/(?:in|from|of|under)\s+([\w./-]+)/i)?.[1] ?? ".";
+  if (hasBash && /\b(list|show|enumerate)\s+(?:the\s+)?(?:files|directory|dir|contents?)\b/i.test(currentMsg)) {
+    // Only capture a directory if it looks like a real path (has /, ., or is a
+    // known dir name) — NOT common English words like "the" or "current".
+    const dirMatch = currentMsg.match(/(?:in|from|of|under)\s+(?:the\s+)?([./][\w./-]+|[\w./-]*\/[\w./-]+)/i)?.[1];
+    const lsDir = dirMatch ?? ".";
     return makeSyntheticToolCall("bash", { command: `ls -la ${lsDir}`, timeout: 120 });
   }
-  if (hasBash && /\b(list files|show files|ls\b|ll\b|dir\b)\s*(in\s+([\w./-]+))?/i.test(currentMsg)) {
-    const lsDir = currentMsg.match(/(?:in|from|of|under)\s+([\w./-]+)/i)?.[1] ?? ".";
+  if (hasBash && /\b(?:list files|show files|ls\b|ll\b)\b/i.test(currentMsg)) {
+    const dirMatch = currentMsg.match(/(?:in|from|of|under)\s+(?:the\s+)?([./][\w./-]+|[\w./-]*\/[\w./-]+)/i)?.[1];
+    const lsDir = dirMatch ?? ".";
     return makeSyntheticToolCall("bash", { command: `ls -la ${lsDir}`, timeout: 120 });
   }
 
   // Direct "Read/open <path>" requests — synthesize before calling ChatGPT
   // so the model never gets a chance to confabulate file contents.
+  // Require the captured token to look like a path: absolute (/...), relative
+  // with extension (foo.json), or relative with slash (src/foo). Bare words
+  // like "the" or "repo" are rejected to avoid false positives.
   const directPathMatch = currentMsg.match(
-    /(?:read|open|check|see|inspect|cat)\s+(?:the\s+)?(?:file\s+)?([\w./-]+(?:\.[\w-]+)?)/i
+    /(?:read|open|check|see|inspect|cat)\s+(?:the\s+)?(?:file\s+)?(\/[\w./-]+|[\w./-]+\.[\w-]+|[\w./-]*\/[\w./-]+)/i
   );
   if (directPathMatch?.[1] && directPathMatch[1].length > 1) {
     const path = directPathMatch[1];
@@ -2129,6 +2136,20 @@ function synthesizePreProviderToolCall(
   if (absPathMatch?.[1] && (hasRead || hasBash)) {
     if (hasRead) return makeSyntheticToolCall("read", { path: absPathMatch[1] });
     if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${absPathMatch[1]}`, timeout: 120 });
+  }
+
+  // "git status" / "git diff" / "git log" — synthesize before ChatGPT so the
+  // model doesn't claim the repository is unavailable.
+  if (hasBash) {
+    const gitCmdMatch = currentMsg.match(/\b(run|execute|do|check|show)\s+(git\s+(?:status|diff|log|branch|fetch|pull))\b/i);
+    if (gitCmdMatch?.[2]) {
+      return makeSyntheticToolCall("bash", { command: gitCmdMatch[2], timeout: 120 });
+    }
+    // Bare "git status" etc. in the message
+    const bareGitMatch = currentMsg.match(/\b(git\s+(?:status|diff|log|branch))\b/i);
+    if (bareGitMatch?.[1]) {
+      return makeSyntheticToolCall("bash", { command: bareGitMatch[1], timeout: 120 });
+    }
   }
 
   return null;
