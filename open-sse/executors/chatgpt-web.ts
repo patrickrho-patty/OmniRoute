@@ -974,7 +974,10 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
       // Track tool_calls id→name so tool result messages can be labelled
       const rawToolCalls = (msg as Record<string, unknown>)["tool_calls"];
       const toolCalls = Array.isArray(rawToolCalls)
-        ? (rawToolCalls as Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>)
+        ? (rawToolCalls as Array<{
+            id?: string;
+            function?: { name?: string; arguments?: unknown };
+          }>)
         : [];
       if (toolCalls.length > 0) hadToolActivity = true;
       for (const c of toolCalls) {
@@ -992,7 +995,10 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
             return args ? `${name}(${args})` : name;
           })
           .join("\n");
-        const combined = [content.trim(), callsSummary ? `Previous tool calls:\n${callsSummary}` : ""]
+        const combined = [
+          content.trim(),
+          callsSummary ? `Previous tool calls:\n${callsSummary}` : "",
+        ]
           .filter(Boolean)
           .join("\n");
         if (combined.trim()) history.push({ role: "assistant", content: combined });
@@ -1943,7 +1949,9 @@ function asksAboutLocalProject(currentMsg: string): boolean {
   );
 }
 
-function tryParsePackageJsonFromToolHistory(parsed: ParsedMessages | null | undefined): JsonRecord | null {
+function tryParsePackageJsonFromToolHistory(
+  parsed: ParsedMessages | null | undefined
+): JsonRecord | null {
   if (!parsed) return null;
   for (const item of [...parsed.history].reverse()) {
     if (item.role !== "tool") continue;
@@ -1981,7 +1989,8 @@ function synthesizeLocalProjectAnswer(
   return `In package.json, \`pnpm dev\` runs:\n\n\`\`\`bash\n${devScript}\n\`\`\`\n\nThat is the root dev script. If you want a deeper trace of what that command fans out to, the next file to inspect is usually \`turbo.json\` or the relevant workspace package scripts.`;
 }
 
-const READABLE_PATH_RE = /(?:`|\b)([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:json|sh|md|ts|tsx|js|jsx|mjs|cjs|yaml|yml|toml|py|go|rs|java|rb|php|css|scss|html|env))(?:`|\b)/g;
+const READABLE_PATH_RE =
+  /(?:`|\b)([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:json|sh|md|ts|tsx|js|jsx|mjs|cjs|yaml|yml|toml|py|go|rs|java|rb|php|css|scss|html|env))(?:`|\b)/g;
 
 function findLastMentionedReadablePath(parsed: ParsedMessages): string | null {
   for (const item of [...parsed.history].reverse()) {
@@ -2021,7 +2030,8 @@ function synthesizePreProviderToolCall(
     const scripts = packageJson?.scripts as JsonRecord | undefined;
     if (typeof scripts?.dev === "string") return null;
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
-    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
+    if (hasBash)
+      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
   }
 
   if (isVagueFileFollowup(currentMsg)) {
@@ -2051,7 +2061,8 @@ function synthesizeLocalProjectToolCall(
 
   if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(prompt)) {
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
-    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
+    if (hasBash)
+      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
   }
 
   const pathMatch = currentMsg.match(/(?:read|open|check|see|inspect)\s+([\w./-]+\.[\w-]+)/i);
@@ -3029,7 +3040,49 @@ export class ChatGptWebExecutor extends BaseExecutor {
       );
     }
 
-    // 2b. Sentinel chat-requirements
+    // 2b. Build the ChatGPT message plan and upload inbound images BEFORE
+    // Sentinel/PoW. Chat requirements/proof tokens are short-lived; doing
+    // network image fetches + blob uploads after minting them increases stale
+    // token / 403 risk before the actual conversation call.
+    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+      bodyObj,
+      messages as Array<{ role: string; content: unknown }>
+    );
+    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
+    if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
+      return {
+        response: errorResponse(400, "Empty user message"),
+        url: CONV_URL,
+        headers: {},
+        transformedBody: body,
+      };
+    }
+
+    const preProviderToolCalls = hasTools
+      ? synthesizePreProviderToolCall(parsed, requestedTools)
+      : null;
+    if (preProviderToolCalls?.length) {
+      return {
+        response: buildSyntheticToolCallResponse(model, stream !== false, preProviderToolCalls),
+        url: CONV_URL,
+        headers: {},
+        transformedBody: body,
+      };
+    }
+
+    const imageEdit = looksLikeImageEditRequest(parsed);
+    const continuation = imageEdit ? parsed.latestImageContext : null;
+    const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
+    if (forImageGen) {
+      log?.debug?.(
+        "CGPT-WEB",
+        continuation
+          ? "Image edit intent detected — continuing saved image conversation"
+          : "Image-gen intent detected — disabling Temporary Chat for this turn"
+      );
+    }
+
+    // 2c. Sentinel chat-requirements
     let reqs: ChatRequirements;
     try {
       reqs = await prepareChatRequirements(
@@ -3099,48 +3152,6 @@ export class ChatGptWebExecutor extends BaseExecutor {
     }
 
     // 4. Build conversation request
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
-      bodyObj,
-      messages as Array<{ role: string; content: unknown }>
-    );
-    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
-    if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
-      return {
-        response: errorResponse(400, "Empty user message"),
-        url: CONV_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
-
-    const preProviderToolCalls = hasTools
-      ? synthesizePreProviderToolCall(parsed, requestedTools)
-      : null;
-    if (preProviderToolCalls?.length) {
-      return {
-        response: buildSyntheticToolCallResponse(model, stream !== false, preProviderToolCalls),
-        url: CONV_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
-
-    // Toggle Temporary Chat off only for image-generation requests, since
-    // Temporary Chat disables the image_gen tool. For plain text turns we
-    // keep Temporary Chat on so the user's chatgpt.com history isn't
-    // polluted with router traffic.
-    const imageEdit = looksLikeImageEditRequest(parsed);
-    const continuation = imageEdit ? parsed.latestImageContext : null;
-    const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
-    if (forImageGen) {
-      log?.debug?.(
-        "CGPT-WEB",
-        continuation
-          ? "Image edit intent detected — continuing saved image conversation"
-          : "Image-gen intent detected — disabling Temporary Chat for this turn"
-      );
-    }
-
     const parentMessageId = continuation?.parentMessageId ?? randomUUID();
     const modelSlug = MODEL_MAP[model] ?? model;
     const cgptBody = buildConversationBody(
