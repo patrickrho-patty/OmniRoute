@@ -303,26 +303,22 @@ export class GeminiWebExecutor extends BaseExecutor {
       // ─── API-first path (no Playwright) ────────────────────────────────
       // Try the direct HTTP StreamGenerate endpoint first. This is faster,
       // lighter, and matches how all other web-cookie providers work.
-      // Fall back to Playwright if the API path fails (token extraction,
-      // changed protocol, etc.).
-      const apiResult = await generateViaApi(prompt, cookie, model, signal);
-      if (apiResult.text) {
-        responseText = apiResult.text;
-      } else if (apiResult.status === 401) {
-        // Auth failure — don't fall back to Playwright, surface the error
-        return {
-          response: new Response(
-            JSON.stringify({ error: apiResult.error || "Gemini auth failed — re-paste your __Secure-1PSID cookie." }),
-            { status: 401, headers: { "Content-Type": "application/json" } }
-          ),
-          url: GEMINI_URL,
-          headers: {},
-          transformedBody: body,
-        };
+      // Fall back to Playwright if the API path fails (token extraction
+      // may fail if Gemini changes their HTML — Playwright executes JS
+      // and handles dynamic token delivery).
+      try {
+        const apiResult = await generateViaApi(prompt, cookie, model, signal);
+        if (apiResult.text) {
+          responseText = apiResult.text;
+        }
+        // If API fails (no text), fall through to Playwright fallback below.
+      } catch (apiErr) {
+        // API path errored — fall through to Playwright fallback.
       }
 
       // ─── Playwright fallback (browser automation) ──────────────────────
       if (!responseText) {
+      const { chromium } = await import("playwright");
       browser = await chromium.launch({ headless: true });
       abortBrowser = () => {
         void browser?.close().catch(() => {});
