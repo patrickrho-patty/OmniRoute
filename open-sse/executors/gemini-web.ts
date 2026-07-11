@@ -17,6 +17,7 @@ import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 import { serializeToolsToPrompt, buildToolAwareResult } from "../translator/webTools.ts";
 import { isCliCompatEnabled, CLI_FINGERPRINTS } from "../config/cliFingerprints.ts";
+import { generateViaApi } from "../services/geminiWebApiClient.ts";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -293,11 +294,35 @@ export class GeminiWebExecutor extends BaseExecutor {
 
     let browser: any = null;
     let abortBrowser: (() => void) | null = null;
+    let responseText = "";
     try {
       if (signal?.aborted) {
         throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
       }
-      const { chromium } = await import("playwright");
+
+      // ─── API-first path (no Playwright) ────────────────────────────────
+      // Try the direct HTTP StreamGenerate endpoint first. This is faster,
+      // lighter, and matches how all other web-cookie providers work.
+      // Fall back to Playwright if the API path fails (token extraction,
+      // changed protocol, etc.).
+      const apiResult = await generateViaApi(prompt, cookie, model, signal);
+      if (apiResult.text) {
+        responseText = apiResult.text;
+      } else if (apiResult.status === 401) {
+        // Auth failure — don't fall back to Playwright, surface the error
+        return {
+          response: new Response(
+            JSON.stringify({ error: apiResult.error || "Gemini auth failed — re-paste your __Secure-1PSID cookie." }),
+            { status: 401, headers: { "Content-Type": "application/json" } }
+          ),
+          url: GEMINI_URL,
+          headers: {},
+          transformedBody: body,
+        };
+      }
+
+      // ─── Playwright fallback (browser automation) ──────────────────────
+      if (!responseText) {
       browser = await chromium.launch({ headless: true });
       abortBrowser = () => {
         void browser?.close().catch(() => {});
@@ -369,6 +394,7 @@ export class GeminiWebExecutor extends BaseExecutor {
       if (signal?.aborted) {
         throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
       }
+      } // end Playwright fallback
 
       if (!responseText) {
         return {
