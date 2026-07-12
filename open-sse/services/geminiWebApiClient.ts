@@ -16,6 +16,7 @@
  */
 
 import { isCliCompatEnabled, CLI_FINGERPRINTS } from "../config/cliFingerprints.ts";
+import tlsClient from "../utils/tlsClient.ts";
 
 const GEMINI_BASE = "https://gemini.google.com";
 const INIT_URL = `${GEMINI_BASE}/app`;
@@ -94,7 +95,8 @@ async function fetchTokens(
   }
 
   const ua = getEffectiveUserAgent();
-  const resp = await fetch(INIT_URL, {
+  const fetchFn = tlsClient.available ? tlsClient.fetch.bind(tlsClient) : fetch;
+  const resp = await fetchFn(INIT_URL, {
     method: "GET",
     headers: {
       Cookie: buildCookieHeader(cookie),
@@ -242,7 +244,8 @@ export async function generateViaApi(
     formData.set("at", tokens.at);
     formData.set("f.req", freq);
 
-    const resp = await fetch(`${STREAM_GENERATE_URL}?${params}`, {
+    const fetchFn = tlsClient.available ? tlsClient.fetch.bind(tlsClient) : fetch;
+    const resp = await fetchFn(`${STREAM_GENERATE_URL}?${params}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",

@@ -16,6 +16,7 @@
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 import { serializeToolsToPrompt, buildToolAwareResult } from "../translator/webTools.ts";
+import { synthesizeWebToolCall, synthesizeWebFallbackToolCall } from "../translator/webToolSynthesis.ts";
 import { isCliCompatEnabled, CLI_FINGERPRINTS } from "../config/cliFingerprints.ts";
 import { generateViaApi } from "../services/geminiWebApiClient.ts";
 
@@ -292,6 +293,40 @@ export class GeminiWebExecutor extends BaseExecutor {
       };
     }
 
+    // ─── Pre-provider tool-call synthesis ────────────────────────────────
+    // Intercept filesystem/git/package.json requests BEFORE sending to Gemini,
+    // so the model never gets a chance to confabulate file contents or claim
+    // the filesystem is unavailable. Same logic as chatgpt-web.
+    if (hasTools) {
+      const synthHistory = messages.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" }));
+      const preSynth = synthesizeWebToolCall({
+        currentMsg: userPromptText,
+        history: synthHistory,
+        requestedTools: tools,
+      });
+      if (preSynth) {
+        const modelId = model || "gemini-2.5-pro";
+        const message: Record<string, unknown> = { role: "assistant", content: null };
+        message.tool_calls = preSynth;
+        return {
+          response: new Response(
+            JSON.stringify({
+              id: `chatcmpl-${Date.now()}`,
+              object: "chat.completion",
+              created: Math.floor(Date.now() / 1000),
+              model: modelId,
+              choices: [{ index: 0, message, finish_reason: "tool_calls" }],
+              usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          ),
+          url: GEMINI_URL,
+          headers: {},
+          transformedBody: body,
+        };
+      }
+    }
+
     let browser: any = null;
     let abortBrowser: (() => void) | null = null;
     let responseText = "";
@@ -408,11 +443,24 @@ export class GeminiWebExecutor extends BaseExecutor {
       // Tool-call response: parse <tool>{...}</tool> blocks from the raw model
       // output into OpenAI tool_calls (the web UI has no native function-calling).
       if (hasTools) {
-        const { content, toolCalls, finishReason } = buildToolAwareResult(
+        let { content, toolCalls, finishReason } = buildToolAwareResult(
           responseText,
           tools,
           "gemini-web"
         );
+
+        // Post-response fallback: if the model didn't emit a <tool> block but
+        // replied with an excuse ("I can't access files"), synthesize the tool
+        // call it should have made. Same logic as chatgpt-web.
+        if (!toolCalls) {
+          const fallback = synthesizeWebFallbackToolCall(content, userPromptText, tools);
+          if (fallback) {
+            toolCalls = fallback;
+            content = null;
+            finishReason = "tool_calls";
+          }
+        }
+
         const message: Record<string, unknown> = { role: "assistant", content: content || null };
         if (toolCalls) message.tool_calls = toolCalls;
 
