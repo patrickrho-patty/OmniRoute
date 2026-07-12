@@ -10,12 +10,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { ChatGptWebExecutor, __resetChatGptWebCachesForTesting } = await import(
-  "../../open-sse/executors/chatgpt-web.ts"
-);
-const { __setTlsFetchOverrideForTesting } = await import(
-  "../../open-sse/services/chatgptTlsClient.ts"
-);
+const { ChatGptWebExecutor, __resetChatGptWebCachesForTesting } =
+  await import("../../open-sse/executors/chatgpt-web.ts");
+const { __setTlsFetchOverrideForTesting } =
+  await import("../../open-sse/services/chatgptTlsClient.ts");
 
 // ─── Mock infrastructure (adapted from chatgpt-web-tools-5240.test.ts) ───────
 
@@ -39,7 +37,10 @@ function installMockFetch() {
       body: null,
     });
 
-    if ((u === "https://chatgpt.com/" || u === "https://chatgpt.com") && (opts.method || "GET") === "GET") {
+    if (
+      (u === "https://chatgpt.com/" || u === "https://chatgpt.com") &&
+      (opts.method || "GET") === "GET"
+    ) {
       return {
         status: 200,
         headers: makeHeaders({ "Content-Type": "text/html" }),
@@ -48,7 +49,11 @@ function installMockFetch() {
       };
     }
     if (u.includes("/api/auth/session")) {
-      return json({ accessToken: "jwt-abc", expires: new Date(Date.now() + 3600_000).toISOString(), user: { id: "u1" } });
+      return json({
+        accessToken: "jwt-abc",
+        expires: new Date(Date.now() + 3600_000).toISOString(),
+        user: { id: "u1" },
+      });
     }
     if (u.includes("/sentinel/chat-requirements")) {
       return json({ token: "req-token", proofofwork: { required: false } });
@@ -95,7 +100,11 @@ const BASH_TOOL = {
   function: {
     name: "bash",
     description: "Execute a bash command",
-    parameters: { type: "object", properties: { command: { type: "string" } }, required: ["command"] },
+    parameters: {
+      type: "object",
+      properties: { command: { type: "string" } },
+      required: ["command"],
+    },
   },
 };
 
@@ -189,12 +198,53 @@ test("Pre-provider: 'Run git status' → bash('git status')", async () => {
   assert.equal(JSON.parse(tcs[0].function.arguments).command, "git status");
 });
 
+test("Pre-provider: 'get me the git status' → bash('git status')", async () => {
+  __resetChatGptWebCachesForTesting();
+  const { json } = await execSynthesis({
+    messages: [{ role: "user", content: "can you get me the git status" }],
+    tools: [BASH_TOOL],
+  });
+  const tcs = getToolCalls(json);
+  assert.ok(tcs && tcs.length === 1);
+  assert.equal(tcs[0].function.name, "bash");
+  assert.equal(JSON.parse(tcs[0].function.arguments).command, "git status");
+});
+
+test("Pre-provider: 'give me the git log' → bash('git log')", async () => {
+  __resetChatGptWebCachesForTesting();
+  const { json } = await execSynthesis({
+    messages: [{ role: "user", content: "give me the git log" }],
+    tools: [BASH_TOOL],
+  });
+  const tcs = getToolCalls(json);
+  assert.ok(tcs && tcs.length === 1);
+  assert.equal(tcs[0].function.name, "bash");
+  assert.equal(JSON.parse(tcs[0].function.arguments).command, "git log");
+});
+
+test("Pre-provider: 'tell me the git branch' → bash('git branch')", async () => {
+  __resetChatGptWebCachesForTesting();
+  const { json } = await execSynthesis({
+    messages: [{ role: "user", content: "tell me the git branch" }],
+    tools: [BASH_TOOL],
+  });
+  const tcs = getToolCalls(json);
+  assert.ok(tcs && tcs.length === 1);
+  assert.equal(tcs[0].function.name, "bash");
+  assert.equal(JSON.parse(tcs[0].function.arguments).command, "git branch");
+});
+
 // ─── False-positive guards: conversational mentions must NOT fire ─────────────
 
 test("Pre-provider guard: 'the git log shows...' does NOT synthesize", async () => {
   __resetChatGptWebCachesForTesting();
   const { json } = await execSynthesis({
-    messages: [{ role: "user", content: "I think the git log shows the problem. Can you help me understand it?" }],
+    messages: [
+      {
+        role: "user",
+        content: "I think the git log shows the problem. Can you help me understand it?",
+      },
+    ],
     tools: [BASH_TOOL],
   });
   // No synthesis — either ChatGPT replies or no tool_calls in the response.
@@ -203,7 +253,11 @@ test("Pre-provider guard: 'the git log shows...' does NOT synthesize", async () 
     // If tool_calls exist, they must NOT be a bare 'git log' from conversation mention.
     for (const tc of tcs) {
       const cmd = JSON.parse(tc.function.arguments).command || "";
-      assert.doesNotMatch(cmd, /^git (log|status|diff|branch)$/, "bare git command from conversational mention");
+      assert.doesNotMatch(
+        cmd,
+        /^git (log|status|diff|branch)$/,
+        "bare git command from conversational mention"
+      );
     }
   }
 });
@@ -211,7 +265,9 @@ test("Pre-provider guard: 'the git log shows...' does NOT synthesize", async () 
 test("Pre-provider guard: 'read the documentation' does NOT synthesize read()", async () => {
   __resetChatGptWebCachesForTesting();
   const { json } = await execSynthesis({
-    messages: [{ role: "user", content: "Can you read the documentation and explain how it works?" }],
+    messages: [
+      { role: "user", content: "Can you read the documentation and explain how it works?" },
+    ],
     tools: [READ_TOOL],
   });
   const tcs = getToolCalls(json);

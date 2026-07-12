@@ -42,10 +42,7 @@ function shellQuote(arg: string): string {
   return `'${cleaned}'`;
 }
 
-function makeSyntheticToolCall(
-  name: string,
-  args: Record<string, unknown>
-): OpenAIToolCall[] {
+function makeSyntheticToolCall(name: string, args: Record<string, unknown>): OpenAIToolCall[] {
   return [
     {
       id: `web-synth-${randomUUID().slice(0, 12)}`,
@@ -68,6 +65,10 @@ function getRequestedToolNameSet(tools: unknown): Set<string> {
 
 const READABLE_PATH_RE =
   /(?:`|\b)([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:json|sh|md|ts|tsx|js|jsx|mjs|cjs|yaml|yml|toml|py|go|rs|java|rb|php|css|scss|html|env))(?:`|\b)/g;
+
+/** Shared git-command regex for pre-provider synthesis across web-cookie executors. */
+export const GIT_CMD_RE =
+  /\b(?:run|execute|do|check|show|get|give|tell)\s+(?:me\s+)?(?:the\s+)?(git\s+(?:status|diff|log|branch|fetch|pull))\b/i;
 
 function findLastMentionedReadablePath(history: WebSynthesisHistory[]): string | null {
   for (const item of [...history].reverse()) {
@@ -113,7 +114,10 @@ export function synthesizeWebToolCall(input: WebSynthesisInput): OpenAIToolCall[
   if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev)\b/i.test(currentMsg)) {
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
     if (hasBash)
-      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: SYNTH_BASH_TIMEOUT });
+      return makeSyntheticToolCall("bash", {
+        command: "cat package.json",
+        timeout: SYNTH_BASH_TIMEOUT,
+      });
   }
 
   // Vague follow-up ("yes", "read it", "check that") → read last mentioned path
@@ -122,15 +126,28 @@ export function synthesizeWebToolCall(input: WebSynthesisInput): OpenAIToolCall[
     if (path) {
       if (hasRead) return makeSyntheticToolCall("read", { path });
       if (hasBash)
-        return makeSyntheticToolCall("bash", { command: `cat ${shellQuote(path)}`, timeout: SYNTH_BASH_TIMEOUT });
+        return makeSyntheticToolCall("bash", {
+          command: `cat ${shellQuote(path)}`,
+          timeout: SYNTH_BASH_TIMEOUT,
+        });
     }
   }
 
   // "list files / list directory / ls / show files"
-  if (hasBash && /\b(?:(?:list|show|enumerate)\s+(?:the\s+)?(?:files|directory|dir|contents?)|(?:ls|ll))\b/i.test(currentMsg)) {
-    const dirMatch = currentMsg.match(/(?:in|from|of|under)\s+(?:the\s+)?([./][\w./-]+|[\w./-]*\/[\w./-]+)/i)?.[1];
+  if (
+    hasBash &&
+    /\b(?:(?:list|show|enumerate)\s+(?:the\s+)?(?:files|directory|dir|contents?)|(?:ls|ll))\b/i.test(
+      currentMsg
+    )
+  ) {
+    const dirMatch = currentMsg.match(
+      /(?:in|from|of|under)\s+(?:the\s+)?([./][\w./-]+|[\w./-]*\/[\w./-]+)/i
+    )?.[1];
     const lsDir = dirMatch ?? ".";
-    return makeSyntheticToolCall("bash", { command: `ls -la ${shellQuote(lsDir)}`, timeout: SYNTH_BASH_TIMEOUT });
+    return makeSyntheticToolCall("bash", {
+      command: `ls -la ${shellQuote(lsDir)}`,
+      timeout: SYNTH_BASH_TIMEOUT,
+    });
   }
 
   // Direct "Read/open/inspect <path>" requests
@@ -140,16 +157,21 @@ export function synthesizeWebToolCall(input: WebSynthesisInput): OpenAIToolCall[
   if (directPathMatch?.[1] && directPathMatch[1].length > 1) {
     const path = directPathMatch[1];
     if (hasRead) return makeSyntheticToolCall("read", { path });
-    if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${shellQuote(path)}`, timeout: SYNTH_BASH_TIMEOUT });
+    if (hasBash)
+      return makeSyntheticToolCall("bash", {
+        command: `cat ${shellQuote(path)}`,
+        timeout: SYNTH_BASH_TIMEOUT,
+      });
   }
 
-  // "run/execute/show/get git <subcommand>"
+  // "run/execute/do/check/show/get/give/tell (me/the) git <subcommand>"
   if (hasBash) {
-    const gitCmdMatch = currentMsg.match(
-      /\b(?:run|execute|do|check|show|get|give|tell)\s+(?:me\s+)?(?:the\s+)?(git\s+(?:status|diff|log|branch|fetch|pull))\b/i
-    );
+    const gitCmdMatch = currentMsg.match(GIT_CMD_RE);
     if (gitCmdMatch?.[1]) {
-      return makeSyntheticToolCall("bash", { command: gitCmdMatch[1], timeout: SYNTH_BASH_TIMEOUT });
+      return makeSyntheticToolCall("bash", {
+        command: gitCmdMatch[1],
+        timeout: SYNTH_BASH_TIMEOUT,
+      });
     }
   }
 
@@ -205,7 +227,10 @@ export function synthesizeWebFallbackToolCall(
   if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(currentMsg)) {
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
     if (hasBash)
-      return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: SYNTH_BASH_TIMEOUT });
+      return makeSyntheticToolCall("bash", {
+        command: "cat package.json",
+        timeout: SYNTH_BASH_TIMEOUT,
+      });
   }
 
   // Path extraction — require path-shaped captures
