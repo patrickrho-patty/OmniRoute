@@ -143,10 +143,10 @@ export function synthesizeWebToolCall(input: WebSynthesisInput): OpenAIToolCall[
     if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${shellQuote(path)}`, timeout: SYNTH_BASH_TIMEOUT });
   }
 
-  // "run/execute/show git <subcommand>"
+  // "run/execute/show/get git <subcommand>"
   if (hasBash) {
     const gitCmdMatch = currentMsg.match(
-      /\b(?:run|execute|do|check|show)\s+(git\s+(?:status|diff|log|branch|fetch|pull))\b/i
+      /\b(?:run|execute|do|check|show|get|give|tell)\s+(?:me\s+)?(?:the\s+)?(git\s+(?:status|diff|log|branch|fetch|pull))\b/i
     );
     if (gitCmdMatch?.[1]) {
       return makeSyntheticToolCall("bash", { command: gitCmdMatch[1], timeout: SYNTH_BASH_TIMEOUT });

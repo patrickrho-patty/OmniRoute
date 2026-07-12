@@ -2166,12 +2166,12 @@ function synthesizePreProviderToolCall(
     if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${shellQuote(path)}`, timeout: SYNTH_BASH_TIMEOUT });
   }
 
-  // "run/execute/show git <subcommand>" — synthesize before ChatGPT so the
+  // "run/execute/show/get git <subcommand>" — synthesize before ChatGPT so the
   // model doesn't claim the repository is unavailable. Requires a leading
   // action verb so conversational mentions ("the git log shows...") don't fire.
   if (hasBash) {
     const gitCmdMatch = currentMsg.match(
-      /\b(?:run|execute|do|check|show)\s+(git\s+(?:status|diff|log|branch|fetch|pull))\b/i
+      /\b(?:run|execute|do|check|show|get|give|tell)\s+(?:me\s+)?(?:the\s+)?(git\s+(?:status|diff|log|branch|fetch|pull))\b/i
     );
     if (gitCmdMatch?.[1]) {
       return makeSyntheticToolCall("bash", { command: gitCmdMatch[1], timeout: SYNTH_BASH_TIMEOUT });
