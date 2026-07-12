@@ -20,7 +20,7 @@ import tlsClient from "../utils/tlsClient.ts";
 
 const GEMINI_BASE = "https://gemini.google.com";
 const INIT_URL = `${GEMINI_BASE}/app`;
-const STREAM_GENERATE_URL = `${GEMINI_BASE}/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate`;
+const BATCH_EXECUTE_URL = `${GEMINI_BASE}/_/BardChatUi/data/batchexecute`;
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
@@ -63,19 +63,24 @@ function buildCookieHeader(cookie: string): string {
 /**
  * Extract tokens (at, bl, fsid) from the Gemini /app HTML page.
  * These are embedded in script tags as WIZ_global_data / AF_initDataCallback.
+ *
+ * Note: Google removed SNlM0e (the `at` XSRF token) from the page in April 2026.
+ * Confirmed by intercepting live browser traffic: batchexecute requests no
+ * longer include the `at` form field at all. We extract bl and fsid only;
+ * `at` is optional and will be empty string when not found.
  */
 function extractTokens(html: string): GeminiTokens | null {
-  // SNlM0e = XSRF access token
-  const atMatch = html.match(/"SNlM0e":"([^"]+)"/);
-  // cfb2h = build label
+  // cfb2h = build label (REQUIRED — always present)
   const blMatch = html.match(/"cfb2h":"([^"]+)"/);
-  // FdrFJe = session id (f.sid)
+  // FdrFJe = session id (f.sid) — optional
   const fsidMatch = html.match(/"FdrFJe":"([^"]+)"/);
+  // SNlM0e = XSRF access token (REMOVED by Google April 2026 — kept for compat)
+  const atMatch = html.match(/"SNlM0e":"([^"]+)"/);
 
-  if (!atMatch?.[1] || !blMatch?.[1]) return null;
+  if (!blMatch?.[1]) return null;
 
   return {
-    at: atMatch[1],
+    at: atMatch?.[1] || "",
     bl: blMatch[1],
     fsid: fsidMatch?.[1] || "",
   };
@@ -333,13 +338,15 @@ export async function generateViaApi(
     });
     if (tokens.fsid) params.set("f.sid", tokens.fsid);
 
-    // Form body: at=<token>&f.req=<envelope>
+    // Form body: Google removed the `at` (XSRF) requirement in April 2026.
+    // Live browser traffic confirms batchexecute no longer sends it.
+    // We send it only if we happened to find it (backward compat).
     const formData = new URLSearchParams();
-    formData.set("at", tokens.at);
+    if (tokens.at) formData.set("at", tokens.at);
     formData.set("f.req", freq);
 
     const fetchFn = tlsClient.available ? tlsClient.fetch.bind(tlsClient) : fetch;
-    const resp = await fetchFn(`${STREAM_GENERATE_URL}?${params}`, {
+    const resp = await fetchFn(`${BATCH_EXECUTE_URL}?${params}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded;charset=utf-8",
