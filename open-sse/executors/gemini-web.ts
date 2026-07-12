@@ -308,6 +308,40 @@ export class GeminiWebExecutor extends BaseExecutor {
         const modelId = model || "gemini-2.5-pro";
         const message: Record<string, unknown> = { role: "assistant", content: null };
         message.tool_calls = preSynth;
+
+        if (stream) {
+          // Streaming: emit as SSE with tool_calls delta + finish_reason
+          const encoder = new TextEncoder();
+          const readable = new ReadableStream(
+            {
+              start(controller) {
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify({ id: `chatcmpl-${Date.now()}`, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, delta: { role: "assistant", tool_calls: preSynth }, finish_reason: null }] })}\n\n`
+                  )
+                );
+                controller.enqueue(
+                  encoder.encode(
+                    `data: ${JSON.stringify(formatStreamChunk("", modelId, "tool_calls"))}\n\n`
+                  )
+                );
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                controller.close();
+              },
+            },
+            { highWaterMark: 16384 }
+          );
+          return {
+            response: new Response(readable, {
+              status: 200,
+              headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+            }),
+            url: GEMINI_URL,
+            headers: {},
+            transformedBody: body,
+          };
+        }
+
         return {
           response: new Response(
             JSON.stringify({

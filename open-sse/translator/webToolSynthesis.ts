@@ -15,6 +15,7 @@
  */
 
 import type { OpenAIToolCall } from "./webTools.ts";
+import { randomUUID } from "node:crypto";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -47,7 +48,7 @@ function makeSyntheticToolCall(
 ): OpenAIToolCall[] {
   return [
     {
-      id: `web-synth-${Date.now()}_0`,
+      id: `web-synth-${randomUUID().slice(0, 12)}`,
       type: "function",
       function: { name, arguments: JSON.stringify(args) },
     },
@@ -163,7 +164,7 @@ export function synthesizeWebToolCall(input: WebSynthesisInput): OpenAIToolCall[
  */
 export function isWebToolExcuse(content: string): boolean {
   return (
-    /(filesystem|file system|repository|repo|workspace|project files|package\.json|tool|this chat|this environment|this runtime|this session).{0,200}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can't|cannot|unable|don't see|don't see|not seeing|sandbox|inspect|paste|isn't available|not accessible|doesn't have access)/i.test(
+    /(filesystem|file system|repository|repo|workspace|project files|package\.json|tool|this chat|this environment|this runtime|this session).{0,200}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don't see|don’t see|not seeing|sandbox|inspect|paste|isn't available|not accessible|doesn't have access)/i.test(
       content
     ) ||
     /(paste|provide|send|point me at).{0,120}(package\.json|file|repo|repository|folder|tree|output|workspace)/i.test(
@@ -172,7 +173,7 @@ export function isWebToolExcuse(content: string): boolean {
     /(package\.json|file|repo|repository|folder|tree|output|workspace).{0,120}(paste|provide|send|point me at)/i.test(
       content
     ) ||
-    /\b(couldn't read|couldn't open|couldn't access|could not read|could not open|could not access|can't read|can't open|can't access|cannot read|cannot open|cannot access|not able to read|not able to access|unable to read|unable to access|i tried to open|i tried to read|read attempt|does not exist at that path|no such file|not a tool|isn't available in this chat|can't call a .* tool|don't have access to .* file|don't have .* tool access|connector.*returning|can't inspect live files|i cannot access|don't actually have access|nice try)\b/i.test(
+    /\b(couldn't read|couldn't open|couldn't access|could not read|could not open|could not access|can't read|can't open|can't access|cannot read|cannot open|cannot access|not able to read|not able to access|unable to read|unable to access|i tried to open|i tried to read|read attempt|does not exist at that path|no such file|not a tool|isn't available in this chat|can't call a .* tool|don't have access to .* file|don't have .* tool access|connector.*returning|can't inspect live files|i cannot access|don't actually have access|nice try|can’t read|can’t open|can’t access|couldn’t read|couldn’t open|couldn’t access|don’t have access)\b/i.test(
       content
     )
   );
