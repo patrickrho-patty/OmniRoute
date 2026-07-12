@@ -369,23 +369,26 @@ export class GeminiWebExecutor extends BaseExecutor {
         throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
       }
 
-      // ─── API-first path (no Playwright) ────────────────────────────────
-      // Try the direct HTTP StreamGenerate endpoint first. This is faster,
-      // lighter, and matches how all other web-cookie providers work.
-      // Fall back to Playwright if the API path fails (token extraction
-      // may fail if Gemini changes their HTML — Playwright executes JS
-      // and handles dynamic token delivery).
-      try {
-        const apiResult = await generateViaApi(prompt, cookie, model, signal);
-        if (apiResult.text) {
-          responseText = apiResult.text;
+      // ─── Direct HTTP API path (experimental) ───────────────────────────
+      // Google removed SNlM0e in April 2026 and changed the batchexecute RPC
+      // format. The direct API path needs further reverse-engineering of the
+      // new request envelope. Until then, we go straight to Playwright which
+      // is proven reliable. The geminiWebApiClient.ts module is kept for when
+      // the new RPC format is decoded.
+      //
+      // To enable: set GEMINI_WEB_USE_API=true
+      if (process.env.GEMINI_WEB_USE_API === "true" || process.env.GEMINI_WEB_USE_API === "1") {
+        try {
+          const apiResult = await generateViaApi(prompt, cookie, model, signal);
+          if (apiResult.text) {
+            responseText = apiResult.text;
+          }
+        } catch (apiErr) {
+          // API path errored — fall through to Playwright fallback.
         }
-        // If API fails (no text), fall through to Playwright fallback below.
-      } catch (apiErr) {
-        // API path errored — fall through to Playwright fallback.
       }
 
-      // ─── Playwright fallback (browser automation) ──────────────────────
+      // ─── Playwright (primary path) ────────────────────────────────────
       if (!responseText) {
       const { chromium } = await import("playwright");
       browser = await chromium.launch({ headless: true });
