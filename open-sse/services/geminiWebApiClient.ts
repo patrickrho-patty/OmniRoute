@@ -83,6 +83,13 @@ function extractTokens(html: string): GeminiTokens | null {
 
 /**
  * Fetch the /app page and extract auth tokens. Cached per-cookie for 10 min.
+ *
+ * Strategy:
+ * 1. Try static HTML extraction (fast, no browser) via TLS-impersonated fetch.
+ * 2. If SNlM0e is missing (Google moved it to JS-rendered content), use a
+ *    one-time Playwright headless visit to execute JavaScript and extract
+ *    the token from the live DOM. The token is cached so subsequent requests
+ *    skip the browser entirely.
  */
 async function fetchTokens(
   cookie: string,
@@ -94,32 +101,119 @@ async function fetchTokens(
     return cached.tokens;
   }
 
+  // Strategy 1: static HTML extraction (fast path)
   const ua = getEffectiveUserAgent();
   const fetchFn = tlsClient.available ? tlsClient.fetch.bind(tlsClient) : fetch;
-  const resp = await fetchFn(INIT_URL, {
-    method: "GET",
-    headers: {
-      Cookie: buildCookieHeader(cookie),
-      "User-Agent": ua,
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-    signal,
-  });
-
-  if (!resp.ok) return null;
-
-  const html = await resp.text();
-  const tokens = extractTokens(html);
-  if (!tokens) return null;
-
-  tokenCache.set(cacheKey, { tokens, expires: Date.now() + TOKEN_TTL_MS });
-  if (tokenCache.size > 50) {
-    // Evict oldest
-    const first = tokenCache.keys().next().value;
-    if (first) tokenCache.delete(first);
+  try {
+    const resp = await fetchFn(INIT_URL, {
+      method: "GET",
+      headers: {
+        Cookie: buildCookieHeader(cookie),
+        "User-Agent": ua,
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal,
+    });
+    if (resp.ok) {
+      const html = await resp.text();
+      const tokens = extractTokens(html);
+      if (tokens) {
+        tokenCache.set(cacheKey, { tokens, expires: Date.now() + TOKEN_TTL_MS });
+        if (tokenCache.size > 50) {
+          const first = tokenCache.keys().next().value;
+          if (first) tokenCache.delete(first);
+        }
+        return tokens;
+      }
+    }
+  } catch {
+    // Static fetch failed — try browser extraction below
   }
-  return tokens;
+
+  // Strategy 2: Playwright one-time extraction (SNlM0e is JS-rendered)
+  // Google moved SNlM0e out of static HTML in April 2026 — only a real
+  // browser executing the page's JavaScript can access it via WIZ_global_data.
+  try {
+    const tokens = await extractTokensViaBrowser(cookie, ua, signal);
+    if (tokens) {
+      tokenCache.set(cacheKey, { tokens, expires: Date.now() + TOKEN_TTL_MS });
+      if (tokenCache.size > 50) {
+        const first = tokenCache.keys().next().value;
+        if (first) tokenCache.delete(first);
+      }
+      return tokens;
+    }
+  } catch {
+    // Browser extraction failed
+  }
+
+  return null;
+}
+
+/**
+ * Extract auth tokens using a headless browser (executes JavaScript).
+ * The SNlM0e token is loaded dynamically by Gemini's frontend and is only
+ * accessible from the live DOM, not the static HTML.
+ */
+async function extractTokensViaBrowser(
+  cookie: string,
+  userAgent: string,
+  signal?: AbortSignal
+): Promise<GeminiTokens | null> {
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const context = await browser.newContext({ userAgent });
+    const cookiePairs = cookie
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const eqIdx = part.indexOf("=");
+        if (eqIdx === -1) return null;
+        const name = part.substring(0, eqIdx).trim();
+        const value = part.substring(eqIdx + 1).trim();
+        if (!name || !value) return null;
+        const lowerName = name.toLowerCase();
+        if (["path", "domain", "expires", "max-age", "secure", "httponly", "samesite"].includes(lowerName)) {
+          return null;
+        }
+        return { name, value };
+      })
+      .filter(Boolean) as Array<{ name: string; value: string }>;
+
+    await context.addCookies(
+      cookiePairs.map(({ name, value }) => ({
+        name,
+        value,
+        domain: ".google.com",
+        path: "/",
+        secure: true,
+      }))
+    );
+
+    const page = await context.newPage();
+    await page.goto(INIT_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+    // Wait for WIZ_global_data to be populated by JavaScript
+    await page.waitForTimeout(2000);
+
+    // Extract tokens from the live DOM (JavaScript-executed)
+    const tokens = await page.evaluate(() => {
+      const wiz = (window as unknown as Record<string, unknown>).WIZ_global_data as
+        Record<string, unknown> | undefined;
+      if (!wiz) return null;
+      const at = typeof wiz.SNlM0e === "string" ? wiz.SNlM0e : "";
+      const bl = typeof wiz.cfb2h === "string" ? wiz.cfb2h : "";
+      const fsid = typeof wiz["FdrFJe"] === "string" ? wiz["FdrFJe"] : "";
+      if (!at || !bl) return null;
+      return { at, bl, fsid };
+    });
+
+    return tokens;
+  } finally {
+    await browser.close().catch(() => {});
+  }
 }
 
 /**
