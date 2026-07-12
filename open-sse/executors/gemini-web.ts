@@ -342,7 +342,6 @@ export class GeminiWebExecutor extends BaseExecutor {
       const page = await context.newPage();
 
       // Capture first StreamGenerate response
-      let responseText = "";
       let captured = false;
       const responsePromise = new Promise<void>((resolve) => {
         page.on("response", async (resp: any) => {
