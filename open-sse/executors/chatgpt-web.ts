@@ -1060,6 +1060,75 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
   return { systemMsg, history, currentMsg, latestImageContext, hadToolActivity };
 }
 
+const ENV_CTX_START = "<environment_context>";
+const ENV_CTX_RE = /<environment_context>[\s\S]*?<\/environment_context>/g;
+
+function stripEnvironmentContextBlock(text: string): string {
+  return text
+    .replace(ENV_CTX_RE, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isEnvironmentContextOnly(text: string): boolean {
+  const cleaned = text.replace(ENV_CTX_RE, "").trim();
+  return cleaned === "" && text.includes(ENV_CTX_START);
+}
+
+/**
+ * Strip Codex CLI's `<environment_context>` injection from the messages array.
+ *
+ * Codex 0.142.5+ sends `<cwd>`, `<workspace_roots>` and `<permission_profile>`
+ * inside an `<environment_context>` block as an input_text item. On the
+ * chatgpt-web path that context makes the model think it has a native workspace
+ * connector, so it stops emitting `<tool>` blocks and instead claims it cannot
+ * see the filesystem. Remove whole environment_context items and strip any inline
+ * block from remaining text so the model sees only the TOOL USE PROTOCOL.
+ */
+export function stripEnvironmentContext(
+  messages: Array<Record<string, unknown>>
+): Array<Record<string, unknown>> {
+  for (const msg of messages) {
+    const content = msg.content;
+    if (typeof content === "string") {
+      const cleaned = stripEnvironmentContextBlock(content);
+      if (cleaned !== content) {
+        msg.content = cleaned;
+      }
+      continue;
+    }
+    if (!Array.isArray(content)) continue;
+
+    const cleanedContent: Array<Record<string, unknown>> = [];
+    let mutated = false;
+    for (const item of content) {
+      if (!item || typeof item !== "object") {
+        cleanedContent.push(item as Record<string, unknown>);
+        continue;
+      }
+      const rec = item as Record<string, unknown>;
+      const text = rec.text;
+      if (typeof text === "string" && text.includes(ENV_CTX_START)) {
+        if (isEnvironmentContextOnly(text)) {
+          mutated = true;
+          continue;
+        }
+        const cleanedText = stripEnvironmentContextBlock(text);
+        if (cleanedText !== text) {
+          cleanedContent.push({ ...rec, text: cleanedText });
+          mutated = true;
+          continue;
+        }
+      }
+      cleanedContent.push(rec);
+    }
+    if (mutated) {
+      msg.content = cleanedContent;
+    }
+  }
+  return messages;
+}
+
 interface ChatGptImageAssetPointer {
   content_type: "image_asset_pointer";
   asset_pointer: string;
@@ -3208,6 +3277,12 @@ export class ChatGptWebExecutor extends BaseExecutor {
     // Sentinel/PoW. Chat requirements/proof tokens are short-lived; doing
     // network image fetches + blob uploads after minting them increases stale
     // token / 403 risk before the actual conversation call.
+
+    // Strip Codex CLI's <environment_context> injection before the model sees it.
+    // Without this the chatgpt-web model thinks it has a native workspace connector
+    // and stops emitting <tool> blocks.
+    stripEnvironmentContext(messages as Array<Record<string, unknown>>);
+
     const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
       bodyObj,
       messages as Array<{ role: string; content: unknown }>
