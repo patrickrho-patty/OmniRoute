@@ -30,18 +30,10 @@ import {
   type ChatGptImageConversationContext,
 } from "../services/chatgptImageCache.ts";
 import {
-  extractCurrentTurnImageUrls,
-  uploadCurrentTurnImages,
-  type UploadedChatGptImage,
-  type ChatGptUploadAuthContext,
-} from "../services/chatgptImageUpload.ts";
-import {
   prepareToolMessages,
   buildToolAwareResult,
   type OpenAIToolCall,
 } from "../translator/webTools.ts";
-import { GIT_CMD_RE } from "../translator/webToolSynthesis.ts";
-import { isCliCompatEnabled, CLI_FINGERPRINTS } from "../config/cliFingerprints.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -130,7 +122,7 @@ const THINKING_CAPABLE_SLUGS: ReadonlySet<string> = new Set(
 // ─── Browser-like default headers ──────────────────────────────────────────
 
 function browserHeaders(): Record<string, string> {
-  const base: Record<string, string> = {
+  return {
     Accept: "*/*",
     "Accept-Language": "en-US,en;q=0.9",
     "Cache-Control": "no-cache",
@@ -142,20 +134,6 @@ function browserHeaders(): Record<string, string> {
     "Sec-Fetch-Site": "same-origin",
     "User-Agent": CHATGPT_USER_AGENT,
   };
-  // When CLI_COMPAT_CHATGPT_WEB is enabled, apply the Codex CLI fingerprint
-  // (UA + identity headers) so traffic looks like a coding-agent client.
-  if (isCliCompatEnabled("chatgpt-web")) {
-    const fp = CLI_FINGERPRINTS["chatgpt-web"];
-    if (fp) {
-      if (fp.userAgent) {
-        base["User-Agent"] = typeof fp.userAgent === "function" ? fp.userAgent() : fp.userAgent;
-      }
-      if (fp.extraHeaders) {
-        Object.assign(base, fp.extraHeaders);
-      }
-    }
-  }
-  return base;
 }
 
 /** Headers ChatGPT's web client sends on backend-api requests. */
@@ -996,10 +974,7 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
       // Track tool_calls id→name so tool result messages can be labelled
       const rawToolCalls = (msg as Record<string, unknown>)["tool_calls"];
       const toolCalls = Array.isArray(rawToolCalls)
-        ? (rawToolCalls as Array<{
-            id?: string;
-            function?: { name?: string; arguments?: unknown };
-          }>)
+        ? (rawToolCalls as Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>)
         : [];
       if (toolCalls.length > 0) hadToolActivity = true;
       for (const c of toolCalls) {
@@ -1017,10 +992,7 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
             return args ? `${name}(${args})` : name;
           })
           .join("\n");
-        const combined = [
-          content.trim(),
-          callsSummary ? `Previous tool calls:\n${callsSummary}` : "",
-        ]
+        const combined = [content.trim(), callsSummary ? `Previous tool calls:\n${callsSummary}` : ""]
           .filter(Boolean)
           .join("\n");
         if (combined.trim()) history.push({ role: "assistant", content: combined });
@@ -1060,90 +1032,10 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
   return { systemMsg, history, currentMsg, latestImageContext, hadToolActivity };
 }
 
-const ENV_CTX_START = "<environment_context>";
-const ENV_CTX_RE = /<environment_context>[\s\S]*?<\/environment_context>/g;
-
-function stripEnvironmentContextBlock(text: string): string {
-  return text
-    .replace(ENV_CTX_RE, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function isEnvironmentContextOnly(text: string): boolean {
-  const cleaned = text.replace(ENV_CTX_RE, "").trim();
-  return cleaned === "" && text.includes(ENV_CTX_START);
-}
-
-/**
- * Strip Codex CLI's `<environment_context>` injection from the messages array.
- *
- * Codex 0.142.5+ sends `<cwd>`, `<workspace_roots>` and `<permission_profile>`
- * inside an `<environment_context>` block as an input_text item. On the
- * chatgpt-web path that context makes the model think it has a native workspace
- * connector, so it stops emitting `<tool>` blocks and instead claims it cannot
- * see the filesystem. Remove whole environment_context items and strip any inline
- * block from remaining text so the model sees only the TOOL USE PROTOCOL.
- */
-export function stripEnvironmentContext(
-  messages: Array<Record<string, unknown>>
-): Array<Record<string, unknown>> {
-  for (const msg of messages) {
-    const content = msg.content;
-    if (typeof content === "string") {
-      const cleaned = stripEnvironmentContextBlock(content);
-      if (cleaned !== content) {
-        msg.content = cleaned;
-      }
-      continue;
-    }
-    if (!Array.isArray(content)) continue;
-
-    const cleanedContent: Array<Record<string, unknown>> = [];
-    let mutated = false;
-    for (const item of content) {
-      if (!item || typeof item !== "object") {
-        cleanedContent.push(item as Record<string, unknown>);
-        continue;
-      }
-      const rec = item as Record<string, unknown>;
-      const text = rec.text;
-      if (typeof text === "string" && text.includes(ENV_CTX_START)) {
-        if (isEnvironmentContextOnly(text)) {
-          mutated = true;
-          continue;
-        }
-        const cleanedText = stripEnvironmentContextBlock(text);
-        if (cleanedText !== text) {
-          cleanedContent.push({ ...rec, text: cleanedText });
-          mutated = true;
-          continue;
-        }
-      }
-      cleanedContent.push(rec);
-    }
-    if (mutated) {
-      msg.content = cleanedContent;
-    }
-  }
-  return messages;
-}
-
-interface ChatGptImageAssetPointer {
-  content_type: "image_asset_pointer";
-  asset_pointer: string;
-  size_bytes: number;
-  width: number;
-  height: number;
-}
-
 interface ChatGptMessage {
   id: string;
   author: { role: string };
-  content:
-    | { content_type: "text"; parts: string[] }
-    | { content_type: "multimodal_text"; parts: Array<string | ChatGptImageAssetPointer> };
-  metadata?: Record<string, unknown>;
+  content: { content_type: "text"; parts: string[] };
 }
 
 /**
@@ -1238,11 +1130,7 @@ function buildConversationBody(
   // is available. When false (default), use Temporary Chat to keep chats
   // out of the user's chatgpt.com history.
   forImageGen: boolean,
-  continuation: ChatGptImageConversationContext | null = null,
-  // Inbound images the user sent, already uploaded to chatgpt.com. When
-  // present, the current user turn becomes a multimodal_text message that
-  // references each uploaded file so GPT actually sees the images.
-  uploadedImages: UploadedChatGptImage[] = []
+  continuation: ChatGptImageConversationContext | null = null
 ): Record<string, unknown> {
   // Critical: do NOT send prior turns as separate `assistant` and `user`
   // messages in the `messages` array. ChatGPT's web API ("action: next")
@@ -1290,47 +1178,11 @@ function buildConversationBody(
           .join("\n\n")
       : parsed.currentMsg || "";
 
-  if (uploadedImages.length > 0) {
-    // Multimodal turn: text first, then one image_asset_pointer per uploaded
-    // file, plus a metadata.attachments entry — exactly what chatgpt.com's
-    // browser client sends when a user attaches images. Image-only turns have
-    // empty text; give the model a minimal instruction so it responds to the
-    // image instead of an empty prompt.
-    const multimodalText = currentUserContent.trim()
-      ? currentUserContent
-      : "What is in this image?";
-    const parts: Array<string | ChatGptImageAssetPointer> = [multimodalText];
-    for (const img of uploadedImages) {
-      parts.push({
-        content_type: "image_asset_pointer",
-        asset_pointer: `file-service://${img.fileId}`,
-        size_bytes: img.sizeBytes,
-        width: img.width,
-        height: img.height,
-      });
-    }
-    messages.push({
-      id: randomUUID(),
-      author: { role: "user" },
-      content: { content_type: "multimodal_text", parts },
-      metadata: {
-        attachments: uploadedImages.map((img) => ({
-          id: img.fileId,
-          size: img.sizeBytes,
-          name: img.name,
-          mime_type: img.mimeType,
-          width: img.width,
-          height: img.height,
-        })),
-      },
-    });
-  } else {
-    messages.push({
-      id: randomUUID(),
-      author: { role: "user" },
-      content: { content_type: "text", parts: [currentUserContent] },
-    });
-  }
+  messages.push({
+    id: randomUUID(),
+    author: { role: "user" },
+    content: { content_type: "text", parts: [currentUserContent] },
+  });
 
   return {
     action: "next",
@@ -2040,23 +1892,6 @@ function makeSyntheticToolCall(name: string, args: Record<string, unknown>): Ope
   ];
 }
 
-/**
- * Shell-quote a path/argument captured from user input before interpolating it
- * into a synthesized bash command. Defense-in-depth: the capture regexes also
- * restrict the character set, but this ensures safety even if a regex is later
- * loosened. Strips quotes and wraps in single quotes so the value is treated as
- * a literal by the shell.
- */
-function shellQuote(arg: string): string {
-  // Remove any embedded single quotes (defensively — regex char class should
-  // already block them) then wrap in single quotes for literal treatment.
-  const cleaned = arg.replace(/'/g, "");
-  return `'${cleaned}'`;
-}
-
-/** Timeout (ms) for synthesized bash commands — matches the web-tool contract. */
-const SYNTH_BASH_TIMEOUT = 120;
-
 function buildSyntheticToolCallResponse(
   model: string,
   stream: boolean,
@@ -2090,16 +1925,13 @@ function buildSyntheticToolCallResponse(
 
 function isLocalProjectToolExcuse(content: string): boolean {
   return (
-    /(filesystem|file system|repository|repo|workspace|project files|package\.json|tool|this chat|this environment|this runtime|this session).{0,200}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste|isn't available|not accessible|doesn't have access)/i.test(
+    /(filesystem|file system|repository|repo|workspace|project files|package\.json).{0,160}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste)/i.test(
       content
     ) ||
     /(paste|provide|send|point me at).{0,120}(package\.json|file|repo|repository|folder|tree|output|workspace)/i.test(
       content
     ) ||
     /(package\.json|file|repo|repository|folder|tree|output|workspace).{0,120}(paste|provide|send|point me at)/i.test(
-      content
-    ) ||
-    /\b(couldn't read|couldn't open|couldn't access|could not read|could not open|could not access|can't read|can't open|can't access|cannot read|cannot open|cannot access|not able to read|not able to access|unable to read|unable to access|i tried to open|i tried to read|read attempt|does not exist at that path|no such file|not a tool|isn't available in this chat|can't call a .* tool|don't have access to .* file|don't have .* tool access|connector.*returning|can't inspect live files)\b/i.test(
       content
     )
   );
@@ -2111,9 +1943,7 @@ function asksAboutLocalProject(currentMsg: string): boolean {
   );
 }
 
-function tryParsePackageJsonFromToolHistory(
-  parsed: ParsedMessages | null | undefined
-): JsonRecord | null {
+function tryParsePackageJsonFromToolHistory(parsed: ParsedMessages | null | undefined): JsonRecord | null {
   if (!parsed) return null;
   for (const item of [...parsed.history].reverse()) {
     if (item.role !== "tool") continue;
@@ -2151,8 +1981,7 @@ function synthesizeLocalProjectAnswer(
   return `In package.json, \`pnpm dev\` runs:\n\n\`\`\`bash\n${devScript}\n\`\`\`\n\nThat is the root dev script. If you want a deeper trace of what that command fans out to, the next file to inspect is usually \`turbo.json\` or the relevant workspace package scripts.`;
 }
 
-const READABLE_PATH_RE =
-  /(?:`|\b)([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:json|sh|md|ts|tsx|js|jsx|mjs|cjs|yaml|yml|toml|py|go|rs|java|rb|php|css|scss|html|env))(?:`|\b)/g;
+const READABLE_PATH_RE = /(?:`|\b)([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:json|sh|md|ts|tsx|js|jsx|mjs|cjs|yaml|yml|toml|py|go|rs|java|rb|php|css|scss|html|env))(?:`|\b)/g;
 
 function findLastMentionedReadablePath(parsed: ParsedMessages): string | null {
   for (const item of [...parsed.history].reverse()) {
@@ -2187,84 +2016,19 @@ function synthesizePreProviderToolCall(
   const hasBash = toolNames.has("bash");
   const currentMsg = parsed.currentMsg || "";
 
-  // Early exit: all patterns below produce read/bash calls. If neither tool is
-  // available, skip the regex scans entirely to avoid wasted work.
-  if (!hasRead && !hasBash) return null;
-
   if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev)\b/i.test(currentMsg)) {
     const packageJson = tryParsePackageJsonFromToolHistory(parsed);
     const scripts = packageJson?.scripts as JsonRecord | undefined;
     if (typeof scripts?.dev === "string") return null;
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
-    if (hasBash)
-      return makeSyntheticToolCall("bash", {
-        command: "cat package.json",
-        timeout: SYNTH_BASH_TIMEOUT,
-      });
+    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
   }
 
   if (isVagueFileFollowup(currentMsg)) {
     const path = findLastMentionedReadablePath(parsed);
     if (path) {
       if (hasRead) return makeSyntheticToolCall("read", { path });
-      if (hasBash)
-        return makeSyntheticToolCall("bash", {
-          command: `cat ${shellQuote(path)}`,
-          timeout: SYNTH_BASH_TIMEOUT,
-        });
-    }
-  }
-
-  // "list files / list directory / ls / show files" — synthesize a bash ls
-  // before calling ChatGPT so the model doesn't confabulate a listing.
-  // Only fire when the message reads as a request (verb + files/dir noun),
-  // not a passing mention. Bare `ls`/`ll` also triggers.
-  if (
-    hasBash &&
-    /\b(?:(?:list|show|enumerate)\s+(?:the\s+)?(?:files|directory|dir|contents?)|(?:ls|ll))\b/i.test(
-      currentMsg
-    )
-  ) {
-    // Only capture a directory if it looks like a real path (starts with / or
-    // contains /) — NOT common English words like "the" or "current".
-    const dirMatch = currentMsg.match(
-      /(?:in|from|of|under)\s+(?:the\s+)?([./][\w./-]+|[\w./-]*\/[\w./-]+)/i
-    )?.[1];
-    const lsDir = dirMatch ?? ".";
-    return makeSyntheticToolCall("bash", {
-      command: `ls -la ${shellQuote(lsDir)}`,
-      timeout: SYNTH_BASH_TIMEOUT,
-    });
-  }
-
-  // Direct "Read/open <path>" requests — synthesize before calling ChatGPT
-  // so the model never gets a chance to confabulate file contents.
-  // Require the captured token to look like a path: absolute (/...), relative
-  // with extension (foo.json), or relative with slash (src/foo). Bare words
-  // like "the" or "repo" are rejected to avoid false positives.
-  const directPathMatch = currentMsg.match(
-    /(?:read|open|inspect|cat)\s+(?:the\s+)?(?:file\s+)?(\/[\w./-]+|[\w./-]+\.[\w-]+|[\w./-]*\/[\w./-]+)/i
-  );
-  if (directPathMatch?.[1] && directPathMatch[1].length > 1) {
-    const path = directPathMatch[1];
-    if (hasRead) return makeSyntheticToolCall("read", { path });
-    if (hasBash)
-      return makeSyntheticToolCall("bash", {
-        command: `cat ${shellQuote(path)}`,
-        timeout: SYNTH_BASH_TIMEOUT,
-      });
-  }
-
-  // "run/execute/do/check/show/get/give/tell (me/the) git <subcommand>" — synthesize before ChatGPT so the
-  // model doesn't claim the repository is unavailable. Requires a leading
-  // action verb so conversational mentions ("the git log shows...") don't fire.
-  if (hasBash) {
-    const gitCmdMatch = currentMsg.match(GIT_CMD_RE);
-    if (gitCmdMatch?.[1]) {
-      return makeSyntheticToolCall("bash", {
-        command: gitCmdMatch[1],
-        timeout: SYNTH_BASH_TIMEOUT,
-      });
+      if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${path}`, timeout: 120 });
     }
   }
 
@@ -2287,24 +2051,16 @@ function synthesizeLocalProjectToolCall(
 
   if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(prompt)) {
     if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
-    if (hasBash)
-      return makeSyntheticToolCall("bash", {
-        command: "cat package.json",
-        timeout: SYNTH_BASH_TIMEOUT,
-      });
+    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
   }
 
-  // Path extraction — require path-shaped captures (absolute, extension, or
-  // slash) to avoid false positives like "read the changelog" → read("the").
-  const pathMatch = currentMsg.match(
-    /(?:read|open|inspect|cat)\s+(?:the\s+)?(?:file\s+)?(\/[\w./-]+|[\w./-]+\.[\w-]+|[\w./-]*\/[\w./-]+)/i
-  );
+  const pathMatch = currentMsg.match(/(?:read|open|check|see|inspect)\s+([\w./-]+\.[\w-]+)/i);
   if (pathMatch?.[1] && hasRead) {
     return makeSyntheticToolCall("read", { path: pathMatch[1] });
   }
 
   if (/\bpackages\b/i.test(prompt) && hasBash) {
-    return makeSyntheticToolCall("bash", { command: "ls packages", timeout: SYNTH_BASH_TIMEOUT });
+    return makeSyntheticToolCall("bash", { command: "ls packages", timeout: 120 });
   }
 
   if (hasBash) return makeSyntheticToolCall("bash", { command: "ls", timeout: 120 });
@@ -3273,96 +3029,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
       );
     }
 
-    // 2b. Build the ChatGPT message plan and upload inbound images BEFORE
-    // Sentinel/PoW. Chat requirements/proof tokens are short-lived; doing
-    // network image fetches + blob uploads after minting them increases stale
-    // token / 403 risk before the actual conversation call.
-
-    // Strip Codex CLI's <environment_context> injection before the model sees it.
-    // Without this the chatgpt-web model thinks it has a native workspace connector
-    // and stops emitting <tool> blocks.
-    stripEnvironmentContext(messages as Array<Record<string, unknown>>);
-
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
-      bodyObj,
-      messages as Array<{ role: string; content: unknown }>
-    );
-    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
-    const inboundImageUrls = extractCurrentTurnImageUrls(
-      messages as Array<Record<string, unknown>>
-    );
-    if (!parsed.currentMsg.trim() && parsed.history.length === 0 && inboundImageUrls.length === 0) {
-      return {
-        response: errorResponse(400, "Empty user message"),
-        url: CONV_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
-
-    const preProviderToolCalls = hasTools
-      ? synthesizePreProviderToolCall(parsed, requestedTools)
-      : null;
-    if (preProviderToolCalls?.length) {
-      return {
-        response: buildSyntheticToolCallResponse(model, stream !== false, preProviderToolCalls),
-        url: CONV_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
-
-    const imageEdit = looksLikeImageEditRequest(parsed);
-    const continuation = imageEdit ? parsed.latestImageContext : null;
-    const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
-    if (forImageGen) {
-      log?.debug?.(
-        "CGPT-WEB",
-        continuation
-          ? "Image edit intent detected — continuing saved image conversation"
-          : "Image-gen intent detected — disabling Temporary Chat for this turn"
-      );
-    }
-
-    let uploadedImages: UploadedChatGptImage[] = [];
-    if (inboundImageUrls.length > 0) {
-      log?.info?.(
-        "CGPT-WEB",
-        `Detected ${inboundImageUrls.length} inbound image(s) — uploading to chatgpt.com`
-      );
-      const uploadCtx: ChatGptUploadAuthContext = {
-        accessToken: tokenEntry.accessToken,
-        accountId: tokenEntry.accountId ?? null,
-        sessionId,
-        deviceId,
-        baseHeaders: {
-          ...browserHeaders(),
-          ...oaiHeaders(sessionId, deviceId),
-          Cookie: buildSessionCookieHeader(cookie),
-        },
-        signal,
-        log,
-      };
-      uploadedImages = await uploadCurrentTurnImages(inboundImageUrls, uploadCtx);
-      if (uploadedImages.length !== inboundImageUrls.length) {
-        log?.warn?.(
-          "CGPT-WEB",
-          `Inbound image upload failed (${uploadedImages.length}/${inboundImageUrls.length}); returning non-OK so combo fallback can try the next target`
-        );
-        return {
-          response: errorResponse(
-            502,
-            "ChatGPT Web could not upload the attached image(s); falling back to the next combo target if available.",
-            "CGPT_IMAGE_UPLOAD_FAILED"
-          ),
-          url: `${CHATGPT_BASE}/backend-api/files`,
-          headers: {},
-          transformedBody: body,
-        };
-      }
-    }
-
-    // 2c. Sentinel chat-requirements
+    // 2b. Sentinel chat-requirements
     let reqs: ChatRequirements;
     try {
       reqs = await prepareChatRequirements(
@@ -3432,6 +3099,48 @@ export class ChatGptWebExecutor extends BaseExecutor {
     }
 
     // 4. Build conversation request
+    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+      bodyObj,
+      messages as Array<{ role: string; content: unknown }>
+    );
+    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
+    if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
+      return {
+        response: errorResponse(400, "Empty user message"),
+        url: CONV_URL,
+        headers: {},
+        transformedBody: body,
+      };
+    }
+
+    const preProviderToolCalls = hasTools
+      ? synthesizePreProviderToolCall(parsed, requestedTools)
+      : null;
+    if (preProviderToolCalls?.length) {
+      return {
+        response: buildSyntheticToolCallResponse(model, stream !== false, preProviderToolCalls),
+        url: CONV_URL,
+        headers: {},
+        transformedBody: body,
+      };
+    }
+
+    // Toggle Temporary Chat off only for image-generation requests, since
+    // Temporary Chat disables the image_gen tool. For plain text turns we
+    // keep Temporary Chat on so the user's chatgpt.com history isn't
+    // polluted with router traffic.
+    const imageEdit = looksLikeImageEditRequest(parsed);
+    const continuation = imageEdit ? parsed.latestImageContext : null;
+    const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
+    if (forImageGen) {
+      log?.debug?.(
+        "CGPT-WEB",
+        continuation
+          ? "Image edit intent detected — continuing saved image conversation"
+          : "Image-gen intent detected — disabling Temporary Chat for this turn"
+      );
+    }
+
     const parentMessageId = continuation?.parentMessageId ?? randomUUID();
     const modelSlug = MODEL_MAP[model] ?? model;
     const cgptBody = buildConversationBody(
@@ -3439,8 +3148,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
       modelSlug,
       parentMessageId,
       forImageGen,
-      continuation,
-      uploadedImages
+      continuation
     );
 
     const headers: Record<string, string> = {
