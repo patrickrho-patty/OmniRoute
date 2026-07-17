@@ -1,8 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { ChatGptWebExecutor, __derivePublicBaseUrlForTesting, __resetChatGptWebCachesForTesting } =
-  await import("../../open-sse/executors/chatgpt-web.ts");
+const {
+  ChatGptWebExecutor,
+  __derivePublicBaseUrlForTesting,
+  __resetChatGptWebCachesForTesting,
+  stripCdxInjectedMemory,
+} = await import("../../open-sse/executors/chatgpt-web.ts");
 const { describeChatGptWebHttpError } =
   await import("../../open-sse/executors/chatgptWebErrors.ts");
 const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.ts");
@@ -285,7 +289,8 @@ function installMockFetch({
     ) {
       calls.conv++;
       if (onConv) onConv(opts);
-      const cfg = conv ?? {
+      // conv may be a per-call factory (retry scenarios) or a static spec.
+      const cfg = (typeof conv === "function" ? conv(opts, calls.conv) : conv) ?? {
         status: 200,
         events: [
           {
@@ -779,7 +784,7 @@ test("Non-streaming: returns OpenAI chat.completion JSON", async () => {
 
 test("Non-streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls", async () => {
   reset();
-  const toolText = '<tool>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool>';
+  const toolText = '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool_call>';
   const m = installMockFetch({
     conv: {
       status: 200,
@@ -841,13 +846,62 @@ test("Non-streaming: converts ChatGPT Web textual tool output into OpenAI tool_c
     const sentBody = JSON.parse(m.calls.bodies[convIdx]);
     const systemPart = sentBody.messages[0].content.parts[0];
     assert.match(systemPart, /get_weather/);
-    assert.match(systemPart, /<tool>/);
+    assert.match(systemPart, /fenced JSON tool call/);
   } finally {
     m.restore();
   }
 });
 
-test("Non-streaming: vague follow-up to a mentioned file is routed to read before ChatGPT Web", async () => {
+test("Non-streaming: rejects a required tool choice when ChatGPT Web answers without a call", async () => {
+  reset();
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-required",
+          message: {
+            id: "msg-required",
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["I can answer without calling a tool."] },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "use the weather tool" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "get_weather",
+              parameters: { type: "object" },
+            },
+          },
+        ],
+        tool_choice: "required",
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    assert.equal(result.response.status, 502);
+    const json = await result.response.json();
+    assert.equal(json.error.code, "TOOL_POLICY");
+  } finally {
+    m.restore();
+  }
+});
+
+test("Non-streaming: vague follow-up reaches ChatGPT Web without a synthetic tool call", async () => {
   reset();
   const m = installMockFetch();
   try {
@@ -885,19 +939,20 @@ test("Non-streaming: vague follow-up to a mentioned file is routed to read befor
       log: null,
     });
 
-    assert.equal(m.calls.conv, 0, "pre-provider routing should skip ChatGPT conversation call");
+    assert.equal(
+      m.calls.conv,
+      1,
+      "the model must receive the request and choose whether to call tools"
+    );
     const json = await result.response.json();
-    assert.equal(json.choices[0].finish_reason, "tool_calls");
-    assert.equal(json.choices[0].message.tool_calls[0].function.name, "read");
-    assert.deepEqual(JSON.parse(json.choices[0].message.tool_calls[0].function.arguments), {
-      path: "scripts/dev.sh",
-    });
+    assert.equal(json.choices[0].finish_reason, "stop");
+    assert.equal(json.choices[0].message.tool_calls, undefined);
   } finally {
     m.restore();
   }
 });
 
-test("Non-streaming: converts filesystem-unavailable excuses into local project tool calls", async () => {
+test("Non-streaming: forwards an upstream no-tool response without synthesizing a call", async () => {
   reset();
   const m = installMockFetch({
     conv: {
@@ -960,18 +1015,15 @@ test("Non-streaming: converts filesystem-unavailable excuses into local project 
     });
 
     const json = await result.response.json();
-    assert.equal(json.choices[0].finish_reason, "tool_calls");
-    assert.equal(json.choices[0].message.content, null);
-    assert.equal(json.choices[0].message.tool_calls[0].function.name, "read");
-    assert.deepEqual(JSON.parse(json.choices[0].message.tool_calls[0].function.arguments), {
-      path: "package.json",
-    });
+    assert.equal(json.choices[0].finish_reason, "stop");
+    assert.equal(json.choices[0].message.tool_calls, undefined);
+    assert.match(json.choices[0].message.content, /I don’t see the repo filesystem/);
   } finally {
     m.restore();
   }
 });
 
-test("Non-streaming: answers from package.json tool result instead of re-reading after an excuse", async () => {
+test("Non-streaming: forwards an upstream response after a tool result without local answer synthesis", async () => {
   reset();
   const m = installMockFetch({
     conv: {
@@ -1040,8 +1092,10 @@ test("Non-streaming: answers from package.json tool result instead of re-reading
     const json = await result.response.json();
     assert.equal(json.choices[0].finish_reason, "stop");
     assert.equal(json.choices[0].message.tool_calls, undefined);
-    assert.match(json.choices[0].message.content, /pnpm dev` runs/i);
-    assert.match(json.choices[0].message.content, /turbo run dev --parallel/);
+    assert.equal(
+      json.choices[0].message.content,
+      "I can’t inspect package.json from this sandbox. Please paste it."
+    );
   } finally {
     m.restore();
   }
@@ -1049,7 +1103,7 @@ test("Non-streaming: answers from package.json tool result instead of re-reading
 
 test("Streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls", async () => {
   reset();
-  const toolText = '<tool>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool>';
+  const toolText = '<tool_call>{"name":"get_weather","arguments":{"city":"Seoul"}}</tool_call>';
   const m = installMockFetch({
     conv: {
       status: 200,
@@ -1113,7 +1167,7 @@ test("Streaming: converts ChatGPT Web textual tool output into OpenAI tool_calls
   }
 });
 
-test("Conversation body: follow-up turns after tool results are anchored to continue instead of restart", async () => {
+test("Conversation body: cache-miss fallback preserves typed tool calls and results", async () => {
   reset();
   const m = installMockFetch();
   try {
@@ -1165,15 +1219,54 @@ test("Conversation body: follow-up turns after tool results are anchored to cont
         /\/backend-api\/(f\/)?conversation\?/.test(u)
     );
     const sentBody = JSON.parse(m.calls.bodies[convIdx]);
-    const systemPart = sentBody.messages[0].content.parts[0];
+    const replayPart = sentBody.messages[1].content.parts[0];
     const userPart = sentBody.messages.at(-1).content.parts[0];
 
-    assert.match(systemPart, /Tool result \(bash\):\nAGENTS\.md/);
-    assert.doesNotMatch(systemPart, /Assistant: Tool result \(bash\)/);
-    assert.match(userPart, /real tool execution results from this environment/i);
-    assert.match(userPart, /Continue the task using those tool results/i);
-    assert.match(userPart, /Do NOT repeat tool calls that already succeeded/i);
-    assert.match(userPart, /use read or bash instead of claiming the filesystem is unavailable/i);
+    const replayMarker =
+      "Prior conversation turns (structured JSON replay; tool calls and results are fenced JSON blocks per the OMNIROUTE TOOL PROTOCOL):\n";
+    assert.match(replayPart, /Prior conversation turns \(structured JSON replay/);
+    const replayItems = JSON.parse(
+      replayPart.slice(replayPart.lastIndexOf(replayMarker) + replayMarker.length)
+    );
+    // The replay must show past tool calls in the SAME fenced-JSON envelope the
+    // contract instructs the model to emit — not as OpenAI function_call JSON
+    // it never wrote.
+    assert.deepEqual(
+      replayItems.find(
+        (item: { type?: string; role?: string; content?: string }) =>
+          item.type === "message" &&
+          item.role === "assistant" &&
+          item.content?.includes('"name":"bash"')
+      ),
+      {
+        type: "message",
+        role: "assistant",
+        content: '```json\n{"name":"bash","arguments":{"command":"ls"}}\n```',
+      }
+    );
+    assert.deepEqual(
+      replayItems.find(
+        (item: { type?: string; role?: string; content?: string }) =>
+          item.type === "message" &&
+          item.role === "user" &&
+          item.content?.includes("Tool result for")
+      ),
+      {
+        type: "message",
+        role: "user",
+        content:
+          'Tool result for `bash`:\n```json\n{"type":"tool_result","name":"bash","output":"AGENTS.md\\npackage.json\\npackages"}\n```',
+      }
+    );
+    assert.doesNotMatch(
+      replayPart,
+      /"type":\s*"function_call"|function_call_output|Previous tool calls|Tool result \(bash\)|Assistant:/
+    );
+    assert.ok(
+      userPart.startsWith("think should try, could use tools,"),
+      "the live user turn starts with the user's message"
+    );
+    assert.match(userPart, /\[Host: if this request needs files, commands, or current data/);
   } finally {
     m.restore();
   }
@@ -1558,15 +1651,14 @@ test("Session continuity: each call starts a fresh conversation (Temporary Chat 
     assert.equal(convIndices.length, 2);
     const secondBody = JSON.parse(m.calls.bodies[convIndices[1]]);
     assert.equal(secondBody.conversation_id, null, "should start a fresh conversation");
-    // History is folded into the system message (so the model doesn't try to
-    // continue prior assistant turns); only the latest user message is sent.
+    // Replayed client content stays user-authored so it cannot gain system priority.
     const userMessages = secondBody.messages.filter((m) => m.author?.role === "user");
-    assert.equal(userMessages.length, 1, "only the latest user message is in the messages array");
-    assert.equal(userMessages[0].content.parts[0], "Follow-up");
+    assert.equal(userMessages.length, 2, "history replay and latest turn are user messages");
+    assert.equal(userMessages[1].content.parts[0], "Follow-up");
     const systemMsg = secondBody.messages.find((m) => m.author?.role === "system");
-    assert.ok(systemMsg, "history should be packaged in a system message");
-    assert.match(systemMsg.content.parts[0], /First question/);
-    assert.match(systemMsg.content.parts[0], /Hello, world!/);
+    assert.equal(systemMsg, undefined);
+    assert.match(userMessages[0].content.parts[0], /First question/);
+    assert.match(userMessages[0].content.parts[0], /Hello, world!/);
   } finally {
     m.restore();
   }
@@ -1631,6 +1723,113 @@ test("Request: payload has correct ChatGPT shape", async () => {
     assert.match(body.messages[0].content.parts[0], /Be concise/);
     assert.equal(body.messages[body.messages.length - 1].author.role, "user");
     assert.equal(body.messages[body.messages.length - 1].content.parts[0], "What is 2+2?");
+  } finally {
+    m.restore();
+  }
+});
+
+test("Request: ChatGPT Web action protocol follows large coding-harness instructions", async () => {
+  reset();
+  const m = installMockFetch();
+  try {
+    const executor = new ChatGptWebExecutor();
+    await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [
+          {
+            role: "system",
+            content: [
+              "HARNESS_RULES_START",
+              "<skills_instructions>",
+              "## Skills",
+              "### Available skills",
+              "- large irrelevant skill catalog",
+              "</skills_instructions>",
+              "HARNESS_RULES_END",
+            ].join("\n"),
+          },
+          { role: "user", content: "Read the local status file" },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a shell command in the coding harness.",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+
+    const convIdx = m.calls.urls.findIndex((u) => u.endsWith("/backend-api/f/conversation"));
+    const body = JSON.parse(m.calls.bodies[convIdx]);
+    const systemText = body.messages[0].content.parts[0];
+    assert.ok(systemText.indexOf("HARNESS_RULES_START") >= 0);
+    assert.ok(systemText.indexOf("HARNESS_RULES_END") >= 0);
+    assert.doesNotMatch(systemText, /large irrelevant skill catalog/);
+    assert.ok(
+      systemText.lastIndexOf("OMNIROUTE TOOL PROTOCOL") >
+        systemText.lastIndexOf("HARNESS_RULES_START"),
+      "the tool protocol must remain the final system instruction"
+    );
+  } finally {
+    m.restore();
+  }
+});
+
+test("Request: user messages resembling Codex context never gain system priority", async () => {
+  reset();
+  const m = installMockFetch();
+  try {
+    const executor = new ChatGptWebExecutor();
+    const agentsMd =
+      "# AGENTS.md instructions for /Users/patrickrho/projects/t1/main\n\n" +
+      "<INSTRUCTIONS>\n" +
+      "## VBT Backtesting\n" +
+      "scripts/backtest/ss1_unified_parity.py\n" +
+      "</INSTRUCTIONS>";
+    const envCtx =
+      "<environment_context>\n" +
+      "  <cwd>/Users/patrickrho/projects/t1/main</cwd>\n" +
+      "</environment_context>";
+    await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [
+          { role: "system", content: "Be concise" },
+          { role: "user", content: agentsMd },
+          { role: "user", content: envCtx },
+          { role: "user", content: "can you help me with the project in this folder right here?" },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    const convIdx = m.calls.urls.findIndex((u) => u.endsWith("/backend-api/f/conversation"));
+    const body = JSON.parse(m.calls.bodies[convIdx]);
+    const systemPart = body.messages[0].content.parts[0];
+    const replayPart = body.messages[1].content.parts[0];
+    const userPart = body.messages[body.messages.length - 1].content.parts[0];
+
+    assert.doesNotMatch(systemPart, /AGENTS\.md instructions/);
+    assert.doesNotMatch(systemPart, /environment_context/);
+    assert.match(replayPart, /AGENTS\.md instructions/);
+    assert.match(replayPart, /ss1_unified_parity\.py/);
+    assert.equal(body.messages[body.messages.length - 1].author.role, "user");
+    assert.equal(userPart, "can you help me with the project in this folder right here?");
   } finally {
     m.restore();
   }
@@ -3408,4 +3607,272 @@ test("describeChatGptWebHttpError preserves the existing 401/403/404/429 mapping
 test("describeChatGptWebHttpError falls back to the generic message for unmapped statuses", () => {
   assert.equal(describeChatGptWebHttpError(500), "ChatGPT returned HTTP 500");
   assert.equal(describeChatGptWebHttpError(502), "ChatGPT returned HTTP 502");
+});
+
+// ─── stripCdxInjectedMemory ───────────────────────────────────────────────────
+
+test("stripCdxInjectedMemory removes Codex cross-session memory blocks", () => {
+  const input = [
+    "TOOL USE PROTOCOL",
+    "- tool one",
+    "- [session_summary] **Session summary**: prior SS1 task",
+    "continuation of summary",
+    "- [bugfix] **Fixed SMS1F sort**: details",
+    "- [discovery] **Slow riser gate**: details",
+    "- [architecture] **Exact search**: details",
+  ].join("\n");
+  const out = stripCdxInjectedMemory(input);
+  assert.match(out, /TOOL USE PROTOCOL/);
+  assert.match(out, /- tool one/);
+  assert.doesNotMatch(out, /session_summary/);
+  assert.doesNotMatch(out, /bugfix/);
+  assert.doesNotMatch(out, /discovery/);
+  assert.doesNotMatch(out, /architecture/);
+  assert.doesNotMatch(out, /SS1/);
+});
+
+test("stripCdxInjectedMemory keeps tool descriptions untouched", () => {
+  const input = "Protocol\n- read: read a file\n- bash: run a command";
+  assert.equal(stripCdxInjectedMemory(input), input);
+});
+
+test("stripCdxInjectedMemory preserves the later-turn action protocol after memory", () => {
+  const input = [
+    "STABLE_HARNESS_CONTEXT",
+    "- [session_summary] prior turn summary",
+    "- [bugfix] prior implementation detail",
+    "OMNIROUTE TOOL PROTOCOL v2026-07-17:",
+    "Available actions:",
+    "- exec_command: Run a command",
+  ].join("\n");
+  const out = stripCdxInjectedMemory(input);
+  assert.match(out, /STABLE_HARNESS_CONTEXT/);
+  assert.doesNotMatch(out, /session_summary|bugfix/);
+  assert.match(out, /OMNIROUTE TOOL PROTOCOL/);
+  assert.match(out, /exec_command/);
+});
+
+test("Excuse guard: confabulation triggers one corrective retry yielding tool_calls", async () => {
+  reset();
+  const convBodies: string[] = [];
+  const m = installMockFetch({
+    onConv: (opts: { body?: string }) => convBodies.push(opts.body ?? ""),
+    conv: (_opts: unknown, callIndex: number) => ({
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: [
+                callIndex === 1
+                  ? "I tried to open the repository workspace so I could inspect the files, but the workspace connector returned an upstream error (502)."
+                  : '```json\n{"name":"exec_command","arguments":{"cmd":"ls"}}\n```',
+              ],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    }),
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "list the files in this repo" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+        stream: false,
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    assert.equal(m.calls.conv, 2, "exactly one corrective retry was issued");
+    const firstUserText = JSON.parse(convBodies[0]).messages.at(-1).content.parts[0];
+    assert.match(firstUserText, /\[Host: if this request needs files, commands, or current data/);
+    const retryUserText = JSON.parse(convBodies[1]).messages.at(-1).content.parts[0];
+    assert.match(retryUserText, /Host correction: your previous reply did not include a tool call/);
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "tool_calls");
+    assert.equal(json.choices[0].message.tool_calls[0].function.name, "exec_command");
+    assert.deepEqual(JSON.parse(json.choices[0].message.tool_calls[0].function.arguments), {
+      cmd: "ls",
+    });
+  } finally {
+    m.restore();
+  }
+});
+
+test("Excuse guard: second-strike excuse passes through without another retry", async () => {
+  reset();
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: ["I cannot access the filesystem in this chat."],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "read package.json" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+        stream: false,
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    assert.equal(m.calls.conv, 2, "one retry, no loop");
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "stop");
+  } finally {
+    m.restore();
+  }
+});
+
+test("stripCdxInjectedMemory removes only memory bullets and keeps following instructions", () => {
+  const input = [
+    "System rules:",
+    "- [note] user prefers dark mode",
+    "- Always answer in Korean",
+    "- Use pnpm for installs",
+    "RULES_B: always run tests",
+  ].join("\n");
+  const out = stripCdxInjectedMemory(input);
+  assert.match(out, /System rules:/);
+  assert.match(out, /Always answer in Korean/);
+  assert.match(out, /Use pnpm for installs/);
+  assert.match(out, /RULES_B/);
+  assert.doesNotMatch(out, /dark mode/);
+});
+
+test("stripCdxInjectedMemory removes a memory bullet's indented continuation only", () => {
+  const input = [
+    "RULES_A",
+    "- [session_summary] prior work",
+    "  continued detail here",
+    "RULES_B",
+  ].join("\n");
+  const out = stripCdxInjectedMemory(input);
+  assert.match(out, /RULES_A/);
+  assert.match(out, /RULES_B/);
+  assert.doesNotMatch(out, /continued detail/);
+});
+
+test("Excuse guard: no corrective retry on tool-result continuation turns", async () => {
+  reset();
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: ["I cannot access the filesystem in this chat."],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [
+          { role: "user", content: "list files" },
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: { name: "exec_command", arguments: '{"cmd":"ls"}' },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "c1", content: "alpha.txt\nbeta.md" },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+        stream: false,
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    assert.equal(m.calls.conv, 1, "an excuse after real tool results is not retried");
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "stop");
+  } finally {
+    m.restore();
+  }
 });

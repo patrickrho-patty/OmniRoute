@@ -42,6 +42,12 @@ export const VISION_MODEL_ID_FRAGMENTS = [
   "gpt-4.1",
   "gpt-4-turbo",
   "gpt-4-vision",
+  // Every chatgpt.com web model takes native image input (composer attachment),
+  // and the GPT-5 family is multimodal across providers. Covers cgpt-web/* ids
+  // (e.g. cgpt-web/5.6) and bare gpt-5.x slugs alike.
+  "cgpt-web",
+  "chatgpt-web",
+  "gpt-5",
   "gemini-1.5",
   "gemini-2",
   "gemini-3",

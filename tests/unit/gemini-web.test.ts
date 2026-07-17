@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 const { GeminiWebExecutor, parseStreamResponse } =
   await import("../../open-sse/executors/gemini-web.ts");
+const { getGeminiWebUserAgent } = await import("../../open-sse/services/geminiWebApiClient.ts");
 const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.ts");
 
 // ─── Registration ───────────────────────────────────────────────────────────
@@ -16,6 +17,10 @@ test("GeminiWebExecutor is registered in executor index", () => {
 test("GeminiWebExecutor sets correct provider name", () => {
   const executor = new GeminiWebExecutor();
   assert.equal(executor.getProvider(), "gemini-web");
+});
+
+test("Gemini Web HTTP and browser paths share the effective user agent", () => {
+  assert.match(getGeminiWebUserAgent(), /^Mozilla\/5\.0/);
 });
 
 // ─── Input validation ───────────────────────────────────────────────────────
@@ -119,6 +124,7 @@ test("Normalizes a bare __Secure-1PSID value before adding browser cookies", asy
           waitForSelector: async () => ({
             click: async () => {},
           }),
+          evaluate: async () => {},
           keyboard: {
             type: async () => {},
             press: async () => {},

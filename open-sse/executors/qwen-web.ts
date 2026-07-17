@@ -28,7 +28,13 @@
  */
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { makeExecutorErrorResult as makeErrorResult } from "../utils/error.ts";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
+import type { WebToolChoice } from "../services/webProvider/types.ts";
+import { buildToolModeResponse } from "./chatgptWebTools.ts";
 import { buildQwenCookieHeader, extractQwenToken } from "@/lib/providers/webCookieAuth";
 
 const BASE_URL = "https://chat.qwen.ai";
@@ -128,7 +134,10 @@ export class QwenWebExecutor extends BaseExecutor {
     const requestedModel = (bodyObj.model as string) || DEFAULT_MODEL;
     const modelId = mapModel(requestedModel);
 
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(bodyObj, messages);
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
+      bodyObj,
+      messages
+    );
 
     // Qwen Web is single-turn: fold the conversation into one user prompt.
     const prompt = this.foldMessages(effectiveMessages);
@@ -212,24 +221,42 @@ export class QwenWebExecutor extends BaseExecutor {
       );
     }
 
-    if (!wantStream) {
+    if (hasTools) {
       const { content } = await this.collectStream(upstream);
       const finalText = content;
+      const id = `chatcmpl-qwen-${Date.now()}`;
+      const created = Math.floor(Date.now() / 1000);
+      const buffered = new Response(
+        JSON.stringify({
+          id,
+          object: "chat.completion",
+          created,
+          model: modelId,
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: finalText },
+              finish_reason: "stop",
+            },
+          ],
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+      return {
+        response: await buildToolModeResponse(buffered, requestedTools, wantStream, {
+          cid: id,
+          created,
+          model: modelId,
+          idSeed: "qwen",
+          toolChoice,
+        }),
+        url: completionUrl,
+        headers: this.buildHeaders(token, cookieHeader, chatId),
+        transformedBody: msgPayload,
+      };
+    }
 
-      if (hasTools) {
-        const {
-          content: toolContent,
-          toolCalls,
-          finishReason,
-        } = buildToolAwareResult(finalText, requestedTools, "qwen");
-        const message: Record<string, unknown> = { role: "assistant", content: toolContent };
-        if (toolCalls) {
-          message.tool_calls = toolCalls;
-          message.content = null;
-        }
-        return this.jsonResponse(modelId, message, finishReason, completionUrl, msgPayload);
-      }
-
+    if (!wantStream) {
       return this.jsonResponse(
         modelId,
         { role: "assistant", content: finalText },
@@ -240,7 +267,14 @@ export class QwenWebExecutor extends BaseExecutor {
     }
 
     // Streaming: transform Qwen phase SSE → OpenAI chat.completion.chunk SSE.
-    const stream = this.buildClientStream(upstream, modelId, hasTools, requestedTools, signal);
+    const stream = this.buildClientStream(
+      upstream,
+      modelId,
+      hasTools,
+      requestedTools,
+      toolChoice,
+      signal
+    );
     return {
       response: new Response(stream, {
         headers: {
@@ -346,6 +380,7 @@ export class QwenWebExecutor extends BaseExecutor {
     modelId: string,
     hasTools: boolean,
     requestedTools: unknown,
+    toolChoice: WebToolChoice,
     signal: AbortSignal | null | undefined
   ): ReadableStream {
     const encoder = new TextEncoder();
@@ -402,11 +437,18 @@ export class QwenWebExecutor extends BaseExecutor {
         }
 
         if (hasTools) {
-          const { content, toolCalls, finishReason } = buildToolAwareResult(
+          const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
             fullContent,
             requestedTools,
-            "qwen"
+            "qwen",
+            toolChoice
           );
+          if (policyViolation) {
+            controller.error(
+              new Error("The upstream provider did not honor the requested tool policy.")
+            );
+            return;
+          }
           const delta = toolCalls
             ? { role: "assistant", content: null, tool_calls: toolCalls }
             : { role: "assistant", content };

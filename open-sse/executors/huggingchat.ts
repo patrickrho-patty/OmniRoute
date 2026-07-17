@@ -26,7 +26,10 @@ import {
 } from "./base.ts";
 import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { buildErrorBody, sanitizeErrorMessage } from "../utils/error.ts";
-import { serializeToolsToPrompt, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 import { normalizeSessionCookieHeader } from "@/lib/providers/webCookieAuth";
 import { streamJsonlToOpenAi, readJsonlResponse } from "./huggingchat/jsonlStream.ts";
 
@@ -257,8 +260,8 @@ export class HuggingChatExecutor extends BaseExecutor {
     transformedBody: unknown;
   }> {
     const { model, body, stream, credentials, signal, log, upstreamExtraHeaders } = input;
-    const messages = (body as Record<string, unknown>).messages as
-      Array<Record<string, unknown>> | undefined;
+    const bodyObj = (body || {}) as Record<string, unknown>;
+    const messages = bodyObj.messages as Array<Record<string, unknown>> | undefined;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return {
@@ -334,10 +337,11 @@ export class HuggingChatExecutor extends BaseExecutor {
     // contract (HuggingChat's web API has no native function-calling). The model
     // emits <tool>{...}</tool> blocks, parsed back into OpenAI tool_calls on the
     // response side. Mirrors chatgpt-web / qwen-web / gemini-web via webTools.
-    const tools = (body as Record<string, unknown>).tools;
-    const hasTools = Array.isArray(tools) && tools.length > 0;
-    const toolContract = hasTools ? serializeToolsToPrompt(tools) : "";
-    const finalInputs = hasTools && toolContract ? `${toolContract}\n\n${inputs}` : inputs;
+    const { hasTools, requestedTools, toolChoice, toolContract } = prepareWebToolRequest(
+      bodyObj,
+      messages as Array<{ role: string; content: unknown }>
+    );
+    const finalInputs = hasTools ? `${toolContract}\n\n${inputs}` : inputs;
 
     const baseHeaders: Record<string, string> = {
       Cookie: cookieHeader,
@@ -536,11 +540,28 @@ export class HuggingChatExecutor extends BaseExecutor {
     // function-calling, so calls come back as text per the injected contract.
     if (hasTools) {
       const fullText = await readJsonlResponse(upstreamResponse.body, signal);
-      const { content, toolCalls, finishReason } = buildToolAwareResult(
+      const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
         fullText,
-        tools,
-        "huggingchat"
+        requestedTools,
+        "huggingchat",
+        toolChoice
       );
+      if (policyViolation) {
+        return {
+          response: new Response(
+            JSON.stringify({
+              error: {
+                message: "HuggingChat did not honor the requested tool policy.",
+                type: "upstream_error",
+              },
+            }),
+            { status: 502, headers: { "Content-Type": "application/json" } }
+          ),
+          url: messageUrl,
+          headers: baseHeaders,
+          transformedBody: sendDataPayload,
+        };
+      }
       const message: Record<string, unknown> = { role: "assistant", content: content || null };
       if (toolCalls) message.tool_calls = toolCalls;
       const completionTokens = estimateTokens(fullText);
@@ -580,7 +601,11 @@ export class HuggingChatExecutor extends BaseExecutor {
         return {
           response: new Response(readable, {
             status: 200,
-            headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "X-Accel-Buffering": "no",
+            },
           }),
           url: messageUrl,
           headers: baseHeaders,
@@ -590,7 +615,14 @@ export class HuggingChatExecutor extends BaseExecutor {
 
       return {
         response: new Response(
-          JSON.stringify({ id, object: "chat.completion", created, model: resolvedModel, choices: [{ index: 0, message, finish_reason: finishReason }], usage }),
+          JSON.stringify({
+            id,
+            object: "chat.completion",
+            created,
+            model: resolvedModel,
+            choices: [{ index: 0, message, finish_reason: finishReason }],
+            usage,
+          }),
           { status: 200, headers: { "Content-Type": "application/json" } }
         ),
         url: messageUrl,

@@ -3,7 +3,13 @@ import vm from "node:vm";
 import { solveDuckDuckGoChallenge, makeDuckDuckGoFeSignals } from "./duckduckgo-web/challenge.ts";
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
+import type { WebToolChoice } from "../services/webProvider/types.ts";
+import { buildToolModeResponse } from "./chatgptWebTools.ts";
 import type { Session } from "../services/sessionPool/session.ts";
 import { tryBackedChat } from "../services/browserBackedChat.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
@@ -361,7 +367,7 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
     const rawMessages = Array.isArray((body as { messages?: unknown[] } | null)?.messages)
       ? ((body as { messages: unknown[] }).messages as Array<Record<string, unknown>>)
       : [];
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
       rawMessages
     );
@@ -409,7 +415,13 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
             "Content-Type": result.contentType || "text/event-stream",
           },
         });
-        return await this.processResponse(upstreamResp, isStreaming, hasTools, requestedTools);
+        return await this.processResponse(
+          upstreamResp,
+          isStreaming,
+          hasTools,
+          requestedTools,
+          toolChoice
+        );
       }
       // status 0 means no response captured (selector/navigation error).
       return errorResponse(502, "Browser-backed chat captured no upstream response");
@@ -485,7 +497,13 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
 
       if (chatResponse.status === 429) {
         if (pool && session) pool.reportCooldown(session);
-        return await this.processResponse(chatResponse, isStreaming, hasTools, requestedTools);
+        return await this.processResponse(
+          chatResponse,
+          isStreaming,
+          hasTools,
+          requestedTools,
+          toolChoice
+        );
       }
 
       if (chatResponse.status === 401 || chatResponse.status === 403) {
@@ -493,7 +511,13 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
         const freshVqd = await this.acquireAuthHeaders(mergedSignal);
         if (freshVqd.vqd4 || freshVqd.vqdHash1) {
           const retryResponse = await sendChat(freshVqd);
-          return await this.processResponse(retryResponse, isStreaming, hasTools, requestedTools);
+          return await this.processResponse(
+            retryResponse,
+            isStreaming,
+            hasTools,
+            requestedTools,
+            toolChoice
+          );
         }
         return errorResponse(503, "Service unavailable");
       }
@@ -507,7 +531,8 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
         chatResponse,
         isStreaming,
         hasTools,
-        requestedTools
+        requestedTools,
+        toolChoice
       );
 
       // Report pool status based on response
@@ -682,7 +707,8 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
     response: Response,
     streaming: boolean,
     hasTools?: boolean,
-    requestedTools?: unknown
+    requestedTools?: unknown,
+    toolChoice: WebToolChoice = "auto"
   ): Promise<Response> {
     if (!response.ok) {
       const body = await response.text();
@@ -693,6 +719,40 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
           headers: { "Content-Type": "application/json" },
         }
       );
+    }
+
+    if (streaming && hasTools) {
+      const text = await response.text();
+      const fullContent = text
+        .split("\n")
+        .filter((line) => line.trim() && line !== "[DONE]")
+        .map((line) => extractDuckDuckGoContent(parseDuckDuckGoDataLine(line)))
+        .join("");
+      const id = `chatcmpl-ddg-${Date.now()}`;
+      const created = Math.floor(Date.now() / 1000);
+      const buffered = new Response(
+        JSON.stringify({
+          id,
+          object: "chat.completion",
+          created,
+          model: "duckduckgo-web",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: fullContent },
+              finish_reason: "stop",
+            },
+          ],
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+      return buildToolModeResponse(buffered, requestedTools, true, {
+        cid: id,
+        created,
+        model: "duckduckgo-web",
+        idSeed: "ddg",
+        toolChoice,
+      });
     }
 
     if (streaming) {
@@ -750,11 +810,13 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
 
       const openaiResponse = hasTools
         ? (() => {
-            const { content, toolCalls, finishReason } = buildToolAwareResult(
+            const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
               fullContent,
               requestedTools,
-              "ddg"
+              "ddg",
+              toolChoice
             );
+            if (policyViolation) return null;
             const message: Record<string, unknown> = { role: "assistant", content };
             if (toolCalls) {
               message.tool_calls = toolCalls;
@@ -772,6 +834,7 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
             ],
           };
 
+      if (!openaiResponse) return buildWebToolPolicyErrorResponse();
       return new Response(JSON.stringify(openaiResponse), {
         headers: { "Content-Type": "application/json" },
       });

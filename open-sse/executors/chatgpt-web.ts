@@ -24,16 +24,34 @@ import {
   type TlsFetchResult,
 } from "../services/chatgptTlsClient.ts";
 import {
+  acquireChatGptConversationLock,
+  getChatGptConversationContext,
+  setChatGptConversationContext,
+  deleteChatGptConversationContext,
+  __resetChatGptConversationCacheForTesting,
+  type ChatGptConversationContext,
+} from "../services/chatgptConversationCache.ts";
+import {
   storeChatGptImage,
   getChatGptImageConversationContext,
   __resetChatGptImageCacheForTesting,
   type ChatGptImageConversationContext,
 } from "../services/chatgptImageCache.ts";
 import {
-  prepareToolMessages,
-  buildToolAwareResult,
-  type OpenAIToolCall,
-} from "../translator/webTools.ts";
+  extractCurrentTurnImageUrls,
+  uploadCurrentTurnImages,
+  type UploadedChatGptImage,
+  type ChatGptUploadAuthContext,
+} from "../services/chatgptImageUpload.ts";
+import { getHeader } from "../utils/headers.ts";
+import {
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
+import { CHATGPT_WEB_PROTOCOL_MARKER } from "../services/webProvider/toolContract.ts";
+import { detectWebToolExcuse } from "../services/webProvider/excuseGuard.ts";
+import { buildWebToolContractFingerprint } from "../services/webProvider/toolFingerprint.ts";
+import type { OpenAIToolCall, WebToolChoice } from "../services/webProvider/types.ts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -168,6 +186,70 @@ function cookieKey(cookie: string): string {
   // Not a password hash — SHA-256 is used to derive a short, collision-resistant
   // cache key from the session cookie. The output is a map lookup key.
   return createHash("sha256").update(cookie).digest("hex").slice(0, 16); // lgtm[js/insufficient-password-hash]
+}
+
+/**
+ * Resolve the client thread identity for conversation continuity. Codex-specific
+ * priority order: prompt_cache_key → client_metadata → session headers →
+ * x-codex-turn-metadata. Related resolvers with different semantics:
+ * normalizeCodexSessionId (config/codexClient.ts), extractExternalSessionId
+ * (services/sessionManager.ts), getConversationCacheKey (services/taskAwareRouting.ts).
+ */
+function resolveConversationThreadId(
+  body: Record<string, unknown>,
+  clientHeaders: Record<string, string> | null | undefined
+): string | null {
+  const promptCacheKey = body.prompt_cache_key;
+  if (typeof promptCacheKey === "string" && promptCacheKey.trim()) {
+    return promptCacheKey.trim();
+  }
+
+  const clientMetadata = body.client_metadata;
+  if (clientMetadata && typeof clientMetadata === "object" && !Array.isArray(clientMetadata)) {
+    const metadata = clientMetadata as Record<string, unknown>;
+    for (const key of ["thread_id", "session_id"]) {
+      const value = metadata[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+
+  for (const name of ["thread-id", "session-id", "x-codex-session-id", "x-session-id"]) {
+    const value = getHeader(clientHeaders, name)?.trim();
+    if (value) return value;
+  }
+
+  const rawTurnMetadata = getHeader(clientHeaders, "x-codex-turn-metadata")?.trim();
+  if (rawTurnMetadata) {
+    try {
+      const metadata = JSON.parse(rawTurnMetadata) as Record<string, unknown>;
+      for (const key of ["thread_id", "session_id"]) {
+        const value = metadata[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+    } catch {
+      // Ignore malformed optional client metadata.
+    }
+  }
+
+  return null;
+}
+
+function buildConversationCacheKey(
+  body: Record<string, unknown>,
+  clientHeaders: Record<string, string> | null | undefined,
+  accountIdentity: string,
+  connectionId: string | undefined,
+  model: string,
+  callerIdentity: string | null | undefined
+): string | null {
+  const threadId = resolveConversationThreadId(body, clientHeaders);
+  if (!threadId || !callerIdentity) return null;
+  // A ChatGPT account can be connected by multiple OmniRoute principals. Scope
+  // a client-selected thread id to its stored connection when available.
+  const connectionScope = connectionId || accountIdentity;
+  return createHash("sha256")
+    .update(`${callerIdentity}:${connectionScope}:${accountIdentity}:${model}:${threadId}`)
+    .digest("hex");
 }
 
 function tokenLookup(cookie: string): TokenEntry | null {
@@ -893,12 +975,21 @@ async function solveProofOfWork(
 
 // ─── OpenAI → ChatGPT message translation ───────────────────────────────────
 
+type ParsedToolCall = OpenAIToolCall;
+
+type ParsedHistoryItem =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; toolCalls: ParsedToolCall[] }
+  | { role: "tool"; content: string; toolCallId: string; toolName: string };
+
 interface ParsedMessages {
   systemMsg: string;
-  history: Array<{ role: "assistant" | "tool" | "user"; content: string }>;
+  history: ParsedHistoryItem[];
+  currentInputs: ParsedHistoryItem[];
+  currentInput: ParsedHistoryItem | null;
   currentMsg: string;
   latestImageContext: ChatGptImageConversationContext | null;
-  hadToolActivity: boolean;
+  hadToolActivityAfterLastUser: boolean;
 }
 
 /**
@@ -938,13 +1029,12 @@ function findCachedImageContext(content: string): ChatGptImageConversationContex
 
 function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMessages {
   let systemMsg = "";
-  const history: Array<{ role: "assistant" | "tool" | "user"; content: string }> = [];
+  const history: ParsedHistoryItem[] = [];
   let latestImageContext: ChatGptImageConversationContext | null = null;
   // Track tool call id→name for labelling folded tool results (mirrors deepseek-web pattern)
   const callNameById = new Map<string, string>();
   // Track last actual user message — used as currentMsg even when the turn ends with tool results
   let lastUserContent = "";
-  let hadToolActivity = false;
 
   for (const msg of messages) {
     let role = String(msg.role || "user");
@@ -974,68 +1064,93 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
       // Track tool_calls id→name so tool result messages can be labelled
       const rawToolCalls = (msg as Record<string, unknown>)["tool_calls"];
       const toolCalls = Array.isArray(rawToolCalls)
-        ? (rawToolCalls as Array<{ id?: string; function?: { name?: string; arguments?: unknown } }>)
+        ? (rawToolCalls as Array<{
+            id?: string;
+            function?: { name?: string; arguments?: unknown };
+          }>)
         : [];
-      if (toolCalls.length > 0) hadToolActivity = true;
+      const parsedToolCalls: ParsedToolCall[] = toolCalls.flatMap((call) => {
+        const id = typeof call.id === "string" ? call.id : "";
+        const name = typeof call.function?.name === "string" ? call.function.name : "";
+        if (!id || !name) return [];
+        const args =
+          typeof call.function?.arguments === "string"
+            ? call.function.arguments
+            : JSON.stringify(call.function?.arguments ?? {});
+        return [{ id, type: "function" as const, function: { name, arguments: args } }];
+      });
       for (const c of toolCalls) {
         if (c?.id && typeof c.function?.name === "string") {
           callNameById.set(c.id, c.function.name);
         }
       }
 
-      // Serialize tool_calls into the assistant turn so ChatGPT knows what was called
-      if (toolCalls.length > 0) {
-        const callsSummary = toolCalls
-          .map((c) => {
-            const name = c.function?.name ?? "unknown";
-            const args = c.function?.arguments !== undefined ? String(c.function.arguments) : "";
-            return args ? `${name}(${args})` : name;
-          })
-          .join("\n");
-        const combined = [content.trim(), callsSummary ? `Previous tool calls:\n${callsSummary}` : ""]
-          .filter(Boolean)
-          .join("\n");
-        if (combined.trim()) history.push({ role: "assistant", content: combined });
-      } else if (content.trim()) {
-        history.push({ role: "assistant", content });
+      if (content.trim() || parsedToolCalls.length > 0) {
+        history.push({
+          role: "assistant",
+          content: content.trim(),
+          toolCalls: parsedToolCalls,
+        });
       }
     } else if (role === "tool" || role === "function") {
-      hadToolActivity = true;
-      // Fold tool results into history as context — do NOT use as currentMsg.
-      // ChatGPT web has no native tool-result slot; fold as assistant-side context
-      // so the model sees the result and the original user question remains currentMsg
-      // (same pattern as deepseek-web's messagesToPrompt lastUserContent tracking).
       const toolCallId = String((msg as Record<string, unknown>)["tool_call_id"] ?? "");
       const toolName = callNameById.get(toolCallId) ?? (toolCallId || "tool");
-      const resultText = content.trim();
-      if (resultText) {
-        history.push({ role: "tool", content: `Tool result (${toolName}):\n${resultText}` });
-      }
+      history.push({
+        role: "tool",
+        content: content.trim(),
+        toolCallId,
+        toolName,
+      });
     } else if (role === "user") {
       history.push({ role: "user", content });
-      if (content.trim()) lastUserContent = content;
+      if (content.trim()) {
+        lastUserContent = content;
+      }
     }
   }
 
-  // currentMsg: use the last actual user message, not the last history entry.
-  // This ensures tool-result turns still send the original user question as the prompt,
-  // matching deepseek-web's lastUserContent pattern.
-  let currentMsg = lastUserContent;
-  // Remove the last user entry from history since it becomes currentMsg
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].role === "user" && history[i].content === lastUserContent) {
-      history.splice(i, 1);
-      break;
+  const currentInputs: ParsedHistoryItem[] = [];
+  if (history.at(-1)?.role === "tool") {
+    while (history.at(-1)?.role === "tool") {
+      currentInputs.unshift(history.pop() as ParsedHistoryItem);
+    }
+  } else {
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (history[index].role === "user") {
+        currentInputs.push(history[index]);
+        history.splice(index, 1);
+        break;
+      }
     }
   }
+  const currentInput = currentInputs.at(-1) ?? null;
 
-  return { systemMsg, history, currentMsg, latestImageContext, hadToolActivity };
+  return {
+    systemMsg: compressChatGptWebSystemContext(stripCdxInjectedMemory(systemMsg)),
+    history,
+    currentInputs,
+    currentInput,
+    currentMsg: lastUserContent,
+    latestImageContext,
+    hadToolActivityAfterLastUser: currentInput?.role === "tool",
+  };
+}
+
+interface ChatGptImageAssetPointer {
+  content_type: "image_asset_pointer";
+  asset_pointer: string;
+  size_bytes: number;
+  width: number;
+  height: number;
 }
 
 interface ChatGptMessage {
   id: string;
   author: { role: string };
-  content: { content_type: "text"; parts: string[] };
+  content:
+    | { content_type: "text"; parts: string[] }
+    | { content_type: "multimodal_text"; parts: Array<string | ChatGptImageAssetPointer> };
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -1122,6 +1237,161 @@ function looksLikeImageEditRequest(parsed: ParsedMessages): boolean {
   return IMAGE_EDIT_REGEXES.some((re) => re.test(text));
 }
 
+/**
+ * Rebuild the exact fenced-JSON tool call the model emitted upstream. History
+ * replay must use the SAME envelope the contract instructs (and the few-shot
+ * example demonstrates) — replaying OpenAI function_call JSON (a syntax the
+ * model never wrote and cannot use upstream) teaches it to answer in prose on
+ * later turns.
+ */
+function serializeActionRecord(call: ParsedToolCall): string {
+  let args: unknown;
+  try {
+    args = JSON.parse(call.function.arguments || "{}");
+  } catch {
+    // The harness sent non-JSON arguments — the replay must still use the
+    // contract's object form, so fall back to an empty object rather than
+    // emit a string the model would learn to copy (and the decoder reject).
+    args = {};
+  }
+  return `\`\`\`json\n${JSON.stringify({ name: call.function.name, arguments: args })}\n\`\`\``;
+}
+
+/** Host-side result wrapper — same shape for current-turn and replayed results. */
+function serializeActionResult(item: Extract<ParsedHistoryItem, { role: "tool" }>): string {
+  return [
+    `Tool result for \`${item.toolName}\`:`,
+    "```json",
+    JSON.stringify({ type: "tool_result", name: item.toolName, output: item.content }),
+    "```",
+  ].join("\n");
+}
+
+function serializeHistoryItems(item: ParsedHistoryItem): Record<string, unknown>[] {
+  if (item.role === "assistant") {
+    const items: Record<string, unknown>[] = [];
+    if (item.content) {
+      items.push({ type: "message", role: "assistant", content: item.content });
+    }
+    for (const call of item.toolCalls) {
+      items.push({ type: "message", role: "assistant", content: serializeActionRecord(call) });
+    }
+    return items;
+  }
+  if (item.role === "tool") {
+    return [{ type: "message", role: "user", content: serializeActionResult(item) }];
+  }
+  return [{ type: "message", role: "user", content: item.content }];
+}
+
+function serializeToolResults(items: Extract<ParsedHistoryItem, { role: "tool" }>[]): string {
+  return [
+    ...items.map(serializeActionResult),
+    "Continue the existing task from these tool results. Answer if they resolve the task; otherwise emit the next tool call as a fenced json block.",
+  ].join("\n");
+}
+
+const MAX_REPLAY_HISTORY_ITEMS = 24;
+const MAX_REPLAY_HISTORY_CHARS = 64 * 1024;
+
+function estimateSerializedHistoryItem(item: ParsedHistoryItem): { items: number; chars: number } {
+  if (item.role === "assistant") {
+    return {
+      items: (item.content ? 1 : 0) + item.toolCalls.length,
+      chars:
+        item.content.length +
+        item.toolCalls.reduce(
+          (total, call) =>
+            total + call.id.length + call.function.name.length + call.function.arguments.length,
+          96
+        ),
+    };
+  }
+  if (item.role === "tool") {
+    return {
+      items: 1,
+      chars: item.toolCallId.length + item.toolName.length + item.content.length + 96,
+    };
+  }
+  return { items: 1, chars: item.content.length + 64 };
+}
+
+function serializeBoundedHistory(history: ParsedHistoryItem[]): string {
+  const selected: ParsedHistoryItem[][] = [];
+  let itemCount = 0;
+  let chars = 0;
+  let end = history.length;
+  while (end > 0) {
+    let start = end - 1;
+    while (start > 0 && history[start].role !== "user") start -= 1;
+    const groupItems = history.slice(start, end);
+    const estimate = groupItems.reduce(
+      (total, item) => {
+        const current = estimateSerializedHistoryItem(item);
+        return { items: total.items + current.items, chars: total.chars + current.chars };
+      },
+      { items: 0, chars: 2 }
+    );
+    if (
+      itemCount + estimate.items > MAX_REPLAY_HISTORY_ITEMS ||
+      chars + estimate.chars > MAX_REPLAY_HISTORY_CHARS
+    ) {
+      break;
+    }
+    itemCount += estimate.items;
+    chars += estimate.chars;
+    selected.unshift(groupItems);
+    end = start;
+  }
+  return JSON.stringify(selected.flatMap((group) => group.flatMap(serializeHistoryItems)));
+}
+
+// Codex CLI injects cross-session memory blocks (session_summary, bugfix,
+// discovery, architecture, etc.) into the system message. These bias fresh
+// user turns toward previous tasks even when the user starts a new session.
+// Strip each memory bullet individually (bullet + its indented continuation
+// lines) — a single span-to-marker regex previously destroyed legitimate
+// instructions that happened to follow a memory bullet.
+const CDX_MEMORY_SECTION_RE =
+  /(?:\n|^)\s*-\s*\[(?:session_summary|bugfix|discovery|architecture|note|goal|instructions|discoveries)\][^\n]*(?:\n[ \t]+[^\n]*)*/gi;
+export function stripCdxInjectedMemory(systemMsg: string): string {
+  return systemMsg.replace(CDX_MEMORY_SECTION_RE, "").trim();
+}
+
+/**
+ * Appended to the live user message on the single corrective retry after the
+ * model answered with an excuse/confabulation instead of a tool call. Replaces
+ * the default recency anchor for that attempt.
+ */
+const EXCUSE_RETRY_NUDGE =
+  "\n\n[Host correction: your previous reply did not include a tool call. If this task needs files, commands, or current data, reply with ONLY the tool call as a fenced json block. Never describe errors, connectors, or results you have not actually received from the host.]";
+
+/**
+ * Codex CLI prepends large instruction blocks (Skills, Plugins, Engram memory
+ * protocol) that are irrelevant to ChatGPT Web and bloat the payload. ChatGPT
+ * Web rejects oversized payloads with an empty body, so strip these sections
+ * while preserving the tool protocol and project AGENTS.md instructions.
+ */
+const CHATGPT_WEB_NOISE_XML_SECTIONS_RE =
+  /<(skills_instructions|plugins_instructions)>[\s\S]*?<\/\1>/gi;
+const ESCAPED_PROTOCOL_MARKER = CHATGPT_WEB_PROTOCOL_MARKER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const CHATGPT_WEB_NOISE_MARKDOWN_SECTIONS_RE = new RegExp(
+  `(?:^|\\n)## (?:Engram Persistent Memory|Skills|Plugins)[\\s\\S]*?(?=\\n## |\\n${ESCAPED_PROTOCOL_MARKER}|$)`,
+  "g"
+);
+function compressChatGptWebSystemContext(systemMsg: string): string {
+  return systemMsg
+    .replace(CHATGPT_WEB_NOISE_XML_SECTIONS_RE, "")
+    .replace(CHATGPT_WEB_NOISE_MARKDOWN_SECTIONS_RE, "")
+    .trim();
+}
+
+function getClientSystemContext(systemMsg: string): string {
+  if (systemMsg.startsWith(CHATGPT_WEB_PROTOCOL_MARKER)) return "";
+  const protocolIndex = systemMsg.lastIndexOf(`\n${CHATGPT_WEB_PROTOCOL_MARKER}`);
+  return (protocolIndex >= 0 ? systemMsg.slice(0, protocolIndex) : systemMsg).trim();
+}
+
 function buildConversationBody(
   parsed: ParsedMessages,
   modelSlug: string,
@@ -1130,32 +1400,45 @@ function buildConversationBody(
   // is available. When false (default), use Temporary Chat to keep chats
   // out of the user's chatgpt.com history.
   forImageGen: boolean,
-  continuation: ChatGptImageConversationContext | null = null
+  options: {
+    continuation?: ChatGptConversationContext | null;
+    continuationSystemDelta?: string;
+    // Inbound images the user sent, already uploaded to chatgpt.com. When
+    // present, the current user turn becomes a multimodal_text message that
+    // references each uploaded file so GPT actually sees the images.
+    uploadedImages?: UploadedChatGptImage[];
+    hasTools?: boolean;
+    // Appended to the live user message (corrective retry nudge). Replaces the
+    // default recency anchor when present.
+    userContentSuffix?: string;
+  } = {}
 ): Record<string, unknown> {
-  // Critical: do NOT send prior turns as separate `assistant` and `user`
-  // messages in the `messages` array. ChatGPT's web API ("action: next")
-  // treats those as in-progress turns and the model will literally CONTINUE
-  // a prior assistant response in the new generation — observed as
-  // `[1] -> [12] -> [1123]` across three turns.
-  //
-  // Instead, fold all prior history into the system message and send only
-  // the current user message as a single new turn. The model then sees a
-  // single prompt with full context and responds fresh.
+  const {
+    continuation = null,
+    continuationSystemDelta = "",
+    uploadedImages = [],
+    hasTools = false,
+    userContentSuffix = "",
+  } = options;
+  // Temporary Chat conversations are stateless on the server side, so every
+  // request must carry the full system context and prior history. Non-temporary
+  // (image-gen) chats rely on upstream memory and only need the delta.
+  const isTemporaryChat = !forImageGen;
   const systemParts: string[] = [];
-  if (parsed.systemMsg.trim()) {
-    systemParts.push(parsed.systemMsg.trim());
+  let historyReplay = "";
+  // parseOpenAIMessages already ran the memory/noise strippers — use its output
+  // verbatim instead of stripping the same large context twice per request.
+  const sanitizedSystemMsg = parsed.systemMsg;
+  if ((!continuation || isTemporaryChat) && sanitizedSystemMsg.trim()) {
+    systemParts.push(sanitizedSystemMsg.trim());
+  } else if (continuation && continuationSystemDelta.trim()) {
+    systemParts.push(continuationSystemDelta.trim());
   }
-  if (!continuation && parsed.history.length > 0) {
-    const formatted = parsed.history
-      .map((h) => {
-        if (h.role === "assistant") return `Assistant: ${h.content}`;
-        if (h.role === "tool") return h.content;
-        return `User: ${h.content}`;
-      })
-      .join("\n\n");
-    systemParts.push(
-      `Prior conversation (for context — answer only the new user message below):\n\n${formatted}`
-    );
+  if ((!continuation || isTemporaryChat) && parsed.history.length > 0) {
+    historyReplay = [
+      `Prior conversation turns (structured JSON replay; tool calls and results are fenced JSON blocks per the ${CHATGPT_WEB_PROTOCOL_MARKER}):`,
+      serializeBoundedHistory(parsed.history),
+    ].join("\n");
   }
 
   const messages: ChatGptMessage[] = [];
@@ -1166,25 +1449,78 @@ function buildConversationBody(
       content: { content_type: "text", parts: [systemParts.join("\n\n")] },
     });
   }
+  if (historyReplay) {
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "text", parts: [historyReplay] },
+    });
+  }
 
-  const currentUserContent = hasOpenWebUIImageContext(parsed)
+  const currentToolResults = parsed.currentInputs.filter(
+    (item): item is Extract<ParsedHistoryItem, { role: "tool" }> => item.role === "tool"
+  );
+  const isImageAck = hasOpenWebUIImageContext(parsed);
+  let currentUserContent = isImageAck
     ? "Briefly acknowledge the image result described in the system context. Do not generate, edit, or request another image."
-    : parsed.hadToolActivity
-      ? [
-          parsed.currentMsg?.trim(),
-          "The transcript above contains real tool execution results from this environment. Continue the task using those tool results. Do NOT repeat tool calls that already succeeded. If the available results already answer the user's request, answer directly; otherwise make the next necessary tool call. If the current request asks about files, repositories, package scripts, commands, or local project state, use read or bash instead of claiming the filesystem is unavailable.",
-        ]
-          .filter(Boolean)
-          .join("\n\n")
-      : parsed.currentMsg || "";
+    : currentToolResults.length > 0
+      ? serializeToolResults(currentToolResults)
+      : parsed.currentInput?.role === "user"
+        ? parsed.currentInput.content
+        : parsed.currentMsg || "";
 
-  messages.push({
-    id: randomUUID(),
-    author: { role: "user" },
-    content: { content_type: "text", parts: [currentUserContent] },
-  });
+  if (userContentSuffix.trim()) {
+    currentUserContent = `${currentUserContent}${userContentSuffix}`;
+  } else if (hasTools && currentToolResults.length === 0 && !isImageAck) {
+    // Recency anchor: the tool contract sits at the very top of a large
+    // replayed payload. Restate the one rule that matters right next to the
+    // live user turn so it is the closest instruction the model sees.
+    currentUserContent = `${currentUserContent}\n\n[Host: if this request needs files, commands, or current data, reply with ONLY the tool call as a fenced json block. Never describe results you have not received.]`;
+  }
 
-  return {
+  if (uploadedImages.length > 0) {
+    // Multimodal turn: text first, then one image_asset_pointer per uploaded
+    // file, plus a metadata.attachments entry — exactly what chatgpt.com's
+    // browser client sends when a user attaches images. Image-only turns have
+    // empty text; give the model a minimal instruction so it responds to the
+    // image instead of an empty prompt.
+    const multimodalText = currentUserContent.trim()
+      ? currentUserContent
+      : "What is in this image?";
+    const parts: Array<string | ChatGptImageAssetPointer> = [multimodalText];
+    for (const img of uploadedImages) {
+      parts.push({
+        content_type: "image_asset_pointer",
+        asset_pointer: `file-service://${img.fileId}`,
+        size_bytes: img.sizeBytes,
+        width: img.width,
+        height: img.height,
+      });
+    }
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "multimodal_text", parts },
+      metadata: {
+        attachments: uploadedImages.map((img) => ({
+          id: img.fileId,
+          size: img.sizeBytes,
+          name: img.name,
+          mime_type: img.mimeType,
+          width: img.width,
+          height: img.height,
+        })),
+      },
+    });
+  } else {
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "text", parts: [currentUserContent] },
+    });
+  }
+
+  const body: Record<string, unknown> = {
     action: "next",
     messages,
     model: modelSlug,
@@ -1198,11 +1534,28 @@ function buildConversationBody(
     // Temporary Chat is the default. Disable it ONLY when the user is asking
     // for an image — that lets ChatGPT use its image_gen tool, at the cost of
     // saving the chat to the user's history. For text-only requests we keep
-    // Temporary Chat on so the user's history stays clean.
-    history_and_training_disabled: !(forImageGen || continuation),
+    // Temporary Chat on so the user's history stays clean, even for continuity-
+    // keyed clients. The cached upstream conversation_id is enough to continue
+    // a temporary chat across turns.
+    history_and_training_disabled: !forImageGen,
     suggestions: [],
     websocket_request_id: randomUUID(),
+    // Match the real chatgpt.com f/conversation payload shape. The
+    // conversation_mode must be "primary_assistant"; the system_hints array is
+    // the slot where the client can "interject" behavior hints to the backend.
+    conversation_mode: { kind: "primary_assistant" },
+    enable_message_followups: true,
+    // The regular conversation endpoint accepts this coding-workflow hint while
+    // retaining the normal ChatGPT Web usage path and payload shape.
+    system_hints: ["codex"],
+    supports_buffering: true,
+    // supported_encodings: ["v1"],
+    client_prepare_state: "none",
+    paragen_cot_summary_display_override: "allow",
+    force_parallel_switch: "auto",
   };
+
+  return body;
 }
 
 // ─── ChatGPT SSE parsing ────────────────────────────────────────────────────
@@ -1243,6 +1596,10 @@ async function* readChatGptSseEvents(
   const decoder = new TextDecoder();
   let buffer = "";
   let dataLines: string[] = [];
+  const cancelReader = () => {
+    void reader.cancel(signal?.reason).catch(() => {});
+  };
+  signal?.addEventListener("abort", cancelReader, { once: true });
 
   function flush(): ChatGptStreamEvent | null | "done" {
     if (dataLines.length === 0) return null;
@@ -1291,6 +1648,7 @@ async function* readChatGptSseEvents(
     const tail = flush();
     if (tail && tail !== "done") yield tail;
   } finally {
+    signal?.removeEventListener("abort", cancelReader);
     reader.releaseLock();
   }
 }
@@ -1557,9 +1915,21 @@ function buildStreamingResponse(
   // closure here that knows how to poll the conversation endpoint.
   pollAsyncImage: ((conversationId: string) => Promise<ImagePointerRef[]>) | null,
   log: { warn?: (tag: string, msg: string) => void } | null,
-  signal?: AbortSignal | null
+  signal?: AbortSignal | null,
+  onConversationContext?: (context: ChatGptConversationContext) => void,
+  onFinalize?: () => void
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  const cancellation = new AbortController();
+  const effectiveSignal = signal
+    ? AbortSignal.any([signal, cancellation.signal])
+    : cancellation.signal;
+  let finalized = false;
+  const finalize = () => {
+    if (finalized) return;
+    finalized = true;
+    onFinalize?.();
+  };
 
   return new ReadableStream(
     {
@@ -1584,11 +1954,13 @@ function buildStreamingResponse(
           let imagePointers: ImagePointerRef[] | undefined;
           let imageGenAsync = false;
           let parentCandidateMessageId: string | null = null;
+          let streamFailed = false;
 
-          for await (const chunk of extractContent(eventStream, signal)) {
+          for await (const chunk of extractContent(eventStream, effectiveSignal)) {
             if (chunk.conversationId) conversationId = chunk.conversationId;
             if (chunk.messageId) parentCandidateMessageId = chunk.messageId;
             if (chunk.error) {
+              streamFailed = true;
               controller.enqueue(
                 encoder.encode(
                   sseChunk({
@@ -1642,6 +2014,18 @@ function buildStreamingResponse(
                 );
               }
             }
+          }
+
+          if (
+            !streamFailed &&
+            !effectiveSignal.aborted &&
+            conversationId &&
+            parentCandidateMessageId
+          ) {
+            onConversationContext?.({
+              conversationId,
+              parentMessageId: parentCandidateMessageId,
+            });
           }
 
           // If the assistant kicked off the async image_gen tool, the SSE
@@ -1750,7 +2134,7 @@ function buildStreamingResponse(
           // any further enqueue throws "Invalid state: Controller is
           // already closed". Better to no-op than to surface that as a
           // server error.
-          if (signal?.aborted) return;
+          if (effectiveSignal.aborted) return;
           const mdBlock = imageMarkdown(urls);
           const safeEnqueue = (bytes: Uint8Array): boolean => {
             try {
@@ -1831,10 +2215,15 @@ function buildStreamingResponse(
           );
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         } finally {
+          finalize();
           try {
             controller.close();
           } catch {}
         }
+      },
+      cancel(reason) {
+        cancellation.abort(reason);
+        finalize();
       },
     },
     { highWaterMark: 16384 }
@@ -1861,211 +2250,6 @@ function emitToolAwareSseChunk(
       })}\n\n`
     )
   );
-}
-
-function getRequestedToolNameSet(tools: unknown): Set<string> {
-  if (!Array.isArray(tools)) return new Set();
-  return new Set(
-    tools
-      .map((tool) => {
-        if (!tool || typeof tool !== "object" || Array.isArray(tool)) return "";
-        const record = tool as Record<string, unknown>;
-        const fn = record.function;
-        if (fn && typeof fn === "object" && !Array.isArray(fn)) {
-          return typeof (fn as Record<string, unknown>).name === "string"
-            ? String((fn as Record<string, unknown>).name)
-            : "";
-        }
-        return typeof record.name === "string" ? record.name : "";
-      })
-      .filter(Boolean)
-  );
-}
-
-function makeSyntheticToolCall(name: string, args: Record<string, unknown>): OpenAIToolCall[] {
-  return [
-    {
-      id: `cgpt-fallback-${Date.now()}_0`,
-      type: "function",
-      function: { name, arguments: JSON.stringify(args) },
-    },
-  ];
-}
-
-function buildSyntheticToolCallResponse(
-  model: string,
-  stream: boolean,
-  toolCalls: OpenAIToolCall[]
-): Response {
-  const cid = `chatcmpl-cgpt-${randomUUID().slice(0, 12)}`;
-  const created = Math.floor(Date.now() / 1000);
-  if (stream) {
-    return buildToolAwareStreamingResponse(cid, created, model, "", toolCalls, "tool_calls");
-  }
-  return new Response(
-    JSON.stringify({
-      id: cid,
-      object: "chat.completion",
-      created,
-      model,
-      system_fingerprint: null,
-      choices: [
-        {
-          index: 0,
-          message: { role: "assistant", content: null, tool_calls: toolCalls },
-          finish_reason: "tool_calls",
-          logprobs: null,
-        },
-      ],
-      usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-    }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
-  );
-}
-
-function isLocalProjectToolExcuse(content: string): boolean {
-  return (
-    /(filesystem|file system|repository|repo|workspace|project files|package\.json).{0,160}(unavailable|not available|not exposed|not mounted|not present|not visible|can't|can’t|cannot|unable|don’t see|don't see|not seeing|sandbox|inspect|paste)/i.test(
-      content
-    ) ||
-    /(paste|provide|send|point me at).{0,120}(package\.json|file|repo|repository|folder|tree|output|workspace)/i.test(
-      content
-    ) ||
-    /(package\.json|file|repo|repository|folder|tree|output|workspace).{0,120}(paste|provide|send|point me at)/i.test(
-      content
-    )
-  );
-}
-
-function asksAboutLocalProject(currentMsg: string): boolean {
-  return /(repo|repository|workspace|project|file|folder|directory|package\.json|pnpm|npm|yarn|script|dev command|local state|read|list|ls|cat)/i.test(
-    currentMsg
-  );
-}
-
-function tryParsePackageJsonFromToolHistory(parsed: ParsedMessages | null | undefined): JsonRecord | null {
-  if (!parsed) return null;
-  for (const item of [...parsed.history].reverse()) {
-    if (item.role !== "tool") continue;
-    const start = item.content.indexOf("{");
-    const end = item.content.lastIndexOf("}");
-    if (start < 0 || end <= start) continue;
-    try {
-      const candidate = JSON.parse(item.content.slice(start, end + 1));
-      if (candidate && typeof candidate === "object" && !Array.isArray(candidate)) {
-        const record = candidate as JsonRecord;
-        if (record.scripts && typeof record.scripts === "object") return record;
-      }
-    } catch {
-      // Try older tool results first, if any.
-    }
-  }
-  return null;
-}
-
-function synthesizeLocalProjectAnswer(
-  content: string,
-  currentMsg: string,
-  parsed: ParsedMessages | null | undefined
-): string | null {
-  if (!isLocalProjectToolExcuse(content)) return null;
-  if (!/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(currentMsg)) {
-    return null;
-  }
-
-  const packageJson = tryParsePackageJsonFromToolHistory(parsed);
-  const scripts = packageJson?.scripts as JsonRecord | undefined;
-  const devScript = typeof scripts?.dev === "string" ? scripts.dev : "";
-  if (!devScript) return null;
-
-  return `In package.json, \`pnpm dev\` runs:\n\n\`\`\`bash\n${devScript}\n\`\`\`\n\nThat is the root dev script. If you want a deeper trace of what that command fans out to, the next file to inspect is usually \`turbo.json\` or the relevant workspace package scripts.`;
-}
-
-const READABLE_PATH_RE = /(?:`|\b)([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\.(?:json|sh|md|ts|tsx|js|jsx|mjs|cjs|yaml|yml|toml|py|go|rs|java|rb|php|css|scss|html|env))(?:`|\b)/g;
-
-function findLastMentionedReadablePath(parsed: ParsedMessages): string | null {
-  for (const item of [...parsed.history].reverse()) {
-    if (item.role !== "assistant" && item.role !== "user") continue;
-    const matches = [...item.content.matchAll(READABLE_PATH_RE)].map((match) => match[1]);
-    if (matches.length > 0) return matches[matches.length - 1];
-  }
-  return null;
-}
-
-function isVagueFileFollowup(currentMsg: string): boolean {
-  const prompt = currentMsg.trim().toLowerCase();
-  if (!prompt) return false;
-  if (READABLE_PATH_RE.test(currentMsg)) {
-    READABLE_PATH_RE.lastIndex = 0;
-    return false;
-  }
-  READABLE_PATH_RE.lastIndex = 0;
-  return /\b(yes|yeah|yep|please|inspect|open|read|check|look|that|it|this|go ahead|continue|do it)\b/i.test(
-    prompt
-  );
-}
-
-function synthesizePreProviderToolCall(
-  parsed: ParsedMessages,
-  requestedTools: unknown
-): OpenAIToolCall[] | null {
-  const toolNames = getRequestedToolNameSet(requestedTools);
-  if (toolNames.size === 0) return null;
-
-  const hasRead = toolNames.has("read");
-  const hasBash = toolNames.has("bash");
-  const currentMsg = parsed.currentMsg || "";
-
-  if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev)\b/i.test(currentMsg)) {
-    const packageJson = tryParsePackageJsonFromToolHistory(parsed);
-    const scripts = packageJson?.scripts as JsonRecord | undefined;
-    if (typeof scripts?.dev === "string") return null;
-    if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
-    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
-  }
-
-  if (isVagueFileFollowup(currentMsg)) {
-    const path = findLastMentionedReadablePath(parsed);
-    if (path) {
-      if (hasRead) return makeSyntheticToolCall("read", { path });
-      if (hasBash) return makeSyntheticToolCall("bash", { command: `cat ${path}`, timeout: 120 });
-    }
-  }
-
-  return null;
-}
-
-function synthesizeLocalProjectToolCall(
-  content: string,
-  currentMsg: string,
-  requestedTools: unknown
-): OpenAIToolCall[] | null {
-  const toolNames = getRequestedToolNameSet(requestedTools);
-  if (toolNames.size === 0) return null;
-
-  const prompt = currentMsg.toLowerCase();
-  if (!isLocalProjectToolExcuse(content) || !asksAboutLocalProject(currentMsg)) return null;
-
-  const hasRead = toolNames.has("read");
-  const hasBash = toolNames.has("bash");
-
-  if (/\b(pnpm\s+dev|npm\s+run\s+dev|yarn\s+dev|package\.json|scripts?)\b/i.test(prompt)) {
-    if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
-    if (hasBash) return makeSyntheticToolCall("bash", { command: "cat package.json", timeout: 120 });
-  }
-
-  const pathMatch = currentMsg.match(/(?:read|open|check|see|inspect)\s+([\w./-]+\.[\w-]+)/i);
-  if (pathMatch?.[1] && hasRead) {
-    return makeSyntheticToolCall("read", { path: pathMatch[1] });
-  }
-
-  if (/\bpackages\b/i.test(prompt) && hasBash) {
-    return makeSyntheticToolCall("bash", { command: "ls packages", timeout: 120 });
-  }
-
-  if (hasBash) return makeSyntheticToolCall("bash", { command: "ls", timeout: 120 });
-  if (hasRead) return makeSyntheticToolCall("read", { path: "package.json" });
-  return null;
 }
 
 function buildToolAwareStreamingResponse(
@@ -2123,13 +2307,21 @@ async function buildToolAwareChatGptResponse(
   created: number,
   currentMsg: string,
   requestedTools: unknown,
+  toolChoice: WebToolChoice,
   stream: boolean,
   signal?: AbortSignal | null,
-  parsed?: ParsedMessages | null
+  onConversationContext?: (context: ChatGptConversationContext) => void,
+  // When true, an excuse/confabulation reply with zero decoded tool calls
+  // throws ChatGptExcuseResponseError so the caller can retry with a nudge.
+  guardExcuses = false
 ): Promise<Response> {
   let fullAnswer = "";
+  let conversationId: string | null = null;
+  let parentMessageId: string | null = null;
 
   for await (const chunk of extractContent(eventStream, signal)) {
+    if (chunk.conversationId) conversationId = chunk.conversationId;
+    if (chunk.messageId) parentMessageId = chunk.messageId;
     if (chunk.error) {
       return new Response(
         JSON.stringify({
@@ -2145,25 +2337,28 @@ async function buildToolAwareChatGptResponse(
     if (chunk.answer) fullAnswer = chunk.answer;
   }
 
-  let { content, toolCalls, finishReason } = buildToolAwareResult(
+  const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
     cleanChatGptText(fullAnswer),
     requestedTools,
-    "cgpt"
+    "cgpt",
+    toolChoice,
+    { fences: true }
   );
-
-  if (!toolCalls?.length) {
-    const fallbackAnswer = synthesizeLocalProjectAnswer(content, currentMsg, parsed);
-    if (fallbackAnswer) {
-      content = fallbackAnswer;
-      finishReason = "stop";
-    } else {
-      const fallbackToolCalls = synthesizeLocalProjectToolCall(content, currentMsg, requestedTools);
-      if (fallbackToolCalls?.length) {
-        content = "";
-        toolCalls = fallbackToolCalls;
-        finishReason = "tool_calls";
-      }
-    }
+  if (!content.trim() && !toolCalls?.length) {
+    throw new ChatGptEmptyResponseError();
+  }
+  if (guardExcuses && !toolCalls?.length && toolChoice !== "none" && detectWebToolExcuse(content)) {
+    throw new ChatGptExcuseResponseError();
+  }
+  if (policyViolation) {
+    return errorResponse(
+      502,
+      "ChatGPT Web did not honor the requested tool policy.",
+      "TOOL_POLICY"
+    );
+  }
+  if (conversationId && parentMessageId) {
+    onConversationContext?.({ conversationId, parentMessageId });
   }
 
   if (stream) {
@@ -2203,6 +2398,20 @@ async function buildToolAwareChatGptResponse(
   );
 }
 
+class ChatGptEmptyResponseError extends Error {
+  constructor() {
+    super("ChatGPT returned an empty assistant turn");
+    this.name = "ChatGptEmptyResponseError";
+  }
+}
+
+class ChatGptExcuseResponseError extends Error {
+  constructor() {
+    super("ChatGPT answered with an excuse instead of a tool call");
+    this.name = "ChatGptExcuseResponseError";
+  }
+}
+
 async function buildNonStreamingResponse(
   eventStream: ReadableStream<Uint8Array>,
   model: string,
@@ -2212,7 +2421,8 @@ async function buildNonStreamingResponse(
   resolver: ImageResolver | null,
   pollAsyncImage: ((conversationId: string) => Promise<ImagePointerRef[]>) | null,
   log: { warn?: (tag: string, msg: string) => void } | null,
-  signal?: AbortSignal | null
+  signal?: AbortSignal | null,
+  onConversationContext?: (context: ChatGptConversationContext) => void
 ): Promise<Response> {
   let fullAnswer = "";
   let conversationId: string | null = null;
@@ -2239,6 +2449,13 @@ async function buildNonStreamingResponse(
       break;
     }
     if (chunk.answer) fullAnswer = chunk.answer;
+  }
+
+  if (conversationId && parentCandidateMessageId) {
+    onConversationContext?.({
+      conversationId,
+      parentMessageId: parentCandidateMessageId,
+    });
   }
 
   fullAnswer = cleanChatGptText(fullAnswer);
@@ -2900,6 +3117,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
     log,
     onCredentialsRefreshed,
     clientHeaders,
+    callerIdentity,
   }: ExecuteInput) {
     const bodyObj = (body as Record<string, unknown> | null) ?? {};
     const messages = bodyObj.messages as Array<Record<string, unknown>> | undefined;
@@ -3029,275 +3247,543 @@ export class ChatGptWebExecutor extends BaseExecutor {
       );
     }
 
-    // 2b. Sentinel chat-requirements
-    let reqs: ChatRequirements;
+    // 2b. Build the ChatGPT message plan and upload inbound images BEFORE
+    // Sentinel/PoW. Chat requirements/proof tokens are short-lived; doing
+    // network image fetches + blob uploads after minting them increases stale
+    // token / 403 risk before the actual conversation call.
+    let toolPrep: ReturnType<typeof prepareWebToolRequest>;
     try {
-      reqs = await prepareChatRequirements(
-        tokenEntry.accessToken,
-        tokenEntry.accountId,
-        sessionId,
-        deviceId,
-        cookie,
-        dplInfo,
-        signal,
-        log
+      toolPrep = prepareWebToolRequest(
+        bodyObj,
+        messages as Array<{ role: string; content: unknown }>,
+        { promptStyle: "chatgpt-web" }
       );
     } catch (err) {
-      if (err instanceof SentinelBlockedError) {
-        log?.warn?.("CGPT-WEB", err.message);
+      // Client-side tool_choice mistakes (undeclared forced tool, required
+      // with zero functions) are 400s, not upstream failures.
+      return {
+        response: errorResponse(
+          400,
+          err instanceof Error ? err.message : String(err),
+          "TOOL_POLICY"
+        ),
+        url: CONV_URL,
+        headers: {},
+        transformedBody: body,
+      };
+    }
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = toolPrep;
+    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
+    const clientSystemContext = getClientSystemContext(parsed.systemMsg);
+    // Use stable account identity rather than the session-cookie value. ChatGPT
+    // can rotate that cookie during session exchange; credential-value keys
+    // would miss on the very next tool-result request and start a new chat.
+    const accountIdentity = tokenEntry.accountId ?? cookieKey(cookie);
+    let conversationCacheKey = buildConversationCacheKey(
+      bodyObj,
+      clientHeaders,
+      accountIdentity,
+      credentials.connectionId,
+      model,
+      callerIdentity
+    );
+    // Only consumed for continuity bookkeeping — skip the stringify+sha256 of
+    // the full tools array for non-continuity clients.
+    const toolFingerprint = conversationCacheKey
+      ? buildWebToolContractFingerprint(requestedTools, toolChoice)
+      : "";
+    const releaseConversationLock = conversationCacheKey
+      ? await acquireChatGptConversationLock(conversationCacheKey)
+      : null;
+    let releaseConversationLockFromStream = false;
+    try {
+      let cachedConversation = conversationCacheKey
+        ? getChatGptConversationContext(conversationCacheKey)
+        : null;
+      let continuationSystemDelta = "";
+      if (conversationCacheKey && cachedConversation) {
+        const cachedSystemContext = cachedConversation.systemContext ?? "";
+        const systemContextUnchanged = clientSystemContext === cachedSystemContext;
+        const systemContextAppended =
+          cachedSystemContext.length > 0 &&
+          clientSystemContext.startsWith(`${cachedSystemContext}\n`);
+        if (cachedConversation.toolFingerprint !== toolFingerprint) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          cachedConversation = null;
+        } else if (systemContextAppended) {
+          continuationSystemDelta = clientSystemContext.slice(cachedSystemContext.length + 1);
+        } else if (!systemContextUnchanged) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          cachedConversation = null;
+        }
+      }
+      let expectedConversationForWrite = cachedConversation;
+      const rememberConversation = conversationCacheKey
+        ? (context: ChatGptConversationContext) =>
+            setChatGptConversationContext(
+              conversationCacheKey,
+              {
+                ...context,
+                toolFingerprint,
+                systemContext: clientSystemContext,
+              },
+              expectedConversationForWrite
+            )
+        : undefined;
+      const inboundImageUrls = extractCurrentTurnImageUrls(
+        messages as Array<Record<string, unknown>>
+      );
+      if (
+        !parsed.currentMsg.trim() &&
+        parsed.history.length === 0 &&
+        inboundImageUrls.length === 0
+      ) {
+        return {
+          response: errorResponse(400, "Empty user message"),
+          url: CONV_URL,
+          headers: {},
+          transformedBody: body,
+        };
+      }
+
+      const imageEdit = looksLikeImageEditRequest(parsed);
+      const continuation = imageEdit ? parsed.latestImageContext : cachedConversation;
+      const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
+      if (forImageGen) {
+        log?.debug?.(
+          "CGPT-WEB",
+          continuation
+            ? "Image edit intent detected — continuing saved image conversation"
+            : "Image-gen intent detected — disabling Temporary Chat for this turn"
+        );
+      }
+
+      let uploadedImages: UploadedChatGptImage[] = [];
+      if (inboundImageUrls.length > 0) {
+        log?.info?.(
+          "CGPT-WEB",
+          `Detected ${inboundImageUrls.length} inbound image(s) — uploading to chatgpt.com`
+        );
+        const uploadCtx: ChatGptUploadAuthContext = {
+          accessToken: tokenEntry.accessToken,
+          accountId: tokenEntry.accountId ?? null,
+          sessionId,
+          deviceId,
+          baseHeaders: {
+            ...browserHeaders(),
+            ...oaiHeaders(sessionId, deviceId),
+            Cookie: buildSessionCookieHeader(cookie),
+          },
+          signal,
+          log,
+        };
+        uploadedImages = await uploadCurrentTurnImages(inboundImageUrls, uploadCtx);
+        if (uploadedImages.length !== inboundImageUrls.length) {
+          log?.warn?.(
+            "CGPT-WEB",
+            `Inbound image upload failed (${uploadedImages.length}/${inboundImageUrls.length}); returning non-OK so combo fallback can try the next target`
+          );
+          return {
+            response: errorResponse(
+              502,
+              "ChatGPT Web could not upload the attached image(s); falling back to the next combo target if available.",
+              "CGPT_IMAGE_UPLOAD_FAILED"
+            ),
+            url: `${CHATGPT_BASE}/backend-api/files`,
+            headers: {},
+            transformedBody: body,
+          };
+        }
+      }
+
+      // 2c. Sentinel chat-requirements
+      let reqs: ChatRequirements;
+      try {
+        reqs = await prepareChatRequirements(
+          tokenEntry.accessToken,
+          tokenEntry.accountId,
+          sessionId,
+          deviceId,
+          cookie,
+          dplInfo,
+          signal,
+          log
+        );
+      } catch (err) {
+        if (err instanceof SentinelBlockedError) {
+          log?.warn?.("CGPT-WEB", err.message);
+          return {
+            response: errorResponse(
+              403,
+              "ChatGPT blocked the request (Sentinel/Turnstile required). Try again later or open chatgpt.com in a browser to refresh state.",
+              "SENTINEL_BLOCKED"
+            ),
+            url: SENTINEL_PREPARE_URL,
+            headers: {},
+            transformedBody: body,
+          };
+        }
+        log?.error?.(
+          "CGPT-WEB",
+          `Sentinel failed: ${err instanceof Error ? err.message : String(err)}`
+        );
         return {
           response: errorResponse(
-            403,
-            "ChatGPT blocked the request (Sentinel/Turnstile required). Try again later or open chatgpt.com in a browser to refresh state.",
-            "SENTINEL_BLOCKED"
+            502,
+            `ChatGPT sentinel failed: ${err instanceof Error ? err.message : String(err)}`
           ),
           url: SENTINEL_PREPARE_URL,
           headers: {},
           transformedBody: body,
         };
       }
-      log?.error?.(
-        "CGPT-WEB",
-        `Sentinel failed: ${err instanceof Error ? err.message : String(err)}`
-      );
-      return {
-        response: errorResponse(
-          502,
-          `ChatGPT sentinel failed: ${err instanceof Error ? err.message : String(err)}`
-        ),
-        url: SENTINEL_PREPARE_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
 
-    log?.debug?.(
-      "CGPT-WEB",
-      `sentinel: token=${reqs.token ? "y" : "n"} pow=${reqs.proofofwork?.required ? "y" : "n"} turnstile=${reqs.turnstile?.required ? "y" : "n"}`
-    );
-
-    // Optional: if a turnstile token was supplied via providerSpecificData,
-    // pass it through. Otherwise, send the request anyway — sometimes Sentinel
-    // reports turnstile.required even when the conversation endpoint accepts
-    // requests without it.
-    const turnstileToken =
-      typeof credentials.providerSpecificData?.turnstileToken === "string"
-        ? credentials.providerSpecificData.turnstileToken
-        : null;
-
-    // 3. Solve PoW (if required) — reuses the same browser-fingerprint config
-    // shape as the prekey, just with the server-provided seed + difficulty.
-    let proofToken: string | null = null;
-    if (reqs.proofofwork?.required && reqs.proofofwork.seed && reqs.proofofwork.difficulty) {
-      const powConfig = buildPrekeyConfig(CHATGPT_USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
-      proofToken = await solveProofOfWork(
-        reqs.proofofwork.seed,
-        reqs.proofofwork.difficulty,
-        powConfig,
-        log
-      );
-    }
-
-    // 4. Build conversation request
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
-      bodyObj,
-      messages as Array<{ role: string; content: unknown }>
-    );
-    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
-    if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
-      return {
-        response: errorResponse(400, "Empty user message"),
-        url: CONV_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
-
-    const preProviderToolCalls = hasTools
-      ? synthesizePreProviderToolCall(parsed, requestedTools)
-      : null;
-    if (preProviderToolCalls?.length) {
-      return {
-        response: buildSyntheticToolCallResponse(model, stream !== false, preProviderToolCalls),
-        url: CONV_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
-
-    // Toggle Temporary Chat off only for image-generation requests, since
-    // Temporary Chat disables the image_gen tool. For plain text turns we
-    // keep Temporary Chat on so the user's chatgpt.com history isn't
-    // polluted with router traffic.
-    const imageEdit = looksLikeImageEditRequest(parsed);
-    const continuation = imageEdit ? parsed.latestImageContext : null;
-    const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
-    if (forImageGen) {
       log?.debug?.(
         "CGPT-WEB",
-        continuation
-          ? "Image edit intent detected — continuing saved image conversation"
-          : "Image-gen intent detected — disabling Temporary Chat for this turn"
+        `sentinel: token=${reqs.token ? "y" : "n"} pow=${reqs.proofofwork?.required ? "y" : "n"} turnstile=${reqs.turnstile?.required ? "y" : "n"}`
       );
-    }
 
-    const parentMessageId = continuation?.parentMessageId ?? randomUUID();
-    const modelSlug = MODEL_MAP[model] ?? model;
-    const cgptBody = buildConversationBody(
-      parsed,
-      modelSlug,
-      parentMessageId,
-      forImageGen,
-      continuation
-    );
+      // Optional: if a turnstile token was supplied via providerSpecificData,
+      // pass it through. Otherwise, send the request anyway — sometimes Sentinel
+      // reports turnstile.required even when the conversation endpoint accepts
+      // requests without it.
+      const turnstileToken =
+        typeof credentials.providerSpecificData?.turnstileToken === "string"
+          ? credentials.providerSpecificData.turnstileToken
+          : null;
 
-    const headers: Record<string, string> = {
-      ...browserHeaders(),
-      ...oaiHeaders(sessionId, deviceId),
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      Authorization: `Bearer ${tokenEntry.accessToken}`,
-      Cookie: buildSessionCookieHeader(cookie),
-    };
-    if (tokenEntry.accountId) headers["chatgpt-account-id"] = tokenEntry.accountId;
-    if (reqs.token) headers["openai-sentinel-chat-requirements-token"] = reqs.token;
-    if (reqs.prepare_token)
-      headers["openai-sentinel-chat-requirements-prepare-token"] = reqs.prepare_token;
-    if (proofToken) headers["openai-sentinel-proof-token"] = proofToken;
-    if (turnstileToken) headers["openai-sentinel-turnstile-token"] = turnstileToken;
-
-    log?.info?.("CGPT-WEB", `Conversation request → ${modelSlug} (pow=${!!proofToken})`);
-
-    let response: TlsFetchResult;
-    try {
-      response = await tlsFetchChatGpt(CONV_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(cgptBody),
-        timeoutMs: 120_000, // generations can take a while
-        signal,
-        // For real-time streaming, ask the TLS client to write the body to
-        // a temp file and surface it as a ReadableStream as it arrives —
-        // otherwise long generations buffer entirely before the client sees
-        // anything (and the downstream HTTP request can time out).
-        stream,
-      });
-    } catch (err) {
-      log?.error?.("CGPT-WEB", `Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-      const code = err instanceof TlsClientUnavailableError ? "TLS_UNAVAILABLE" : undefined;
-      return {
-        response: errorResponse(
-          502,
-          `ChatGPT connection failed: ${err instanceof Error ? err.message : String(err)}`,
-          code
-        ),
-        url: CONV_URL,
-        headers,
-        transformedBody: cgptBody,
-      };
-    }
-
-    if (response.status >= 400) {
-      const status = response.status;
-      // Log the upstream body on 4xx/5xx — error responses are small and the
-      // upstream message is much more useful than our wrapper. Goes through
-      // the executor logger so it respects the application's log config.
-      log?.warn?.("CGPT-WEB", `conv ${status}: ${(response.text || "").slice(0, 400)}`);
-      const errMsg = describeChatGptWebHttpError(status);
-      if (status === 401 || status === 403) {
-        tokenCache.delete(cookieKey(cookie));
+      // 3. Solve PoW (if required) — reuses the same browser-fingerprint config
+      // shape as the prekey, just with the server-provided seed + difficulty.
+      let proofToken: string | null = null;
+      if (reqs.proofofwork?.required && reqs.proofofwork.seed && reqs.proofofwork.difficulty) {
+        const powConfig = buildPrekeyConfig(CHATGPT_USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
+        proofToken = await solveProofOfWork(
+          reqs.proofofwork.seed,
+          reqs.proofofwork.difficulty,
+          powConfig,
+          log
+        );
       }
-      log?.warn?.("CGPT-WEB", errMsg);
-      return {
-        response: errorResponse(status, errMsg, `HTTP_${status}`),
-        url: CONV_URL,
-        headers,
-        transformedBody: cgptBody,
-      };
-    }
 
-    // For streaming requests the TLS client returns a ReadableStream that
-    // tails the temp file as it's written. For non-streaming requests, it
-    // returns the full body as text — wrap that in a one-shot stream so the
-    // existing SSE parser can consume it uniformly.
-    let bodyStream: ReadableStream<Uint8Array>;
-    if (response.body) {
-      bodyStream = response.body;
-    } else if (response.text) {
-      bodyStream = stringToStream(response.text);
-    } else {
-      return {
-        response: errorResponse(502, "ChatGPT returned empty response body"),
-        url: CONV_URL,
-        headers,
-        transformedBody: cgptBody,
-      };
-    }
-
-    const cid = `chatcmpl-cgpt-${crypto.randomUUID().slice(0, 12)}`;
-    const created = Math.floor(Date.now() / 1000);
-
-    const resolverCtx: ResolverContext = {
-      accessToken: tokenEntry.accessToken,
-      accountId: tokenEntry.accountId,
-      sessionId,
-      deviceId,
-      cookie,
-      signal,
-      log,
-      publicBaseUrl: derivePublicBaseUrl(clientHeaders, log),
-    };
-    const imageResolver = makeImageResolver(resolverCtx);
-    const pollAsyncImage = (conversationId: string) =>
-      pollForAsyncImage(conversationId, resolverCtx);
-
-    let finalResponse: Response;
-    if (hasTools) {
-      finalResponse = await buildToolAwareChatGptResponse(
-        bodyStream,
-        model,
-        cid,
-        created,
-        parsed.currentMsg,
-        requestedTools,
-        stream !== false,
-        signal,
-        parsed
-      );
-    } else if (stream) {
-      const sseStream = buildStreamingResponse(
-        bodyStream,
-        model,
-        cid,
-        created,
-        imageResolver,
-        pollAsyncImage,
-        log,
-        signal
-      );
-      finalResponse = new Response(sseStream, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "X-Accel-Buffering": "no",
-        },
+      // 4. Build conversation request
+      const parentMessageId = continuation?.parentMessageId ?? randomUUID();
+      const modelSlug = MODEL_MAP[model] ?? model;
+      let cgptBody = buildConversationBody(parsed, modelSlug, parentMessageId, forImageGen, {
+        continuation,
+        // A delta computed against the conversation cache is only valid when
+        // the continuation actually came from that cache (not an image edit).
+        continuationSystemDelta: continuation === cachedConversation ? continuationSystemDelta : "",
+        uploadedImages,
+        hasTools,
       });
-    } else {
-      finalResponse = await buildNonStreamingResponse(
-        bodyStream,
-        model,
-        cid,
-        created,
-        parsed.currentMsg,
-        imageResolver,
-        pollAsyncImage,
-        log,
-        signal
-      );
-    }
 
-    return { response: finalResponse, url: CONV_URL, headers, transformedBody: cgptBody };
+      const headers: Record<string, string> = {
+        ...browserHeaders(),
+        ...oaiHeaders(sessionId, deviceId),
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${tokenEntry.accessToken}`,
+        Cookie: buildSessionCookieHeader(cookie),
+      };
+      if (tokenEntry.accountId) headers["chatgpt-account-id"] = tokenEntry.accountId;
+      if (reqs.token) headers["openai-sentinel-chat-requirements-token"] = reqs.token;
+      if (reqs.prepare_token)
+        headers["openai-sentinel-chat-requirements-prepare-token"] = reqs.prepare_token;
+      if (proofToken) headers["openai-sentinel-proof-token"] = proofToken;
+      if (turnstileToken) headers["openai-sentinel-turnstile-token"] = turnstileToken;
+
+      log?.info?.("CGPT-WEB", `Conversation request → ${modelSlug} (pow=${!!proofToken})`);
+
+      const postConversation = (requestBody: Record<string, unknown>) =>
+        tlsFetchChatGpt(CONV_URL, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(requestBody),
+          timeoutMs: 120_000, // generations can take a while
+          signal,
+          // For real-time streaming, ask the TLS client to write the body to
+          // a temp file and surface it as a ReadableStream as it arrives —
+          // otherwise long generations buffer entirely before the client sees
+          // anything (and the downstream HTTP request can time out).
+          stream,
+        });
+      const connectionFailure = (err: unknown) => {
+        log?.error?.(
+          "CGPT-WEB",
+          `Fetch failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+        const code = err instanceof TlsClientUnavailableError ? "TLS_UNAVAILABLE" : undefined;
+        return {
+          response: errorResponse(
+            502,
+            `ChatGPT connection failed: ${err instanceof Error ? err.message : String(err)}`,
+            code
+          ),
+          url: CONV_URL,
+          headers,
+          transformedBody: cgptBody,
+        };
+      };
+
+      let response: TlsFetchResult;
+      try {
+        response = await postConversation(cgptBody);
+      } catch (err) {
+        return connectionFailure(err);
+      }
+
+      const usedCachedContinuation =
+        cachedConversation !== null &&
+        continuation?.conversationId === cachedConversation.conversationId;
+      const staleContinuationError =
+        response.status === 404 ||
+        (response.status === 400 &&
+          /(?:conversation|parent).*(?:invalid|not found|stale)|(?:invalid|not found|stale).*(?:conversation|parent)/i.test(
+            response.text || ""
+          ));
+      if (staleContinuationError && usedCachedContinuation) {
+        if (conversationCacheKey && cachedConversation) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          expectedConversationForWrite = null;
+        }
+        log?.warn?.(
+          "CGPT-WEB",
+          `Cached conversation was rejected (${response.status}); retrying once with typed replay`
+        );
+        cgptBody = buildConversationBody(parsed, modelSlug, randomUUID(), forImageGen, {
+          uploadedImages,
+          hasTools,
+        });
+        try {
+          response = await postConversation(cgptBody);
+        } catch (err) {
+          return connectionFailure(err);
+        }
+      }
+
+      if (response.status >= 400) {
+        const status = response.status;
+        // Log the upstream body on 4xx/5xx — error responses are small and the
+        // upstream message is much more useful than our wrapper. Goes through
+        // the executor logger so it respects the application's log config.
+        log?.warn?.("CGPT-WEB", `conv ${status}: ${(response.text || "").slice(0, 400)}`);
+        const errMsg = describeChatGptWebHttpError(status);
+        if (status === 401 || status === 403) {
+          tokenCache.delete(cookieKey(cookie));
+        }
+        log?.warn?.("CGPT-WEB", errMsg);
+        return {
+          response: errorResponse(status, errMsg, `HTTP_${status}`),
+          url: CONV_URL,
+          headers,
+          transformedBody: cgptBody,
+        };
+      }
+
+      // For streaming requests the TLS client returns a ReadableStream that
+      // tails the temp file as it's written. For non-streaming requests, it
+      // returns the full body as text — wrap that in a one-shot stream so the
+      // existing SSE parser can consume it uniformly.
+      let bodyStream: ReadableStream<Uint8Array>;
+      if (response.body) {
+        bodyStream = response.body;
+      } else if (response.text) {
+        bodyStream = stringToStream(response.text);
+      } else {
+        return {
+          response: errorResponse(502, "ChatGPT returned empty response body"),
+          url: CONV_URL,
+          headers,
+          transformedBody: cgptBody,
+        };
+      }
+
+      const cid = `chatcmpl-cgpt-${crypto.randomUUID().slice(0, 12)}`;
+      const created = Math.floor(Date.now() / 1000);
+
+      const resolverCtx: ResolverContext = {
+        accessToken: tokenEntry.accessToken,
+        accountId: tokenEntry.accountId,
+        sessionId,
+        deviceId,
+        cookie,
+        signal,
+        log,
+        publicBaseUrl: derivePublicBaseUrl(clientHeaders, log),
+      };
+      const imageResolver = makeImageResolver(resolverCtx);
+      const pollAsyncImage = (conversationId: string) =>
+        pollForAsyncImage(conversationId, resolverCtx);
+
+      // Shared stateless-retry path for the two tool-turn failure modes
+      // (excuse answer / empty turn). Temporary Chat upstreams are stateless,
+      // so a retry must rebuild the full-replay body — a delta continuation
+      // would contradict the protocol's own statelessness.
+      const runStatelessToolRetry = async (options: {
+        logMessage: string;
+        userContentSuffix?: string;
+        invalidateCachedConversation?: boolean;
+        emptyFailureMessage: string;
+      }): Promise<{
+        response: Response;
+        url: string;
+        headers: Record<string, string>;
+        transformedBody: Record<string, unknown>;
+      }> => {
+        if (options.invalidateCachedConversation && conversationCacheKey && cachedConversation) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          expectedConversationForWrite = null;
+        }
+        log?.warn?.("CGPT-WEB", options.logMessage);
+        cgptBody = buildConversationBody(parsed, modelSlug, randomUUID(), forImageGen, {
+          uploadedImages,
+          hasTools,
+          userContentSuffix: options.userContentSuffix,
+        });
+        let retryResponse: TlsFetchResult;
+        try {
+          retryResponse = await postConversation(cgptBody);
+        } catch (retryErr) {
+          return connectionFailure(retryErr);
+        }
+        if (retryResponse.status >= 400) {
+          const status = retryResponse.status;
+          const errMsg = describeChatGptWebHttpError(status);
+          if (status === 401 || status === 403) tokenCache.delete(cookieKey(cookie));
+          log?.warn?.(
+            "CGPT-WEB",
+            `tool-turn retry ${status}: ${(retryResponse.text || "").slice(0, 400)}`
+          );
+          return {
+            response: errorResponse(status, errMsg, `HTTP_${status}`),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
+        }
+        let retryStream: ReadableStream<Uint8Array>;
+        if (retryResponse.body) {
+          retryStream = retryResponse.body;
+        } else if (retryResponse.text) {
+          retryStream = stringToStream(retryResponse.text);
+        } else {
+          return {
+            response: errorResponse(
+              502,
+              "ChatGPT returned an empty response after stateless retry.",
+              "CHATGPT_EMPTY_RESPONSE"
+            ),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
+        }
+        try {
+          // The retry always decodes with the excuse guard disabled — a
+          // second-strike excuse passes through instead of looping.
+          const retried = await buildToolAwareChatGptResponse(
+            retryStream,
+            model,
+            cid,
+            created,
+            parsed.currentMsg,
+            requestedTools,
+            toolChoice,
+            stream !== false,
+            signal,
+            rememberConversation,
+            false
+          );
+          return { response: retried, url: CONV_URL, headers, transformedBody: cgptBody };
+        } catch (retryErr) {
+          if (!(retryErr instanceof ChatGptEmptyResponseError)) throw retryErr;
+          return {
+            response: errorResponse(502, options.emptyFailureMessage, "CHATGPT_EMPTY_RESPONSE"),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
+        }
+      };
+
+      let finalResponse: Response;
+      if (hasTools) {
+        const guardExcuses = parsed.currentInput?.role !== "tool";
+        try {
+          finalResponse = await buildToolAwareChatGptResponse(
+            bodyStream,
+            model,
+            cid,
+            created,
+            parsed.currentMsg,
+            requestedTools,
+            toolChoice,
+            stream !== false,
+            signal,
+            rememberConversation,
+            guardExcuses
+          );
+        } catch (err) {
+          if (err instanceof ChatGptExcuseResponseError) {
+            // The model answered with an excuse/confabulation instead of a
+            // tool call — retry once with a corrective nudge on the user turn.
+            return runStatelessToolRetry({
+              logMessage:
+                "ChatGPT answered with an excuse instead of a tool call; retrying once with a corrective nudge",
+              userContentSuffix: EXCUSE_RETRY_NUDGE,
+              emptyFailureMessage:
+                "ChatGPT returned an empty assistant turn after corrective retry.",
+            });
+          }
+          if (!(err instanceof ChatGptEmptyResponseError)) throw err;
+          return runStatelessToolRetry({
+            logMessage:
+              "ChatGPT returned an empty tool-aware turn; retrying once with typed stateless replay",
+            invalidateCachedConversation: true,
+            emptyFailureMessage: "ChatGPT returned an empty assistant turn after stateless replay.",
+          });
+        }
+      } else if (stream) {
+        const sseStream = buildStreamingResponse(
+          bodyStream,
+          model,
+          cid,
+          created,
+          imageResolver,
+          pollAsyncImage,
+          log,
+          signal,
+          rememberConversation,
+          releaseConversationLock ?? undefined
+        );
+        releaseConversationLockFromStream = Boolean(releaseConversationLock);
+        finalResponse = new Response(sseStream, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+          },
+        });
+      } else {
+        finalResponse = await buildNonStreamingResponse(
+          bodyStream,
+          model,
+          cid,
+          created,
+          parsed.currentMsg,
+          imageResolver,
+          pollAsyncImage,
+          log,
+          signal,
+          rememberConversation
+        );
+      }
+
+      return { response: finalResponse, url: CONV_URL, headers, transformedBody: cgptBody };
+    } finally {
+      if (!releaseConversationLockFromStream) releaseConversationLock?.();
+    }
   }
 }
 
@@ -3328,6 +3814,7 @@ export function __resetChatGptWebCachesForTesting(): void {
   warmupCache.clear();
   thinkingEffortCache.clear();
   deviceIdCache.clear();
+  __resetChatGptConversationCacheForTesting();
   __resetChatGptImageCacheForTesting();
   dplCache = null;
 }

@@ -15,10 +15,15 @@
 
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
-import { serializeToolsToPrompt, buildToolAwareResult } from "../translator/webTools.ts";
-import { synthesizeWebToolCall, synthesizeWebFallbackToolCall } from "../translator/webToolSynthesis.ts";
-import { isCliCompatEnabled, CLI_FINGERPRINTS } from "../config/cliFingerprints.ts";
-import { generateViaApi } from "../services/geminiWebApiClient.ts";
+import {
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
+import {
+  generateViaApi,
+  getGeminiWebUserAgent,
+  parseStreamGenerateResponse,
+} from "../services/geminiWebApiClient.ts";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -36,24 +41,6 @@ export function isMissingBrowserExecutable(message: string): boolean {
     message
   );
 }
-const GEMINI_USER_AGENT =
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
-
-/**
- * Effective User-Agent for the Playwright browser context. When
- * CLI_COMPAT_GEMINI_WEB is enabled, uses Antigravity's UA so traffic looks
- * like a coding-agent client. Otherwise uses the default Chrome browser UA.
- */
-function getEffectiveUserAgent(): string {
-  if (isCliCompatEnabled("gemini-web")) {
-    const fp = CLI_FINGERPRINTS["gemini-web"];
-    if (fp?.userAgent) {
-      return typeof fp.userAgent === "function" ? fp.userAgent() : fp.userAgent;
-    }
-  }
-  return GEMINI_USER_AGENT;
-}
-
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface GeminiMessage {
@@ -65,6 +52,8 @@ interface GeminiRequestBody {
   messages: GeminiMessage[];
   model?: string;
   stream?: boolean;
+  tools?: unknown;
+  tool_choice?: unknown;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -137,41 +126,7 @@ function parseCookies(raw: string): Array<{ name: string; value: string }> {
  * return the longest (the final complete snapshot); otherwise (true fragments)
  * concatenate.
  */
-export function parseStreamResponse(raw: string): string {
-  const lines = raw.split("\n");
-  const textChunks: string[] = [];
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line === ")]}'" || /^\d+$/.test(line)) continue;
-    if (!line.includes("wrb.fr")) continue;
-    try {
-      const arr = JSON.parse(line);
-      if (!Array.isArray(arr) || !Array.isArray(arr[0]) || arr[0][0] !== "wrb.fr") continue;
-      const payload = arr[0]?.[2];
-      if (typeof payload !== "string") continue;
-      const inner = JSON.parse(payload);
-      // Defensive: check each level before accessing
-      const responseArray = inner?.[4]?.[0]?.[1];
-      if (!Array.isArray(responseArray)) continue;
-      const text = responseArray.filter((c: unknown) => typeof c === "string").join("");
-      if (text) textChunks.push(text);
-    } catch {
-      // Skip unparseable lines
-    }
-  }
-  if (textChunks.length === 0) return "";
-  // Cumulative snapshots: each chunk is a prefix-superset of its predecessor.
-  // Take the longest (the final, complete snapshot). Only concatenate when the
-  // chunks are genuinely disjoint fragments.
-  const isCumulative = textChunks.every((chunk, i) =>
-    i === 0 || chunk.startsWith(textChunks[i - 1]) || textChunks[i - 1].startsWith(chunk)
-  );
-  if (isCumulative) {
-    return textChunks.reduce((longest, chunk) => (chunk.length > longest.length ? chunk : longest));
-  }
-  return textChunks.join("");
-}
+export const parseStreamResponse = parseStreamGenerateResponse;
 
 function readCredentialString(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -260,7 +215,7 @@ export class GeminiWebExecutor extends BaseExecutor {
         ? rawContent
         : Array.isArray(rawContent)
           ? rawContent
-              .map((part: any) => (typeof part === "string" ? part : part?.text ?? ""))
+              .map((part: any) => (typeof part === "string" ? part : (part?.text ?? "")))
               .join("")
           : "";
 
@@ -272,14 +227,15 @@ export class GeminiWebExecutor extends BaseExecutor {
     //
     // FRAMING: the contract is wrapped in <system> tags and the user's actual
     // request in <task> tags so Gemini treats them as distinct (instructions vs.
-    // the thing to do). A final action-forcing directive prevents the model from
-    // acknowledging the protocol without acting ("I am ready…").
-    const tools = requestBody.tools;
-    const hasTools = Array.isArray(tools) && tools.length > 0;
-    const toolContract = hasTools ? serializeToolsToPrompt(tools) : "";
-    const prompt = hasTools && toolContract
-      ? `<system>\n${toolContract}\n</system>\n\n<task>\n${userPromptText}\n</task>\n\nYou MUST act on the task above NOW using the TOOL USE PROTOCOL. Do NOT say "I am ready" or ask for the task — the task is already given. If a tool is needed, emit ONLY the <tool> block immediately.`
-      : userPromptText;
+    // the thing to do). Tool selection remains the model's decision.
+    const { hasTools, requestedTools, toolChoice, toolContract } = prepareWebToolRequest(
+      requestBody as Record<string, unknown>,
+      messages
+    );
+    const prompt =
+      hasTools && toolContract
+        ? `<system>\n${toolContract}\n</system>\n\n<task>\n${userPromptText}\n</task>`
+        : userPromptText;
 
     if (!prompt) {
       return {
@@ -291,74 +247,6 @@ export class GeminiWebExecutor extends BaseExecutor {
         headers: {},
         transformedBody: body,
       };
-    }
-
-    // ─── Pre-provider tool-call synthesis ────────────────────────────────
-    // Intercept filesystem/git/package.json requests BEFORE sending to Gemini,
-    // so the model never gets a chance to confabulate file contents or claim
-    // the filesystem is unavailable. Same logic as chatgpt-web.
-    if (hasTools) {
-      const synthHistory = messages.map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : "" }));
-      const preSynth = synthesizeWebToolCall({
-        currentMsg: userPromptText,
-        history: synthHistory,
-        requestedTools: tools,
-      });
-      if (preSynth) {
-        const modelId = model || "gemini-2.5-pro";
-        const message: Record<string, unknown> = { role: "assistant", content: null };
-        message.tool_calls = preSynth;
-
-        if (stream) {
-          // Streaming: emit as SSE with tool_calls delta + finish_reason
-          const encoder = new TextEncoder();
-          const readable = new ReadableStream(
-            {
-              start(controller) {
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify({ id: `chatcmpl-${Date.now()}`, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: modelId, choices: [{ index: 0, delta: { role: "assistant", tool_calls: preSynth }, finish_reason: null }] })}\n\n`
-                  )
-                );
-                controller.enqueue(
-                  encoder.encode(
-                    `data: ${JSON.stringify(formatStreamChunk("", modelId, "tool_calls"))}\n\n`
-                  )
-                );
-                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-                controller.close();
-              },
-            },
-            { highWaterMark: 16384 }
-          );
-          return {
-            response: new Response(readable, {
-              status: 200,
-              headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
-            }),
-            url: GEMINI_URL,
-            headers: {},
-            transformedBody: body,
-          };
-        }
-
-        return {
-          response: new Response(
-            JSON.stringify({
-              id: `chatcmpl-${Date.now()}`,
-              object: "chat.completion",
-              created: Math.floor(Date.now() / 1000),
-              model: modelId,
-              choices: [{ index: 0, message, finish_reason: "tool_calls" }],
-              usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 },
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          ),
-          url: GEMINI_URL,
-          headers: {},
-          transformedBody: body,
-        };
-      }
     }
 
     let browser: any = null;
@@ -379,7 +267,11 @@ export class GeminiWebExecutor extends BaseExecutor {
       // To enable: set GEMINI_WEB_USE_API=true
       if (process.env.GEMINI_WEB_USE_API === "true" || process.env.GEMINI_WEB_USE_API === "1") {
         try {
-          const apiResult = await generateViaApi(prompt, cookie, model, signal);
+          const apiTimeout = AbortSignal.timeout(12_000);
+          const apiSignal = signal ? AbortSignal.any([signal, apiTimeout]) : apiTimeout;
+          const apiResult = await generateViaApi(prompt, cookie, model, apiSignal, {
+            allowBrowserTokenExtraction: false,
+          });
           if (apiResult.text) {
             responseText = apiResult.text;
           }
@@ -390,77 +282,77 @@ export class GeminiWebExecutor extends BaseExecutor {
 
       // ─── Playwright (primary path) ────────────────────────────────────
       if (!responseText) {
-      const { chromium } = await import("playwright");
-      browser = await chromium.launch({ headless: true });
-      abortBrowser = () => {
-        void browser?.close().catch(() => {});
-      };
-      signal?.addEventListener("abort", abortBrowser, { once: true });
+        const { chromium } = await import("playwright");
+        browser = await chromium.launch({ headless: true });
+        abortBrowser = () => {
+          void browser?.close().catch(() => {});
+        };
+        signal?.addEventListener("abort", abortBrowser, { once: true });
 
-      const context = await browser.newContext({ userAgent: getEffectiveUserAgent() });
+        const context = await browser.newContext({ userAgent: getGeminiWebUserAgent() });
 
-      // Parse cookies — strips attributes like Path, Domain, Expires
-      const cookiePairs = parseCookies(cookie);
-      await context.addCookies(
-        cookiePairs.map(({ name, value }) => ({
-          name,
-          value,
-          domain: ".google.com",
-          path: "/",
-          secure: true,
-        }))
-      );
+        // Parse cookies — strips attributes like Path, Domain, Expires
+        const cookiePairs = parseCookies(cookie);
+        await context.addCookies(
+          cookiePairs.map(({ name, value }) => ({
+            name,
+            value,
+            domain: ".google.com",
+            path: "/",
+            secure: true,
+          }))
+        );
 
-      const page = await context.newPage();
+        const page = await context.newPage();
 
-      // Capture first StreamGenerate response
-      let captured = false;
-      const responsePromise = new Promise<void>((resolve) => {
-        page.on("response", async (resp: any) => {
-          if (captured || !resp.url().includes("StreamGenerate")) return;
-          captured = true;
-          try {
-            const raw = await resp.text();
-            responseText = parseStreamResponse(raw);
-          } catch {
-            /* ignore */
-          }
-          resolve();
+        // Capture first StreamGenerate response
+        let captured = false;
+        const responsePromise = new Promise<void>((resolve) => {
+          page.on("response", async (resp: any) => {
+            if (captured || !resp.url().includes("StreamGenerate")) return;
+            captured = true;
+            try {
+              const raw = await resp.text();
+              responseText = parseStreamResponse(raw);
+            } catch {
+              /* ignore */
+            }
+            resolve();
+          });
         });
-      });
 
-      await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
-      if (signal?.aborted) {
-        throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
-      }
-      await page.waitForTimeout(3000);
-
-      // Type and send message
-      const inputEl = await page.waitForSelector(".ql-editor, [contenteditable='true']", {
-        timeout: 10000,
-      });
-      await inputEl.click();
-      // Set the prompt via execCommand('insertText') — keyboard.type drops
-      // can't keep up with rapid key events, truncating the message. Gemini then
-      // sees only the first few chars ("system tag without any text").
-      // execCommand inserts the full text atomically + triggers Quill's input
-      // listener reliably.
-      await page.evaluate((text) => {
-        const editor = document.querySelector('.ql-editor, [contenteditable="true"]');
-        if (editor) {
-          editor.focus();
-          document.execCommand("selectAll");
-          document.execCommand("insertText", false, text);
+        await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 20000 });
+        if (signal?.aborted) {
+          throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
         }
-      }, prompt);
-      await page.waitForTimeout(300);
-      await page.keyboard.press("Enter");
+        await page.waitForTimeout(3000);
 
-      // Wait for response or timeout
-      await Promise.race([responsePromise, page.waitForTimeout(30000)]);
-      if (signal?.aborted) {
-        throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
-      }
+        // Type and send message
+        const inputEl = await page.waitForSelector(".ql-editor, [contenteditable='true']", {
+          timeout: 10000,
+        });
+        await inputEl.click();
+        // Set the prompt via execCommand('insertText') — keyboard.type drops
+        // can't keep up with rapid key events, truncating the message. Gemini then
+        // sees only the first few chars ("system tag without any text").
+        // execCommand inserts the full text atomically + triggers Quill's input
+        // listener reliably.
+        await page.evaluate((text) => {
+          const editor = document.querySelector('.ql-editor, [contenteditable="true"]');
+          if (editor) {
+            editor.focus();
+            document.execCommand("selectAll");
+            document.execCommand("insertText", false, text);
+          }
+        }, prompt);
+        await page.waitForTimeout(300);
+        await page.keyboard.press("Enter");
+
+        // Wait for response or timeout
+        await Promise.race([responsePromise, page.waitForTimeout(30000)]);
+        if (signal?.aborted) {
+          throw signal.reason instanceof Error ? signal.reason : new Error("Request aborted");
+        }
       } // end Playwright fallback
 
       if (!responseText) {
@@ -480,22 +372,22 @@ export class GeminiWebExecutor extends BaseExecutor {
       // Tool-call response: parse <tool>{...}</tool> blocks from the raw model
       // output into OpenAI tool_calls (the web UI has no native function-calling).
       if (hasTools) {
-        let { content, toolCalls, finishReason } = buildToolAwareResult(
+        const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
           responseText,
-          tools,
-          "gemini-web"
+          requestedTools,
+          "gemini-web",
+          toolChoice
         );
-
-        // Post-response fallback: if the model didn't emit a <tool> block but
-        // replied with an excuse ("I can't access files"), synthesize the tool
-        // call it should have made. Same logic as chatgpt-web.
-        if (!toolCalls) {
-          const fallback = synthesizeWebFallbackToolCall(content, userPromptText, tools);
-          if (fallback) {
-            toolCalls = fallback;
-            content = null;
-            finishReason = "tool_calls";
-          }
+        if (policyViolation) {
+          return {
+            response: new Response(
+              JSON.stringify({ error: "Gemini Web did not honor the requested tool policy." }),
+              { status: 502, headers: { "Content-Type": "application/json" } }
+            ),
+            url: GEMINI_URL,
+            headers: {},
+            transformedBody: body,
+          };
         }
 
         const message: Record<string, unknown> = { role: "assistant", content: content || null };
@@ -534,7 +426,11 @@ export class GeminiWebExecutor extends BaseExecutor {
           return {
             response: new Response(readable, {
               status: 200,
-              headers: { "Content-Type": "text/event-stream", "Cache-Control": "no-cache", Connection: "keep-alive" },
+              headers: {
+                "Content-Type": "text/event-stream",
+                "Cache-Control": "no-cache",
+                Connection: "keep-alive",
+              },
             }),
             url: GEMINI_URL,
             headers: {},

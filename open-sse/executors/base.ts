@@ -152,6 +152,8 @@ export type ExecuteInput = {
   upstreamExtraHeaders?: Record<string, string> | null;
   /** Original client request headers (read-only). Executors may forward select headers upstream. */
   clientHeaders?: Record<string, string> | null;
+  /** Stable authenticated downstream principal; never derived from client-controlled headers. */
+  callerIdentity?: string | null;
   /** Callback to persist tokens that are proactively refreshed during execution.
    * Accepts a partial credentials patch (e.g. `{ accessToken, refreshToken }` or
    * `{ testStatus: "expired", isActive: false }`); the caller merges into the
@@ -929,11 +931,14 @@ export class BaseExecutor {
 
           const seed = activeCredentials?.accessToken || activeCredentials?.apiKey || "anon";
           const psd = activeCredentials?.providerSpecificData as
-            Record<string, unknown> | undefined;
+            | Record<string, unknown>
+            | undefined;
 
           let identitySource:
-            "upstream-metadata" | "upstream-header" | "synthesized" | "synthesized-cloaked" =
-            "synthesized";
+            | "upstream-metadata"
+            | "upstream-header"
+            | "synthesized"
+            | "synthesized-cloaked" = "synthesized";
           let sessionId: string;
           let deviceId: string;
           let accountUUID: string;

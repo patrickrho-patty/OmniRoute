@@ -40,7 +40,7 @@ function nextReqId(): string {
   return String(_reqId);
 }
 
-function getEffectiveUserAgent(): string {
+export function getGeminiWebUserAgent(): string {
   if (isCliCompatEnabled("gemini-web")) {
     const fp = CLI_FINGERPRINTS["gemini-web"];
     if (fp?.userAgent) {
@@ -98,7 +98,8 @@ function extractTokens(html: string): GeminiTokens | null {
  */
 async function fetchTokens(
   cookie: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  allowBrowserExtraction = true
 ): Promise<GeminiTokens | null> {
   const cacheKey = cookie.slice(0, 64); // first 64 chars as cache key
   const cached = tokenCache.get(cacheKey);
@@ -107,7 +108,7 @@ async function fetchTokens(
   }
 
   // Strategy 1: static HTML extraction (fast path)
-  const ua = getEffectiveUserAgent();
+  const ua = getGeminiWebUserAgent();
   const fetchFn = tlsClient.available ? tlsClient.fetch.bind(tlsClient) : fetch;
   try {
     const resp = await fetchFn(INIT_URL, {
@@ -135,6 +136,8 @@ async function fetchTokens(
   } catch {
     // Static fetch failed — try browser extraction below
   }
+
+  if (!allowBrowserExtraction) return null;
 
   // Strategy 2: Playwright one-time extraction (SNlM0e is JS-rendered)
   // Google moved SNlM0e out of static HTML in April 2026 — only a real
@@ -181,7 +184,11 @@ async function extractTokensViaBrowser(
         const value = part.substring(eqIdx + 1).trim();
         if (!name || !value) return null;
         const lowerName = name.toLowerCase();
-        if (["path", "domain", "expires", "max-age", "secure", "httponly", "samesite"].includes(lowerName)) {
+        if (
+          ["path", "domain", "expires", "max-age", "secure", "httponly", "samesite"].includes(
+            lowerName
+          )
+        ) {
           return null;
         }
         return { name, value };
@@ -206,7 +213,8 @@ async function extractTokensViaBrowser(
     // Extract tokens from the live DOM (JavaScript-executed)
     const tokens = await page.evaluate(() => {
       const wiz = (window as unknown as Record<string, unknown>).WIZ_global_data as
-        Record<string, unknown> | undefined;
+        | Record<string, unknown>
+        | undefined;
       if (!wiz) return null;
       const at = typeof wiz.SNlM0e === "string" ? wiz.SNlM0e : "";
       const bl = typeof wiz.cfb2h === "string" ? wiz.cfb2h : "";
@@ -295,8 +303,9 @@ export function parseStreamGenerateResponse(raw: string): string {
   if (textChunks.length === 0) return "";
 
   // Cumulative snapshots: take the longest (the final, complete snapshot)
-  const isCumulative = textChunks.every((chunk, i) =>
-    i === 0 || chunk.startsWith(textChunks[i - 1]) || textChunks[i - 1].startsWith(chunk)
+  const isCumulative = textChunks.every(
+    (chunk, i) =>
+      i === 0 || chunk.startsWith(textChunks[i - 1]) || textChunks[i - 1].startsWith(chunk)
   );
   if (isCumulative) {
     return textChunks.reduce((longest, chunk) => (chunk.length > longest.length ? chunk : longest));
@@ -313,10 +322,11 @@ export async function generateViaApi(
   prompt: string,
   cookie: string,
   model?: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: { allowBrowserTokenExtraction?: boolean } = {}
 ): Promise<{ text: string; error?: string; status?: number }> {
   try {
-    const tokens = await fetchTokens(cookie, signal);
+    const tokens = await fetchTokens(cookie, signal, options.allowBrowserTokenExtraction !== false);
     if (!tokens) {
       return {
         text: "",
@@ -325,7 +335,7 @@ export async function generateViaApi(
       };
     }
 
-    const ua = getEffectiveUserAgent();
+    const ua = getGeminiWebUserAgent();
     const reqId = nextReqId();
     const freq = buildStreamGenerateBody(prompt, model);
 

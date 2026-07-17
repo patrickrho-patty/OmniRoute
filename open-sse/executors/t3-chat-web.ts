@@ -15,7 +15,11 @@
 
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { errorResponse } from "../utils/error.ts";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -340,7 +344,7 @@ export class T3ChatWebExecutor extends BaseExecutor {
       role: string;
       content: string | unknown;
     }>;
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
       rawMessages
     );
@@ -486,11 +490,20 @@ export class T3ChatWebExecutor extends BaseExecutor {
       const rawContent = await collectStreamContent(resp.body);
 
       if (hasTools) {
-        const { content, toolCalls, finishReason } = buildToolAwareResult(
+        const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
           rawContent,
           requestedTools,
-          "t3"
+          "t3",
+          toolChoice
         );
+        if (policyViolation) {
+          return {
+            response: buildWebToolPolicyErrorResponse(),
+            url: completionUrl,
+            headers,
+            transformedBody: requestPayload,
+          };
+        }
         if (toolCalls) {
           return {
             response: new Response(

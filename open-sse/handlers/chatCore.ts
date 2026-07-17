@@ -425,7 +425,10 @@ export async function handleChatCore({
     return credentialConnectionId || connectionId || null;
   };
   let tokensCompressed: number | null = null;
-  body = injectSystemPrompt(body);
+  const bypassChatGptWebSharedPromptTransforms = provider === "chatgpt-web";
+  if (!bypassChatGptWebSharedPromptTransforms) {
+    body = injectSystemPrompt(body);
+  }
   // ── Per-endpoint custom system prompt (port of upstream #2063) ──
   // Reads from cachedSettings if available (passed in from combo/chat layer)
   // to avoid an extra DB read on the hot path. Falls through to getCachedSettings()
@@ -433,6 +436,7 @@ export async function handleChatCore({
   {
     const _s = cachedSettings ?? (await getCachedSettings());
     if (
+      !bypassChatGptWebSharedPromptTransforms &&
       _s.customSystemPromptEnabled === true &&
       typeof _s.customSystemPrompt === "string" &&
       _s.customSystemPrompt
@@ -905,7 +909,8 @@ export async function handleChatCore({
   });
   effectiveServiceTier = resolveEffectiveServiceTier(body);
   setGeminiThoughtSignatureMode(settings.antigravitySignatureCacheMode);
-  const semanticCacheEnabled = settings.semanticCacheEnabled !== false;
+  const semanticCacheEnabled =
+    provider !== "chatgpt-web" && settings.semanticCacheEnabled !== false;
 
   const reqLogger = await createRequestLogger(sourceFormat, targetFormat, model, {
     enabled: detailedLoggingEnabled,
@@ -976,6 +981,7 @@ export async function handleChatCore({
   const compressionBody = body
     ? adaptBodyForCompression(body as Record<string, unknown>).body
     : null;
+  const bypassSharedPromptCompression = bypassChatGptWebSharedPromptTransforms;
   const allMessages = compressionBody?.messages || body?.contents || body?.request?.contents || [];
   let cavemanOutputModeApplied = false;
   let cavemanOutputModeIntensity: string | null = null;
@@ -985,7 +991,12 @@ export async function handleChatCore({
   // settings read below, then threaded to executor.execute() further down. Lives at
   // function scope because the read happens inside the per-message compression block.
   let contextEditingEnabled = false;
-  if (body && Array.isArray(allMessages) && allMessages.length > 0) {
+  if (
+    body &&
+    Array.isArray(allMessages) &&
+    allMessages.length > 0 &&
+    !bypassSharedPromptCompression
+  ) {
     let estimatedTokens = estimateTokens(allMessages);
     const compressionSettingsResult = await resolveCompressionSettings(log);
     const compressionSettings: CompressionConfig | null = compressionSettingsResult.settings;
@@ -1203,7 +1214,8 @@ export async function handleChatCore({
       }
       // Phase 4A: unified output styles (supersedes cavemanOutputMode via the back-compat shim).
       let outputStyleResult:
-        import("../services/compression/outputStyles/apply.ts").OutputStylesResult | null = null;
+        | import("../services/compression/outputStyles/apply.ts").OutputStylesResult
+        | null = null;
       if (config.enabled) {
         try {
           const { resolveOutputStyleSelection } =
@@ -1255,8 +1267,8 @@ export async function handleChatCore({
           ? ((compressionInputBody as Record<string, unknown>).max_tokens as number)
           : null;
       let adaptiveTelemetry:
-        import("../services/compression/adaptiveCompression/types.ts").AdaptiveTelemetry | null =
-        null;
+        | import("../services/compression/adaptiveCompression/types.ts").AdaptiveTelemetry
+        | null = null;
       const compressionPlan = selectCompressionPlan(
         config,
         compressionComboKey,
@@ -1588,7 +1600,9 @@ export async function handleChatCore({
   } else {
     log?.debug?.(
       "CONTEXT",
-      `Skipping compression check: body=${!!body}, hasMessages=${Array.isArray(allMessages)}`
+      bypassChatGptWebSharedPromptTransforms
+        ? "Skipping shared prompt transforms: chatgpt-web uses its dedicated prompt contract"
+        : `Skipping compression check: body=${!!body}, hasMessages=${Array.isArray(allMessages)}`
     );
   }
 
@@ -2204,7 +2218,8 @@ export async function handleChatCore({
 
   let onPipelineStreamError: streamFailure.PipelineStreamErrorHandler | null = null;
   let onClientDisconnectFinalize:
-    ((event: { reason: string; duration: number }) => boolean) | null = null;
+    | ((event: { reason: string; duration: number }) => boolean)
+    | null = null;
 
   // Create stream controller for disconnect detection
   const streamController = createStreamController({
@@ -2237,7 +2252,7 @@ export async function handleChatCore({
   });
 
   const dedupRequestBody = { ...translatedBody, model: `${provider}/${model}`, stream };
-  const dedupEnabled = shouldDeduplicate(dedupRequestBody);
+  const dedupEnabled = provider !== "chatgpt-web" && shouldDeduplicate(dedupRequestBody);
   const dedupHash = dedupEnabled ? computeRequestHash(dedupRequestBody) : null;
 
   const executeProviderRequest = async (modelToCall = effectiveModel, allowDedup = false) => {
@@ -2350,6 +2365,7 @@ export async function handleChatCore({
                             clientRawRequest?.headers,
                             userAgent
                           ),
+                          callerIdentity: apiKeyInfo?.id ? `api-key:${apiKeyInfo.id}` : null,
                           onCredentialsRefreshed,
                           skipUpstreamRetry,
                           contextEditing: { enabled: contextEditingEnabled },

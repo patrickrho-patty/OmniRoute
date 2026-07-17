@@ -6,7 +6,11 @@ import {
 } from "./base.ts";
 import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { normalizeSessionCookieHeader } from "@/lib/providers/webCookieAuth";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 
 const BLACKBOX_CHAT_API = "https://app.blackbox.ai/api/chat";
 const BLACKBOX_DEFAULT_COOKIE = "next-auth.session-token";
@@ -323,7 +327,7 @@ export class BlackboxWebExecutor extends BaseExecutor {
       };
     }
 
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
       messages as Array<{ role: string; content: unknown }>
     );
@@ -650,11 +654,20 @@ export class BlackboxWebExecutor extends BaseExecutor {
     const created = Math.floor(Date.now() / 1000);
 
     if (hasTools) {
-      const { content, toolCalls, finishReason } = buildToolAwareResult(
+      const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
         responseText,
         requestedTools,
-        "bbx"
+        "bbx",
+        toolChoice
       );
+      if (policyViolation) {
+        return {
+          response: buildWebToolPolicyErrorResponse(),
+          url: BLACKBOX_CHAT_API,
+          headers,
+          transformedBody,
+        };
+      }
       if (toolCalls) {
         const toolResponse = new Response(
           JSON.stringify({

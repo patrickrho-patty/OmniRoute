@@ -8,7 +8,11 @@ import {
 } from "./base.ts";
 import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { getRotatingApiKey } from "../services/apiKeyRotator.ts";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 import {
   normalizeSessionCookieHeader,
   normalizeSessionCookieHeaders,
@@ -779,7 +783,8 @@ async function buildSuccessResult(
   headers: Record<string, string>,
   transformedBody: unknown,
   hasTools?: boolean,
-  requestedTools?: unknown
+  requestedTools?: unknown,
+  toolChoice?: import("../services/webProvider/types.ts").WebToolChoice
 ): Promise<MuseSparkExecuteResult> {
   const id = `chatcmpl-meta-${crypto.randomUUID().slice(0, 12)}`;
   const created = Math.floor(Date.now() / 1000);
@@ -801,11 +806,15 @@ async function buildSuccessResult(
     try {
       const json = JSON.parse(bodyText);
       const rawContent = json?.choices?.[0]?.message?.content || "";
-      const { content, toolCalls, finishReason } = buildToolAwareResult(
+      const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
         rawContent,
         requestedTools,
-        "muse"
+        "muse",
+        toolChoice
       );
+      if (policyViolation) {
+        return resultWithResponse(buildWebToolPolicyErrorResponse(), headers, transformedBody);
+      }
       if (toolCalls) {
         json.choices[0].message = { role: "assistant", content: null, tool_calls: toolCalls };
         json.choices[0].finish_reason = finishReason;
@@ -844,7 +853,7 @@ export class MuseSparkWebExecutor extends BaseExecutor {
       return errorResult(400, "Missing or empty messages array", "invalid_request", {}, body);
     }
 
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
       rawMessages as Array<{ role: string; content: unknown }>
     );
@@ -922,7 +931,8 @@ export class MuseSparkWebExecutor extends BaseExecutor {
       headers,
       transformedBody,
       hasTools,
-      requestedTools
+      requestedTools,
+      toolChoice
     );
   }
 }

@@ -1,6 +1,8 @@
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { solveDeepSeekPowAsync } from "../lib/deepseek-pow.ts";
-import { type OpenAIToolCall } from "../translator/webTools.ts";
+import { type OpenAIToolCall } from "../services/webProvider/types.ts";
+import { resolveWebToolChoice } from "../services/webProvider/toolContract.ts";
+import { enforceWebToolChoice } from "../services/webProvider/toolPipeline.ts";
 import {
   serializeDeepSeekToolPrompt,
   parseDeepSeekToolCalls,
@@ -827,8 +829,12 @@ export class DeepSeekWebExecutor extends BaseExecutor {
     // <tool>...</tool> prompt contract on the way in, and parse the model's text reply
     // back into OpenAI tool_calls on the way out.
     const requestedTools = bodyObj.tools;
-    const hasTools = Array.isArray(requestedTools) && requestedTools.length > 0;
-    const toolSystemPrompt = hasTools ? serializeDeepSeekToolPrompt(requestedTools) : "";
+    const toolChoice = resolveWebToolChoice(requestedTools, bodyObj.tool_choice);
+    const hasTools =
+      toolChoice !== "none" && Array.isArray(requestedTools) && requestedTools.length > 0;
+    const toolSystemPrompt = hasTools
+      ? serializeDeepSeekToolPrompt(requestedTools, toolChoice)
+      : "";
 
     const messages = (Array.isArray(bodyObj.messages) ? bodyObj.messages : []) as Array<{
       role: string;
@@ -1042,12 +1048,21 @@ export class DeepSeekWebExecutor extends BaseExecutor {
           `call-${Date.now()}`,
           requestedTools
         );
+        const toolResponse = enforceWebToolChoice(cleanedContent, toolCalls, toolChoice);
+        if (toolResponse.policyViolation) {
+          return {
+            response: errorResponse(502, "DeepSeek Web did not honor the requested tool policy."),
+            url: COMPLETION_URL,
+            headers: reqHeaders,
+            transformedBody: requestPayload,
+          };
+        }
         return buildToolAwareResult({
           stream: stream !== false,
           clientModel,
-          content: cleanedContent,
+          content: toolResponse.content,
           reasoningContent,
-          toolCalls,
+          toolCalls: toolResponse.toolCalls,
           reqHeaders,
           requestPayload,
         });

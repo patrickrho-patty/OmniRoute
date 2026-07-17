@@ -17,6 +17,9 @@ const compressionDb = await import("../../src/lib/db/compression.ts");
 const compressionCombosDb = await import("../../src/lib/db/compressionCombos.ts");
 const compressionAnalyticsDb = await import("../../src/lib/db/compressionAnalytics.ts");
 const { handleChatCore } = await import("../../open-sse/handlers/chatCore.ts");
+const { __setTlsFetchOverrideForTesting } =
+  await import("../../open-sse/services/chatgptTlsClient.ts");
+const { setSystemPromptConfig } = await import("../../open-sse/services/systemPrompt.ts");
 const { estimateTokens, getTokenLimit } = await import("../../open-sse/services/contextManager.ts");
 const { resetAllCircuitBreakers } = await import("../../src/shared/utils/circuitBreaker.ts");
 
@@ -24,6 +27,8 @@ const originalFetch = globalThis.fetch;
 
 async function resetStorage() {
   globalThis.fetch = originalFetch;
+  __setTlsFetchOverrideForTesting(null);
+  setSystemPromptConfig({ enabled: false, prefixPrompt: "", suffixPrompt: "", prompt: "" });
   resetAllCircuitBreakers();
   readCacheDb.invalidateDbCache();
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1040,6 +1045,218 @@ test("chatCore integration: caveman output mode skipped when compression is glob
     assert.doesNotMatch(capturedBody.messages[0].content ?? "", /Output Styles/);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("chatCore integration: non-chatgpt tool requests retain shared output styles", async () => {
+  const provider = "openai";
+  const model = "gpt-4";
+
+  await compressionDb.updateCompressionSettings({
+    enabled: true,
+    defaultMode: "off",
+    autoTriggerTokens: 0,
+    cavemanOutputMode: {
+      enabled: true,
+      intensity: "ultra",
+      autoClarity: true,
+    },
+  });
+
+  const connection = await providersDb.createProviderConnection({
+    provider,
+    apiKey: "test-key",
+    isActive: true,
+  });
+
+  let capturedBody: any = null;
+  globalThis.fetch = async (_url: string | URL | Request, init?: RequestInit) => {
+    if (init?.body) {
+      capturedBody = JSON.parse(init.body as string);
+    }
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { role: "assistant", content: "ok" } }],
+        usage: { prompt_tokens: 20, completion_tokens: 4, total_tokens: 24 },
+      }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    );
+  };
+
+  try {
+    const result = await handleChatCore({
+      body: {
+        model,
+        stream: false,
+        messages: [
+          {
+            role: "user",
+            content:
+              "Use the command execution tool to run exactly: cat .cdx_tool_sentinel.txt in the current workspace.",
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Runs a command in a PTY.",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+      },
+      modelInfo: { provider, model },
+      credentials: { apiKey: "test-key" },
+      log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+      clientRawRequest: { endpoint: "/v1/chat/completions", headers: new Map() },
+      connectionId: connection.id,
+      onCredentialsRefreshed: () => {},
+      onRequestSuccess: () => {},
+      onStreamFailure: () => {},
+      onDisconnect: () => {},
+      userAgent: "test-agent",
+      comboName: null,
+    });
+
+    assert.ok(result.success, "Request should succeed");
+    assert.ok(capturedBody, "Fetch should have been called");
+    assert.equal(capturedBody.messages[0].role, "system");
+    assert.match(JSON.stringify(capturedBody.messages), /OmniRoute Output Styles/);
+    const userMessage = capturedBody.messages.find(
+      (message: { role?: string }) => message.role === "user"
+    );
+    assert.equal(
+      userMessage?.content,
+      "Use the command execution tool to run exactly: cat .cdx_tool_sentinel.txt in the current workspace."
+    );
+    assert.equal(capturedBody.tools?.[0]?.function?.name, "exec_command");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("chatCore integration: chatgpt-web bypasses compression and OmniRoute system prompts", async () => {
+  const provider = "chatgpt-web";
+  const model = "gpt-5.5-thinking";
+
+  setSystemPromptConfig({
+    enabled: true,
+    prefixPrompt: "GLOBAL_PREFIX_SHOULD_NOT_APPEAR",
+    suffixPrompt: "GLOBAL_SUFFIX_SHOULD_NOT_APPEAR",
+  });
+  await compressionDb.updateCompressionSettings({
+    enabled: true,
+    defaultMode: "off",
+    autoTriggerTokens: 0,
+    outputStyles: [{ id: "terse-prose", level: "ultra" }],
+    cavemanOutputMode: {
+      enabled: true,
+      intensity: "ultra",
+      autoClarity: true,
+    },
+  });
+
+  const connection = await providersDb.createProviderConnection({
+    provider,
+    apiKey: "test-cookie",
+    isActive: true,
+  });
+
+  let capturedBody: Record<string, unknown> | null = null;
+  __setTlsFetchOverrideForTesting(async (url: string, opts: Record<string, unknown> = {}) => {
+    const target = String(url);
+    const json = (body: unknown) => ({
+      status: 200,
+      headers: new Headers({ "content-type": "application/json" }),
+      text: JSON.stringify(body),
+      body: null,
+    });
+    if (target === "https://chatgpt.com/") {
+      return {
+        status: 200,
+        headers: new Headers({ "content-type": "text/html" }),
+        text: '<html data-build="prod-test"><script src="https://cdn.oaistatic.com/_next/static/chunks/main-test.js"></script></html>',
+        body: null,
+      };
+    }
+    if (target.includes("/api/auth/session")) {
+      return json({
+        accessToken: "jwt-test",
+        expires: new Date(Date.now() + 3_600_000).toISOString(),
+        user: { id: "user-1" },
+      });
+    }
+    if (target.includes("/sentinel/chat-requirements")) {
+      return json({ token: "req-token", proofofwork: { required: false } });
+    }
+    if (target.includes("/conversation")) {
+      capturedBody = JSON.parse(String(opts.body));
+      return {
+        status: 200,
+        headers: new Headers({ "content-type": "text/event-stream" }),
+        text: `data: ${JSON.stringify({
+          conversation_id: "conv-special",
+          message: {
+            id: "msg-special",
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["ok"] },
+            status: "finished_successfully",
+          },
+        })}\r\n\r\ndata: [DONE]\r\n\r\n`,
+        body: null,
+      };
+    }
+    return { status: 404, headers: new Headers(), text: "not mocked", body: null };
+  });
+
+  const originalUser = "preserve   these   spaces and exact local command: ls -la";
+  try {
+    const result = await handleChatCore({
+      body: {
+        model,
+        stream: false,
+        messages: [
+          { role: "system", content: "CLIENT_SYSTEM_MUST_REMAIN" },
+          { role: "user", content: originalUser },
+        ],
+      },
+      modelInfo: { provider, model },
+      credentials: { apiKey: "test-cookie" },
+      log: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
+      clientRawRequest: { endpoint: "/v1/chat/completions", headers: new Map() },
+      connectionId: connection.id,
+      onCredentialsRefreshed: () => {},
+      onRequestSuccess: () => {},
+      onStreamFailure: () => {},
+      onDisconnect: () => {},
+      userAgent: "test-agent",
+      comboName: null,
+      cachedSettings: {
+        customSystemPromptEnabled: true,
+        customSystemPrompt: "CUSTOM_SYSTEM_SHOULD_NOT_APPEAR",
+      },
+    } as never);
+
+    assert.ok(result.success, "Request should succeed");
+    assert.ok(capturedBody, "ChatGPT Web conversation request should be captured");
+    const serialized = JSON.stringify(capturedBody);
+    assert.match(serialized, /CLIENT_SYSTEM_MUST_REMAIN/);
+    assert.match(serialized, new RegExp(originalUser.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(serialized, /GLOBAL_PREFIX_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(serialized, /GLOBAL_SUFFIX_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(serialized, /CUSTOM_SYSTEM_SHOULD_NOT_APPEAR/);
+    assert.doesNotMatch(serialized, /OmniRoute Output Styles/);
+  } finally {
+    __setTlsFetchOverrideForTesting(null);
+    setSystemPromptConfig({ enabled: false, prefixPrompt: "", suffixPrompt: "", prompt: "" });
   }
 });
 
