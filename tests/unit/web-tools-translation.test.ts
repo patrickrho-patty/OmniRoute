@@ -6,7 +6,11 @@ import {
 } from "../../open-sse/services/webProvider/toolPipeline.ts";
 import { buildWebToolContract } from "../../open-sse/services/webProvider/toolContract.ts";
 import { decodeExplicitWebToolCalls } from "../../open-sse/services/webProvider/toolDecoder.ts";
-import { detectWebToolExcuse } from "../../open-sse/services/webProvider/excuseGuard.ts";
+import {
+  detectWebToolExcuse,
+  detectPlanNarration,
+  detectWebToolGuardViolation,
+} from "../../open-sse/services/webProvider/excuseGuard.ts";
 import { buildWebToolContractFingerprint } from "../../open-sse/services/webProvider/toolFingerprint.ts";
 
 // Regression coverage for the shared web-cookie tool-call translation helpers
@@ -419,5 +423,43 @@ describe("web-provider excuse guard: precision regressions", () => {
       false
     );
     assert.equal(detectWebToolExcuse("Sure, I can send the file via email if you want."), false);
+  });
+});
+
+describe("web-provider plan-narration guard", () => {
+  test("flags work-announcing replies that should have been tool calls", () => {
+    assert.equal(
+      detectPlanNarration(
+        "I'll create docs/V1-STATUS/V1-STATUS-OVERVIEW.md with:\n- one row per file\n- only the status label"
+      ),
+      true
+    );
+    assert.equal(detectPlanNarration("Let me write the tracker file now."), true);
+    assert.equal(detectPlanNarration("I will now generate the report."), true);
+    assert.equal(detectPlanNarration("I'll continue from the extracted summary."), true);
+  });
+
+  test("does not flag completed-work reports or figurative plans", () => {
+    assert.equal(
+      detectPlanNarration("I created the tracker file. It has one row per file."),
+      false
+    );
+    assert.equal(detectPlanNarration("The status is: 22 IN PROGRESS, 16 PUBLISHED."), false);
+    assert.equal(detectPlanNarration("Let me check the math: 2 + 2 = 4."), false);
+    assert.equal(
+      detectPlanNarration("I will summarize: the task is done and the file is written.".repeat(40)),
+      false,
+      "long delivered answers are not bare plans"
+    );
+  });
+
+  test("guard modes tier correctly", () => {
+    const plan = "I'll create the overview file now.";
+    const excuse = "I cannot access the filesystem in this chat.";
+    assert.equal(detectWebToolGuardViolation(plan, "off"), false);
+    assert.equal(detectWebToolGuardViolation(plan, "plan"), true);
+    assert.equal(detectWebToolGuardViolation(excuse, "plan"), false, "plan mode ignores excuses");
+    assert.equal(detectWebToolGuardViolation(excuse, "full"), true);
+    assert.equal(detectWebToolGuardViolation(plan, "full"), true);
   });
 });

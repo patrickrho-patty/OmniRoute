@@ -49,7 +49,11 @@ import {
   decodeWebToolResponse,
 } from "../services/webProvider/toolPipeline.ts";
 import { CHATGPT_WEB_PROTOCOL_MARKER } from "../services/webProvider/toolContract.ts";
-import { detectWebToolExcuse } from "../services/webProvider/excuseGuard.ts";
+import { CODEX_PERSONA } from "../config/codexPersona.ts";
+import {
+  detectWebToolGuardViolation,
+  type WebToolGuardMode,
+} from "../services/webProvider/excuseGuard.ts";
 import { buildWebToolContractFingerprint } from "../services/webProvider/toolFingerprint.ts";
 import type { OpenAIToolCall, WebToolChoice } from "../services/webProvider/types.ts";
 
@@ -1429,6 +1433,11 @@ function buildConversationBody(
   // parseOpenAIMessages already ran the memory/noise strippers — use its output
   // verbatim instead of stripping the same large context twice per request.
   const sanitizedSystemMsg = parsed.systemMsg;
+  // The curated Codex persona is always-on so the upstream model adopts Codex's
+  // work style and persistence even when the harness instructions are thin; it
+  // leads the system block, with the harness context + tool protocol following
+  // so the protocol remains the closest instruction to the user turn.
+  if (CODEX_PERSONA.trim()) systemParts.unshift(CODEX_PERSONA.trim());
   if ((!continuation || isTemporaryChat) && sanitizedSystemMsg.trim()) {
     systemParts.push(sanitizedSystemMsg.trim());
   } else if (continuation && continuationSystemDelta.trim()) {
@@ -2311,9 +2320,9 @@ async function buildToolAwareChatGptResponse(
   stream: boolean,
   signal?: AbortSignal | null,
   onConversationContext?: (context: ChatGptConversationContext) => void,
-  // When true, an excuse/confabulation reply with zero decoded tool calls
-  // throws ChatGptExcuseResponseError so the caller can retry with a nudge.
-  guardExcuses = false
+  // When not "off", an excuse/confabulation/plan-narration reply with zero
+  // decoded tool calls throws ChatGptExcuseResponseError for a corrective retry.
+  guardMode: WebToolGuardMode = "off"
 ): Promise<Response> {
   let fullAnswer = "";
   let conversationId: string | null = null;
@@ -2347,7 +2356,11 @@ async function buildToolAwareChatGptResponse(
   if (!content.trim() && !toolCalls?.length) {
     throw new ChatGptEmptyResponseError();
   }
-  if (guardExcuses && !toolCalls?.length && toolChoice !== "none" && detectWebToolExcuse(content)) {
+  if (
+    !toolCalls?.length &&
+    toolChoice !== "none" &&
+    detectWebToolGuardViolation(content, guardMode)
+  ) {
     throw new ChatGptExcuseResponseError();
   }
   if (policyViolation) {
@@ -3692,7 +3705,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
             stream !== false,
             signal,
             rememberConversation,
-            false
+            "off"
           );
           return { response: retried, url: CONV_URL, headers, transformedBody: cgptBody };
         } catch (retryErr) {
@@ -3708,7 +3721,9 @@ export class ChatGptWebExecutor extends BaseExecutor {
 
       let finalResponse: Response;
       if (hasTools) {
-        const guardExcuses = parsed.currentInput?.role !== "tool";
+        // Full excuse detection on fresh user turns; the narrow plan-narration
+        // set on tool-result continuations (grounded answers stay exempt).
+        const guardMode: WebToolGuardMode = parsed.currentInput?.role === "tool" ? "plan" : "full";
         try {
           finalResponse = await buildToolAwareChatGptResponse(
             bodyStream,
@@ -3721,7 +3736,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
             stream !== false,
             signal,
             rememberConversation,
-            guardExcuses
+            guardMode
           );
         } catch (err) {
           if (err instanceof ChatGptExcuseResponseError) {

@@ -1656,7 +1656,9 @@ test("Session continuity: each call starts a fresh conversation (Temporary Chat 
     assert.equal(userMessages.length, 2, "history replay and latest turn are user messages");
     assert.equal(userMessages[1].content.parts[0], "Follow-up");
     const systemMsg = secondBody.messages.find((m) => m.author?.role === "system");
-    assert.equal(systemMsg, undefined);
+    // The curated Codex persona is always-on; the harness context (if any) is
+    // still NOT replayed here because this is a fresh temporary conversation.
+    assert.match(systemMsg?.content.parts[0], /You are Codex/);
     assert.match(userMessages[0].content.parts[0], /First question/);
     assert.match(userMessages[0].content.parts[0], /Hello, world!/);
   } finally {
@@ -3176,9 +3178,11 @@ test("Image edit: cached OmniRoute image URL continues the saved ChatGPT convers
     assert.equal(body.conversation_id, "conv-image-1");
     assert.equal(body.parent_message_id, "msg-image-1");
     assert.equal(body.history_and_training_disabled, false);
-    assert.equal(body.messages.length, 1, "saved ChatGPT conversation carries prior image state");
-    assert.equal(body.messages[0].author.role, "user");
-    assert.match(body.messages[0].content.parts[0], /nighttime/);
+    assert.equal(body.messages.length, 2, "persona system message + the continuation turn");
+    assert.equal(body.messages[0].author.role, "system");
+    assert.match(body.messages[0].content.parts[0], /You are Codex/);
+    assert.equal(body.messages[1].author.role, "user");
+    assert.match(body.messages[1].content.parts[0], /nighttime/);
   } finally {
     m.restore();
   }
@@ -3872,6 +3876,149 @@ test("Excuse guard: no corrective retry on tool-result continuation turns", asyn
     assert.equal(m.calls.conv, 1, "an excuse after real tool results is not retried");
     const json = await result.response.json();
     assert.equal(json.choices[0].finish_reason, "stop");
+  } finally {
+    m.restore();
+  }
+});
+
+test("Excuse guard: plan narration after a tool result triggers one corrective retry", async () => {
+  reset();
+  const convBodies: string[] = [];
+  const m = installMockFetch({
+    onConv: (opts: { body?: string }) => convBodies.push(opts.body ?? ""),
+    conv: (_opts: unknown, callIndex: number) => ({
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: [
+                callIndex === 1
+                  ? "I'll create docs/V1-STATUS/V1-STATUS-OVERVIEW.md with:\n- one row per V1 status file\n- only the status label (PUBLISHED, IN PROGRESS, NOT STARTED)\n\nI'll also flag the files currently needing attention."
+                  : '```json\n{"name":"exec_command","arguments":{"cmd":"printf \'done\' > /tmp/overview.md"}}\n```',
+              ],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    }),
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [
+          { role: "user", content: "build the status tracker file" },
+          {
+            role: "assistant",
+            content: "",
+            tool_calls: [
+              {
+                id: "c1",
+                type: "function",
+                function: {
+                  name: "exec_command",
+                  arguments: '{"cmd":"sed -n 1,40p docs/V1-STATUS/README.md"}',
+                },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "c1", content: "02: IN PROGRESS x22\n03: PUBLISHED x16" },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+        stream: false,
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    assert.equal(m.calls.conv, 2, "plan narration after a tool result is retried once");
+    const retryUserText = JSON.parse(convBodies[1]).messages.at(-1).content.parts[0];
+    assert.match(retryUserText, /Host correction: your previous reply did not include a tool call/);
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "tool_calls");
+  } finally {
+    m.restore();
+  }
+});
+
+test("Codex persona: injected as the leading system section on every tool turn", async () => {
+  reset();
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["ok"] },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "hi" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: { type: "object", properties: { cmd: { type: "string" } } },
+            },
+          },
+        ],
+        stream: false,
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    const convIdx = m.calls.urls.findIndex(
+      (u) =>
+        u.endsWith("/backend-api/f/conversation") ||
+        u.endsWith("/backend-api/conversation") ||
+        /\/backend-api\/(f\/)?conversation\?/.test(String(u))
+    );
+    const body = JSON.parse(m.calls.bodies[convIdx]);
+    const systemText = body.messages[0].content.parts[0];
+    assert.match(systemText, /You are Codex, a coding agent/);
+    assert.match(systemText, /Autonomy and persistence/);
+    assert.match(systemText, /Final answer instructions/);
+    // The tool protocol must still follow the persona (recency: protocol last).
+    assert.ok(
+      systemText.indexOf("You are Codex") < systemText.indexOf("OMNIROUTE TOOL PROTOCOL"),
+      "persona leads, tool protocol follows"
+    );
   } finally {
     m.restore();
   }

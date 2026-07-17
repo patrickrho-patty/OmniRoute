@@ -41,6 +41,35 @@ const FIRST_PERSON_FABRICATION_PATTERNS: RegExp[] = [
 const FIRST_PERSON_RE = /\b(?:i|me|my)\b/i;
 
 /**
+ * Plan-narration patterns: the reply promises future work ("I'll create…",
+ * "Let me write…", "Next I will…") instead of performing it. Kept separate
+ * from the excuse patterns because these are safe to apply even on grounded
+ * tool-result continuations — a reply that merely announces work is never a
+ * completed turn, regardless of what the results contained.
+ */
+const PLAN_NARRATION_PATTERNS: RegExp[] = [
+  /^(?:i['’]ll|i will|let me)\s+(?:now\s+)?(?:continue|proceed|move on|go ahead)\b/i,
+  /^(?:i['’]ll|i will|let me)\s+(?:now\s+)?(?:create|write|add|update|generate|prepare|draft|build|make|edit|modify|produce|save)\b/i,
+  /^(?:next[,:]?\s+)?(?:i['’]ll|i will)\s+(?:now\s+)?(?:create|write|generate|prepare|draft)\b/i,
+  /\b(?:i['’]ll|i will|let me)\s+(?:create|write|add|update|generate|prepare|draft|build|edit|modify|save)\s+[\w./\\-]+\.(?:md|markdown|ts|tsx|js|jsx|mjs|json|ya?ml|toml|py|go|rs|txt|sh|sql|html|css)\b/i,
+];
+
+/** Guard strictness by turn kind. "plan" is the narrow, high-precision set. */
+export type WebToolGuardMode = "off" | "plan" | "full";
+
+/**
+ * True when the reply is essentially a plan/intention with no delivered work.
+ * Safe on every turn kind: grounded answers report what WAS done (past tense)
+ * rather than announcing what WILL be done.
+ */
+export function detectPlanNarration(content: string): boolean {
+  if (!content || typeof content !== "string") return false;
+  const text = content.trim();
+  if (!text || text.length > 2000) return false;
+  return PLAN_NARRATION_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+/**
  * Intention-without-action at the START of the reply. Verbs are restricted to
  * tool-requiring actions (inspect/read/run/execute) and list/search/open only
  * with filesystem-shaped objects, so figurative uses ("let me compare the
@@ -68,4 +97,11 @@ export function detectWebToolExcuse(content: string): boolean {
   // Bare intention statements only count when they ARE essentially the whole
   // reply — "I'll summarize: ..." followed by a substantive answer is fine.
   return text.length < 800 && INTENTION_PATTERN.test(text);
+}
+
+/** Tiered guard: full excuse detection, or the narrow plan-narration set only. */
+export function detectWebToolGuardViolation(content: string, mode: WebToolGuardMode): boolean {
+  if (mode === "off") return false;
+  if (mode === "plan") return detectPlanNarration(content);
+  return detectWebToolExcuse(content) || detectPlanNarration(content);
 }
