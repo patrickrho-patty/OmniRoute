@@ -20,6 +20,7 @@ import {
   createFinishOnceGuard,
   createFinishedDrainScheduler,
 } from "./deepseek-web-done-terminator.ts";
+import { stripInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.ts";
 
 export const DEEPSEEK_WEB_BASE = "https://chat.deepseek.com";
 const DEEPSEEK_API_BASE = `${DEEPSEEK_WEB_BASE}/api`;
@@ -224,7 +225,11 @@ function transformSSE(deepseekStream: ReadableStream, model: string): ReadableSt
           createFinishedDrainScheduler(finishStream);
 
         const sendByPath = (raw: string) => {
-          const text = formatStreamContent(raw, streamModel);
+          // Strip the internal reasoning-replay sentinel (#1682) if DeepSeek echoes
+          // it back through streamed content/reasoning — it must never reach the client.
+          const text = stripInternalReasoningPlaceholder(
+            formatStreamContent(raw, streamModel)
+          );
           if (!text) return;
           ensureRole();
           let path = currentPath;
@@ -383,7 +388,11 @@ async function collectSSEContent(
   const searchResults: DeepSeekSearchResult[] = [];
 
   const appendByPath = (raw: string) => {
-    const text = formatStreamContent(raw, streamModel);
+    // Strip the internal reasoning-replay sentinel (#1682) if DeepSeek echoes it
+    // back — it must never reach the client.
+    const text = stripInternalReasoningPlaceholder(
+      formatStreamContent(raw, streamModel)
+    );
     if (!text) return;
     let path = currentPath;
     if (!path && thinkingModel) path = "thinking";
