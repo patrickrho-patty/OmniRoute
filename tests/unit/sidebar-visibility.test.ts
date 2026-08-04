@@ -23,6 +23,7 @@ test("system sidebar items: monitoring has activity at top then logs/audit/syste
       "logs",
       "logs-proxy",
       "logs-console",
+      "logs-timeline",
       "audit",
       "audit-mcp",
       "audit-a2a",
@@ -57,7 +58,9 @@ test("primary sidebar items place limits after cache", () => {
       "context-aggressive",
       "context-ultra",
       "compression-ponytail",
+      "context-omniglyph",
       "compression-studio",
+      "compression-exclusions",
       "cli-code",
       "cli-agents",
       "acp-agents",
@@ -93,6 +96,7 @@ test("context sidebar section sits between primary and cli", () => {
       { id: "context-lite", href: "/dashboard/context/lite" },
       { id: "context-aggressive", href: "/dashboard/context/aggressive" },
       { id: "context-ultra", href: "/dashboard/context/ultra" },
+      { id: "context-omniglyph", href: "/dashboard/context/omniglyph" },
     ]
   );
 });

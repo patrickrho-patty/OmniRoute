@@ -1,6 +1,9 @@
 import { handleAudioSpeech } from "@omniroute/open-sse/handlers/audioSpeech.ts";
 import { withInjectionGuard } from "@/middleware/promptInjectionGuard";
-import { getProviderCredentials, clearRecoveredProviderState } from "@/sse/services/auth";
+import {
+  getProviderCredentialsWithQuotaPreflight,
+  clearRecoveredProviderState,
+} from "@/sse/services/auth";
 import {
   parseSpeechModel,
   getSpeechProvider,
@@ -10,7 +13,7 @@ import {
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
-import { getProviderNodes } from "@/lib/localDb";
+import { getCachedProviderNodes } from "@/lib/localDb";
 import { v1AudioSpeechSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import {
@@ -20,6 +23,7 @@ import {
 import { attachOmniRouteMetaToResponse } from "@/domain/omnirouteResponseMeta";
 import { calculateModalCost } from "@/lib/usage/costCalculator";
 import { generateRequestId } from "@/shared/utils/requestId";
+import { getClientIpFromRequest } from "@/lib/ipUtils";
 
 /**
  * Handle CORS preflight
@@ -59,7 +63,7 @@ async function postHandler(request, context) {
   // Load local provider_nodes for audio routing (only localhost — prevents auth bypass/SSRF)
   let dynamicProviders: ReturnType<typeof buildDynamicAudioProvider>[] = [];
   try {
-    const nodes = await getProviderNodes();
+    const nodes = await getCachedProviderNodes();
     dynamicProviders = (Array.isArray(nodes) ? (nodes as unknown as ProviderNodeRow[]) : [])
       .filter((n: ProviderNodeRow) => {
         if (n.apiType !== "chat" && n.apiType !== "responses") return false;
@@ -95,7 +99,7 @@ async function postHandler(request, context) {
   // Get credentials — skip for local providers (authType: "none")
   let credentials = null;
   if (providerConfig && providerConfig.authType !== "none") {
-    credentials = await getProviderCredentials(provider);
+    credentials = await getProviderCredentialsWithQuotaPreflight(provider);
     if (!credentials) {
       return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
     }
@@ -109,6 +113,7 @@ async function postHandler(request, context) {
     credentials,
     resolvedProvider: providerConfig,
     resolvedModel,
+    clientIp: getClientIpFromRequest(request),
   });
   if (response?.ok) {
     await clearRecoveredProviderState(credentials);

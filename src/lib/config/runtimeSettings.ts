@@ -1,6 +1,6 @@
 import { clearHealthCheckLogCache } from "@/lib/tokenHealthCheck";
-import { isTruthyEnvFlag } from "@/shared/utils/envParsing";
 import { setCustomBannedSignals } from "@omniroute/open-sse/services/accountFallback.ts";
+import { isAutomatedTestProcess } from "@/shared/utils/testProcess";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -82,14 +82,11 @@ let lastAppliedSnapshot: RuntimeSettingsSnapshot | null = null;
 // `applyRuntimeSettings` call) behave identically to PR #2473.
 let currentAuthzBypass: AuthzBypassSnapshot = DEFAULT_AUTHZ_BYPASS_SNAPSHOT;
 
-function isAutomatedTestProcess(): boolean {
-  return (
-    typeof process !== "undefined" &&
-    (process.env.NODE_ENV === "test" ||
-      process.env.VITEST !== undefined ||
-      process.argv.some((arg) => arg.includes("test")))
-  );
+function isTruthyEnvFlag(value: string | undefined): boolean {
+  if (typeof value !== "string") return false;
+  return new Set(["1", "true", "yes", "on"]).has(value.trim().toLowerCase());
 }
+
 
 function toRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};

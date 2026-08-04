@@ -121,7 +121,7 @@ test("INTENTIONALLY_INTERNAL is exported from check-db-rules.mjs", () => {
   assert.ok(INTENTIONALLY_INTERNAL.size > 0, "INTENTIONALLY_INTERNAL must not be empty");
 });
 
-test("INTENTIONALLY_INTERNAL contains the expected 33 audited modules", () => {
+test("INTENTIONALLY_INTERNAL contains the expected 37 audited modules", () => {
   const expected = [
     "_rowTypes",
     "accessTokens",
@@ -133,6 +133,7 @@ test("INTENTIONALLY_INTERNAL contains the expected 33 audited modules", () => {
     "comboForecast",
     "commandCodeAuth",
     "compression",
+    "compressionDetailNormalizers",
     "detailedLogs",
     "discovery",
     "domainState",
@@ -140,6 +141,7 @@ test("INTENTIONALLY_INTERNAL contains the expected 33 audited modules", () => {
     "healthCheck",
     "jsonMigration",
     "migrationRunner",
+    "modelCapabilityOverrides",
     "notion",
     "obsidian",
     "optimizationSettings",
@@ -147,6 +149,8 @@ test("INTENTIONALLY_INTERNAL contains the expected 33 audited modules", () => {
     "prompts",
     "providerNodeSelect",
     "providerStats",
+    "proxyLatency",
+    "proxySubscriptions",
     "recovery",
     "schemaColumns",
     "secrets",

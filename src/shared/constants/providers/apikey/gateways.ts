@@ -14,8 +14,7 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     website: "https://hyper.charm.land",
     hasFree: true,
     freeNote: "100 free monthly Hypercredits on signup",
-    apiHint:
-      "Create an API key at https://hyper.charm.land, then paste it here as a Bearer token.",
+    apiHint: "Create an API key at https://hyper.charm.land, then paste it here as a Bearer token.",
   },
   agentrouter: {
     id: "agentrouter",
@@ -41,20 +40,6 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     authHint:
       "Use a Command Code API key. Requests are sent to Command Code's /alpha/generate endpoint.",
     apiHint: "Create or copy an API key from Command Code, then paste it here as a Bearer token.",
-  },
-  clinepass: {
-    id: "clinepass",
-    alias: "clinepass",
-    name: "ClinePass",
-    icon: "vpn_key",
-    color: "#5B9BD5",
-    textIcon: "CP",
-    passthroughModels: true,
-    website: "https://cline.bot",
-    notice: {
-      text: "ClinePass is Cline's paid BYOK gateway ($9.99/mo). Bring your own Cline API key; requests hit api.cline.bot with the cline-pass/* model namespace.",
-      apiKeyUrl: "https://app.cline.bot/settings/api-keys",
-    },
   },
   openrouter: {
     id: "openrouter",
@@ -213,6 +198,25 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     website: "https://opencode.ai/go",
     anonymousFallback: true,
   },
+  dahl: {
+    id: "dahl",
+    alias: "dahl",
+    name: "Dahl",
+    icon: "dahl",
+    color: "#6B7280",
+    textIcon: "DA",
+    website: "https://inference.dahl.global",
+    hasFree: true,
+    freeNote: "Free — MiniMax M2.7, Kimi K2.6. Click 'Add Account' to auto-generate a token.",
+    authHint: "Click 'Add Account' to auto-generate a token.",
+    apiHint: "No manual API key needed. Click 'Add Account' to auto-generate a token.",
+    apiKeyUrl: "https://inference.dahl.global/tokens",
+    passthroughModels: false,
+    managedAccount: true,
+    notice: {
+      text: "Dahl auto-generates tokens via https://inference.dahl.global/tokens. No signup needed. Rate limits apply.",
+    },
+  },
   puter: {
     id: "puter",
     alias: "pu",
@@ -253,6 +257,94 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     passthroughModels: true,
     authHint: "Sign in with your Hack Club account at ai.hackclub.com.",
   },
+  freetheai: {
+    id: "freetheai",
+    alias: "fta",
+    name: "FreeTheAi",
+    icon: "hub",
+    color: "#22C55E",
+    textIcon: "FTA",
+    website: "https://freetheai.xyz",
+    hasFree: true,
+    freeNote: "Free OpenAI-compatible gateway — sign up via Discord for an API key.",
+    passthroughModels: true,
+    authHint: "Join the FreeTheAi Discord to get your free API key.",
+  },
+  "g4f-groq": {
+    id: "g4f-groq",
+    alias: "g4fgroq",
+    name: "g4f.space — Groq",
+    icon: "bolt",
+    color: "#F97316",
+    textIcon: "G4F",
+    website: "https://g4f.space",
+    hasFree: true,
+    freeNote:
+      "Free no-key reverse proxy to Groq (gpt4free project) — rate-limited to 5 req/min.",
+    passthroughModels: true,
+    authHint:
+      "No auth required. Free tier is limited to 5 requests/minute — sign up at g4f.dev/members.html for higher limits.",
+  },
+  "g4f-gemini": {
+    id: "g4f-gemini",
+    alias: "g4fgem",
+    name: "g4f.space — Gemini",
+    icon: "bolt",
+    color: "#F97316",
+    textIcon: "G4F",
+    website: "https://g4f.space",
+    hasFree: true,
+    freeNote:
+      "Free no-key reverse proxy to Gemini (gpt4free project) — rate-limited to 5 req/min.",
+    passthroughModels: true,
+    authHint:
+      "No auth required. Free tier is limited to 5 requests/minute — sign up at g4f.dev/members.html for higher limits.",
+  },
+  "g4f-pollinations": {
+    id: "g4f-pollinations",
+    alias: "g4fpol",
+    name: "g4f.space — Pollinations",
+    icon: "bolt",
+    color: "#F97316",
+    textIcon: "G4F",
+    website: "https://g4f.space",
+    hasFree: true,
+    freeNote:
+      "Free no-key reverse proxy to Pollinations (gpt4free project) — rate-limited to 5 req/min.",
+    passthroughModels: true,
+    authHint:
+      "No auth required. Free tier is limited to 5 requests/minute — sign up at g4f.dev/members.html for higher limits.",
+  },
+  "g4f-ollama": {
+    id: "g4f-ollama",
+    alias: "g4foll",
+    name: "g4f.space — Ollama",
+    icon: "bolt",
+    color: "#F97316",
+    textIcon: "G4F",
+    website: "https://g4f.space",
+    hasFree: true,
+    freeNote:
+      "Free no-key hosted Ollama gateway (gpt4free project) — rate-limited to 5 req/min.",
+    passthroughModels: true,
+    authHint:
+      "No auth required. Free tier is limited to 5 requests/minute — sign up at g4f.dev/members.html for higher limits.",
+  },
+  "g4f-nvidia": {
+    id: "g4f-nvidia",
+    alias: "g4fnv",
+    name: "g4f.space — NVIDIA",
+    icon: "bolt",
+    color: "#F97316",
+    textIcon: "G4F",
+    website: "https://g4f.space",
+    hasFree: true,
+    freeNote:
+      "Free no-key reverse proxy to NVIDIA NIM (gpt4free project) — rate-limited to 5 req/min.",
+    passthroughModels: true,
+    authHint:
+      "No auth required. Free tier is limited to 5 requests/minute — sign up at g4f.dev/members.html for higher limits.",
+  },
   "vercel-ai-gateway": {
     id: "vercel-ai-gateway",
     alias: "vag",
@@ -274,23 +366,6 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     freeNote: "No signup required - 2 req/s, 20 RPM, 100 req/hr free tier",
     apiHint:
       "Works without API key (use 'unused' as key). Get free token at token.llm7.io for higher limits.",
-  },
-  kluster: {
-    id: "kluster",
-    alias: "kluster",
-    name: "Kluster AI",
-    icon: "hub",
-    color: "#8B5CF6",
-    textIcon: "KL",
-    website: "https://kluster.ai",
-    hasFree: false,
-    freeNote: "Discontinued 2026 — kluster.ai sunset (2026-06-09); no free tier.",
-    apiHint: "Get API key at https://kluster.ai/dashboard/api-keys",
-    subscriptionRisk: true,
-    riskNoticeVariant: "deprecated",
-    deprecated: true,
-    deprecationReason:
-      "kluster.ai shut down (2026-06-09); api.kluster.ai no longer resolves (sweep 2026-06-19). Use another OpenAI-compatible provider.",
   },
   llamagate: {
     id: "llamagate",
@@ -390,40 +465,6 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     textIcon: "LZ",
     website: "https://api.laozhang.ai",
     passthroughModels: true,
-  },
-  glhf: {
-    id: "glhf",
-    alias: "glhf",
-    name: "GLHF Chat",
-    icon: "hub",
-    color: "#10B981",
-    textIcon: "GH",
-    website: "https://glhf.chat",
-    authHint: "Bearer API key for the GLHF OpenAI-compatible gateway.",
-    hasFree: false,
-    freeNote: "Discontinued 2026 — glhf.chat free beta ended; no free tier.",
-    passthroughModels: true,
-    subscriptionRisk: true,
-    riskNoticeVariant: "deprecated",
-    deprecated: true,
-    deprecationReason:
-      "glhf.chat shut down (2026); its api.laf.run gateway no longer serves the catalog (sweep 2026-06-19).",
-  },
-  cablyai: {
-    id: "cablyai",
-    alias: "cablyai",
-    name: "CablyAI",
-    icon: "hub",
-    color: "#FF4081",
-    textIcon: "CA",
-    website: "https://cablyai.com",
-    authHint: "Bearer API key for the CablyAI OpenAI-compatible gateway.",
-    passthroughModels: true,
-    subscriptionRisk: true,
-    riskNoticeVariant: "deprecated",
-    deprecated: true,
-    deprecationReason:
-      "cablyai.com no longer resolves (DNS NXDOMAIN, verified 2026-06-30) — the domain is gone and every request fails with a DNS error (#5568).",
   },
   thebai: {
     id: "thebai",
@@ -645,6 +686,19 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
     apiHint:
       "X5Lab exposes an OpenAI-compatible chat completions endpoint at https://api.x5lab.dev/v1/chat/completions, plus a live /v1/models catalog. OmniRoute uses the OpenAI protocol and lists models via passthrough.",
   },
+  chenzk: {
+    id: "chenzk",
+    alias: "chenzk",
+    name: "Chenzk API",
+    icon: "hub",
+    color: "#10B981",
+    textIcon: "CZ",
+    passthroughModels: true,
+    website: "https://chenzk.top",
+    apiHint:
+      "Create an API key at https://chenzk.top/token, then paste it here as a Bearer token. " +
+      "OpenAI-compatible endpoint at https://chenzk.top/v1, with a live /v1/models catalog.",
+  },
   kenari: {
     id: "kenari",
     alias: "kenari",
@@ -658,5 +712,84 @@ export const APIKEY_PROVIDERS_GATEWAYS = {
       "Use your Kenari API key (kn-...) in Authorization: Bearer <key>. Fully OpenAI-compatible. API base URL: https://kenari.id/v1.",
     apiHint:
       "Kenari exposes an OpenAI-compatible chat completions endpoint at https://kenari.id/v1/chat/completions, plus a live /v1/models catalog covering Claude, GPT, DeepSeek, GLM, Kimi and more. OmniRoute uses the OpenAI protocol and lists models via passthrough.",
+  },
+  navy: {
+    id: "navy",
+    alias: "navy",
+    name: "NavyAI",
+    icon: "hub",
+    color: "#1E3A8A",
+    textIcon: "NV",
+    passthroughModels: true,
+    website: "https://api.navy",
+    hasFree: true,
+    freeNote:
+      "Free plan is one shared 150K tokens/day pool at 20 RPM. Each model carries a " +
+      "token multiplier, so heavier models drain the pool faster (grok-4 at 10x is ~15K real tokens/day).",
+    authHint:
+      "Create a free API key from the NavyAI dashboard, then paste it here as a Bearer token.",
+    apiHint:
+      "OpenAI-compatible endpoint at https://api.navy/v1 with a live /v1/models catalog that exposes " +
+      "per-model token_multiplier and premium flags. Upstream requires an explicit User-Agent header.",
+  },
+  ainative: {
+    id: "ainative",
+    alias: "ainative",
+    name: "AINative Studio",
+    icon: "hub",
+    color: "#7C3AED",
+    textIcon: "AN",
+    passthroughModels: true,
+    website: "https://ainative.studio",
+    hasFree: true,
+    freeNote: "Free tier ~10M tokens/month (claimed) across Qwen3, Llama 4, DeepSeek R1 and more.",
+    authHint: "Create a free API key at ainative.studio (no card), then paste it here as a Bearer token.",
+    apiHint:
+      "OpenAI-compatible endpoint at https://api.ainative.studio/api/v1 with a public /models catalog (84 models). OmniRoute lists models via passthrough.",
+  },
+  aion: {
+    id: "aion",
+    alias: "aion",
+    name: "Aion Labs",
+    icon: "hub",
+    color: "#0EA5E9",
+    textIcon: "AI",
+    passthroughModels: true,
+    website: "https://www.aionlabs.ai",
+    hasFree: true,
+    freeNote: "Free tier ~20k tokens/day across the Aion reasoning models.",
+    authHint: "Create a free API key at aionlabs.ai (no card), then paste it here as a Bearer token.",
+    apiHint:
+      "OpenAI-compatible endpoint at https://api.aionlabs.ai/v1 with a public /models catalog carrying context and pricing.",
+  },
+  routeway: {
+    id: "routeway",
+    alias: "routeway",
+    name: "Routeway",
+    icon: "hub",
+    color: "#F59E0B",
+    textIcon: "RW",
+    passthroughModels: true,
+    website: "https://routeway.ai",
+    hasFree: true,
+    freeNote: "Free models (:free suffix) at ~5 RPM / 200 RPD across Llama, Nemotron, Step and Laguna.",
+    authHint: "Create a free API key at routeway.ai, then paste it here as a Bearer token.",
+    apiHint:
+      "OpenAI-compatible endpoint at https://api.routeway.ai/v1 with a public /models catalog (236 models). Cloudflare fronts the API and requires a browser-style User-Agent.",
+  },
+  nara: {
+    id: "nara",
+    alias: "nara",
+    name: "NaraRouter",
+    icon: "hub",
+    color: "#EC4899",
+    textIcon: "NA",
+    passthroughModels: true,
+    website: "https://bynara.id",
+    hasFree: true,
+    freeNote: "Free tier is a shared 5M tokens/day pool; some models are gated behind credit/plan.",
+    authHint: "Get a free API key via NaraRouter's Telegram channel, then paste it here as a Bearer token.",
+    apiHint:
+      "OpenAI-compatible endpoint at https://router.bynara.id/v1. Free-tier models are pinned; others need credit.",
   },
 };

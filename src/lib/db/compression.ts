@@ -10,32 +10,37 @@ import {
   DEFAULT_COMPRESSION_LANGUAGE_CONFIG,
   DEFAULT_COMPRESSION_CONFIG,
   DEFAULT_CONTEXT_EDITING_CONFIG,
+  DEFAULT_HEADROOM_CONFIG,
   DEFAULT_MCP_ACCESSIBILITY_CONFIG,
   DEFAULT_RTK_CONFIG,
   DEFAULT_ULTRA_CONFIG,
   clampMcpAccessibilityConfig,
   type AggressiveConfig,
   type CavemanConfig,
-  type CavemanIntensity,
   type CavemanOutputModeConfig,
   type OutputStyleSelectionEntry,
   type CompressionLanguageConfig,
   type CompressionPipelineStep,
   type CompressionConfig,
   type CompressionMode,
+  DEFAULT_CODEX_RESPONSES_CONFIG,
+  type CodexResponsesConfig,
   type ContextEditingConfig,
   type EngineToggle,
+  type HeadroomConfig,
   type McpAccessibilityConfig,
   type RtkConfig,
-  type SessionDedupConfig,
   type UltraConfig,
 } from "@omniroute/open-sse/services/compression/types.ts";
-import { deriveDefaultPlan } from "@omniroute/open-sse/services/compression/deriveDefaultPlan.ts";
+import { normalizeCompressionExclusions } from "@omniroute/open-sse/services/compression/exclusions.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "@omniroute/open-sse/services/compression/adaptiveCompression/types.ts";
+import { normalizeContextBudgetConfig } from "./compressionContextBudget";
 import {
   isPreserveSystemPromptMode,
   normalizePreserveSystemPromptMode,
 } from "@omniroute/open-sse/services/compression/preserveSystemPromptMode.ts";
 import { maybePrewarmUltraSlmOnConfig } from "@omniroute/open-sse/services/compression/ultra.ts";
+import { applyDetailConfigUpdate, buildDetailConfigDefaults } from "./compressionDetailNormalizers";
 
 const NAMESPACE = "compression";
 const COMPRESSION_MODES = new Set<CompressionMode>([
@@ -45,7 +50,9 @@ const COMPRESSION_MODES = new Set<CompressionMode>([
   "aggressive",
   "ultra",
   "rtk",
+  "codex-responses",
   "stacked",
+  "omniglyph",
 ]);
 
 type JsonRecord = Record<string, unknown>;
@@ -226,6 +233,47 @@ function normalizeRtkConfig(value: unknown): RtkConfig {
   };
 }
 
+function normalizeCodexResponsesConfig(value: unknown): CodexResponsesConfig {
+  const record = toRecord(value);
+  const preserveToolNames = Array.isArray(record.preserveToolNames)
+    ? record.preserveToolNames.filter(
+        (name): name is string => typeof name === "string" && name.trim().length > 0
+      )
+    : DEFAULT_CODEX_RESPONSES_CONFIG.preserveToolNames;
+  return {
+    ...DEFAULT_CODEX_RESPONSES_CONFIG,
+    enabled:
+      typeof record.enabled === "boolean" ? record.enabled : DEFAULT_CODEX_RESPONSES_CONFIG.enabled,
+    minBytes: boundedInt(record.minBytes, DEFAULT_CODEX_RESPONSES_CONFIG.minBytes, 0, 2_000_000),
+    maxOutputBytes: boundedInt(
+      record.maxOutputBytes,
+      DEFAULT_CODEX_RESPONSES_CONFIG.maxOutputBytes,
+      1,
+      10_000_000
+    ),
+    maxCandidateBytes: boundedInt(
+      record.maxCandidateBytes,
+      DEFAULT_CODEX_RESPONSES_CONFIG.maxCandidateBytes,
+      1,
+      2_000_000
+    ),
+    maxLines: boundedInt(record.maxLines, DEFAULT_CODEX_RESPONSES_CONFIG.maxLines, 1, 10_000),
+    minSearchMatches: boundedInt(
+      record.minSearchMatches,
+      DEFAULT_CODEX_RESPONSES_CONFIG.minSearchMatches,
+      2,
+      10_000
+    ),
+    minLogLines: boundedInt(
+      record.minLogLines,
+      DEFAULT_CODEX_RESPONSES_CONFIG.minLogLines,
+      2,
+      10_000
+    ),
+    preserveToolNames: [...new Set(preserveToolNames.map((name) => name.trim()))],
+  };
+}
+
 function normalizeLanguageConfig(value: unknown): CompressionLanguageConfig {
   const record = toRecord(value);
   const defaultLanguage =
@@ -261,7 +309,24 @@ function normalizeContextEditingConfig(value: unknown): ContextEditingConfig {
   };
 }
 
-const STACKED_PIPELINE_ENGINE_IDS = new Set(ENGINE_IDS);
+// Engines allowed in the global stackedPipeline setting. MUST stay in sync with the
+// compression-combo KNOWN_ENGINE_IDS (src/lib/db/compressionCombos.ts) and with
+// stackedPipelineStepSchema / ENGINE_CATALOG — otherwise the global setting silently
+// strips engines the combo path accepts (B-PIPELINE-DIVERGENCE / #6747).
+const STACKED_PIPELINE_ENGINE_IDS = new Set([
+  "lite",
+  "caveman",
+  "aggressive",
+  "ultra",
+  "rtk",
+  "codex-responses",
+  "headroom",
+  "session-dedup",
+  "ccr",
+  "llmlingua",
+  "relevance",
+  "omniglyph",
+]);
 
 export function normalizeStackedPipeline(value: unknown): CompressionPipelineStep[] {
   const source = Array.isArray(value) ? value : (DEFAULT_COMPRESSION_CONFIG.stackedPipeline ?? []);
@@ -364,6 +429,15 @@ function normalizeAggressiveConfig(value: unknown): AggressiveConfig {
   };
 }
 
+function normalizeHeadroomConfig(value: unknown): HeadroomConfig {
+  const record = toRecord(value);
+  return {
+    ...DEFAULT_HEADROOM_CONFIG,
+    // Align with engine schema (min 2) and smartcrusher DEFAULT_MIN_ROWS (8).
+    minRows: boundedInt(record.minRows, DEFAULT_HEADROOM_CONFIG.minRows, 2, 10000),
+  };
+}
+
 function normalizeUltraConfig(value: unknown): UltraConfig {
   const record = toRecord(value);
   const modelPath = typeof record.modelPath === "string" ? record.modelPath.trim() : "";
@@ -397,21 +471,6 @@ function normalizeUltraConfig(value: unknown): UltraConfig {
   };
 }
 
-const DEFAULT_SESSION_DEDUP_CONFIG: SessionDedupConfig = { minBlockChars: 80, fuzzy: false };
-
-function normalizeSessionDedupConfig(value: unknown): SessionDedupConfig {
-  const record = toRecord(value);
-  return {
-    minBlockChars: boundedInt(
-      record.minBlockChars,
-      DEFAULT_SESSION_DEDUP_CONFIG.minBlockChars,
-      1,
-      100000
-    ),
-    fuzzy: typeof record.fuzzy === "boolean" ? record.fuzzy : DEFAULT_SESSION_DEDUP_CONFIG.fuzzy,
-  };
-}
-
 // Single-mode → engine id mapping. Mirrors deriveDefaultPlan's SINGLE_MODE_OF: a legacy
 // install whose only signal is `defaultMode` should turn on the engine that mode runs, so the
 // derived engines map matches the old behavior. Keep conservative — these are the only modes
@@ -422,6 +481,8 @@ const SINGLE_MODE_ENGINE: Partial<Record<CompressionMode, string>> = {
   aggressive: "aggressive",
   ultra: "ultra",
   rtk: "rtk",
+  omniglyph: "omniglyph",
+  "codex-responses": "codex-responses",
 };
 
 function normalizeEngineToggle(value: unknown): EngineToggle | null {
@@ -546,14 +607,19 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
     cavemanOutputMode: { ...DEFAULT_CAVEMAN_OUTPUT_MODE_CONFIG },
     outputStyles: [],
     rtkConfig: { ...DEFAULT_RTK_CONFIG },
+    codexResponsesConfig: { ...DEFAULT_CODEX_RESPONSES_CONFIG },
     languageConfig: { ...DEFAULT_COMPRESSION_LANGUAGE_CONFIG },
     stackedPipeline: normalizeStackedPipeline(undefined),
     aggressive: normalizeAggressiveConfig(undefined),
     ultra: normalizeUltraConfig(undefined),
-    sessionDedup: normalizeSessionDedupConfig(undefined),
+    headroom: normalizeHeadroomConfig(undefined),
+    ...buildDetailConfigDefaults(),
+    contextBudget: normalizeContextBudgetConfig(undefined),
     contextEditing: { ...DEFAULT_CONTEXT_EDITING_CONFIG },
+    liveZone: { enabled: false },
     engines: {},
     activeComboId: null,
+    exclusions: [],
   };
 
   // Tracks whether a usable stored `engines` row was found. When absent (pre-migration-102 install)
@@ -642,6 +708,9 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
       case "rtkConfig":
         config.rtkConfig = normalizeRtkConfig(parsed);
         break;
+      case "codexResponsesConfig":
+        config.codexResponsesConfig = normalizeCodexResponsesConfig(parsed);
+        break;
       case "languageConfig":
         config.languageConfig = normalizeLanguageConfig(parsed);
         break;
@@ -653,11 +722,22 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
       case "ultraConfig":
         config.ultra = normalizeUltraConfig(parsed);
         break;
+      case "headroom":
+      case "headroomConfig":
+        config.headroom = normalizeHeadroomConfig(parsed);
+        break;
       case "sessionDedup":
-        config.sessionDedup = normalizeSessionDedupConfig(parsed);
+      case "ccr":
+        applyDetailConfigUpdate(config, key, parsed);
+        break;
+      case "contextBudget":
+        config.contextBudget = normalizeContextBudgetConfig(parsed);
         break;
       case "contextEditing":
         config.contextEditing = normalizeContextEditingConfig(parsed);
+        break;
+      case "liveZone":
+        config.liveZone = { enabled: toRecord(parsed).enabled === true };
         break;
       case "engines":
         storedEngines = parseStoredEnginesMap(parsed);
@@ -672,6 +752,9 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
         break;
       case "ultraSlmPrewarm":
         config.ultraSlmPrewarm = parsed === true;
+        break;
+      case "exclusions":
+        config.exclusions = normalizeCompressionExclusions(parsed);
         break;
     }
   }
@@ -723,42 +806,6 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
   return config;
 }
 
-function getStoredJson(db: ReturnType<typeof getDbInstance>, key: string): unknown {
-  const row = db
-    .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
-    .get(NAMESPACE, key) as { value: string } | undefined;
-  return parseJsonSafe(row?.value ?? null);
-}
-
-function getStoredCompressionEnabled(db: ReturnType<typeof getDbInstance>): boolean | null {
-  const stored = getStoredJson(db, "enabled");
-  return typeof stored === "boolean" ? stored : null;
-}
-
-const MODE_ENGINE: Partial<Record<CompressionMode, string>> = {
-  lite: "lite",
-  standard: "caveman",
-  aggressive: "aggressive",
-  ultra: "ultra",
-  rtk: "rtk",
-};
-
-function compressionModeDisabledByEngines(
-  mode: CompressionMode | null,
-  engines: Record<string, EngineToggle>
-): boolean {
-  if (!mode || mode === "off") return false;
-  if (mode === "stacked") return deriveDefaultPlan(engines, true).mode === "off";
-  const engine = MODE_ENGINE[mode];
-  return !!engine && engines[engine]?.enabled !== true;
-}
-
-function readCompressionMode(value: unknown): CompressionMode | null {
-  return typeof value === "string" && COMPRESSION_MODES.has(value as CompressionMode)
-    ? (value as CompressionMode)
-    : null;
-}
-
 export async function updateCompressionSettings(
   updates: Partial<CompressionConfig>
 ): Promise<CompressionConfig> {
@@ -768,70 +815,15 @@ export async function updateCompressionSettings(
   );
 
   const tx = db.transaction(() => {
-    let enginesSync: {
-      engines: Record<string, EngineToggle>;
-      plan: ReturnType<typeof deriveDefaultPlan>;
-    } | null = null;
-
     for (const [key, value] of Object.entries(updates)) {
       if (value === undefined) continue;
       // Persist the engines map as ONE sanitized JSON row so the read path always gets
       // well-formed { enabled, level? } toggles for known engine ids.
       if (key === "engines") {
-        const engines = sanitizeEnginesForWrite(value);
-        insert.run(NAMESPACE, key, JSON.stringify(engines));
-
-        const masterEnabled = updates.enabled ?? getStoredCompressionEnabled(db) ?? true;
-        enginesSync = { engines, plan: deriveDefaultPlan(engines, masterEnabled === true) };
+        insert.run(NAMESPACE, key, JSON.stringify(sanitizeEnginesForWrite(value)));
         continue;
       }
       insert.run(NAMESPACE, key, JSON.stringify(value));
-    }
-
-    if (enginesSync) {
-      const { engines, plan } = enginesSync;
-
-      // Keep legacy runtime fields in sync with the engine toggle map. This runs AFTER the
-      // generic writes so full-config UI saves cannot overwrite the authoritative engine-derived
-      // plan with stale defaultMode/stackedPipeline/autoTrigger rows.
-      insert.run(NAMESPACE, "defaultMode", JSON.stringify(plan.mode as CompressionMode));
-      insert.run(NAMESPACE, "stackedPipeline", JSON.stringify(plan.stackedPipeline));
-      insert.run(NAMESPACE, "enginesExplicit", JSON.stringify(true));
-
-      const requestedAutoTrigger = readCompressionMode(
-        Object.prototype.hasOwnProperty.call(updates, "autoTriggerMode")
-          ? updates.autoTriggerMode
-          : getStoredJson(db, "autoTriggerMode")
-      );
-      if (compressionModeDisabledByEngines(requestedAutoTrigger, engines)) {
-        insert.run(NAMESPACE, "autoTriggerMode", JSON.stringify(plan.mode as CompressionMode));
-      }
-
-      // Sync legacy runtime caveman config with the authoritative engine toggle map.
-      // The UI engine grid only writes `engines`; without this, cavemanConfig stays stale
-      // and the runtime may ignore the selected intensity or stay disabled.
-      const currentCaveman = getStoredJson(db, "cavemanConfig");
-      if (engines.caveman?.enabled === true) {
-        const level = engines.caveman?.level;
-        const intensity: CavemanIntensity =
-          level === "lite" || level === "full" || level === "ultra" ? level : "full";
-        insert.run(
-          NAMESPACE,
-          "cavemanConfig",
-          JSON.stringify({ ...toRecord(currentCaveman), enabled: true, intensity })
-        );
-      } else {
-        insert.run(
-          NAMESPACE,
-          "cavemanConfig",
-          JSON.stringify({ ...toRecord(currentCaveman), enabled: false })
-        );
-        insert.run(
-          NAMESPACE,
-          "cavemanOutputMode",
-          JSON.stringify({ enabled: false, intensity: "lite", autoClarity: true })
-        );
-      }
     }
   });
 

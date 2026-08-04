@@ -13,7 +13,17 @@ export const RESET_WINDOW_NAMES = ["weekly", "session", "monthly"] as const;
 export type ComboRetryAfter = string | number | Date;
 
 export type ComboErrorBody = {
-  error?: { code?: string | null; message?: string | null } | string;
+  error?:
+    | {
+        code?: string | null;
+        message?: string | null;
+        // buildModelCooldownBody (open-sse/utils/error.ts) nests its retry hint
+        // here instead of at the top level — see the retryAfter fallback in
+        // combo.ts's dispatchWithCooldownRetry error extraction.
+        retry_after?: string | null;
+        reset_seconds?: number | null;
+      }
+    | string;
   message?: string | null;
   retryAfter?: ComboRetryAfter | null;
 } | null;
@@ -70,6 +80,8 @@ export type ComboRelayOptions = {
   mode?: string | null;
   /** Per-request X-OmniRoute-Budget value (hard cost ceiling in USD) — #6023. */
   budgetCap?: number | null;
+  /** Per-request X-OmniRoute-Budget-Fallback value ("cheapest" | "strict") — #3470. */
+  budgetFallback?: "cheapest" | "strict" | null;
   [key: string]: unknown;
 };
 
@@ -107,6 +119,12 @@ export type HistoricalLatencyStatsEntry = {
   p95LatencyMs?: number;
   latencyStdDev?: number;
   successRate?: number;
+  /** Mean time-to-first-token (ms) from getModelLatencyStats() (#6875). */
+  avgTtftMs?: number;
+  /** Mean end-to-end request latency (ms) from getModelLatencyStats() (#6875). */
+  avgE2ELatencyMs?: number;
+  /** Mean output tokens/sec from getModelLatencyStats() (#6875). */
+  avgTokensPerSecond?: number;
 };
 
 export type AutoProviderCandidate = ProviderCandidate & {
@@ -151,6 +169,14 @@ export type ResolvedComboTarget = {
   label: string | null;
   failoverBeforeRetry?: unknown;
   trafficType?: "production" | "shadow";
+  /**
+   * Fingerprint-based account pin resolved from a combo builder composite
+   * connectionId (`${rowId}|fp|${fingerprint}`, see
+   * `expandTargetsByFingerprints` in `./fingerprintExpansion.ts`, #6696).
+   * Set only for fingerprint-provider targets (mimocode/mcode/opencode) that
+   * were pinned to one specific account.
+   */
+  pinnedFingerprint?: string;
 };
 
 export type ShadowRoutingConfig = {

@@ -10,6 +10,8 @@ import { relevanceEngine } from "./relevance/index.ts";
 import { ponytailEngine } from "./ponytail/index.ts";
 import { llmCompressorEngine } from "./llm/index.ts";
 import { readLifecycleEngine } from "./readLifecycle/index.ts";
+import { omniglyphEngine } from "./omniglyphAdapter.ts";
+import { codexResponsesEngine } from "./codexResponses/index.ts";
 
 let registered = false;
 
@@ -27,6 +29,7 @@ export function registerBuiltinCompressionEngines(): void {
     { id: "aggressive", engine: aggressiveEngine },
     { id: "ultra", engine: ultraEngine },
     { id: "rtk", engine: rtkEngine },
+    { id: "codex-responses", engine: codexResponsesEngine },
     { id: "session-dedup", engine: sessionDedupEngine },
     { id: "headroom", engine: headroomEngine },
     { id: "ccr", engine: ccrEngine },
@@ -36,6 +39,7 @@ export function registerBuiltinCompressionEngines(): void {
     { id: "ponytail", engine: ponytailEngine },
     { id: "llm", engine: llmCompressorEngine },
     { id: "read-lifecycle", engine: readLifecycleEngine },
+    { id: "omniglyph", engine: omniglyphEngine },
   ];
 
   for (const { id, engine } of engines) {

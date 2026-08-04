@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * Token Usage Tracking - Extract, normalize, estimate and log token usage
  */
@@ -114,12 +113,28 @@ function getTimeString() {
 }
 
 /**
- * Add buffer tokens to usage to prevent context errors
+ * Compute the context-window safety margin for a usage object, WITHOUT touching the
+ * client-visible/metering fields (prompt_tokens/input_tokens/total_tokens).
+ *
+ * #8331: the buffer used to be added directly into those fields, so a real 69-token
+ * request was reported to the client as 2069 while call_logs/the raw upstream body kept
+ * the true 69 — a metering/billing discrepancy. The safety margin this function computes
+ * is intentionally scoped to context-fit/CLI-headroom use only (see module docstring
+ * above); it is surfaced here as separate `context_budget_*` fields so it never gets
+ * confused with reported token accounting again. `filterUsageForFormat()` does not
+ * allow-list these fields, so they are stripped before any response reaches a client.
  * @param {object} usage - Usage object (supported format)
- * @returns {object} Usage with buffer added
+ * @returns {object} Usage with context_budget_* fields added (metering fields unchanged)
  */
 export function addBufferToUsage(usage) {
   if (!usage || typeof usage !== "object") return usage;
+
+  // Heuristic estimates (web/cookie providers with no upstream metering) should
+  // not get the safety buffer — otherwise a 6-token "hi"/"PONG" becomes a flat
+  // ~2000 for every request and looks like fake metering.
+  if ((usage as { estimated?: unknown }).estimated === true) {
+    return usage;
+  }
 
   const buffer = getBufferTokens();
   if (buffer === 0) return usage;
@@ -128,20 +143,21 @@ export function addBufferToUsage(usage) {
 
   // Claude format
   if (result.input_tokens !== undefined) {
-    result.input_tokens += buffer;
+    result.context_budget_input_tokens = result.input_tokens + buffer;
   }
 
   // OpenAI format
   if (result.prompt_tokens !== undefined) {
-    result.prompt_tokens += buffer;
+    result.context_budget_prompt_tokens = result.prompt_tokens + buffer;
   }
 
-  // Calculate or update total_tokens
+  // Calculate or update the context-budget total
   if (result.total_tokens !== undefined) {
-    result.total_tokens += buffer;
+    result.context_budget_total_tokens = result.total_tokens + buffer;
   } else if (result.prompt_tokens !== undefined && result.completion_tokens !== undefined) {
-    // Calculate total_tokens if not exists
+    // Calculate total_tokens if not exists (real value — not buffered)
     result.total_tokens = result.prompt_tokens + result.completion_tokens;
+    result.context_budget_total_tokens = result.total_tokens + buffer;
   }
 
   return result;
@@ -312,7 +328,7 @@ export function normalizeResponsesUsageToOpenAI(usage) {
 export function normalizeUsage(usage) {
   if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
 
-  const normalized = {};
+  const normalized: Record<string, number> = {};
   const assignNumber = (key, value) => {
     if (value === undefined || value === null) return;
     const numeric = Number(value);
@@ -328,6 +344,16 @@ export function normalizeUsage(usage) {
   assignNumber("cache_creation_input_tokens", usage?.cache_creation_input_tokens);
   assignNumber("cached_tokens", usage?.cached_tokens);
   assignNumber("reasoning_tokens", usage?.reasoning_tokens);
+  // xAI's exact provider-reported cost (port of decolua/9router#2453, capability A —
+  // @ryanngit). Ticks → USD conversion happens in costCalculator.ts, not here.
+  const exactCostTicks = usage?.cost_in_usd_ticks;
+  if (
+    typeof exactCostTicks === "number" &&
+    Number.isFinite(exactCostTicks) &&
+    exactCostTicks >= 0
+  ) {
+    normalized.cost_in_usd_ticks = exactCostTicks;
+  }
 
   if (Object.keys(normalized).length === 0) return null;
   return normalized;
@@ -439,6 +465,8 @@ export function extractUsage(chunk) {
         chunk.usage.completion_tokens_details?.reasoning_tokens ??
         chunk.usage.output_tokens_details?.reasoning_tokens ??
         chunk.usage.reasoning_tokens,
+      // xAI's exact provider-reported cost (port of decolua/9router#2453, capability A).
+      cost_in_usd_ticks: chunk.usage.cost_in_usd_ticks,
     });
   }
 

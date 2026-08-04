@@ -1,4 +1,5 @@
 import { getUpstreamTimeoutConfig } from "@/shared/utils/runtimeTimeouts";
+import type { LegacyProvider } from "./providerRegistry.ts";
 import { loadProviderCredentials } from "./credentialLoader.ts";
 import { generateLegacyProviders } from "./providerRegistry.ts";
 
@@ -47,10 +48,48 @@ export const FETCH_BODY_TIMEOUT_MS = upstreamTimeouts.fetchBodyTimeoutMs;
 // Provider configurations
 // OAuth credentials read from env vars with hardcoded fallbacks for backward compatibility.
 // Use provider-credentials.json or env vars to override in production.
-export const PROVIDERS = generateLegacyProviders();
+// Lazy PROVIDERS: deferred until first property access to speed up startup.
+// The Proxy defers `generateLegacyProviders()` + `loadProviderCredentials()`
+// from module-evaluation time to the first read of any provider property.
+let _providers: Record<string, LegacyProvider> | null = null;
+function initProviders(): Record<string, LegacyProvider> {
+  if (!_providers) {
+    const p = generateLegacyProviders();
+    loadProviderCredentials(p);
+    _providers = p;
+  }
+  return _providers;
+}
 
-// Merge external credentials from data/provider-credentials.json (if present)
-loadProviderCredentials(PROVIDERS);
+export const PROVIDERS: Record<string, LegacyProvider> = new Proxy(
+  {} as Record<string, LegacyProvider>,
+  {
+    get(_, prop) {
+      if (typeof prop === 'symbol') return undefined;
+      return Reflect.get(initProviders(), prop, _providers);
+    },
+    has(_, prop) {
+      if (typeof prop === 'symbol') return false;
+      return Reflect.has(initProviders(), prop);
+    },
+    ownKeys() {
+      return Reflect.ownKeys(initProviders());
+    },
+    getOwnPropertyDescriptor(_, prop) {
+      if (typeof prop === 'symbol') return undefined;
+      return Object.getOwnPropertyDescriptor(initProviders(), prop);
+    },
+    set(_, prop, value) {
+      if (typeof prop === 'symbol') return false;
+      (initProviders() as Record<string, LegacyProvider>)[prop] = value;
+      return true;
+    },
+    deleteProperty(_, prop) {
+      if (typeof prop === 'symbol') return false;
+      return Reflect.deleteProperty(initProviders(), prop);
+    },
+  }
+);
 
 // Claude system prompt
 export const CLAUDE_SYSTEM_PROMPT = "You are Claude Code, Anthropic's official CLI for Claude.";
@@ -75,10 +114,6 @@ export const OAUTH_ENDPOINTS = {
   anthropic: {
     token: "https://api.anthropic.com/v1/oauth/token",
     auth: "https://api.anthropic.com/v1/oauth/authorize",
-  },
-  qwen: {
-    token: "https://chat.qwen.ai/api/v1/oauth2/token", // From CLIProxyAPI
-    auth: "https://chat.qwen.ai/api/v1/oauth2/device/code", // From CLIProxyAPI
   },
   qoder: {
     token: process.env.QODER_OAUTH_TOKEN_URL || "",
@@ -108,6 +143,7 @@ export const PROVIDER_MAX_TOKENS: Record<string, number> = {
   openai: 16384, // GPT-4/4o standard
   anthropic: 65536, // Claude models
   gemini: 65536, // Gemini Studio
+  sensenova: 65536, // SenseNova Token Plan rejects MaxTokens outside [1, 65536]
 };
 
 export const DEFAULT_PROVIDER_MAX_TOKENS = 32000;

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getProviderConnectionById } from "@/models";
+import { getCachedProviderConnectionById } from "@/lib/localDb";
 import { getSyncedAvailableModelsForConnection } from "@/lib/db/models";
 import { selectModelsForImport } from "@/shared/utils/freeModels";
 import {
@@ -10,12 +10,14 @@ import { saveCallLog } from "@/lib/usage/callLogs";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
 import {
   buildModelSyncInternalHeaders,
+  fetchModelSyncInternal,
+  getModelSyncInternalBaseUrl,
   isModelSyncInternalRequest,
 } from "@/shared/services/modelSyncScheduler";
 import { autoSyncCodexProfilesFromLiveCatalog } from "@/lib/cli-helper/codexProfileAutoSync";
 import { autoSyncClaudeProfilesFromLiveCatalog } from "@/lib/cli-helper/claudeProfileAutoSync";
+import { providerUsesCuratedModelsOnly } from "@/lib/providers/modelListingCapability";
 import { GET as getProviderModels } from "../models/route";
-import { getRuntimePorts } from "@/lib/runtime/ports";
 import { isDegradedLocalCatalog } from "./degradedLocalCatalog";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 
@@ -181,7 +183,7 @@ export type EnsureReadyOptions = {
 export async function ensureLoopbackServerReady(opts: EnsureReadyOptions = {}): Promise<void> {
   if (__loopbackReadyPromise != null) return __loopbackReadyPromise;
   __loopbackReadyPromise = (async () => {
-    const f = opts.fetch ?? fetch;
+    const f = opts.fetch ?? fetchModelSyncInternal;
     const maxWaitMs = opts.maxWaitMs ?? 30_000;
     const pollMs = opts.pollMs ?? 250;
     const deadline = Date.now() + maxWaitMs;
@@ -192,10 +194,10 @@ export async function ensureLoopbackServerReady(opts: EnsureReadyOptions = {}): 
         // readiness — we only care that the dispatcher succeeds (no
         // ECONNREFUSED). Using a synthetic connection id so no real DB lookup
         // is needed; the 404 is sufficient proof the server is dispatching.
-        const probePort = getRuntimePorts().port;
         const res = await f(
-          `http://127.0.0.1:${probePort}/api/providers/__readiness_probe__/models`,
+          `${getModelSyncInternalBaseUrl()}/api/providers/__readiness_probe__/models`,
           {
+            redirect: "error",
             signal: AbortSignal.timeout(2_000),
           }
         );
@@ -265,7 +267,7 @@ export async function selfFetchWithRetry(
   url: string,
   opts: SelfFetchWithRetryOptions = {}
 ): Promise<Response> {
-  const f = opts.fetch ?? fetch;
+  const f = opts.fetch ?? fetchModelSyncInternal;
   // Reduced from 5 to 3: the readiness gate now handles the boot race.
   // Retries here are only for transient failures after server is confirmed up.
   const maxRetries = opts.maxRetries ?? 3;
@@ -322,30 +324,20 @@ export async function selfFetchWithRetry(
 // ---------------------------------------------------------------------------
 
 async function fetchProviderModelsForSync(request: Request, connectionId: string) {
-  // Construct a safe localhost URL from the incoming request's origin.
-  // The route only accepts authenticated or internal-scheduler requests,
-  // and the path is hardcoded — no user-controlled URL components reach fetch.
-  // Always use 127.0.0.1 (IPv4) — never "localhost" which may resolve to ::1
-  // (IPv6) in containers, causing TypeError: fetch failed even when the HTTP
-  // server is bound only to 0.0.0.0 (IPv4 only).
-  const SAFE_HOSTS = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
-  const incomingUrl = new URL(request.url);
-  const loopbackPort =
-    SAFE_HOSTS.has(incomingUrl.hostname) && incomingUrl.port
-      ? incomingUrl.port
-      : String(getRuntimePorts().port);
-  const safeOrigin = `http://127.0.0.1:${loopbackPort}`;
-  const modelsPath = `/api/providers/${encodeURIComponent(connectionId)}/models?refresh=true`;
+  const safeOrigin = getModelSyncInternalBaseUrl();
+  const modelsPath =
+    `/api/providers/${encodeURIComponent(connectionId)}/models` +
+    "?refresh=true&excludeCustom=true";
   const headers = {
     cookie: request.headers.get("cookie") || "",
     ...buildModelSyncInternalHeaders(),
   };
 
-  const targetUrl = new URL(modelsPath, safeOrigin).href;
+  const targetUrl = `${safeOrigin}${modelsPath}`;
 
   // Wrap fetch so it forwards the required headers on every retry attempt.
   const fetchWithHeaders: typeof fetch = (input, init) =>
-    fetch(input as string, { ...init, headers });
+    fetchModelSyncInternal(input, { ...init, headers, redirect: "error" });
 
   return selfFetchWithRetry(targetUrl, {
     fetch: fetchWithHeaders,
@@ -377,9 +369,12 @@ async function fetchProviderModelsForSync(request: Request, connectionId: string
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const start = Date.now();
   const { id } = await params;
+  const requestUrl = new URL(request.url);
   const mode = (
-    new URL(request.url).searchParams.get("mode") === "import" ? "merge" : "sync"
+    requestUrl.searchParams.get("mode") === "import" ? "merge" : "sync"
   ) as ManagedModelImportMode;
+  // quiet=1: boot revalidation path — skip chatty ModelSync console lines
+  const quiet = requestUrl.searchParams.get("quiet") === "1";
   let logProvider = "unknown";
   let channelLabel: string | null = null;
 
@@ -391,13 +386,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    const connection = await getProviderConnectionById(id);
+    const connection = await getCachedProviderConnectionById(id);
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
 
     logProvider = toNonEmptyString(connection.provider) || "unknown";
     channelLabel = getModelSyncChannelLabel(connection);
+    if (providerUsesCuratedModelsOnly(logProvider)) {
+      return NextResponse.json({
+        provider: logProvider,
+        connectionId: id,
+        source: "curated",
+        skipped: "curated-models-only",
+        syncedModels: 0,
+        availableModelsCount: 0,
+        models: [],
+      });
+    }
     const previousSyncedAvailableModelsForConnection = await getSyncedAvailableModelsForConnection(
       logProvider,
       id
@@ -524,7 +530,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const updatedCount = importedChanges.updated;
     const shouldLog = modelChanges.total > 0 || customModelChanges.total > 0;
 
-    if (shouldLog) {
+    if (shouldLog && !quiet) {
       void autoSyncCodexProfilesFromLiveCatalog(request, `model-sync:${logProvider}`)
         .then((syncResult) => {
           if (syncResult.ok) {
@@ -562,6 +568,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             err?.message || err
           );
         });
+    } else if (shouldLog && quiet) {
+      // Still update profiles; suppress console noise from boot revalidation.
+      void autoSyncCodexProfilesFromLiveCatalog(request, `model-sync:${logProvider}`).catch(
+        () => undefined
+      );
+      void autoSyncClaudeProfilesFromLiveCatalog(request, `model-sync:${logProvider}`).catch(
+        () => undefined
+      );
     }
 
     if (shouldLog) {

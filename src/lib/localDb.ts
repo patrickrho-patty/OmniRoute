@@ -9,32 +9,30 @@
 export {
   // Provider Connections
   getProviderConnections,
+  getProviderConnectionsCount,
   getProviderConnectionById,
   createProviderConnection,
   updateProviderConnection,
+  resetConnectionBackoff,
   clearConnectionErrorIfUnchanged,
+  touchConnectionLastUsed,
   deleteProviderConnection,
   deleteProviderConnections,
   deleteProviderConnectionsByProvider,
   reorderProviderConnections,
   cleanupProviderConnections,
-
-  // Provider Nodes
   getProviderNodes,
+  getProviderNodesCount,
   getProviderNodeById,
   resolveProviderNodeForConnection,
   createProviderNode,
   updateProviderNode,
   deleteProviderNode,
-
   // T05: Rate-limit DB persistence (survives token refresh)
   setConnectionRateLimitUntil,
   isConnectionRateLimited,
   getRateLimitedConnections,
-
-  // T05 startup recovery: clear stale transient cooldowns left by a prior crash
   clearStaleCrashCooldowns,
-
   // T13: Stale quota display fix (zero out usage after window resets)
   getEffectiveQuotaUsage,
   formatResetCountdown,
@@ -67,10 +65,10 @@ export {
   getModelIsHidden,
   setModelIsHidden,
   getHiddenModelsByProvider,
-
   // Synced Available Models
   getSyncedAvailableModels,
   getAllSyncedAvailableModels,
+  getActiveProvidersWithSyncedModel,
   replaceSyncedAvailableModelsForConnection,
   deleteSyncedAvailableModelsForConnection,
   deleteSyncedAvailableModelsForProvider,
@@ -82,6 +80,7 @@ export type { ModelCompatPerProtocol, ModelCompatPatch, SyncedAvailableModel } f
 export {
   // Combos
   getCombos,
+  getCombosCount,
   getComboById,
   getComboByName,
   getComboByNameInsensitive,
@@ -90,15 +89,15 @@ export {
   reorderCombos,
   deleteCombo,
 } from "./db/combos";
-
 export * from "./db/compressionCacheStats";
 export * from "./db/compressionCombos";
+export * from "./db/compressionContextBudget";
 export * from "./db/compressionRunTelemetry";
 export * from "./db/modelContextOverrides";
 
 export {
-  // API Keys
   getApiKeys,
+  getApiKeysCount,
   getApiKeyById,
   createApiKey,
   deleteApiKey,
@@ -136,6 +135,7 @@ export type {
 export {
   // Settings
   getSettings,
+  getSettingsRevision,
   updateSettings,
   isCloudEnabled,
 
@@ -238,6 +238,9 @@ export {
   getCachedSettings,
   getCachedPricing,
   getCachedProviderConnections,
+  getCachedRawProviderConnections,
+  getCachedProviderConnectionById,
+  getCachedProviderNodes,
   getCachedLKGP,
   setCachedLKGP,
   invalidateDbCache,
@@ -312,7 +315,8 @@ export type { FileRecord } from "./db/files";
 export type { BatchItemCheckpoint, BatchRecord } from "./db/batches";
 
 export type { ModelComboMapping } from "./db/modelComboMappings";
-
+export * from "./db/reasoningRoutingRules";
+export * from "./db/autoCandidateOverrides";
 export {
   // Webhooks
   getWebhooks,
@@ -559,6 +563,7 @@ export type {
 export {
   upsertFreeProxy,
   listFreeProxies,
+  countFreeProxies,
   listFreeProxiesBySource,
   getFreeProxyById,
   markFreeProxyInPool,
@@ -568,9 +573,12 @@ export {
   pruneStaleFreeProxies,
   getFreeProxyStats,
   recordFreeProxySync,
+  recordFreeProxySyncErrors,
+  clearFreeProxySyncErrors,
+  getFreeProxySyncErrors,
 } from "./db/freeProxies";
 
-export type { FreeProxyRecord, FreeProxyStats } from "./db/freeProxies";
+export type { FreeProxyRecord, FreeProxyStats, FreeProxySyncErrors } from "./db/freeProxies";
 
 export {
   listPlaygroundPresets,
@@ -589,15 +597,15 @@ export {
   markAllMemoriesNeedReindex,
   getMemoryReindexQueue,
   countMemoryReindexPending,
+  type MemoryVecMeta,
 } from "./db/memoryVec";
-
-export type { MemoryVecMeta } from "./db/memoryVec";
 // T-A-F2: AgentBridge state/mappings/bypass + Inspector custom hosts/sessions
 export * from "./db/agentBridgeState";
 export * from "./db/agentBridgeMappings";
 export * from "./db/agentBridgeBypass";
 export * from "./db/inspectorCustomHosts";
 export * from "./db/inspectorSessions";
+export * from "./db/omp";
 // Quota Sharing — Group B (planos 16+22)
 export {
   listPools,
@@ -676,7 +684,7 @@ export {
   listApiKeyContextSources,
 } from "./db/apiKeyContextSources";
 export type { ApiKeyContextSource } from "./db/apiKeyContextSources";
-
+export * from "./db/localCorpus";
 export { sumUsageTokensThisMonth } from "./db/usageSummary";
 
 export {
@@ -788,10 +796,15 @@ export type {
 // proxy_logs — export query (#3500 slice 4)
 // ---------------------------------------------------------------------------
 export { exportProxyLogsSince } from "./db/proxyLogs";
-
 // ---------------------------------------------------------------------------
 // Per-connection 429 cooldown wrappers (#5957 / #5958 — Issue 1 follow-ups)
 // Logic lives in db/providers/rateLimit.ts (Hard Rule #2 — localDb is re-export
 // only); re-exported here for the historical localDb import contract.
 // ---------------------------------------------------------------------------
 export { markConnectionRateLimitedUntil, clearConnectionRateLimit } from "./db/providers";
+// Provider param filters — denylist/allowlist config per provider/model (#6625)
+export * from "./db/paramFilters";
+export * from "./db/interceptionRules"; // Per-model web-search/web-fetch interception rules (#3384)
+export * from "./db/relayProbeStats"; // Relay probe latency/health stats (#6909)
+export * from "./db/ccDiscoveryAliases"; // Claude Code discovery-alias gate (flag + per-provider/model overrides)
+export * from "./db/ccDiscoveryMetrics"; // Claude Code discovery-alias usage counters (alias requests + discovery hits)

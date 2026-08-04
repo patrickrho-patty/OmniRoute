@@ -2,13 +2,14 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/shared/components/ThemeProvider";
 import { NextIntlClientProvider } from "next-intl";
-import { getMessages, getLocale } from "next-intl/server";
+import { getMessages, getLocale, getTranslations } from "next-intl/server";
 import { RTL_LOCALES } from "@/i18n/config";
 import { normalizeComplianceEventTypes } from "@/i18n/request";
 import { getSettings } from "@/lib/db/settings";
 import type { Viewport } from "next";
 import { PwaRegister } from "@/shared/components/PwaRegister";
 import { LocaleAutoDetect } from "@/shared/components/LocaleAutoDetect";
+import { BasePathNetworkProvider } from "@/shared/components/BasePathNetworkProvider";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -16,18 +17,19 @@ const inter = Inter({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#0b0f1a",
   viewportFit: "cover",
 };
 
 export async function generateMetadata() {
   const settings = await getSettings();
-  const instanceName = settings?.instanceName || "Patty";
+  const instanceName = settings?.instanceName || "OmniRoute";
   const customFaviconUrl = settings?.customFaviconUrl || settings?.customFaviconBase64;
 
   return {
-    title: instanceName,
-    description: "Patty — where AI becomes everyone's superpower.",
+    title: `${instanceName} — AI Gateway for Multi-Provider LLMs`,
+    description:
+      "OmniRoute is an AI gateway for multi-provider LLMs. One endpoint for all your AI providers.",
     manifest: "/manifest.webmanifest",
     applicationName: instanceName,
     appleWebApp: {
@@ -39,10 +41,13 @@ export async function generateMetadata() {
       "mobile-web-app-capable": "yes",
     },
     icons: {
-      // Single source: favicon.ico (multi-size 16/32/48/256), generated from patty.io's actual
-      // favicon pixels — so the tab shows the EXACT patty.io mark, not a vector approximation.
-      // Declaring only one candidate also avoids the browser cycling between icons ("flickering").
-      icon: customFaviconUrl ? "/api/settings/favicon" : [{ url: "/favicon.ico", sizes: "any" }],
+      icon: customFaviconUrl
+        ? "/api/settings/favicon"
+        : [
+            { url: "/favicon.ico", sizes: "any" },
+            { url: "/favicon.svg", type: "image/svg+xml" },
+            { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
+          ],
       apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
     },
   };
@@ -50,15 +55,45 @@ export async function generateMetadata() {
 
 export default async function RootLayout({ children }) {
   const locale = await getLocale();
-  // `getMessages()` returns only the `auth` namespace on public auth routes
-  // (see src/i18n/request.ts PUBLIC_AUTH_ROUTE fast path) so the served HTML
-  // cannot leak product-identifying strings from other namespaces.
+  const t = await getTranslations("sidebar");
   const messages = normalizeComplianceEventTypes((await getMessages()) as Record<string, unknown>);
   const isRtl = RTL_LOCALES.includes(locale as (typeof RTL_LOCALES)[number]);
 
   return (
     <html lang={locale} dir={isRtl ? "rtl" : "ltr"} suppressHydrationWarning>
       <head>
+        {/* Pre-hydration cleanup: browser extensions (Bitdefender's
+            bis_skin_checked, Grammarly's data-gr-ext-installed, LanguageTool's
+            data-lt-installed, etc.) inject attributes into the DOM after SSR
+            but before React hydrates, causing hydration mismatch warnings in
+            dev. Strip them synchronously and observe for late injections; the
+            observer auto-disconnects after 5s (well past typical hydration). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function () {
+                var ATTRS = ["bis_skin_checked", "data-google-query-id", "data-new-gr-c-s-check-loaded", "data-gr-ext-installed", "data-lt-installed", "data-lt-tmp-id"];
+                function strip(el) {
+                  for (var i = 0; i < ATTRS.length; i++) {
+                    if (el.hasAttribute(ATTRS[i])) el.removeAttribute(ATTRS[i]);
+                  }
+                }
+                strip(document.documentElement);
+                if (typeof MutationObserver === "undefined") return;
+                var obs = new MutationObserver(function (muts) {
+                  for (var i = 0; i < muts.length; i++) {
+                    var m = muts[i];
+                    if (m.type === "attributes" && ATTRS.indexOf(m.attributeName) !== -1) {
+                      m.target.removeAttribute(m.attributeName);
+                    }
+                  }
+                });
+                obs.observe(document.documentElement, { attributes: true, subtree: true, attributeFilter: ATTRS });
+                setTimeout(function () { obs.disconnect(); }, 5000);
+              })();
+            `,
+          }}
+        />
         {/* Material Symbols icon font is self-hosted via globals.css
             (@import "material-symbols/outlined.css") so icons render even when
             the Google Fonts CDN is unreachable (#3695). */}
@@ -105,12 +140,14 @@ export default async function RootLayout({ children }) {
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:px-4 focus:py-2 focus:bg-[#6366f1] focus:text-white focus:rounded-lg focus:text-sm focus:font-semibold focus:shadow-lg"
         >
-          Skip to content
+          {t("skipToContent")}
         </a>
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <PwaRegister />
-          <LocaleAutoDetect />
-          <ThemeProvider>{children}</ThemeProvider>
+          <BasePathNetworkProvider>
+            <PwaRegister />
+            <LocaleAutoDetect />
+            <ThemeProvider>{children}</ThemeProvider>
+          </BasePathNetworkProvider>
         </NextIntlClientProvider>
       </body>
     </html>

@@ -4,14 +4,15 @@ import {
   isDailyQuotaExhausted,
   isOAuthInvalidToken,
 } from "./accountFallback.ts";
-import { getProviderCategory } from "../config/providerRegistry.ts";
+import { isSubscriptionQuotaText } from "./quotaTextCooldowns.ts";
+import { getProviderCategory, getRegistryEntry } from "../config/providerRegistry.ts";
 
 // Terminal stop signals where an empty content payload is still a legitimate,
 // successful completion (truncated at the token limit, or a tool-call turn) —
 // NOT a silent "fake success" failure. Used to avoid rewriting a valid HTTP 200
 // (e.g. a Claude Code `max_tokens: 1` connectivity ping) into a synthetic 502.
 const LEGIT_EMPTY_CLAUDE_STOP = new Set(["max_tokens", "tool_use"]);
-const LEGIT_EMPTY_OPENAI_FINISH = new Set(["length", "tool_calls"]);
+const LEGIT_EMPTY_OPENAI_FINISH = new Set(["length", "tool_calls", "content_filter"]);
 
 export function isEmptyContentResponse(responseBody: unknown): boolean {
   if (!responseBody || typeof responseBody !== "object") return false;
@@ -76,6 +77,7 @@ export const PROVIDER_ERROR_TYPES = {
   CONTEXT_OVERFLOW: "context_overflow",
   OAUTH_INVALID_TOKEN: "oauth_invalid_token",
   EMPTY_CONTENT: "empty_content",
+  MODEL_NOT_FOUND: "model_not_found",
 };
 
 export const CONTEXT_OVERFLOW_SIGNALS = [
@@ -98,6 +100,19 @@ export function isContextOverflow(errorText: string): boolean {
   return CONTEXT_OVERFLOW_REGEX.test(String(errorText || ""));
 }
 
+// Matches phrasing like `Model minimax-m3-free is not supported` or
+// `model "gpt-9" is not supported` — free-tier/aggregator providers name the
+// specific model in the sentence instead of using a fixed fragment like
+// "model not supported". Shared by modelFamilyFallback.ts's
+// isModelUnavailableError() (400/403/404) and this module's 401 branch below,
+// so the same phrasing locks the model out on either status. Bounded
+// quantifier ({0,80}) keeps it ReDoS-safe. (#7268)
+const MODEL_NAMED_UNSUPPORTED_REGEX = /\bmodel\b[^\n]{0,80}\bis not supported\b/i;
+
+export function containsModelUnavailableMessage(errorMessage: string): boolean {
+  return MODEL_NAMED_UNSUPPORTED_REGEX.test(String(errorMessage || "").toLowerCase());
+}
+
 function responseBodyToString(responseBody: unknown): string {
   if (typeof responseBody === "string") return responseBody;
   if (responseBody !== null && typeof responseBody === "object") {
@@ -108,6 +123,30 @@ function responseBodyToString(responseBody: unknown): string {
     }
   }
   return "";
+}
+
+// A provider can return 404 for request-scoped resources (Files API ids,
+// response items, uploads, etc.). These failures describe the request payload,
+// not provider/model health. Keep every expression bounded to avoid ReDoS on
+// upstream-controlled error bodies.
+const RESOURCE_NOT_FOUND_PATTERNS = [
+  /\bfiles?\b[^\n]{0,160}\b(?:not found|does not exist)\b/i,
+  /\b(?:not found|does not exist)\b[^\n]{0,160}\bfiles?\b/i,
+  /\b(?:input[_ -]?file|file[_ -]?id|item|response|vector[_ -]?store|upload)\b[^\n]{0,160}\b(?:not found|does not exist)\b/i,
+  /\b(?:not found|does not exist)\b[^\n]{0,160}\b(?:input[_ -]?file|file[_ -]?id|item|response|vector[_ -]?store|upload)\b/i,
+  /\bfile-[a-z0-9_-]+\b[^\n]{0,160}\b(?:not found|does not exist)\b/i,
+];
+
+/**
+ * Whether an upstream error identifies a missing request-scoped resource.
+ *
+ * Resource signals intentionally take precedence over an outer
+ * `code: "model_not_found"` because compatibility layers may synthesize that
+ * code from the HTTP status before preserving the upstream file error.
+ */
+export function isResourceNotFoundResponse(responseBody: unknown): boolean {
+  const body = responseBodyToString(responseBody);
+  return RESOURCE_NOT_FOUND_PATTERNS.some((pattern) => pattern.test(body));
 }
 
 function shouldPreserveQuotaSignalsFor429(provider?: string | null): boolean {
@@ -122,15 +161,16 @@ export function classifyProviderError(
 ): string | null {
   const bodyStr = responseBodyToString(responseBody);
   const creditsExhausted = isCreditsExhausted(bodyStr);
+  const subscriptionQuotaExhausted = isSubscriptionQuotaText(bodyStr.toLowerCase());
   const accountDeactivated = isAccountDeactivated(bodyStr);
   const oauthInvalid = isOAuthInvalidToken(bodyStr);
   const preserveQuota429 = shouldPreserveQuotaSignalsFor429(provider);
 
-  if (creditsExhausted && [400, 402, 403].includes(statusCode)) {
+  if ((creditsExhausted || subscriptionQuotaExhausted) && [400, 402, 403].includes(statusCode)) {
     return PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED;
   }
 
-  if (creditsExhausted && statusCode === 429 && preserveQuota429) {
+  if ((creditsExhausted || subscriptionQuotaExhausted) && statusCode === 429 && preserveQuota429) {
     return PROVIDER_ERROR_TYPES.QUOTA_EXHAUSTED;
   }
 
@@ -144,9 +184,31 @@ export function classifyProviderError(
     return PROVIDER_ERROR_TYPES.RATE_LIMITED;
   }
 
+  // 404 — model or endpoint not found. Without classification the error
+  // falls through to `return null`, so no cooldown/lockout is applied and the
+  // retry/backoff loop keeps hammering the dead endpoint until the upstream
+  // rate-limits it (404 + 429 storm). Classify as MODEL_NOT_FOUND so the model
+  // gets locked via the cooldown layer and retries stop. Request-scoped
+  // resource errors are excluded because retrying another account/model cannot
+  // make an unknown file/item id valid. (#6827)
+  if (statusCode === 404) {
+    if (isResourceNotFoundResponse(responseBody)) return null;
+    return PROVIDER_ERROR_TYPES.MODEL_NOT_FOUND;
+  }
+
   if (statusCode === 401) {
     if (oauthInvalid) {
       return PROVIDER_ERROR_TYPES.OAUTH_INVALID_TOKEN;
+    }
+    // Some free-tier/aggregator providers return 401 (instead of 404) for a
+    // model the account isn't entitled to, with a body like "Model X is not
+    // supported". Without this check the error falls through to a generic
+    // UNAUTHORIZED classification, which never triggers lockModel() in
+    // chatCore.ts — auto-combo keeps re-selecting the same broken model on
+    // every request. Detect the phrasing here, same as the 404 branch above
+    // always does regardless of body content. (#7268)
+    if (containsModelUnavailableMessage(bodyStr)) {
+      return PROVIDER_ERROR_TYPES.MODEL_NOT_FOUND;
     }
     return accountDeactivated
       ? PROVIDER_ERROR_TYPES.ACCOUNT_DEACTIVATED
@@ -186,12 +248,31 @@ export function classifyProviderError(
     if (provider && getProviderCategory(provider) === "apikey") {
       return null;
     }
+    // No-credential ("authType: none") providers — free, stateless per-request
+    // token proxies like mimocode/theoldllm — have no real account/credential
+    // to revoke. An unrecognized 403 from these is a transient upstream
+    // rate-limit/blocklist signal, not an account ban: keep it recoverable so
+    // the connection cooldown/retry layer handles it instead of a permanent
+    // "banned" state on the first unmatched 403. (#6315, #6345)
+    if (provider && getRegistryEntry(provider)?.authType === "none") {
+      return null;
+    }
     return PROVIDER_ERROR_TYPES.FORBIDDEN;
   }
   if (statusCode >= 500) return PROVIDER_ERROR_TYPES.SERVER_ERROR;
 
-  if (statusCode === 400 && isContextOverflow(bodyStr)) {
-    return PROVIDER_ERROR_TYPES.CONTEXT_OVERFLOW;
+  if (statusCode === 400) {
+    if (isContextOverflow(bodyStr)) {
+      return PROVIDER_ERROR_TYPES.CONTEXT_OVERFLOW;
+    }
+    // Some providers (e.g. Antigravity's Pro-fallback chain, #8136) return a
+    // plain 400 for a model that is no longer available, instead of 404/401.
+    // Without this check the error falls through to `return null`, so
+    // lockModel() never fires and the same dead model gets retried on every
+    // request. Detect the phrasing here, same as the 401 branch above (#7268).
+    if (containsModelUnavailableMessage(bodyStr)) {
+      return PROVIDER_ERROR_TYPES.MODEL_NOT_FOUND;
+    }
   }
 
   return null;

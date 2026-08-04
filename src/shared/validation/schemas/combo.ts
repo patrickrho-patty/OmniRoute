@@ -86,6 +86,7 @@ export const scoringWeightsSchema = z
     tierAffinity: z.number().min(0).max(1).optional().default(0.05),
     specificityMatch: z.number().min(0).max(1).optional().default(0.05),
     contextAffinity: z.number().min(0).max(1).optional().default(0.08),
+    cacheAffinity: z.number().min(0).max(1).optional().default(0),
     resetWindowAffinity: z.number().min(0).max(1).optional().default(0),
   })
   .optional();
@@ -114,6 +115,8 @@ export const compressionModeSchema = z.enum([
   "ultra",
   "rtk",
   "stacked",
+  "codex-responses",
+  "omniglyph",
 ]);
 
 export const comboCompressionOverrideSchema = z.union([z.literal(""), compressionModeSchema]);
@@ -226,6 +229,23 @@ export const comboRuntimeConfigSchema = z
         minPanel: z.coerce.number().int().min(1).max(50).optional(),
         stragglerGraceMs: z.coerce.number().int().min(0).max(120_000).optional(),
         panelHardTimeoutMs: z.coerce.number().int().min(1000).max(600_000).optional(),
+        // Hard cap on panel size (issue #1905) — see FUSION_DEFAULTS.maxPanel in
+        // open-sse/services/fusion.ts. Bounds how many models can be fanned out
+        // and buffered in memory concurrently before the container's heap ceiling
+        // is at risk.
+        maxPanel: z.coerce.number().int().min(1).max(200).optional(),
+      })
+      .strict()
+      .optional(),
+    // Context window requirements for combo target filtering and sorting.
+    // minContextWindow: filters out models with context windows below this threshold.
+    // preferLargeContext: sorts remaining targets by context size (descending).
+    // contextFilterMode: "strict" excludes unknown-context models, "lenient" includes them.
+    contextRequirements: z
+      .object({
+        minContextWindow: z.coerce.number().int().min(0).max(10_000_000).optional(),
+        preferLargeContext: z.boolean().optional(),
+        contextFilterMode: z.enum(["strict", "lenient"]).optional(),
       })
       .strict()
       .optional(),
@@ -268,7 +288,8 @@ export const createComboSchema = z.object({
   models: z.array(comboModelEntry).optional().default([]),
   strategy: comboStrategySchema.optional().default("priority"),
   config: comboRuntimeConfigSchema.optional(),
-  allowedProviders: z.array(z.string().max(200)).optional(),
+  allowedProviders: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+  allowedModelFamilies: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
   system_message: z.string().max(50000).optional(),
   tool_filter_regex: z.string().max(1000).optional(),
   context_cache_protection: z.boolean().optional(),
@@ -278,7 +299,11 @@ export const createComboSchema = z.object({
   // the `dimensions` field (and translated to `outputDimensionality` for Gemini).
   // Stored as a string to match the OpenAI API convention; coerced to number
   // by the embedding handler. Leave unset to use each model's default.
-  dimensions: z.string().regex(/^\d+$/, "dimensions must be a positive integer string").optional().nullable(),
+  dimensions: z
+    .string()
+    .regex(/^\d+$/, "dimensions must be a positive integer string")
+    .optional()
+    .nullable(),
 });
 
 export const updateComboDefaultsSchema = z
@@ -322,13 +347,18 @@ export const updateComboSchema = z
     strategy: comboStrategySchema.optional(),
     config: comboRuntimeConfigSchema.optional(),
     isActive: z.boolean().optional(),
-    allowedProviders: z.array(z.string().max(200)).optional(),
+    allowedProviders: z.array(z.string().trim().min(1).max(200)).max(100).optional(),
+    allowedModelFamilies: z.array(z.string().trim().min(1).max(100)).max(100).optional(),
     system_message: z.string().max(50000).optional(),
     tool_filter_regex: z.string().max(1000).optional(),
     context_cache_protection: z.boolean().optional(),
     context_length: z.number().int().min(1000).max(2000000).optional().nullable(),
     compressionOverride: comboCompressionOverrideSchema.optional(),
-    dimensions: z.string().regex(/^\d+$/, "dimensions must be a positive integer string").optional().nullable(),
+    dimensions: z
+      .string()
+      .regex(/^\d+$/, "dimensions must be a positive integer string")
+      .optional()
+      .nullable(),
   })
   .superRefine((value, ctx) => {
     if (
@@ -339,6 +369,7 @@ export const updateComboSchema = z
       value.config === undefined &&
       value.isActive === undefined &&
       value.allowedProviders === undefined &&
+      value.allowedModelFamilies === undefined &&
       value.system_message === undefined &&
       value.tool_filter_regex === undefined &&
       value.context_cache_protection === undefined &&

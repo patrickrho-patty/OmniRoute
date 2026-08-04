@@ -16,6 +16,10 @@ import {
   appendSearchCitations,
   type DeepSeekSearchResult,
 } from "./deepseek-web/stream-format.ts";
+import {
+  createFinishOnceGuard,
+  createFinishedDrainScheduler,
+} from "./deepseek-web-done-terminator.ts";
 
 export const DEEPSEEK_WEB_BASE = "https://chat.deepseek.com";
 const DEEPSEEK_API_BASE = `${DEEPSEEK_WEB_BASE}/api`;
@@ -200,7 +204,7 @@ function transformSSE(deepseekStream: ReadableStream, model: string): ReadableSt
           }
         };
 
-        const finishStream = () => {
+        const { finishOnce: finishStream, hasFinished } = createFinishOnceGuard(() => {
           const citations = appendSearchCitations(searchResults, streamModel);
           if (citations) {
             ensureRole();
@@ -208,9 +212,16 @@ function transformSSE(deepseekStream: ReadableStream, model: string): ReadableSt
           }
           ensureRole();
           chunk({}, "stop");
+          // OpenAI-compatible clients (SDK, OpenCode) hang without this terminator.
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
-        };
+        });
+
+        // Do not close *immediately* on FINISHED — DeepSeek may still send
+        // search_results afterward. Drain briefly, then always emit
+        // stop + [DONE] so clients do not hang if the upstream body stays open.
+        const { scheduleFinishAfterDrain, clearFinishedDrain, isDrainPending } =
+          createFinishedDrainScheduler(finishStream);
 
         const sendByPath = (raw: string) => {
           const text = formatStreamContent(raw, streamModel);
@@ -326,18 +337,31 @@ function transformSSE(deepseekStream: ReadableStream, model: string): ReadableSt
                 }
               }
 
-              // Do not close on FINISHED — DeepSeek may still send search_results afterward.
               if (p === "response/status" && v === "FINISHED") {
+                scheduleFinishAfterDrain();
                 continue;
+              }
+
+              // Any other post-FINISHED payload extends the drain window so we
+              // still capture late search_results before closing.
+              if (isDrainPending()) {
+                scheduleFinishAfterDrain();
               }
             }
           }
         } catch (err) {
-          controller.error(err);
+          clearFinishedDrain();
+          if (!hasFinished()) {
+            controller.error(err);
+          }
           return;
         }
 
         finishStream();
+      },
+      cancel() {
+        // Best-effort: cancel upstream reader if the client aborts mid-stream.
+        // finishStream is not required here — the controller is already cancelled.
       },
     },
     { highWaterMark: 16384 }

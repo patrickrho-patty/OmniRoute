@@ -35,6 +35,10 @@ export const APP_STAGING_ALLOWED_EXACT_PATHS: string[] = [
   ".env.example",
   "BUILD_SHA",
   "docs/openapi.yaml",
+  // #7065: imported by dist/server-ws.mjs; assembleStandalone copies it but without
+  // this bare entry the prepublish prune deleted it → every `omniroute` boot of the
+  // published 3.8.47 crashed with ERR_MODULE_NOT_FOUND (same class as tls-options/3.8.41).
+  "head-response-guard.cjs",
   "http-method-guard.cjs",
   "open-sse/mcp-server/server.js",
   // LLMLingua ONNX worker — esbuild'd standalone .js spawned via worker_threads
@@ -42,6 +46,7 @@ export const APP_STAGING_ALLOWED_EXACT_PATHS: string[] = [
   "open-sse/services/compression/engines/llmlingua/onnxWorker.js",
   "package.json",
   "peer-stamp.mjs",
+  "main-server-timeouts.mjs",
   "responses-ws-proxy.mjs",
   "scripts/dev/sync-env.mjs",
   "scripts/dev/tls-options.mjs",
@@ -81,6 +86,12 @@ export const PACK_ARTIFACT_ROOT_ALLOWED_EXACT_PATHS: string[] = [
   ".env.example",
   "LICENSE",
   "README.md",
+  "bin/aliasResolver.mjs",
+  // #7808: ESM loader hook split out of bin/aliasResolver.mjs to silence CodeQL
+  // js/incomplete-url-substring-sanitization (the old code built a
+  // `data:text/javascript,...` URL dynamically). Loaded via pathToFileURL() at
+  // runtime; shipped via package.json "files", so it must be allowed here.
+  "bin/aliasResolverHook.mjs",
   "bin/mcp-server.mjs",
   "bin/nodeRuntimeSupport.mjs",
   "bin/omniroute.mjs",
@@ -112,6 +123,9 @@ export const PACK_ARTIFACT_ROOT_ALLOWED_EXACT_PATHS: string[] = [
   "scripts/build/postinstall.mjs",
   "scripts/build/postinstallSupport.mjs",
   "scripts/build/colocateOptionals.mjs",
+  // #7802: imported by scripts/build/postinstall.mjs to repair tls-client-node's
+  // native binary (chatgpt-web/claude-web/grok-web/lmarena/perplexity-web transport).
+  "scripts/build/fixTlsClientNodeBinary.mjs",
   // #5227: imported at runtime by bin/cli/commands/serve.mjs (heap auto-calibration).
   "scripts/build/runtime-env.mjs",
   "scripts/build/sync-env.mjs",
@@ -148,20 +162,38 @@ export const PACK_ARTIFACT_REQUIRED_PATHS: string[] = [
   "dist/server-ws.mjs",
   "dist/responses-ws-proxy.mjs",
   "dist/peer-stamp.mjs",
+  "dist/main-server-timeouts.mjs",
   "dist/http-method-guard.cjs",
   // #5452: regression guard — make check:pack-artifact fail loudly if the TLS
   // opt-in sidecar (imported by dist/server-ws.mjs) ever vanishes from the tarball.
   "dist/tls-options.mjs",
+  // #7065: regression guard for the HEAD response guard (dist/server-ws.mjs import).
+  "dist/head-response-guard.cjs",
   "dist/webdav-handler.mjs",
   "bin/cli/program.mjs",
+  // Direct imports of bin/omniroute.mjs — bin/cli/ is only an allowlist PREFIX, so a
+  // file vanishing from the tarball never fails the unexpected-paths check; only these
+  // required entries make its absence loud (#7065 class; derived + enforced by
+  // tests/unit/pack-artifact-entrypoint-closures.test.ts).
+  "bin/cli/data-dir.mjs",
+  "bin/cli/utils/ensureAndroidCacheDir.mjs",
+  "bin/cli/utils/storageKeyProvision.mjs",
+  "bin/cli/utils/versionFastPath.mjs",
   "bin/mcp-server.mjs",
   "bin/nodeRuntimeSupport.mjs",
   "bin/omniroute.mjs",
+  // #7808: aliasResolver + its hook file. bin/omniroute.mjs imports
+  // bin/aliasResolver.mjs at startup, which in turn registers
+  // bin/aliasResolverHook.mjs as the ESM loader. Both must ship in the tarball
+  // or the CLI fails to boot — list them REQUIRED so a regression is loud.
+  "bin/aliasResolver.mjs",
+  "bin/aliasResolverHook.mjs",
   "package.json",
   "scripts/build/native-binary-compat.mjs",
   "scripts/build/postinstall.mjs",
   "scripts/build/postinstallSupport.mjs",
   "scripts/build/colocateOptionals.mjs",
+  "scripts/build/fixTlsClientNodeBinary.mjs",
   "scripts/build/runtime-env.mjs",
   "src/shared/utils/nodeRuntimeSupport.ts",
 ];

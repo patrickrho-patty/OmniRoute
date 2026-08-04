@@ -6,6 +6,7 @@ import {
 } from "@/lib/compliance/providerAudit";
 import {
   getProviderConnections,
+  getProviderConnectionsCount,
   createProviderConnection,
   deleteProviderConnections,
   updateProviderConnection,
@@ -32,8 +33,10 @@ import {
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { isManagedProviderConnectionId } from "@/lib/providers/catalog";
 import { isApiKeyRevealEnabled, maskStoredApiKey } from "@/lib/apiKeyExposure";
+import { cleanupProviderModelsAfterConnectionDelete } from "@/lib/db/models";
 import {
   buildModelSyncInternalHeaders,
+  fetchModelSyncInternal,
   getModelSyncInternalBaseUrl,
 } from "@/shared/services/modelSyncScheduler";
 
@@ -43,7 +46,18 @@ export async function GET(request: Request) {
   if (authError) return authError;
 
   try {
-    const connections = await getProviderConnections();
+    const url = new URL(request.url);
+    const limitValue = url.searchParams.get("limit");
+    const offsetValue = url.searchParams.get("offset");
+    const parsedLimit = limitValue ? Number.parseInt(limitValue, 10) : undefined;
+    const parsedOffset = offsetValue ? Number.parseInt(offsetValue, 10) : undefined;
+    const limit =
+      Number.isInteger(parsedLimit) && parsedLimit && parsedLimit > 0 ? parsedLimit : undefined;
+    const offset =
+      Number.isInteger(parsedOffset) && parsedOffset && parsedOffset > 0 ? parsedOffset : 0;
+
+    const connections = await getProviderConnections({}, limit, offset);
+    const total = getProviderConnectionsCount();
     const revealKeys = isApiKeyRevealEnabled();
 
     // Hide or mask sensitive fields
@@ -58,7 +72,7 @@ export async function GET(request: Request) {
         : undefined,
     }));
 
-    return NextResponse.json({ connections: safeConnections });
+    return NextResponse.json({ connections: safeConnections, total });
   } catch (error) {
     console.log("Error fetching providers:", error);
     return NextResponse.json({ error: "Failed to fetch providers" }, { status: 500 });
@@ -194,7 +208,11 @@ export async function POST(request: Request) {
       };
       const syncUrl = `${internalOrigin}/api/providers/${encodeURIComponent(newConnection.id)}/sync-models?mode=import`;
       // Intentionally not awaited: this is async/non-blocking work.
-      void fetch(syncUrl, { method: "POST", headers: syncHeaders })
+      void fetchModelSyncInternal(syncUrl, {
+        method: "POST",
+        headers: syncHeaders,
+        redirect: "error",
+      })
         .then((syncRes) => {
           if (!syncRes.ok) {
             console.log(`[providers] Auto-sync failed for ${newConnection.id}: ${syncRes.status}`);
@@ -333,7 +351,22 @@ export async function DELETE(request: Request) {
   }
 
   try {
+    const requestedIds = new Set(body.ids);
+    const deletedConnections = (
+      await getProviderConnections({}, undefined, undefined, ["id", "provider"])
+    ).filter((connection) => requestedIds.has(connection.id));
     const deleted = await deleteProviderConnections(body.ids);
+
+    for (const connection of deletedConnections) {
+      try {
+        await cleanupProviderModelsAfterConnectionDelete(connection.provider, connection.id);
+      } catch (error) {
+        console.error(
+          `Failed to clean up models for deleted ${connection.provider} connection:`,
+          error
+        );
+      }
+    }
 
     await syncToCloudIfEnabled();
 

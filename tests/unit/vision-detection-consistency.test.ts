@@ -27,6 +27,7 @@ const VISION = [
   "llava-1.5-7b",
   "qwen-vl-max",
   "gpt-4o",
+  "claude-fable-5",
   "glm-4v",
   "kimi-vl-a3b",
   "mistral-medium-3",

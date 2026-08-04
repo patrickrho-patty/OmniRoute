@@ -20,6 +20,7 @@ import {
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import type { RegistryModel } from "@omniroute/open-sse/config/providerRegistry.ts";
+import { appendSyncedEffortVariants } from "@omniroute/open-sse/utils/syncedEffortVariants";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -48,6 +49,7 @@ type SyncedModelLike = {
   outputTokenLimit?: number;
   description?: string;
   supportsThinking?: boolean;
+  supportedThinkingEfforts?: string[];
 };
 
 type ProviderConnectionLike = {
@@ -153,11 +155,6 @@ function toStringArray(value: unknown): string[] | undefined {
     .map((item) => toStringOrNull(item))
     .filter((item): item is string => Boolean(item));
   return normalized.length > 0 ? normalized : undefined;
-}
-
-function isChatCapable(supportedEndpoints: string[] | undefined): boolean {
-  if (!supportedEndpoints || supportedEndpoints.length === 0) return true;
-  return supportedEndpoints.includes("chat");
 }
 
 function getSourcePriority(source: BuilderModelSource): number {
@@ -305,7 +302,6 @@ function addModelOption(
   const modelId = toStringOrNull(input.id);
   if (!modelId) return;
   if (getModelIsHidden(providerId, modelId)) return;
-  if (!isChatCapable(input.supportedEndpoints)) return;
 
   const nextSourcePriority = getSourcePriority(input.source);
   const existing = modelMap.get(modelId);
@@ -388,6 +384,64 @@ function buildModelOptions(
     });
   }
 
+  // #8072: expose reasoning-effort variants (e.g. model-high, model-medium)
+  // in the Combo Builder picker, matching the catalog/Playground behaviour.
+  // Convert synced models with supportedThinkingEfforts into catalog-shaped
+  // entries, run the shared appendSyncedEffortVariants utility, and add any
+  // new variant ids that aren't already in the model map.
+  const catalogShaped = syncedModels
+    .filter(
+      (m): m is SyncedModelLike & { id: string; supportedThinkingEfforts: string[] } =>
+        typeof m.id === "string" &&
+        Array.isArray(m.supportedThinkingEfforts) &&
+        m.supportedThinkingEfforts.length > 0
+    )
+    .map((m) => ({
+      id: `${providerId}/${m.id}`,
+      owned_by: providerId,
+      root: m.id,
+      name: m.name || m.id,
+      capabilities: { effort_tiers: m.supportedThinkingEfforts },
+    }));
+  if (catalogShaped.length > 0) {
+    // Track each tier variant's true base model id (the synced model's own raw,
+    // unsuffixed id) directly while iterating tiers here. We can't re-derive the
+    // base id from `variant.root` after calling appendSyncedEffortVariants: that
+    // utility sets a variant's `root` to `${baseRoot}-${tier}` (still tier-suffixed,
+    // see open-sse/utils/syncedEffortVariants.ts), not the base model id, so a
+    // lookup keyed on it never matches an entry in modelMap and variants silently
+    // fail to inherit contextLength/outputTokenLimit/supportedEndpoints/supportsThinking.
+    const baseRawIdByVariantId = new Map<string, string>();
+    for (const shaped of catalogShaped) {
+      for (const tier of shaped.capabilities.effort_tiers) {
+        if (typeof tier === "string" && tier.length > 0) {
+          baseRawIdByVariantId.set(`${shaped.id}-${tier}`, shaped.root);
+        }
+      }
+    }
+
+    const withVariants = appendSyncedEffortVariants(catalogShaped);
+    for (const variant of withVariants) {
+      if (typeof variant.id !== "string") continue;
+      // Strip the provider prefix to get the raw model id for the builder
+      const rawId = variant.id.startsWith(`${providerId}/`)
+        ? variant.id.slice(providerId.length + 1)
+        : variant.id;
+      if (modelMap.has(rawId)) continue;
+      const baseId = baseRawIdByVariantId.get(variant.id) ?? rawId;
+      const base = modelMap.get(baseId);
+      addModelOption(modelMap, providerId, {
+        id: rawId,
+        name: base ? `${base.name} (${rawId.slice(baseId.length + 1)})` : rawId,
+        source: "imported",
+        supportedEndpoints: base?.supportedEndpoints,
+        contextLength: base?.contextLength ?? null,
+        outputTokenLimit: base?.outputTokenLimit ?? null,
+        supportsThinking: base?.supportsThinking,
+      });
+    }
+  }
+
   for (const model of builtInModels) {
     const resolved = getResolvedModelCapabilities({
       provider: providerId,
@@ -449,7 +503,34 @@ function buildModelOptions(
     }
   }
 
+  disambiguateCollidingModelNames(modelMap);
   return modelMap;
+}
+
+/**
+ * #6957: some providers' own catalogs assign the identical display `name` to
+ * several distinct model ids (e.g. Mistral's "codestral-latest" alias renders
+ * under the same upstream name as its base "codestral-2508" model). Since the
+ * builder picker renders `model.name` as the visible option text, two colliding
+ * names make genuinely different models look like duplicates and hide aliases.
+ * Run this after all merge loops have populated `modelMap`: for any name shared
+ * by 2+ distinct ids, fall back every entry in that group to its own `id` as the
+ * display name (display-only — `id`/`qualifiedModel` used for routing untouched).
+ */
+function disambiguateCollidingModelNames(modelMap: Map<string, ComboBuilderModelOption>): void {
+  const idsByName = new Map<string, string[]>();
+  for (const option of modelMap.values()) {
+    const bucket = idsByName.get(option.name) || [];
+    bucket.push(option.id);
+    idsByName.set(option.name, bucket);
+  }
+  for (const [name, ids] of idsByName) {
+    if (ids.length < 2) continue;
+    for (const id of ids) {
+      const option = modelMap.get(id);
+      if (option && option.name === name) option.name = option.id;
+    }
+  }
 }
 
 function compareConnections(
@@ -554,9 +635,8 @@ export async function getComboBuilderOptions(): Promise<ComboBuilderOptionsPaylo
       customModels
     );
 
-    const normalizedConnections = expandConnectionOptions(providerConnections).sort(
-      compareConnections
-    );
+    const normalizedConnections =
+      expandConnectionOptions(providerConnections).sort(compareConnections);
 
     const activeConnectionCount = normalizedConnections.filter(
       (connection) => connection.isActive

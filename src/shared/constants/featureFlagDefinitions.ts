@@ -234,7 +234,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     warningLevel: "info",
   },
 
-  // ──────────────── Runtime (13) ────────────────
+  // ──────────────── Runtime (15) ────────────────
   {
     key: "RESPONSES_PASSTHROUGH_DROP_COMMENTARY",
     label: "Drop Responses Commentary",
@@ -306,7 +306,7 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     key: "OMNIROUTE_ENABLE_LIVE_WS",
     label: "Live Dashboard WebSocket",
     description:
-      "Start the real-time dashboard WebSocket server on import (port 20129, loopback-bound by default). Default: enabled. Set to '0' or 'false' to disable. LAN exposure requires LIVE_WS_HOST=0.0.0.0 + LIVE_WS_ALLOWED_ORIGINS.",
+      "Start the real-time dashboard WebSocket server on import (port 20132, loopback-bound by default). Default: enabled. Set to '0' or 'false' to disable. LAN exposure requires LIVE_WS_HOST=0.0.0.0 + LIVE_WS_ALLOWED_ORIGINS.",
     descriptionI18nKey: "featureFlagOmnirouteEnableLiveWsDescription",
     category: "runtime",
     defaultValue: "true",
@@ -393,6 +393,18 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     descriptionI18nKey: "featureFlagArenaEloSyncEnabledDescription",
     category: "runtime",
     defaultValue: "true",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "info",
+  },
+  {
+    key: "EXPOSE_CC_DISCOVERY_ALIASES",
+    label: "Claude Code Discovery Aliases",
+    description:
+      "Advertise claude/<provider>/<model> mirror ids on /v1/models so Claude Code gateway model discovery lists non-Claude models. Warning: doubles catalog entries for all clients when enabled globally.",
+    descriptionI18nKey: "featureFlagExposeCcDiscoveryAliasesDescription",
+    category: "runtime",
+    defaultValue: "false",
     type: "boolean",
     requiresRestart: false,
     warningLevel: "info",

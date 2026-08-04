@@ -1,5 +1,8 @@
 import { handleRerank } from "@omniroute/open-sse/handlers/rerank.ts";
-import { getProviderCredentials, clearRecoveredProviderState } from "@/sse/services/auth";
+import {
+  getProviderCredentialsWithQuotaPreflight,
+  clearRecoveredProviderState,
+} from "@/sse/services/auth";
 import { withInjectionGuard } from "@/middleware/promptInjectionGuard";
 import { parseRerankModel, getRerankProvider } from "@omniroute/open-sse/config/rerankRegistry.ts";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
@@ -7,7 +10,7 @@ import { HTTP_STATUS } from "@omniroute/open-sse/config/constants.ts";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
 import { v1RerankSchema } from "@/shared/validation/schemas";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
-import { getProviderNodes } from "@/lib/localDb";
+import { getCachedProviderNodes } from "@/lib/localDb";
 import {
   isAllRateLimitedCredentials,
   rateLimitedProviderResponse,
@@ -70,7 +73,7 @@ async function postHandler(request, context) {
   // Load local provider_nodes for rerank routing (localhost only)
   let localProviders: ReturnType<typeof buildDynamicRerankProvider>[] = [];
   try {
-    const nodes = await getProviderNodes();
+    const nodes = await getCachedProviderNodes();
     localProviders = (Array.isArray(nodes) ? nodes : [])
       .filter((n: any) => {
         try {
@@ -102,7 +105,7 @@ async function postHandler(request, context) {
 
   if (provider) {
     // Cloud provider matched
-    const credentials = await getProviderCredentials(provider);
+    const credentials = await getProviderCredentialsWithQuotaPreflight(provider);
     if (!credentials) {
       return errorResponse(HTTP_STATUS.BAD_REQUEST, `No credentials for provider: ${provider}`);
     }
@@ -117,6 +120,7 @@ async function postHandler(request, context) {
       top_n: body.top_n,
       return_documents: body.return_documents,
       credentials,
+      connectionId: (credentials as { connectionId?: string } | null)?.connectionId || null,
     });
     if (response?.ok) {
       await clearRecoveredProviderState(credentials);
@@ -132,7 +136,7 @@ async function postHandler(request, context) {
     const localProvider = localProviders.find((p) => p.id === prefix);
 
     if (localProvider) {
-      const credentials = await getProviderCredentials(localProvider.providerId);
+      const credentials = await getProviderCredentialsWithQuotaPreflight(localProvider.providerId);
       if (!credentials) {
         return errorResponse(
           HTTP_STATUS.BAD_REQUEST,

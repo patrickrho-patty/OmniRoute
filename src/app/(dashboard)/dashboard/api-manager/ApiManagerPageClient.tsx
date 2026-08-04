@@ -25,6 +25,9 @@ import { SELF_ACCOUNT_QUOTA_SCOPE, SELF_USAGE_SCOPE } from "@/shared/constants/s
 import { extractApiErrorMessage } from "@/shared/http/apiErrorMessage";
 import { hasProviderQuotaBypassScope } from "@/shared/constants/apiKeyPolicyScopes";
 import { UsageLimitSettings } from "./components/UsageLimitSettings";
+import { ChaosModeAccessToggle } from "./components/ChaosModeAccessToggle";
+import { BypassProviderQuotaToggle } from "./components/BypassProviderQuotaToggle";
+import ReasoningRoutingRules from "@/shared/components/ReasoningRoutingRules";
 
 // Constants for validation
 const MAX_KEY_NAME_LENGTH = 200;
@@ -125,6 +128,7 @@ interface ApiKey {
   streamDefaultMode?: StreamDefaultMode;
   disableNonPublicModels?: boolean;
   allowUsageCommand?: boolean;
+  chaosModeEnabled?: boolean;
   usageLimitEnabled?: boolean;
   dailyUsageLimitUsd?: number | null;
   weeklyUsageLimitUsd?: number | null;
@@ -255,7 +259,7 @@ export default function ApiManagerPageClient() {
     fetchModels();
     fetchCombos();
     fetchConnections();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- initial dashboard load only
 
   useEffect(() => {
     if (!showAddModal || !nameError) return;
@@ -518,7 +522,8 @@ export default function ApiManagerPageClient() {
             const res = await fetch(`/api/keys/${encodeURIComponent(key.id)}/devices`);
             if (!res.ok) return [key.id, 0] as const;
             const data = await res.json();
-            const count = typeof data?.count === "number" && Number.isFinite(data.count) ? data.count : 0;
+            const count =
+              typeof data?.count === "number" && Number.isFinite(data.count) ? data.count : 0;
             return [key.id, count] as const;
           } catch {
             return [key.id, 0] as const;
@@ -557,9 +562,8 @@ export default function ApiManagerPageClient() {
 
     // 4. search query (case-insensitive substring on name and key)
     if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
       list = list.filter(
-        (k) => k.name.toLowerCase().includes(q) || k.key.toLowerCase().includes(q)
+        (k) => matchesSearch(k.name, searchQuery) || matchesSearch(k.key, searchQuery)
       );
     }
 
@@ -791,7 +795,8 @@ export default function ApiManagerPageClient() {
     usageLimitEnabled: boolean,
     dailyUsageLimitUsd: number | null,
     weeklyUsageLimitUsd: number | null,
-    blockedModels: string[]
+    blockedModels: string[],
+    chaosModeEnabled: boolean
   ) => {
     if (!editingKey || !editingKey.id) return;
 
@@ -862,6 +867,7 @@ export default function ApiManagerPageClient() {
           usageLimitEnabled,
           dailyUsageLimitUsd,
           weeklyUsageLimitUsd,
+          chaosModeEnabled,
         }),
       });
 
@@ -1645,7 +1651,8 @@ const PermissionsModal = memo(function PermissionsModal({
     usageLimitEnabled: boolean,
     dailyUsageLimitUsd: number | null,
     weeklyUsageLimitUsd: number | null,
-    blockedModels: string[]
+    blockedModels: string[],
+    chaosModeEnabled: boolean
   ) => void;
 }) {
   const t = useTranslations("apiManager");
@@ -1731,6 +1738,7 @@ const PermissionsModal = memo(function PermissionsModal({
   const [usageCommandEnabled, setUsageCommandEnabled] = useState(
     apiKey?.allowUsageCommand === true
   );
+  const [chaosModeEnabled, setChaosModeEnabled] = useState(apiKey?.chaosModeEnabled === true);
   const [usageLimitEnabled, setUsageLimitEnabled] = useState(apiKey?.usageLimitEnabled === true);
   const [dailyUsageLimitUsd, setDailyUsageLimitUsd] = useState(
     typeof apiKey?.dailyUsageLimitUsd === "number" && apiKey.dailyUsageLimitUsd > 0
@@ -1935,7 +1943,8 @@ const PermissionsModal = memo(function PermissionsModal({
       usageLimitEnabled,
       parseUsdLimitInput(dailyUsageLimitUsd),
       parseUsdLimitInput(weeklyUsageLimitUsd),
-      blockedModels
+      blockedModels,
+      chaosModeEnabled
     );
   }, [
     onSave,
@@ -1974,6 +1983,7 @@ const PermissionsModal = memo(function PermissionsModal({
     parseUsdLimitInput,
     blockedClaudeCodeFamilies,
     initialBlockedModels,
+    chaosModeEnabled,
     apiKey?.scopes,
     t,
   ]);
@@ -2033,6 +2043,8 @@ const PermissionsModal = memo(function PermissionsModal({
             <p className="text-sm text-red-700 dark:text-red-300 flex-1">{saveError}</p>
           </div>
         )}
+
+        {apiKey?.id && <ReasoningRoutingRules apiKeyId={apiKey.id} />}
 
         {/* Access Mode Toggle */}
         <div className="flex gap-2 p-1 bg-surface rounded-lg">
@@ -2118,9 +2130,7 @@ const PermissionsModal = memo(function PermissionsModal({
         <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-border bg-surface/40">
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium text-text-main">{t("maxActiveSessions")}</p>
-            <p className="text-xs text-text-muted">
-              0 = unlimited. Return 429 when this key exceeds concurrent sticky sessions.
-            </p>
+            <p className="text-xs text-text-muted">{t("maxActiveSessionsDescription")}</p>
           </div>
           <div className="w-32">
             <Input
@@ -2139,10 +2149,8 @@ const PermissionsModal = memo(function PermissionsModal({
         {/* Soft Throttle */}
         <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-border bg-surface/40">
           <div className="flex flex-col gap-1">
-            <p className="text-sm font-medium text-text-main">Throttle Delay</p>
-            <p className="text-xs text-text-muted">
-              Add a fixed delay before requests for this key are routed. 0 = no slowdown.
-            </p>
+            <p className="text-sm font-medium text-text-main">{t("throttleDelay")}</p>
+            <p className="text-xs text-text-muted">{t("throttleDelayDescription")}</p>
           </div>
           <div className="w-36">
             <Input
@@ -2563,30 +2571,17 @@ const PermissionsModal = memo(function PermissionsModal({
           />
         </div>
 
+        {/* Chaos Mode Access Toggle */}
+        <ChaosModeAccessToggle
+          enabled={chaosModeEnabled}
+          onToggle={() => setChaosModeEnabled((prev) => !prev)}
+        />
+
         {/* Advanced Provider Quota Policy Override */}
-        <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
-          <div className="flex flex-col gap-1 pr-2">
-            <p className="text-sm font-medium text-text-main">Bypass provider quota cutoffs</p>
-            <p className="text-xs text-text-muted">
-              Allows this key to ignore upstream provider/account cutoff policy during routing. API
-              key USD quotas still apply.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={bypassProviderQuotaPolicyEnabled}
-            onClick={() => setBypassProviderQuotaPolicyEnabled((prev) => !prev)}
-            className={`inline-flex shrink-0 items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-              bypassProviderQuotaPolicyEnabled
-                ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30"
-                : "bg-black/5 dark:bg-white/5 text-text-muted border border-border"
-            }`}
-          >
-            <span className="material-symbols-outlined text-[14px]">alt_route</span>
-            {bypassProviderQuotaPolicyEnabled ? tc("enabled") : tc("disabled")}
-          </button>
-        </div>
+        <BypassProviderQuotaToggle
+          enabled={bypassProviderQuotaPolicyEnabled}
+          onToggle={() => setBypassProviderQuotaPolicyEnabled((prev) => !prev)}
+        />
 
         {/* Disable Non-Public Models Toggle */}
         <div className="flex items-start justify-between gap-3 p-3 rounded-lg border border-border bg-surface/40">
@@ -2644,7 +2639,7 @@ const PermissionsModal = memo(function PermissionsModal({
                           type="button"
                           onClick={() => setClaudeCodeFamiliesExpanded((prev) => !prev)}
                           className="inline-flex items-center gap-1 font-mono text-text-main"
-                          title="Expand Claude Code families"
+                          title={t("expandClaudeCodeFamilies")}
                           aria-expanded={claudeCodeFamiliesExpanded}
                         >
                           <span className="truncate max-w-[140px]" title={modelId}>
@@ -2658,7 +2653,7 @@ const PermissionsModal = memo(function PermissionsModal({
                           type="button"
                           onClick={() => handleToggleModel(modelId)}
                           className="text-text-muted hover:text-red-500 transition-colors"
-                          title="Remove Claude Code default"
+                          title={t("removeClaudeCodeDefault")}
                         >
                           <span className="material-symbols-outlined text-[12px]">close</span>
                         </button>
@@ -2939,7 +2934,9 @@ const PermissionsModal = memo(function PermissionsModal({
                               {conn.name || conn.id.slice(0, 8)}
                             </span>
                             {!conn.isActive && (
-                              <span className="text-[9px] text-red-400 shrink-0">inactive</span>
+                              <span className="text-[9px] text-red-400 shrink-0">
+                                {tc("inactive")}
+                              </span>
                             )}
                           </button>
                         );
@@ -2955,7 +2952,7 @@ const PermissionsModal = memo(function PermissionsModal({
         {allCombos.length > 0 && (
           <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-surface/40">
             <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-text-main">Allowed Combos</p>
+              <p className="text-sm font-medium text-text-main">{t("allowedCombos")}</p>
               <div className="flex gap-1 p-0.5 bg-surface rounded-md">
                 <button
                   onClick={() => {
@@ -2968,7 +2965,7 @@ const PermissionsModal = memo(function PermissionsModal({
                       : "text-text-muted hover:bg-black/5 dark:hover:bg-white/5"
                   }`}
                 >
-                  All
+                  {tc("all")}
                 </button>
                 <button
                   onClick={() => setAllowAllCombos(false)}
@@ -2978,14 +2975,14 @@ const PermissionsModal = memo(function PermissionsModal({
                       : "text-text-muted hover:bg-black/5 dark:hover:bg-white/5"
                   }`}
                 >
-                  Restrict
+                  {t("restrict")}
                 </button>
               </div>
             </div>
             <p className="text-xs text-text-muted">
               {allowAllCombos
-                ? "This key can use any combo."
-                : `Restricted to ${selectedCombos.length} combo${selectedCombos.length !== 1 ? "s" : ""}.`}
+                ? t("allCombosAllowed")
+                : t("restrictedComboCount", { count: selectedCombos.length })}
             </p>
             {!allowAllCombos && (
               <div className="flex flex-col gap-1 max-h-40 overflow-y-auto">

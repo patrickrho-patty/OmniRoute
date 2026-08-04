@@ -16,6 +16,11 @@ export const GEMINI_UNSUPPORTED_SCHEMA_KEYS = new Set([
   // leaving it in function_declarations triggers a hard upstream 400
   // ("Unknown name \"multipleOf\""). `minimum`/`maximum` ARE accepted and kept.
   "multipleOf",
+  // OpenAI "strict" tool-calling mode embeds `strict: true/false` directly inside
+  // a function's `parameters` schema (RubyLLM and other OpenAI-convention clients
+  // do this by default). Gemini's function_declarations schema doesn't recognize
+  // it and 400s the same way ("Unknown name \"strict\" ... Cannot find field").
+  "strict",
   // NOTE: `pattern` is intentionally NOT in this set. Antigravity (Gemini-derived
   // surface) accepts `pattern` on string constraints, and glob/grep/file-search
   // tools depend on it to express their argument regex. Removing it produced
@@ -90,13 +95,23 @@ export const GEMINI_UNSUPPORTED_SCHEMA_KEYS = new Set([
 
 export const UNSUPPORTED_SCHEMA_CONSTRAINTS = [...GEMINI_UNSUPPORTED_SCHEMA_KEYS];
 
-// Default safety settings
+// Default safety settings for the standard Gemini API surface.
+//
+// HARM_CATEGORY_CIVIC_INTEGRITY is intentionally NOT included here (#8231): the
+// dynamic validation on some models/endpoints rejects it with a hard 400
+// (`safety_settings[N]: element predicate failed`), taking down every request
+// through that model. The Antigravity/Cloud Code surface already worked around
+// this for #5003 (see ANTIGRAVITY_UNSUPPORTED_SAFETY_CATEGORIES in
+// open-sse/executors/antigravity.ts) — this drops the same category from the
+// standard-path default so behavior is consistent across Gemini surfaces. A
+// caller that explicitly supplies safetySettings (including one that itself
+// requests CIVIC_INTEGRITY) is still honored as-is — only this unconditional
+// default is scoped down.
 export const DEFAULT_SAFETY_SETTINGS = [
   { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
   { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
   { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
   { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" },
-  { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "OFF" },
 ];
 
 function normalizeAudioMimeType(format: unknown): string {
@@ -172,17 +187,35 @@ export function convertOpenAIContentToParts(content: unknown): JsonRecord[] {
 
         // 3. Handle raw data strings (e.g. {"type": "file", "data": "JVBER...", "mime_type": "..."}).
         //    Also accept the Responses-API shape {"type":"input_file","file_data":"JVBER...","filename":...}
-        //    so PDFs sent as `input_file` reach Gemini instead of being silently dropped (#2515).
+        //    AND the OpenAI Chat Completions shape
+        //    {"type":"file","file":{"filename":...,"file_data":"data:<mime>;base64,..."}} so PDFs and
+        //    videos reach Gemini instead of being silently dropped (#2515). Gemini reads
+        //    application/pdf and video/* natively via inlineData, exactly like images.
         const file = toRecord(rec.file);
         const doc = toRecord(rec.document);
-        const rawDataStr = rec.data || rec.file_data || file?.data || doc?.data;
-        const mimeTypeFallback =
-          rec.mime_type || rec.media_type || file?.mime_type || doc?.mime_type || "application/pdf";
+        const rawDataStr =
+          rec.data || rec.file_data || file?.data || file?.file_data || doc?.data || doc?.file_data;
         if (typeof rawDataStr === "string" && !rawDataStr.startsWith("http")) {
+          // Prefer the mime embedded in the data: URI (e.g. application/pdf, video/mp4) so
+          // documents and videos are not mislabeled as the fallback; the fallback applies
+          // only to bare base64 that carries no data: prefix.
+          let mimeType =
+            rec.mime_type ||
+            rec.media_type ||
+            file?.mime_type ||
+            doc?.mime_type ||
+            "application/pdf";
+          if (rawDataStr.startsWith("data:")) {
+            const commaIndex = rawDataStr.indexOf(",");
+            if (commaIndex !== -1) {
+              const parsedMime = rawDataStr.substring(5, commaIndex).split(";")[0];
+              if (parsedMime) mimeType = parsedMime;
+            }
+          }
           const rawData = rawDataStr.replace(/^data:[a-zA-Z0-9/+-]+;base64,/, "");
           parts.push({
             inlineData: {
-              mimeType: String(mimeTypeFallback),
+              mimeType: String(mimeType),
               data: rawData,
             },
           });

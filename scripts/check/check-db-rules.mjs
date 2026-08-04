@@ -48,6 +48,7 @@ export const INTENTIONALLY_INTERNAL = new Set([
   "comboForecast", // intentionally-internal: src/lib/usage/comboForecast.ts
   "commandCodeAuth", // intentionally-internal: 5 API routes em /api/providers/command-code/auth/*
   "compression", // intentionally-internal: 2 API routes (settings/compression, context/rtk/config)
+  "compressionDetailNormalizers", // db-internal: importado só por db/compression.ts (normalizeSessionDedupConfig/normalizeCcrConfig/buildDetailConfigDefaults/applyDetailConfigUpdate — normalizadores do detail-config split do compression.ts, #8404)
   "vacuumScheduler", // intentionally-internal: src/instrumentation-node.ts (dynamic import, lifecycle wiring per Rule #2)
   "detailedLogs", // intentionally-internal: 3 callers (callLogs.ts, logs/detail route, embeddings handler)
   "discovery", // DEAD?: 0 importers na auditoria de 2026-06-11; lib/discovery/index.ts não usa db/discovery
@@ -56,6 +57,7 @@ export const INTENTIONALLY_INTERNAL = new Set([
   "healthCheck", // db-internal: importado por db/core.ts (runDbHealthCheck)
   "jsonMigration", // intentionally-internal: src/app/api/settings/import-json/route.ts
   "migrationRunner", // db-internal: importado por db/core.ts (runMigrations ao inicializar o DB)
+  "modelCapabilityOverrides", // intentionally-internal: src/app/api/model-capability-overrides/route.ts via import direto "@/lib/db/modelCapabilityOverrides" (#6727 — evita empurrar localDb.ts para o cap de 800 linhas)
   "notion", // intentionally-internal: settings/notion API route + open-sse/mcp-server/tools/notionTools.ts
   "obsidian", // intentionally-internal: src/lib/obsidianSync.ts + settings/obsidian route + MCP obsidianTools.ts
   "optimizationSettings", // db-internal: imported by db/core.ts for SQLite PRAGMA application helpers that require the live adapter
@@ -63,6 +65,8 @@ export const INTENTIONALLY_INTERNAL = new Set([
   "prompts", // DEAD? (production): zero callers de produção encontrados; domínio domain/prompts.ts é independente; testado por tests/integration/proxy-pipeline.test.ts
   "providerNodeSelect", // db-internal: importado só por db/providers.ts (selectProviderNodeForConnection — lógica pura de seleção de provider node split do providers.ts, #4421)
   "providerStats", // intentionally-internal: src/app/api/provider-stats/route.ts
+  "proxyLatency", // intentionally-internal: imported directly by src/lib/db/proxies.ts (anti-barrel, #6798)
+  "proxySubscriptions", // db-internal: importado só por db/proxies.ts (addProxiesToScopePool — split do proxies.ts para ficar sob o cap de tamanho congelado, #7299); a função já é re-exportada por proxies.ts (que localDb.ts re-exporta)
   "recovery", // intentionally-internal: bin/cli/runtime.mjs (import() dinâmico) + tests
   "schemaColumns", // db-internal: importado só por db/core.ts (ensureProviderConnections/UsageHistory/CallLogsColumns + hasColumn/hasTable/getTableColumns — schema-column reconciliation split do core.ts, #4948)
   "secrets", // intentionally-internal: src/instrumentation-node.ts (import() dinâmico na inicialização)
@@ -204,8 +208,11 @@ export function findRawSql(files, allowlist = KNOWN_RAW_SQL) {
     } catch {
       continue;
     }
-    const literals = extractStringLiterals(stripComments(src));
-    if (SQL_PATTERNS.some((rx) => rx.test(literals))) {
+    // Match each literal independently. Joining literals before scanning would
+    // turn harmless code such as `update(...)` plus a later `"set"` string into
+    // a false UPDATE ... SET SQL match.
+    const literals = extractStringLiterals(stripComments(src)).split("\n\0\n");
+    if (literals.some((literal) => SQL_PATTERNS.some((rx) => rx.test(literal)))) {
       offenders.push(rel);
     }
   }

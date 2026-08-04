@@ -14,10 +14,15 @@ interface Props {
   renderInlineQuotaSummary?: (quota: any) => ReactNode;
   onRefresh: (id: string, provider: string) => void;
   onOpenCutoff: (connection: any) => void;
-  onRedeemResetCredit?: (id: string, provider: string) => void;
+  onOpenResetCredits?: (id: string, provider: string) => void;
   onToggleActive: (id: string, nextActive: boolean) => void;
   togglingActiveId: string | null;
   redeemingResetCreditId?: string | null;
+  loadingResetCreditsId?: string | null;
+  /** Per-operator quota row visibility (upstream 9router#2371 port). */
+  quotaVisibility?: Record<string, { hidden?: string[] }>;
+  onHideQuota?: (provider: string, quota: any) => void;
+  onShowQuota?: (provider: string, quota: any) => void;
 }
 
 export default function QuotaCardGrid({
@@ -31,10 +36,14 @@ export default function QuotaCardGrid({
   renderInlineQuotaSummary: _renderInlineQuotaSummary,
   onRefresh,
   onOpenCutoff,
-  onRedeemResetCredit,
+  onOpenResetCredits,
   onToggleActive,
   togglingActiveId,
   redeemingResetCreditId = null,
+  loadingResetCreditsId = null,
+  quotaVisibility,
+  onHideQuota,
+  onShowQuota,
 }: Props) {
   if (connections.length === 0) return null;
 
@@ -47,16 +56,16 @@ export default function QuotaCardGrid({
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="columns-1 2xl:columns-2 gap-6 [column-fill:_balance]">
       {[...groups.entries()].map(([provider, conns]) => (
-        <div key={provider} className="flex flex-col gap-3">
+        <div key={provider} className="flex flex-col gap-3 break-inside-avoid mb-6">
           <h3 className="text-sm font-semibold text-text-main flex items-center gap-2">
             {providerLabels[provider] || provider}
             <span className="text-xs font-normal text-text-muted">
               ({conns.length} account{conns.length !== 1 ? "s" : ""})
             </span>
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-3">
             {conns.map((conn) => (
               <QuotaCard
                 key={conn.id}
@@ -69,10 +78,14 @@ export default function QuotaCardGrid({
                 providerLabel={providerLabels[conn.provider] || conn.provider}
                 onRefresh={() => onRefresh(conn.id, conn.provider)}
                 onOpenCutoff={() => onOpenCutoff(conn)}
-                onRedeemResetCredit={() => onRedeemResetCredit?.(conn.id, conn.provider)}
+                onOpenResetCredits={() => onOpenResetCredits?.(conn.id, conn.provider)}
                 onToggleActive={(nextActive) => onToggleActive(conn.id, nextActive)}
                 togglingActive={togglingActiveId === conn.id}
                 redeemingResetCredit={redeemingResetCreditId === conn.id}
+                loadingResetCredits={loadingResetCreditsId === conn.id}
+                quotaVisibility={quotaVisibility}
+                onHideQuota={onHideQuota ? (q) => onHideQuota(conn.provider, q) : undefined}
+                onShowQuota={onShowQuota ? (q) => onShowQuota(conn.provider, q) : undefined}
               />
             ))}
           </div>

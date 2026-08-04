@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useTranslations } from "next-intl";
-import { Button, Badge, Input, Modal, Toggle } from "@/shared/components";
+import { Button, Badge, Input, Modal, Toggle, TALL_MODAL_PROPS } from "@/shared/components";
 import {
   providerAllowsOptionalApiKey,
   supportsBulkApiKey,
@@ -33,9 +33,12 @@ import { useOpenRouterPresetControl } from "../OpenRouterPresetInput";
 import WebSessionCredentialGuide from "../WebSessionCredentialGuide";
 import CcCompatibleRequestDefaultsFields from "./CcCompatibleRequestDefaultsFields";
 import { buildAddProviderSpecificData } from "./connectionProviderSpecificData";
+import { getCommandCodeAuthPhaseLabel } from "./commandCodeAuthPhase";
 import { computeConnectionDefaultName } from "./computeConnectionDefaultName";
+import AgentrouterConsoleFields from "./AgentrouterConsoleFields";
 import QuotaScrapingFields, { EMPTY_QUOTA_SCRAPING_FIELDS } from "./QuotaScrapingFields";
 import GlmTeamQuotaFields, { EMPTY_GLM_TEAM_QUOTA_FIELDS } from "./GlmTeamQuotaFields";
+import * as ProviderRegion from "./AlibabaProviderRegionField";
 export interface AddApiKeyModalProps {
   isOpen: boolean;
   provider?: string;
@@ -81,9 +84,7 @@ export default function AddApiKeyModal({
   const usesBaseUrl = isBaseUrlConfigurableProvider(provider);
   const defaultBaseUrl = getProviderBaseUrlDefault(provider);
   const isVertex = provider === "vertex" || provider === "vertex-partner";
-  const isBedrock = provider === "bedrock";
-  const showsRegion = isVertex || isBedrock;
-  const defaultRegion = isBedrock ? "eu-west-2" : "us-central1";
+  const { defaultRegion, showsRegion } = ProviderRegion.getProviderRegionConfig(provider);
   const isModal = provider === "modal";
   const isGlm = isGlmProvider(provider);
   const isQoder = provider === "qoder";
@@ -104,18 +105,7 @@ export default function AddApiKeyModal({
   const providerDisplayName = providerName || provider || "";
   const apiKeyOptional =
     providerAllowsOptionalApiKey(provider) || Boolean(isNoAuthWebSessionCredential);
-  const commandCodeAuthPhaseLabel = commandCodeAuthState
-    ? {
-        idle: "Ready",
-        starting: "Starting…",
-        polling: "Waiting for browser…",
-        received: "Browser approved",
-        applying: "Applying key…",
-        applied: "Connected",
-        expired: "Link expired",
-        error: "Connection failed",
-      }[commandCodeAuthState.phase]
-    : null;
+  const commandCodeAuthPhaseLabel = getCommandCodeAuthPhaseLabel(commandCodeAuthState);
   const [formData, setFormData] = useState({
     name: computeConnectionDefaultName(existingConnectionCount),
     apiKey: "",
@@ -132,6 +122,7 @@ export default function AddApiKeyModal({
     customUserAgent: "",
     accountId: "",
     consoleApiKey: "",
+    newApiUserId: "",
     ...EMPTY_GLM_TEAM_QUOTA_FIELDS,
     ...EMPTY_QUOTA_SCRAPING_FIELDS,
     ccCompatibleContext1m: false,
@@ -159,6 +150,8 @@ export default function AddApiKeyModal({
       name: computeConnectionDefaultName(existingConnectionCount),
       baseUrl: initialBaseUrl || defaultBaseUrl,
     }));
+    setValidationResult(null);
+    setSaveError(null);
   }, [defaultBaseUrl, initialBaseUrl, isOpen, existingConnectionCount]);
   const bulkSupported = supportsBulkApiKey(provider);
   const [mode, setMode] = useState<"single" | "bulk">("single");
@@ -215,27 +208,26 @@ export default function AddApiKeyModal({
         "Session credential validation failed. Sign in again, copy a fresh credential, and try again."
       )
     : t("apiKeyValidationFailed");
-
-  // Normalize the raw credential field(s) into the single value stored as `apiKey`.
-  // command-code providers extract a key from a pasted blob (#5088); Modal joins its
-  // Token ID + Token Secret into `id:secret` (#5446); everyone else uses the field verbatim.
-  const resolveCredentialInput = () => {
-    if (isCommandCode) return extractCommandCodeCredentialInput(formData.apiKey);
-    if (isModal) return combineModalCredential(formData.apiKey, formData.tokenSecret);
-    return formData.apiKey;
-  };
+  const validationBadge = validationResult ? validationBadgeProps(validationResult) : null;
+  // Normalize raw credential field(s) into the single value stored as `apiKey`
+  // (#5088 command-code extract; #5446 Modal id:secret join; else verbatim).
+  const resolveCredentialInput = () =>
+    isCommandCode
+      ? extractCommandCodeCredentialInput(formData.apiKey)
+      : isModal
+        ? combineModalCredential(formData.apiKey, formData.tokenSecret)
+        : formData.apiKey;
 
   const handleValidate = async () => {
     setValidating(true);
     setSaveError(null);
     try {
-      const credentialInput = resolveCredentialInput();
       const res = await fetch("/api/providers/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider,
-          apiKey: credentialInput,
+          apiKey: resolveCredentialInput(),
           validationModelId: formData.validationModelId || undefined,
           customUserAgent: formData.customUserAgent.trim() || undefined,
           baseUrl: formData.baseUrl.trim() || undefined,
@@ -245,11 +237,10 @@ export default function AddApiKeyModal({
       });
       const data = await res.json();
       const ok = !!data.valid;
-      setValidationResult(ok ? "success" : data.unsupported ? "unsupported" : "failed");
-      // #5088: surface the detailed reason the backend returns (e.g. a TLS/EACCES
-      // environment error for claude-web/chatgpt-web) instead of only a bare
-      // "invalid" badge — otherwise the real cause is hidden and users are stuck.
-      if (!ok && typeof data.error === "string" && data.error) {
+      const unsupported = !!data.unsupported;
+      setValidationResult(ok ? "success" : unsupported ? "unsupported" : "failed");
+      // #5088: surface backend reason (e.g. TLS/EACCES) instead of bare "invalid".
+      if (!ok && !unsupported && typeof data.error === "string" && data.error) {
         setSaveError(data.error);
       }
     } catch {
@@ -387,6 +378,9 @@ export default function AddApiKeyModal({
         }
         bulkProviderSpecificData.baseUrl = checked.value;
       }
+      if (showsRegion) {
+        bulkProviderSpecificData.region = formData.region.trim() || defaultRegion;
+      }
       openRouterPreset.applyTo(bulkProviderSpecificData);
       if (showFreeModelsToggle && formData.importFreeModelsOnly) {
         bulkProviderSpecificData.importFreeModelsOnly = true;
@@ -427,7 +421,16 @@ export default function AddApiKeyModal({
     }
   };
 
+  const regionStep = ProviderRegion.useAlibabaProviderRegionStep({
+    isOpen,
+    provider,
+    title: `${t("addConnection")} · ${providerDisplayName}`,
+    onClose,
+    setFormData,
+  });
+
   if (!provider) return null;
+  if (regionStep) return regionStep;
 
   const freeModelsToggle = showFreeModelsToggle ? (
     <Toggle
@@ -444,6 +447,8 @@ export default function AddApiKeyModal({
       isOpen={isOpen}
       title={getAddCredentialModalTitle(t, providerDisplayName, webSessionCredential)}
       onClose={onClose}
+      size="lg"
+      {...TALL_MODAL_PROPS}
     >
       <div className="flex flex-col gap-4">
         {webProviderHostLink && (
@@ -757,9 +762,9 @@ export default function AddApiKeyModal({
                 hint={t("searchEngineIdHint")}
               />
             )}
-            {validationResult && (
-              <Badge variant={validationBadgeProps(validationResult).variant}>
-                {t(validationBadgeProps(validationResult).labelKey)}
+            {validationBadge && (
+              <Badge variant={validationBadge.variant}>
+                {providerText(t, validationBadge.labelKey, validationBadge.fallback)}
               </Badge>
             )}
             {saveError && (
@@ -864,6 +869,12 @@ export default function AddApiKeyModal({
                     type="password"
                   />
                 )}
+                <AgentrouterConsoleFields
+                  provider={provider}
+                  values={formData}
+                  onChange={(patch) => setFormData({ ...formData, ...patch })}
+                  t={t}
+                />
               </div>
             )}
             <Input
@@ -890,15 +901,12 @@ export default function AddApiKeyModal({
                 hint={getProviderBaseUrlHint(provider, t)}
               />
             )}
-            {showsRegion && (
-              <Input
-                label={t("regionLabel")}
-                value={formData.region}
-                onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                placeholder={defaultRegion}
-                hint={t("regionHint")}
-              />
-            )}
+            <ProviderRegion.ProviderRegionField
+              hideAlibaba
+              provider={provider}
+              value={formData.region}
+              onChange={(region) => setFormData({ ...formData, region })}
+            />
             {isCloudflare && (
               <Input
                 label={t("accountIdLabel")}
