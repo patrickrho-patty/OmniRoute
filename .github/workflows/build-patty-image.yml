@@ -1,0 +1,97 @@
+name: Build & Publish Fork Image to GHCR
+
+# Builds the OmniRoute Docker image on GitHub-hosted runners and pushes it to
+# THIS fork's own GHCR namespace (ghcr.io/patrickrho-patty/omniroute). The
+# Contabo VPS then `docker pull`s the image instead of building it locally.
+#
+# Why: the local `next build` / Turbopack phase reaches ~14 GiB RSS and was
+# globally OOM-killing the swap-less Contabo host (taking unrelated processes
+# with it). GitHub-hosted runners (16 GB RAM + gha cache) build this same
+# Dockerfile comfortably, and minutes are free for this public repo. See the
+# 2026-08-05 deploy investigation for the kernel-log proof.
+#
+# Target: runner-cli (the superset — Chromium/Playwright + bundled CLIs),
+# matching docker-compose.prod.yml. Arch: linux/amd64 only (the VPS is amd64;
+# arm64 would double CI time for an image the host can't run).
+
+on:
+  push:
+    branches: [custom-features, main]
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+# Least-privilege default: read-only at the top level. The build job grants
+# packages: write to itself (Scorecard TokenPermissions).
+permissions:
+  contents: read
+
+# Cancel a superseded in-flight build on the same ref (free minutes, but no
+# point publishing two images from a rapid push sequence).
+concurrency:
+  group: build-ghcr-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_NAME: ghcr.io/patrickrho-patty/omniroute
+
+jobs:
+  build:
+    name: Build and push (amd64)
+    # Only ever run on the fork — never on upstream diegosouzapw/OmniRoute.
+    if: github.repository == 'patrickrho-patty/OmniRoute'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          # :latest tracks the fork's live deploy branch (custom-features).
+          # A short-sha tag is always produced for traceability, plus per-branch
+          # and per-tag tags.
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/custom-features' }}
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=ref,event=tag
+          labels: |
+            org.opencontainers.image.title=omniroute
+            org.opencontainers.image.description=OmniRoute fork image — CI-built, pulled by the Contabo VPS (no local build)
+            org.opencontainers.image.source=https://github.com/patrickrho-patty/OmniRoute
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runner-cli
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            # Give next build / Turbopack V8 heap headroom on the runner. The
+            # builder stage is shared across all targets; 8 GB matches the value
+            # proven on the VPS and fits the 16 GB runner.
+            OMNIROUTE_BUILD_MEMORY_MB=8192
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
