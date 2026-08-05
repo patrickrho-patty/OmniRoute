@@ -106,9 +106,11 @@ watch_build() {
   ok "watching run $RUN_ID — https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/actions/runs/$RUN_ID"
   # Watch may exceed long builds; poll instead so we never hang silently.
   for i in $(seq 1 80); do
-    STATUS="$(gh run view "$RUN_ID" --json status,conclusion --jq '.status + "/" + (.conclusion // "pending")')"
+    # GitHub returns lowercase status/conclusion (e.g. completed/success). Normalize
+    # via tr so a case change in the API never breaks the match (portable: macOS bash 3.2).
+    STATUS="$(gh run view "$RUN_ID" --json status,conclusion --jq '.status + "/" + (.conclusion // "pending")' | tr '[:upper:]' '[:lower:]')"
     case "$STATUS" in
-      completed/SUCCESS) ok "build green"; return 0;;
+      completed/success) ok "build green"; return 0;;
       completed/*)       die "build finished as: $STATUS (see the Actions URL above)";;
       *)                 printf '  … %s (%d/80)\n' "$STATUS" "$i"; sleep 30;;
     esac
