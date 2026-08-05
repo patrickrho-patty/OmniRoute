@@ -24,6 +24,11 @@ import {
   type TlsFetchResult,
 } from "../services/chatgptTlsClient.ts";
 import {
+  shouldUseChatgptBrowserBacked,
+  acquireFreshChatgptClearance,
+  mergeCfClearance,
+} from "../services/chatgptClearance.ts";
+import {
   acquireChatGptConversationLock,
   getChatGptConversationContext,
   setChatGptConversationContext,
@@ -400,12 +405,36 @@ async function exchangeSession(
     Cookie: buildSessionCookieHeader(cookie),
   };
 
-  const response = await tlsFetchChatGpt(SESSION_URL, {
+  let response = await tlsFetchChatGpt(SESSION_URL, {
     method: "GET",
     headers,
     timeoutMs: 30_000,
     signal,
   });
+
+  // Browser-backed cf_clearance refresh: if Cloudflare blocks (not an auth
+  // failure), try acquiring a fresh cf_clearance from the server's IP via
+  // the stealth browser pool, merge it into the cookie, and retry once.
+  if (
+    response.status === 403 &&
+    shouldUseChatgptBrowserBacked() &&
+    (response.headers.get("cf-mitigated") ||
+      /just a moment|cloudflare|cf-chl|attention required/i.test(response.text || ""))
+  ) {
+    const freshClearance = await acquireFreshChatgptClearance(signal);
+    if (freshClearance) {
+      const refreshedCookie = mergeCfClearance(cookie, freshClearance);
+      const retryResp = await tlsFetchChatGpt(SESSION_URL, {
+        method: "GET",
+        headers: { ...headers, Cookie: buildSessionCookieHeader(refreshedCookie) },
+        timeoutMs: 30_000,
+        signal,
+      });
+      if (retryResp.status < 400) {
+        response = retryResp;
+      }
+    }
+  }
 
   if (response.status === 401 || response.status === 403) {
     throw new SessionAuthError("Invalid session cookie");
@@ -1765,8 +1794,7 @@ async function* extractContent(
     // on a tool-role message (handled below).
     if (event.type === "server_ste_metadata") {
       const meta = (event as Record<string, unknown>).metadata as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       if (meta && meta.turn_use_case === "image gen") {
         imageGenAsync = true;
       }
