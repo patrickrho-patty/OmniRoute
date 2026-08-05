@@ -106,6 +106,12 @@ import { enforceApiKeyPolicy } from "../../shared/utils/apiKeyPolicy";
 import { hasProviderQuotaBypassScope } from "../../shared/constants/apiKeyPolicyScopes";
 import { cloneBoundedForLog } from "@omniroute/open-sse/utils/requestLogger.ts";
 import { handleInternalUsageCommand } from "@/lib/usage/internalUsageCommand";
+import { isClaudeMessagesPath } from "@/shared/middleware/bodySizeGuard";
+import {
+  applyClaudeMessagesLargeRequestMode,
+  resolveClaudeLargeMessagesConfig,
+  type ClaudeLargeMessagesConfig,
+} from "@/shared/middleware/claudeMessagesVcc";
 import {
   applyTaskAwareRouting,
   getTaskRoutingConfig,
@@ -236,10 +242,18 @@ export { shouldTripProviderBreakerForResult } from "./chatPredicates";
  * Supports: OpenAI, Claude, Gemini, OpenAI Responses API formats
  * Format detection and translation handled by translator
  */
+export interface HandleChatRuntimeOptions {
+  cachedSettings?: Record<string, unknown>;
+  claudeLargeMessagesConfig?: ClaudeLargeMessagesConfig;
+  /** Prevent the direct-handler fallback from re-running guard-applied VCC. */
+  claudeLargeMessagesApplied?: boolean;
+}
+
 export async function handleChat(
   request: any,
   clientRawRequest: any = null,
   preParsedBody: any = null,
+  runtimeOptions: HandleChatRuntimeOptions = {},
   correlationId?: string
 ) {
   const peerRejection = rejectPeerRequest(request?.headers, log.warn, errorResponse);
@@ -263,6 +277,30 @@ export async function handleChat(
   } catch {
     log.warn("CHAT", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
+  }
+
+  // Claude large-message reject/VCC runs once per request. Guarded routes pass an
+  // already-processed body; direct handler callers use this fallback before routing.
+  const pathname = new URL(request.url).pathname;
+  if (!runtimeOptions.claudeLargeMessagesApplied && isClaudeMessagesPath(pathname)) {
+    const requestSettings =
+      runtimeOptions.cachedSettings ??
+      (await getCachedSettings().catch(() => ({}) as Record<string, unknown>));
+    const claudeLargeConfig = resolveClaudeLargeMessagesConfig(process.env, requestSettings);
+    const claudeLargeMode = applyClaudeMessagesLargeRequestMode(request, pathname, body, {
+      config: claudeLargeConfig,
+    });
+    if (claudeLargeMode.rejection) {
+      log.warn("CHAT", `Rejecting oversized Claude-format request for ${pathname}`);
+      return claudeLargeMode.rejection;
+    }
+    if (claudeLargeMode.compacted) {
+      body = claudeLargeMode.body;
+      log.warn(
+        "CHAT",
+        `Compacted oversized Claude-format request for ${pathname}: ${claudeLargeMode.stats?.originalBytes ?? "?"} -> ${claudeLargeMode.stats?.compactedBytes ?? "?"} bytes`
+      );
+    }
   }
 
   // Feature #6241: fold the canonical `effort` / `thinking` request params onto the

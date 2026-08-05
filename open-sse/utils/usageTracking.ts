@@ -10,6 +10,7 @@ import {
   getPromptCacheReadTokens,
 } from "@/lib/usage/tokenAccounting";
 import { FORMATS } from "../translator/formats.ts";
+import type { UsageData } from "../types.ts";
 
 // ANSI color codes
 export const COLORS = {
@@ -296,7 +297,7 @@ export function normalizeResponsesUsageToOpenAI(usage) {
   const promptTokens = inputTokens;
   const totalTokens = toUsageNumber(usage.total_tokens) || promptTokens + outputTokens;
 
-  const normalized = {
+  const normalized: UsageData = {
     prompt_tokens: promptTokens,
     completion_tokens: outputTokens,
     total_tokens: totalTokens,

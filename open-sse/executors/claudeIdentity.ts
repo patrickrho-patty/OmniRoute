@@ -406,6 +406,18 @@ export function selectBetaFlags(
   return flags.join(",");
 }
 
+// ---------- billing-header build hash ------------------------------------
+
+/**
+ * 3-char build hash for the billing header `cc_version=X.Y.Z.HASH`. Stable
+ * per (day, version) — Anthropic does not appear to validate the value, so
+ * we keep prompt-cache prefix stable within a day for a given version
+ * without coupling to any captured value.
+ */
+export function buildHashFor(version: string, dayStamp: string): string {
+  return createHash("sha256").update(`${dayStamp}${version}`).digest("hex").slice(0, 3);
+}
+
 // ---------- Tool-name normalisation --------------------------------------
 
 const TOOL_PREFIX = "proxy_";
