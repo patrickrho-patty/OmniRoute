@@ -250,6 +250,44 @@ test("callVisionModel uses correct request body format", async () => {
   }
 });
 
+test("callVisionModel sends stream:false on the OpenAI path (self-loop describe must return JSON, not SSE)", async () => {
+  // Regression: callVisionModelSingle (OpenAI-compatible path) omitted `stream`,
+  // so when the configured vision model is routed through OmniRoute's own
+  // self-loop to a provider that defaults to streaming (e.g. codex/gpt-5.6-luna),
+  // the response comes back as SSE chunks. response.json() then throws on the
+  // `data: {...}` body, the describe is treated as failed, and the guardrail
+  // falls back to other vision models — masking the real (working) describer.
+  // Forcing stream:false guarantees a single JSON object the parser can read.
+  let capturedBody: Record<string, unknown> = {};
+
+  const mockResponse = {
+    ok: true,
+    json: async () => ({ choices: [{ message: { content: "A description" } }] }),
+  };
+
+  globalThis.fetch = async (_url: URL | RequestInfo, init?: RequestInit) => {
+    if (init?.body) capturedBody = JSON.parse(init.body as string);
+    return mockResponse as unknown as Response;
+  };
+
+  try {
+    const config: VisionModelConfig = {
+      model: "openai/gpt-4o-mini",
+      prompt: "Describe this image",
+      timeoutMs: 30000,
+      maxImages: 10,
+    };
+    await callVisionModel("data:image/png;base64,iVBORw0KGgo", config);
+    assert.strictEqual(
+      capturedBody.stream,
+      false,
+      "OpenAI-compatible describe request must force stream:false so the response is parseable JSON"
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("callVisionModel fetches remote images before Anthropic requests", async () => {
   const fetchCalls: Array<{ url: string; init?: RequestInit }> = [];
 

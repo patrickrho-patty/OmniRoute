@@ -354,6 +354,14 @@ async function callVisionModelSingle(
         headers,
         body: JSON.stringify({
           model: requestModel,
+          // Force a single JSON object, not an SSE stream. The describe call is
+          // parsed with response.json(); a provider that defaults to streaming
+          // when `stream` is omitted (e.g. codex via the OmniRoute self-loop)
+          // would return `data: {…chunk…}` frames that JSON.parse cannot read,
+          // so the describe is treated as failed and the guardrail falls back to
+          // other (possibly broken) vision models. Explicit stream:false keeps
+          // the JSON path authoritative regardless of the backend's default.
+          stream: false,
           messages: [
             {
               role: "user",
