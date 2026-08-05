@@ -22,6 +22,26 @@ test("extractImageParts returns empty array for messages without images", () => 
   assert.deepStrictEqual(result, []);
 });
 
+test("extractImageParts detects input_image (Responses API) format", () => {
+  // The Responses API puts images in `input[].content[]` as `input_image` parts
+  // (image_url is a bare string — a data URI or https URL), not chat `image_url`.
+  const messages = [
+    {
+      role: "user",
+      content: [
+        { type: "input_text", text: "What is in this image?" },
+        { type: "input_image", image_url: "data:image/png;base64,abc" },
+      ],
+    },
+  ] as unknown as Parameters<typeof extractImageParts>[0];
+  const result = extractImageParts(messages);
+  assert.strictEqual(result.length, 1);
+  assert.strictEqual(result[0].messageIndex, 0);
+  assert.strictEqual(result[0].partIndex, 1);
+  assert.strictEqual(result[0].imageUrl, "data:image/png;base64,abc");
+  assert.strictEqual(result[0].imageType, "input_image");
+});
+
 test("extractImageParts detects image_url format", () => {
   const messages: RequestMessage[] = [
     {

@@ -100,7 +100,9 @@ export interface RequestMessage {
 export type RequestContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string; detail?: string } }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+  | { type: "input_image"; image_url: string }
+  | { type: "input_text"; text: string };
 
 /**
  * Extract image parts from messages array.
@@ -138,6 +140,21 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
           imageUrl: dataUri,
           imageType: "image",
         });
+      } else if (part?.type === "input_image") {
+        // Responses API image part. image_url is a bare string (data URI or https
+        // URL) — the same payload the chat path carries as image_url.url.
+        const url =
+          typeof part.image_url === "string"
+            ? part.image_url
+            : (part as { image_url?: { url?: string } }).image_url?.url || "";
+        if (url) {
+          results.push({
+            messageIndex: msgIdx,
+            partIndex: partIdx,
+            imageUrl: url,
+            imageType: "input_image",
+          });
+        }
       }
     }
   }
@@ -445,6 +462,8 @@ async function callVisionModelSingle(
 export interface RequestBody {
   model?: string;
   messages?: RequestMessage[];
+  /** Responses API conversation array (input items). */
+  input?: RequestMessage[];
   [key: string]: unknown;
 }
 
@@ -464,39 +483,50 @@ export function replaceImageParts(
 
   const result = structuredClone(body) as RequestBody;
 
-  if (!Array.isArray(result.messages)) {
-    return result;
-  }
-
+  // Operate on whichever conversation array exists: chat-completions / Anthropic
+  // use `messages`, the Responses API uses `input`. A request body is one or the
+  // other, so a single descriptionIndex walks both safely.
   let descriptionIndex = 0;
 
-  for (let msgIdx = 0; msgIdx < result.messages.length; msgIdx++) {
-    const message = result.messages[msgIdx];
-    if (!message || !Array.isArray(message.content)) {
-      continue;
-    }
+  for (const key of ["messages", "input"] as const) {
+    const list = result[key];
+    if (!Array.isArray(list)) continue;
 
-    const newContent: RequestContentPart[] = [];
-
-    for (const part of message.content) {
-      if (part?.type === "image_url" || part?.type === "image") {
-        if (descriptionIndex < descriptions.length) {
-          const description = descriptions[descriptionIndex];
-          descriptionIndex++;
-          if (description == null) {
-            // #4012: describe failed for this image — preserve the original
-            // image so a vision-capable upstream can still process it.
-            newContent.push(part as RequestContentPart);
-          } else {
-            newContent.push({ type: "text", text: description });
-          }
-        }
-      } else {
-        newContent.push(part as RequestContentPart);
+    for (let msgIdx = 0; msgIdx < list.length; msgIdx++) {
+      const message = list[msgIdx];
+      if (!message || !Array.isArray(message.content)) {
+        continue;
       }
-    }
 
-    message.content = newContent;
+      const newContent: RequestContentPart[] = [];
+
+      for (const part of message.content) {
+        const isImage =
+          part?.type === "image_url" || part?.type === "image" || part?.type === "input_image";
+        if (isImage) {
+          if (descriptionIndex < descriptions.length) {
+            const description = descriptions[descriptionIndex];
+            descriptionIndex++;
+            if (description == null) {
+              // #4012: describe failed for this image — preserve the original
+              // image so a vision-capable upstream can still process it.
+              newContent.push(part as RequestContentPart);
+            } else {
+              // Match the surrounding API format: Responses uses input_text,
+              // chat-completions / Anthropic use text.
+              const textType = part?.type === "input_image" ? "input_text" : "text";
+              newContent.push({ type: textType, text: description });
+            }
+          }
+          // else: more images than descriptions (beyond maxImages) — drop,
+          // matching the existing chat-path overflow behavior.
+        } else {
+          newContent.push(part as RequestContentPart);
+        }
+      }
+
+      message.content = newContent;
+    }
   }
 
   return result;

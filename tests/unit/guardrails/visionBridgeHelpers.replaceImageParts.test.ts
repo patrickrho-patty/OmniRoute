@@ -6,6 +6,38 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { replaceImageParts } from "@/lib/guardrails/visionBridgeHelpers";
 
+test("replaceImageParts replaces input_image with input_text in Responses API input[]", () => {
+  // /v1/responses bodies carry conversation in `input[]` with input_image parts.
+  // The bridge must swap the image for an input_text description so the
+  // (text-only) upstream never sees an image_url it can't deserialize.
+  const body = {
+    model: "opencode-go/deepseek-v4-flash",
+    input: [
+      {
+        role: "user",
+        content: [
+          { type: "input_text", text: "What is in this image?" },
+          { type: "input_image", image_url: "data:image/png;base64,abc" },
+        ],
+      },
+    ],
+  };
+
+  const result = replaceImageParts(body, ["[Image 1]: A blue square on red"]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const content = (result as any).input[0].content as Array<{
+    type: string;
+    text?: string;
+  }>;
+
+  // Surrounding input_text is preserved.
+  assert.strictEqual(content[0].type, "input_text");
+  assert.strictEqual(content[0].text, "What is in this image?");
+  // The image part is replaced with an input_text description (NOT image_url).
+  assert.strictEqual(content[1].type, "input_text");
+  assert.strictEqual(content[1].text, "[Image 1]: A blue square on red");
+});
+
 test("replaceImageParts replaces single image with description", () => {
   const body = {
     model: "minimax/minimax-01",
