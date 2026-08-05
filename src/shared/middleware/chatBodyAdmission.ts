@@ -6,6 +6,13 @@
  * requests from entering that allocation-heavy path together. This module reserves process-
  * local heavyweight capacity before parsing and enforces the hard limit against bytes read,
  * not an untrusted Content-Length header.
+ *
+ * Contention is absorbed with a bounded wait (OMNIROUTE_CHAT_ADMISSION_WAIT_MS) instead of an
+ * immediate reject: coding-agent traffic (Cline and friends) is heavyweight by construction,
+ * so an instant 503 turns transient overlap into hard client failures. Capacity that stays
+ * busy past the wait budget still returns the retryable 503 + Retry-After, preserving the
+ * OOM guard. The lease itself is held only through the request-processing phase — it is
+ * released on the first streamed response byte, not at stream close.
  */
 
 import { CORS_HEADERS } from "../utils/cors";
@@ -13,6 +20,11 @@ import { CORS_HEADERS } from "../utils/cors";
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(String(value), 10);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
 export const CHAT_LARGE_BODY_BYTES = parsePositiveInt(
@@ -28,6 +40,12 @@ export const CHAT_HARD_MAX_BODY_BYTES = parsePositiveInt(
 const CHAT_MAX_HEAVY_IN_FLIGHT = parsePositiveInt(
   process.env.OMNIROUTE_CHAT_MAX_HEAVY_IN_FLIGHT,
   1
+);
+
+/** How long a heavy request waits for a busy heavyweight slot before returning the retryable 503. */
+export const CHAT_ADMISSION_WAIT_MS = parseNonNegativeInt(
+  process.env.OMNIROUTE_CHAT_ADMISSION_WAIT_MS,
+  3000
 );
 
 export const CHAT_HEAVY_MESSAGE_COUNT = parsePositiveInt(
@@ -55,7 +73,8 @@ export interface ChatAdmissionLease {
 /**
  * Process-local heavyweight reservation. The capacity check and increment execute in one
  * synchronous JavaScript turn, making acquisition atomic within an OmniRoute process.
- * Queueing is intentionally separate: unavailable capacity is a retryable 503.
+ * Contention is absorbed by a bounded wait in admitChatRequest (OMNIROUTE_CHAT_ADMISSION_WAIT_MS);
+ * capacity that stays busy past the budget is a retryable 503.
  */
 export class ChatAdmissionController {
   #activeHeavy = 0;
@@ -89,13 +108,37 @@ export class ChatAdmissionController {
 
 const defaultAdmissionController = new ChatAdmissionController(CHAT_MAX_HEAVY_IN_FLIGHT);
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Acquire a heavyweight lease, waiting up to `waitMs` while capacity is busy. Returns null
+ * when the wait budget is exhausted or the caller's signal aborts. A 0 budget never waits
+ * (preserves the historical immediate-503 behavior for tests and strict deployments).
+ */
+async function acquireHeavyWithWait(
+  controller: ChatAdmissionController,
+  waitMs: number,
+  signal?: AbortSignal
+): Promise<ChatAdmissionLease | null> {
+  const deadline = Date.now() + Math.max(0, waitMs);
+  for (;;) {
+    const lease = controller.tryAcquireHeavy();
+    if (lease) return lease;
+    if (signal?.aborted) return null;
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) return null;
+    await sleep(Math.min(remaining, 25));
+  }
+}
+
 export type ChatRequestAdmission =
   | { admit: true; request: Request; lease: ChatAdmissionLease | null }
   | { admit: false; response: Response };
 
 export type ChatStructureAdmission =
-  | { admit: true; lease: ChatAdmissionLease | null }
-  | { admit: false; response: Response };
+  { admit: true; lease: ChatAdmissionLease | null } | { admit: false; response: Response };
 
 function rejectionResponse(status: 413 | 503, hardMaxBytes: number): Response {
   const isPayload = status === 413;
@@ -268,11 +311,13 @@ export async function admitChatRequest(
     controller?: ChatAdmissionController;
     largeBodyBytes?: number;
     hardMaxBytes?: number;
+    waitMs?: number;
   } = {}
 ): Promise<ChatRequestAdmission> {
   const controller = options.controller ?? defaultAdmissionController;
   const largeBodyBytes = options.largeBodyBytes ?? CHAT_LARGE_BODY_BYTES;
   const hardMaxBytes = options.hardMaxBytes ?? CHAT_HARD_MAX_BODY_BYTES;
+  const waitMs = options.waitMs ?? CHAT_ADMISSION_WAIT_MS;
   const contentLength = parseContentLength(request.headers.get("content-length"));
 
   if (contentLength !== null && contentLength > hardMaxBytes) {
@@ -280,15 +325,15 @@ export async function admitChatRequest(
   }
 
   let lease: ChatAdmissionLease | null = null;
-  const reserve = (): boolean => {
+  const reserve = async (): Promise<boolean> => {
     if (lease) return true;
-    lease = controller.tryAcquireHeavy();
+    lease = await acquireHeavyWithWait(controller, waitMs, request.signal);
     return lease !== null;
   };
 
   // A known-large declaration can reserve before ingestion. Unknown lengths are boundedly
   // sniffed below; this avoids consuming scarce heavyweight capacity for small chunked bodies.
-  if (contentLength !== null && contentLength >= largeBodyBytes && !reserve()) {
+  if (contentLength !== null && contentLength >= largeBodyBytes && !(await reserve())) {
     return { admit: false, response: rejectionResponse(503, hardMaxBytes) };
   }
 
@@ -307,7 +352,7 @@ export async function admitChatRequest(
         lease?.release();
         return { admit: false, response: rejectionResponse(413, hardMaxBytes) };
       }
-      if (totalBytes >= largeBodyBytes && !reserve()) {
+      if (totalBytes >= largeBodyBytes && !(await reserve())) {
         await reader.cancel("chat admission capacity unavailable").catch(() => undefined);
         return { admit: false, response: rejectionResponse(503, hardMaxBytes) };
       }
@@ -335,15 +380,23 @@ export async function releaseChatAdmissionAfterHandler(
   lease: ChatAdmissionLease | null
 ): Promise<Response> {
   try {
-    return releaseChatAdmissionWhenDone(await responsePromise, lease);
+    return releaseChatAdmissionWhenStreaming(await responsePromise, lease);
   } catch (error) {
     lease?.release();
     throw error;
   }
 }
 
-/** Hold a heavyweight lease through an SSE response without buffering the response body. */
-export function releaseChatAdmissionWhenDone(
+/**
+ * Hold a heavyweight lease only through the request-processing phase: once the first
+ * response byte streams, the request has been parsed, translated, compressed, and
+ * dispatched upstream, so the slot is freed for the next heavy request. Long streaming
+ * responses no longer monopolize the single heavyweight slot (a 503 chat_admission_busy
+ * source for concurrent coding-agent traffic). Releases exactly once on the first byte,
+ * on close without bytes, on stream error, or on cancellation — without buffering the
+ * response body.
+ */
+export function releaseChatAdmissionWhenStreaming(
   response: Response,
   lease: ChatAdmissionLease | null
 ): Response {
@@ -355,23 +408,30 @@ export function releaseChatAdmissionWhenDone(
   }
 
   const reader = response.body.getReader();
+  let released = false;
+  const releaseOnce = (): void => {
+    if (released) return;
+    released = true;
+    lease.release();
+  };
   const body = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         const { done, value } = await reader.read();
         if (done) {
-          lease.release();
+          releaseOnce();
           controller.close();
         } else {
+          releaseOnce(); // first byte: request-side heavy work is complete
           controller.enqueue(value);
         }
       } catch (error) {
-        lease.release();
+        releaseOnce();
         controller.error(error);
       }
     },
     async cancel(reason) {
-      lease.release();
+      releaseOnce();
       await reader.cancel(reason).catch(() => undefined);
     },
   });

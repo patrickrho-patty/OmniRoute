@@ -9437,6 +9437,10 @@
         "description": "ஒரு படமாக சூழல் (Claude Fable 5, நேரடி வழி).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "கடைசி பயனர் வினவலுக்கு எதிரான பிரித்தெடுக்கும் வாக்கிய மதிப்பெண்.",
         "label": "பொருத்தம்"

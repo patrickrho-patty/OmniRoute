@@ -9437,6 +9437,10 @@
         "description": "చిత్రంగా సందర్భం (Claude Fable 5, డైరెక్ట్ రూట్).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "చివరి వినియోగదారు ప్రశ్నతో పోల్చి ఎక్స్‌ట్రాక్టివ్ వాక్య స్కోరింగ్.",
         "label": "సంబంధితత"

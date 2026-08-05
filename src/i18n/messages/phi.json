@@ -9436,6 +9436,10 @@
         "description": "Konteksto bilang isang imahe (Claude Fable 5, direktang ruta).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "Extractive na pag-iskor ng pangungusap laban sa huling query ng user.",
         "label": "Kaugnayan"

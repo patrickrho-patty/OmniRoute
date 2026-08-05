@@ -9437,6 +9437,10 @@
         "description": "السياق كصورة (Claude Fable 5، مسار مباشر).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "تقييم الجمل الاستخراجي مقابل استعلام المستخدم الأخير.",
         "label": "الصلة"

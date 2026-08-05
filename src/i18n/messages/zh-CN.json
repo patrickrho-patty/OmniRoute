@@ -9436,6 +9436,10 @@
         "description": "上下文作为图像 (Claude Fable 5，直接路径)。",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "针对最后一次用户查询的抽取式句子评分。",
         "label": "相关性"

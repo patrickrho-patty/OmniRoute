@@ -46,7 +46,7 @@ EXCLUDES=(
   --exclude='.opencode/'
   --exclude='.env' --exclude='.env.*'
   --exclude='/logs/'
-  --exclude='coverage/'
+  --exclude='/coverage/'
   --exclude='.turbo/'
   --exclude='.DS_Store'
   --exclude='*.sqlite' --exclude='*.sqlite-*' --exclude='*.db'

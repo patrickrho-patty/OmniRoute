@@ -9436,6 +9436,10 @@
         "description": "चित्र म्हणून संदर्भ (Claude Fable 5, थेट मार्ग).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "शेवटच्या वापरकर्त्याच्या क्वेरीच्या तुलनेत निष्कर्षात्मक वाक्य स्कोअरिंग.",
         "label": "प्रासंगिकता"

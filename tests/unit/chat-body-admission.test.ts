@@ -7,7 +7,7 @@ const {
   admitChatStructure,
   ChatAdmissionController,
   releaseChatAdmissionAfterHandler,
-  releaseChatAdmissionWhenDone,
+  releaseChatAdmissionWhenStreaming,
 } = await import("../../src/shared/middleware/chatBodyAdmission.ts");
 const { withEarlyStreamKeepalive } = await import("../../open-sse/utils/earlyStreamKeepalive.ts");
 
@@ -36,7 +36,12 @@ test("small known body is admitted without consuming heavyweight capacity", asyn
 test("a byte-light request above the message threshold acquires heavyweight capacity", async () => {
   const controller = new ChatAdmissionController(1);
   const result = admitChatStructure(
-    { messages: [{ role: "user", content: "one" }, { role: "user", content: "two" }] },
+    {
+      messages: [
+        { role: "user", content: "one" },
+        { role: "user", content: "two" },
+      ],
+    },
     null,
     { controller, maxMessages: 10, heavyMessages: 2, heavyTools: 10, heavyTokens: 10_000 }
   );
@@ -151,11 +156,13 @@ test("non-ASCII strings use a conservative UTF-8 token estimate", () => {
 test("wide objects exhaust bounded inspection without materializing all property values", () => {
   const controller = new ChatAdmissionController(1);
   const wide = Object.fromEntries(Array.from({ length: 10_001 }, (_, index) => [`k${index}`, 0]));
-  const result = admitChatStructure(
-    { messages: [{ role: "user", content: wide }] },
-    null,
-    { controller, maxMessages: 10, heavyMessages: 10, heavyTools: 10, heavyTokens: 10_000 }
-  );
+  const result = admitChatStructure({ messages: [{ role: "user", content: wide }] }, null, {
+    controller,
+    maxMessages: 10,
+    heavyMessages: 10,
+    heavyTools: 10,
+    heavyTokens: 10_000,
+  });
 
   assert.equal(result.admit, true);
   assert.equal(controller.activeHeavy, 1);
@@ -168,7 +175,12 @@ test("an existing byte-heavy lease is reused for structure-heavy admission", () 
   assert.ok(lease);
 
   const result = admitChatStructure(
-    { messages: [{ role: "user", content: "one" }, { role: "user", content: "two" }] },
+    {
+      messages: [
+        { role: "user", content: "one" },
+        { role: "user", content: "two" },
+      ],
+    },
     lease,
     { controller, maxMessages: 10, heavyMessages: 2, heavyTools: 10, heavyTokens: 10_000 }
   );
@@ -189,7 +201,7 @@ test("heavyweight admission is atomic and returns retryable 503 at capacity", as
   if (!first.admit) return;
   assert.equal(controller.activeHeavy, 1);
 
-  const second = await admitChatRequest(chatRequest(body), options);
+  const second = await admitChatRequest(chatRequest(body), { ...options, waitMs: 0 });
   assert.equal(second.admit, false);
   if (second.admit) return;
   assert.equal(second.response.status, 503);
@@ -245,6 +257,7 @@ test("unknown or lying-small lengths cannot bypass occupied heavyweight capacity
       controller,
       largeBodyBytes: 32,
       hardMaxBytes: 1024,
+      waitMs: 0,
     });
     assert.equal(result.admit, false);
     if (!result.admit) assert.equal(result.response.status, 503);
@@ -293,15 +306,19 @@ test("actual bytes enforce hard max despite a lying small content-length", async
   assert.equal(controller.activeHeavy, 0, "hard-cap rejection releases a mid-read lease");
 });
 
-test("stream lifecycle holds the lease until close and releases exactly once", async () => {
+test("stream lifecycle releases the lease on the first byte and exactly once", async () => {
   const controller = new ChatAdmissionController(1);
   const lease = controller.tryAcquireHeavy();
   assert.ok(lease);
-  const response = releaseChatAdmissionWhenDone(
+  const encoder = new TextEncoder();
+  const response = releaseChatAdmissionWhenStreaming(
     new Response(
       new ReadableStream({
         start(streamController) {
-          streamController.enqueue(new TextEncoder().encode("data: ok\n\n"));
+          streamController.enqueue(encoder.encode("data: first\n\n"));
+        },
+        pull(streamController) {
+          streamController.enqueue(encoder.encode("data: second\n\n"));
           streamController.close();
         },
       }),
@@ -309,18 +326,28 @@ test("stream lifecycle holds the lease until close and releases exactly once", a
     ),
     lease
   );
-  assert.equal(controller.activeHeavy, 1);
-  assert.equal(await response.text(), "data: ok\n\n");
-  assert.equal(controller.activeHeavy, 0);
+  assert.equal(controller.activeHeavy, 1, "lease held until the first byte streams");
+  const reader = response.body!.getReader();
+  const first = await reader.read();
+  assert.equal(new TextDecoder().decode(first.value), "data: first\n\n");
+  assert.equal(
+    controller.activeHeavy,
+    0,
+    "lease freed after first byte while stream is still open"
+  );
+  const second = await reader.read();
+  assert.equal(new TextDecoder().decode(second.value), "data: second\n\n");
+  assert.equal(second.done, false);
+  assert.equal((await reader.read()).done, true);
   lease.release();
-  assert.equal(controller.activeHeavy, 0);
+  assert.equal(controller.activeHeavy, 0, "release must be idempotent");
 });
 
 test("stream cancellation releases the heavyweight lease", async () => {
   const controller = new ChatAdmissionController(1);
   const lease = controller.tryAcquireHeavy();
   assert.ok(lease);
-  const response = releaseChatAdmissionWhenDone(
+  const response = releaseChatAdmissionWhenStreaming(
     new Response(new ReadableStream({ pull() {} }), {
       headers: { "content-type": "text/event-stream" },
     }),
@@ -337,7 +364,7 @@ test("cancelling early keepalive waits for pending handler cleanup before releas
   let resolveHandler!: (response: Response) => void;
   const handler = new Promise<Response>((resolve) => {
     resolveHandler = resolve;
-  }).then((response) => releaseChatAdmissionWhenDone(response, lease));
+  }).then((response) => releaseChatAdmissionWhenStreaming(response, lease));
 
   const outer = await withEarlyStreamKeepalive(handler, { thresholdMs: 0, intervalMs: 250 });
   await outer.body?.cancel("client disconnected");
@@ -371,7 +398,7 @@ test("pre-aborted early keepalive cancels the eventual handler body and releases
   let resolveHandler!: (response: Response) => void;
   const handler = new Promise<Response>((resolve) => {
     resolveHandler = resolve;
-  }).then((response) => releaseChatAdmissionWhenDone(response, lease));
+  }).then((response) => releaseChatAdmissionWhenStreaming(response, lease));
 
   const outer = await withEarlyStreamKeepalive(handler, {
     thresholdMs: 0,
@@ -436,7 +463,7 @@ test("stream read error releases the heavyweight lease", async () => {
   const controller = new ChatAdmissionController(1);
   const lease = controller.tryAcquireHeavy();
   assert.ok(lease);
-  const response = releaseChatAdmissionWhenDone(
+  const response = releaseChatAdmissionWhenStreaming(
     new Response(
       new ReadableStream({
         start(streamController) {
@@ -449,4 +476,74 @@ test("stream read error releases the heavyweight lease", async () => {
   );
   await assert.rejects(response.text(), /upstream failed/);
   assert.equal(controller.activeHeavy, 0);
+});
+
+test("byte-heavy request waits for a busy slot and is admitted when capacity frees", async () => {
+  const controller = new ChatAdmissionController(1);
+  const body = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(40) }] });
+  const options = { controller, largeBodyBytes: 32, hardMaxBytes: 1024, waitMs: 5000 };
+
+  const occupant = controller.tryAcquireHeavy();
+  assert.ok(occupant);
+  const pending = admitChatRequest(chatRequest(body), options);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  occupant.release();
+
+  const result = await pending;
+  assert.equal(result.admit, true);
+  if (result.admit) {
+    assert.equal(controller.activeHeavy, 1);
+    result.lease?.release();
+  }
+  assert.equal(controller.activeHeavy, 0);
+});
+
+test("byte-heavy request times out waiting for a busy slot and returns retryable 503", async () => {
+  const controller = new ChatAdmissionController(1);
+  const occupant = controller.tryAcquireHeavy();
+  assert.ok(occupant);
+  const body = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(40) }] });
+  const started = Date.now();
+  const result = await admitChatRequest(chatRequest(body), {
+    controller,
+    largeBodyBytes: 32,
+    hardMaxBytes: 1024,
+    waitMs: 120,
+  });
+  assert.equal(result.admit, false);
+  if (!result.admit) {
+    assert.equal(result.response.status, 503);
+    assert.equal(result.response.headers.get("Retry-After"), "2");
+    assert.equal((await result.response.json()).error.code, "chat_admission_busy");
+  }
+  assert.ok(Date.now() - started >= 100, "must wait out the admission budget before rejecting");
+  occupant.release();
+});
+
+test("aborting the request during a busy-slot wait admits false promptly", async () => {
+  const controller = new ChatAdmissionController(1);
+  const occupant = controller.tryAcquireHeavy();
+  assert.ok(occupant);
+  const abortController = new AbortController();
+  const body = JSON.stringify({ messages: [{ role: "user", content: "x".repeat(40) }] });
+  const request = new Request("http://x/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": String(body.length),
+    },
+    body,
+    signal: abortController.signal,
+  });
+  const pending = admitChatRequest(request, {
+    controller,
+    largeBodyBytes: 32,
+    hardMaxBytes: 1024,
+    waitMs: 5000,
+  });
+  setTimeout(() => abortController.abort("client cancelled"), 50);
+  const result = await pending;
+  assert.equal(result.admit, false);
+  if (!result.admit) assert.equal(result.response.status, 503);
+  occupant.release();
 });

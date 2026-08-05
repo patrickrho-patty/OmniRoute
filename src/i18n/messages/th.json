@@ -9437,6 +9437,10 @@
         "description": "บริบทในรูปแบบรูปภาพ (Claude Fable 5, เส้นทางตรง)",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "การให้คะแนนประโยคแบบดึงข้อมูลเปรียบเทียบกับคำค้นหาล่าสุดของผู้ใช้",
         "label": "ความเกี่ยวข้อง"

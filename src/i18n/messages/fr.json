@@ -9437,6 +9437,10 @@
         "description": "Contexte sous forme d'image (Claude Fable 5, route directe).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "Score de phrase extractif par rapport à la dernière requête de l'utilisateur.",
         "label": "Pertinence"

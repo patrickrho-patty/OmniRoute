@@ -9437,6 +9437,10 @@
         "description": "Muktadha kama picha (Claude Fable 5, njia ya moja kwa moja).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "Upimaji wa sentensi za uchimbaji dhidi ya hoja ya mwisho ya mtumiaji.",
         "label": "Umuhimu"

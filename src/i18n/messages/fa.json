@@ -9437,6 +9437,10 @@
         "description": "زمینه به عنوان تصویر (Claude Fable 5، مسیر مستقیم).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "امتیازدهی استخراجی جملات در برابر آخرین پرس‌وجوی کاربر.",
         "label": "ارتباط"

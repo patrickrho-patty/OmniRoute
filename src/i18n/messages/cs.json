@@ -9437,6 +9437,10 @@
         "description": "Kontext jako obrázek (Claude Fable 5, přímá trasa).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "Extraktivní hodnocení vět vůči poslednímu dotazu uživatele.",
         "label": "Relevance"

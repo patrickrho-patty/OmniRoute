@@ -9436,6 +9436,10 @@
         "description": "Context sub formă de imagine (Claude Fable 5, rută directă).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "Scor de extragere a propozițiilor în raport cu ultima interogare a utilizatorului.",
         "label": "Relevanță"

@@ -9437,6 +9437,10 @@
         "description": "הקשר כתמונה (Claude Fable 5, נתיב ישיר).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "דירוג משפטים חילוצי מול שאילתת המשתמש האחרונה.",
         "label": "רלוונטיות"

@@ -9436,6 +9436,10 @@
         "description": "이미지 형태의 컨텍스트 (Claude Fable 5, 직접 경로).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "마지막 사용자 쿼리에 대한 추출적 문장 점수 매기기.",
         "label": "관련성"

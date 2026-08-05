@@ -9436,6 +9436,10 @@
         "description": "Konteks sebagai imej (Claude Fable 5, laluan terus).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "Pemarkahan ayat ekstraktif terhadap pertanyaan pengguna terakhir.",
         "label": "Kerelevanan"

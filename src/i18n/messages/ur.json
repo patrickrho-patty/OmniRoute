@@ -9437,6 +9437,10 @@
         "description": "سیاق و سباق بطور تصویر (Claude Fable 5، براہ راست راستہ)۔",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "آخری صارف کے سوال کے خلاف اقتباسی جملے کی اسکورنگ۔",
         "label": "مطابقت"

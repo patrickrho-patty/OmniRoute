@@ -9462,6 +9462,10 @@
         "description": "Chuyển ngữ cảnh thành hình ảnh (Claude Fable 5, định tuyến trực tiếp).",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "Chấm điểm và trích xuất câu theo truy vấn gần nhất của người dùng.",
         "label": "Độ liên quan"

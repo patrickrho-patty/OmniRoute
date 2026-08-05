@@ -9437,6 +9437,10 @@
         "description": "ছবি হিসেবে কনটেক্সট (Claude Fable 5, সরাসরি রুট)।",
         "label": "OmniGlyph"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "description": "শেষ ব্যবহারকারীর কোয়েরির বিপরীতে এক্সট্র্যাক্টিভ বাক্য স্কোরিং।",
         "label": "প্রাসঙ্গিকতা"
