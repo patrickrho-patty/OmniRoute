@@ -38,6 +38,33 @@ test("replaceImageParts replaces input_image with input_text in Responses API in
   assert.strictEqual(content[1].text, "[Image 1]: A blue square on red");
 });
 
+test("replaceImageParts chooses input[] over an empty messages[] (empty-messages does not shadow populated input)", () => {
+  // F1 regression guard: a body carrying an empty `messages: []` alongside a
+  // populated Responses `input: [...]` must still bridge the input image.
+  const body = {
+    model: "opencode-go/deepseek-v4-flash",
+    messages: [],
+    input: [
+      {
+        role: "user",
+        content: [{ type: "input_image", image_url: "data:image/png;base64,abc" }],
+      },
+    ],
+  };
+
+  const result = replaceImageParts(body, ["[Image 1]: red square"]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inputContent = (result as any).input[0].content as Array<{
+    type: string;
+    text?: string;
+  }>;
+  assert.strictEqual(inputContent[0].type, "input_text");
+  assert.strictEqual(inputContent[0].text, "[Image 1]: red square");
+  // messages stays empty (untouched).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  assert.deepStrictEqual((result as any).messages, []);
+});
+
 test("replaceImageParts replaces single image with description", () => {
   const body = {
     model: "minimax/minimax-01",
