@@ -12,6 +12,8 @@ import {
   extractImageParts,
   callVisionModel as defaultCallVisionModel,
   replaceImageParts,
+  conversationArray,
+  type RequestBody,
 } from "./visionBridgeHelpers";
 import {
   VISION_BRIDGE_DEFAULTS,
@@ -182,11 +184,7 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // image extraction/replacement helpers handle both, so a text-only upstream
     // never receives a raw image regardless of inbound format.
     const body = payload as Record<string, unknown>;
-    const messages = Array.isArray(body?.messages)
-      ? body.messages
-      : Array.isArray(body?.input)
-        ? body.input
-        : undefined;
+    const messages = conversationArray(body as RequestBody);
     if (!Array.isArray(messages) || messages.length === 0) {
       return { block: false };
     }
