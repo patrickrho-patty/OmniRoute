@@ -177,9 +177,16 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // remains undefined, which makes the reroute check on line ~189 treat it
     // like a non-combo model — exactly what we want: reroute to a vision model.
 
-    // 5. Get body and check for messages
+    // 5. Get body and check for messages. Chat-completions / Anthropic carry the
+    // conversation in `messages`; the Responses API carries it in `input`. The
+    // image extraction/replacement helpers handle both, so a text-only upstream
+    // never receives a raw image regardless of inbound format.
     const body = payload as Record<string, unknown>;
-    const messages = body?.messages;
+    const messages = Array.isArray(body?.messages)
+      ? body.messages
+      : Array.isArray(body?.input)
+        ? body.input
+        : undefined;
     if (!Array.isArray(messages) || messages.length === 0) {
       return { block: false };
     }
