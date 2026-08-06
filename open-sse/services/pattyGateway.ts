@@ -57,6 +57,13 @@ export interface PattyTerminalUsage {
   responseMaterial?: unknown;
 }
 
+export interface PattySettlementRef {
+  preflightRef: string;
+  requestId: string;
+  turnId: string;
+  routedModel: string;
+}
+
 export interface PattyGatewayDeps {
   fetchImpl?: typeof fetch;
   env?: Partial<Record<"PATTY_GATEWAY_URL" | "PATTY_GATEWAY_TOKEN", string | undefined>>;
@@ -282,6 +289,14 @@ export async function pattySettle(
   deps: PattyGatewayDeps = {}
 ): Promise<void> {
   settlementAttempts.add(decision);
+  await pattySettleRef(decision, terminal, deps);
+}
+
+export async function pattySettleRef(
+  decision: PattySettlementRef,
+  terminal: PattyTerminalUsage,
+  deps: PattyGatewayDeps = {}
+): Promise<void> {
   const { baseUrl, token } = gatewayConfig(deps);
   const fetchImpl = deps.fetchImpl ?? fetch;
   try {
@@ -369,6 +384,32 @@ export function pattyHeaders(decision: PattyDecision): Record<string, string> {
     "anthropic-ratelimit-unified-7d-reset": numericHeader(secondary.resetAt),
     "anthropic-ratelimit-unified-reset": numericHeader(representative.window.resetAt),
     "anthropic-ratelimit-unified-representative-claim": representative.claim,
+  };
+}
+
+export function pattyCodexRateLimitsEvent(decision: PattyDecision): Record<string, unknown> {
+  const primary = decision.quota.fiveHour;
+  const secondary = decision.quota.sevenDay;
+  return {
+    type: "codex.rate_limits",
+    plan_type: "enterprise",
+    rate_limits: {
+      allowed: primary.usedPercent < 100 && secondary.usedPercent < 100,
+      limit_reached: primary.usedPercent >= 100 || secondary.usedPercent >= 100,
+      primary: {
+        used_percent: primary.usedPercent,
+        window_minutes: 300,
+        reset_at: primary.resetAt,
+      },
+      secondary: {
+        used_percent: secondary.usedPercent,
+        window_minutes: 10080,
+        reset_at: secondary.resetAt,
+      },
+    },
+    code_review_rate_limits: null,
+    credits: null,
+    promo: null,
   };
 }
 
@@ -509,6 +550,69 @@ export function isPattyBillingEndpoint(endpoint: string): boolean {
   return endpoint === "/v1/messages" || endpoint === "/v1/responses";
 }
 
+function shouldPrepareWithPatty(deps: PattyGatewayDeps): boolean {
+  const env = deps.env ?? process.env;
+  const hasGatewayUrl = Boolean(env.PATTY_GATEWAY_URL?.trim());
+  const hasGatewayToken = Boolean(env.PATTY_GATEWAY_TOKEN?.trim());
+  if (!hasGatewayUrl && !hasGatewayToken) return false;
+  if (!hasGatewayUrl || !hasGatewayToken) gatewayConfig(deps);
+  return true;
+}
+
+function assertPattyHarness(request: Request, harness: PattyHarness): void {
+  if (request.headers.get("x-patty-harness") !== harness) {
+    throw new PattyGatewayError(
+      403,
+      "patty_harness_mismatch",
+      "Patty harness does not match this endpoint"
+    );
+  }
+}
+
+function publicModelFromBody(body: Record<string, unknown>): string {
+  const publicModel = typeof body.model === "string" ? body.model.trim() : "";
+  if (!publicModel) {
+    throw new PattyGatewayError(400, "invalid_request", "A model is required");
+  }
+  return publicModel;
+}
+
+function pattyIdentityFromRequest(request: Request) {
+  return {
+    employeeCredential: request.headers.get("x-patty-original-authorization") || "",
+    accountId:
+      request.headers.get("x-patty-account-id") ||
+      request.headers.get("chatgpt-account-id") ||
+      undefined,
+    sourceAddress: request.headers.get("x-patty-client-ip") || "",
+  };
+}
+
+export async function preparePattyWebSocketTurn<T extends Record<string, unknown>>(
+  request: Request,
+  body: T,
+  requestId: string,
+  turnId: string,
+  deps: PattyGatewayDeps = {}
+): Promise<{ body: T; decision: PattyDecision | null }> {
+  if (!shouldPrepareWithPatty(deps)) return { body, decision: null };
+  assertPattyHarness(request, "codex");
+  const publicModel = publicModelFromBody(body);
+  const decision = await pattyPreflight(
+    {
+      requestId,
+      turnId,
+      harness: "codex",
+      publicModel,
+      endpoint: "/v1/responses",
+      transport: "websocket",
+      ...pattyIdentityFromRequest(request),
+    },
+    deps
+  );
+  return { body: { ...body, model: decision.routedModel }, decision };
+}
+
 export async function preparePattyRequest<T extends Record<string, unknown>>(
   request: Request,
   body: T,
@@ -518,24 +622,11 @@ export async function preparePattyRequest<T extends Record<string, unknown>>(
   const endpoint = new URL(request.url).pathname.replace(/\/$/, "");
   if (!isPattyBillingEndpoint(endpoint)) return { body, decision: null };
 
-  const env = deps.env ?? process.env;
-  const hasGatewayUrl = Boolean(env.PATTY_GATEWAY_URL?.trim());
-  const hasGatewayToken = Boolean(env.PATTY_GATEWAY_TOKEN?.trim());
-  if (!hasGatewayUrl && !hasGatewayToken) return { body, decision: null };
-  if (!hasGatewayUrl || !hasGatewayToken) gatewayConfig(deps);
+  if (!shouldPrepareWithPatty(deps)) return { body, decision: null };
 
   const harness: PattyHarness = endpoint === "/v1/messages" ? "claude" : "codex";
-  if (request.headers.get("x-patty-harness") !== harness) {
-    throw new PattyGatewayError(
-      403,
-      "patty_harness_mismatch",
-      "Patty harness does not match this endpoint"
-    );
-  }
-  const publicModel = typeof body.model === "string" ? body.model.trim() : "";
-  if (!publicModel) {
-    throw new PattyGatewayError(400, "invalid_request", "A model is required");
-  }
+  assertPattyHarness(request, harness);
+  const publicModel = publicModelFromBody(body);
   const acceptsSse = (request.headers.get("accept") || "")
     .toLowerCase()
     .includes("text/event-stream");
@@ -547,12 +638,7 @@ export async function preparePattyRequest<T extends Record<string, unknown>>(
       publicModel,
       endpoint,
       transport: body.stream === true || acceptsSse ? "sse" : "http",
-      employeeCredential: request.headers.get("x-patty-original-authorization") || "",
-      accountId:
-        request.headers.get("x-patty-account-id") ||
-        request.headers.get("chatgpt-account-id") ||
-        undefined,
-      sourceAddress: request.headers.get("x-patty-client-ip") || "",
+      ...pattyIdentityFromRequest(request),
     },
     deps
   );

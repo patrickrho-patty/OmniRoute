@@ -160,6 +160,11 @@ function getTerminalResponseEvent(rawData) {
   return null;
 }
 
+function withPublicResponseModel(message, publicModel) {
+  if (!isRecord(message) || !isText(publicModel) || !isRecord(message.response)) return message;
+  return { ...message, response: { ...message.response, model: publicModel } };
+}
+
 export function isResponsesWsPath(pathname) {
   return RESPONSES_WS_PUBLIC_PATHS.has(pathname);
 }
@@ -317,6 +322,15 @@ function getAuthHeaders(requestUrl, requestHeaders) {
   if (isText(requestHeaders["x-forwarded-for"])) {
     headers["x-forwarded-for"] = requestHeaders["x-forwarded-for"];
   }
+  for (const name of [
+    "x-patty-harness",
+    "x-patty-original-authorization",
+    "x-patty-client-ip",
+    "x-patty-account-id",
+    "chatgpt-account-id",
+  ]) {
+    if (isText(requestHeaders[name])) headers[name] = requestHeaders[name];
+  }
   return headers;
 }
 
@@ -427,6 +441,9 @@ class ResponsesWsSession {
     // failure, upstream error/close, connect failure) don't, so they fall
     // back to a session-scoped sentinel key that still logs exactly once.
     this.loggedTurnIds = new Set();
+    this.turnSequence = 0;
+    this.activeTurn = null;
+    this.upstreamProcessing = Promise.resolve();
     this.lastSeenAt = Date.now();
 
     this.pingTimer = setInterval(() => {
@@ -584,13 +601,21 @@ class ResponsesWsSession {
   // "prepare" action — auth/policy/memory/reasoning-routing/compression — and refreshes
   // preparedContext, but never touches this.upstream/this.upstreamReady; the caller decides
   // whether a new upstream socket is needed.
-  async runPrepare(message, responseBody) {
-    const prepared = await callInternal(this.fetchImpl, this.baseUrl, this.bridgeSecret, "prepare", {
-      requestUrl: this.requestUrl,
-      headers: getAuthHeaders(this.requestUrl, this.requestHeaders),
-      message,
-      response: responseBody,
-    });
+  async runPrepare(message, responseBody, turnId) {
+    const prepared = await callInternal(
+      this.fetchImpl,
+      this.baseUrl,
+      this.bridgeSecret,
+      "prepare",
+      {
+        requestUrl: this.requestUrl,
+        headers: getAuthHeaders(this.requestUrl, this.requestHeaders),
+        requestId: this.sessionId,
+        turnId,
+        message,
+        response: responseBody,
+      }
+    );
 
     if (!prepared.ok) {
       const message2 =
@@ -621,6 +646,11 @@ class ResponsesWsSession {
       serviceTier:
         toStringOrNull(responseBody.service_tier) || toStringOrNull(responseBody.serviceTier),
     };
+    this.activeTurn = {
+      turnId,
+      startedAt: Date.now(),
+      decision: isRecord(prepared.json?.pattyDecision) ? prepared.json.pattyDecision : null,
+    };
 
     return prepared;
   }
@@ -636,7 +666,8 @@ class ResponsesWsSession {
       this.firstResponseBody ||= responseBody;
       this.currentRequestBody = responseBody;
 
-      const prepared = await this.runPrepare(firstMessage, responseBody);
+      const turnId = `turn-${++this.turnSequence}`;
+      const prepared = await this.runPrepare(firstMessage, responseBody, turnId);
 
       const wsOptions = {
         // #5591: chrome_149 is not a wreq-js 2.3.1 profile (max chrome_147); the
@@ -654,37 +685,36 @@ class ResponsesWsSession {
         if (this.closed) return;
         const data =
           typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
-        const terminalEvent = getTerminalResponseEvent(data);
-        if (terminalEvent) {
-          void this.persistHistory(terminalEvent);
-        }
-        this.sendFrame(0x1, Buffer.from(data, "utf8"));
+        this.upstreamProcessing = this.upstreamProcessing
+          .then(() => this.forwardUpstreamMessage(data))
+          .catch((error) => this.failSettlement(error));
       };
       upstream.onerror = (event) => {
         if (this.closed) return;
         const errorMessage = event.message || "Codex upstream WebSocket error";
-        const failurePayload = this.sendFailure("upstream_websocket_error", errorMessage);
-        void this.persistHistory({
-          status: 502,
-          success: false,
-          errorCode: "upstream_websocket_error",
-          errorMessage,
-          terminalMessage: failurePayload,
-        });
+        this.upstreamProcessing = this.upstreamProcessing
+          .then(() =>
+            this.finishFailedTurn(
+              "upstream_websocket_error",
+              errorMessage,
+              502,
+              "upstream_websocket_error"
+            )
+          )
+          .catch((error) => this.failSettlement(error));
       };
       upstream.onclose = (event) => {
         if (this.closed) return;
-        void this.persistHistory({
-          status: event.code === 1000 ? 499 : 502,
-          success: false,
-          errorCode: "upstream_websocket_closed",
-          errorMessage: event.reason || "Codex upstream WebSocket closed before completion",
-          terminalMessage: buildFailurePayload(
-            "upstream_websocket_closed",
-            event.reason || "Codex upstream WebSocket closed before completion"
-          ),
-        });
-        this.close(event.code || 1000, event.reason || "upstream_closed");
+        this.upstreamProcessing = this.upstreamProcessing
+          .then(() =>
+            this.finishFailedTurn(
+              "upstream_websocket_closed",
+              event.reason || "Codex upstream WebSocket closed before completion",
+              event.code === 1000 ? 499 : 502,
+              event.reason || "upstream_closed"
+            )
+          )
+          .catch((error) => this.failSettlement(error));
       };
 
       this.upstream = upstream;
@@ -695,6 +725,123 @@ class ResponsesWsSession {
     })();
 
     return this.upstreamReady;
+  }
+
+  async forwardUpstreamMessage(data) {
+    const terminalEvent = getTerminalResponseEvent(data);
+    if (!terminalEvent) {
+      const parsed = parseJsonRecord(data);
+      const outgoing = this.activeTurn?.decision
+        ? withPublicResponseModel(parsed, this.activeTurn.decision.publicModel)
+        : parsed;
+      this.sendFrame(0x1, Buffer.from(outgoing ? jsonStringifySafe(outgoing) : data, "utf8"));
+      return;
+    }
+
+    const turn = this.activeTurn;
+    let terminalMessage = terminalEvent.terminalMessage;
+    if (turn?.decision) {
+      const settlement = await callInternal(
+        this.fetchImpl,
+        this.baseUrl,
+        this.bridgeSecret,
+        "settle",
+        {
+          decision: turn.decision,
+          terminal: {
+            usage: terminalEvent.responseBody?.usage || {},
+            status: terminalEvent.success ? "success" : "error",
+            provider: this.preparedContext?.provider,
+            connection: this.preparedContext?.connectionId,
+            model: this.preparedContext?.model,
+            errorCode: terminalEvent.errorCode,
+            latencyMs: Math.max(0, Date.now() - turn.startedAt),
+          },
+        }
+      );
+      if (!settlement.ok || settlement.json?.settled !== true) {
+        const error = new Error(
+          settlement.json?.error?.message || "Patty settlement is unavailable"
+        );
+        error.code = settlement.json?.error?.code || "patty_settlement_unavailable";
+        error.status = settlement.status || 503;
+        throw error;
+      }
+      if (isRecord(settlement.json?.rateLimits)) {
+        this.sendJson(settlement.json.rateLimits);
+      }
+      terminalMessage = withPublicResponseModel(terminalMessage, turn.decision.publicModel);
+    }
+
+    this.activeTurn = null;
+    void this.persistHistory({
+      ...terminalEvent,
+      terminalMessage,
+      responseBody: isRecord(terminalMessage?.response)
+        ? terminalMessage.response
+        : terminalEvent.responseBody,
+    });
+    this.sendJson(terminalMessage);
+  }
+
+  failSettlement(error) {
+    if (this.closed) return;
+    const code = error?.code || "patty_settlement_unavailable";
+    const message = error instanceof Error ? error.message : "Patty settlement is unavailable";
+    const failurePayload = this.sendFailure(code, message);
+    void this.persistHistory({
+      status: Number.isInteger(error?.status) ? error.status : 503,
+      success: false,
+      errorCode: code,
+      errorMessage: message,
+      terminalMessage: failurePayload,
+    });
+    this.activeTurn = null;
+    this.close(1011, "patty_settlement_failed");
+  }
+
+  async finishFailedTurn(code, message, status, closeReason) {
+    const turn = this.activeTurn;
+    if (turn?.decision) {
+      const settlement = await callInternal(
+        this.fetchImpl,
+        this.baseUrl,
+        this.bridgeSecret,
+        "settle",
+        {
+          decision: turn.decision,
+          terminal: {
+            usage: {},
+            status: "error",
+            provider: this.preparedContext?.provider,
+            connection: this.preparedContext?.connectionId,
+            model: this.preparedContext?.model,
+            errorCode: code,
+            latencyMs: Math.max(0, Date.now() - turn.startedAt),
+          },
+        }
+      );
+      if (!settlement.ok || settlement.json?.settled !== true) {
+        const error = new Error(
+          settlement.json?.error?.message || "Patty settlement is unavailable"
+        );
+        error.code = settlement.json?.error?.code || "patty_settlement_unavailable";
+        error.status = settlement.status || 503;
+        throw error;
+      }
+      if (isRecord(settlement.json?.rateLimits)) this.sendJson(settlement.json.rateLimits);
+    }
+
+    const failurePayload = this.sendFailure(code, message);
+    void this.persistHistory({
+      status,
+      success: false,
+      errorCode: code,
+      errorMessage: message,
+      terminalMessage: failurePayload,
+    });
+    this.activeTurn = null;
+    this.close(1011, closeReason);
   }
 
   async forwardClientMessage(message) {
@@ -715,14 +862,36 @@ class ResponsesWsSession {
         // reasoning-routing/compression) for every logical turn, not just the first —
         // otherwise every turn after the first bypasses the whole pipeline. This reuses
         // the already-established upstream transport; it must NOT recreate the socket.
-        const prepared = await this.runPrepare(message, nextTurnBody);
-        this.upstream.send(jsonStringifySafe(withPreparedResponseCreate(message, prepared.json.response)));
+        if (this.activeTurn) {
+          const error = new Error("A Responses WebSocket turn is already in progress");
+          error.code = "codex_ws_turn_in_progress";
+          error.status = 409;
+          throw error;
+        }
+        const turnId = `turn-${++this.turnSequence}`;
+        const prepared = await this.runPrepare(message, nextTurnBody, turnId);
+        this.upstream.send(
+          jsonStringifySafe(withPreparedResponseCreate(message, prepared.json.response))
+        );
         return;
       }
       this.upstream.send(jsonStringifySafe(message));
     } catch (error) {
       const code = error?.code || "upstream_websocket_connect_failed";
       const messageText = error instanceof Error ? error.message : String(error);
+      if (this.activeTurn?.decision) {
+        try {
+          await this.finishFailedTurn(
+            code,
+            messageText,
+            Number.isInteger(error?.status) ? error.status : 502,
+            "upstream_connect_failed"
+          );
+        } catch (settlementError) {
+          this.failSettlement(settlementError);
+        }
+        return;
+      }
       const failurePayload = this.sendFailure(code, messageText);
       void this.persistHistory({
         status: Number.isInteger(error?.status) ? error.status : 502,
@@ -831,6 +1000,10 @@ export function createResponsesWsProxy({
   idleTimeoutMs = 90000,
   maxBufferBytes = DEFAULT_MAX_WS_BUFFER_BYTES,
   maxMessageBytes = DEFAULT_MAX_WS_MESSAGE_BYTES,
+  pattyGatewayEnabled = Boolean(
+    process.env.PATTY_GATEWAY_URL?.trim() && process.env.PATTY_GATEWAY_TOKEN?.trim()
+  ),
+  settlementReplayIntervalMs = 30000,
 } = {}) {
   if (!isText(baseUrl)) {
     throw new Error("createResponsesWsProxy requires a baseUrl");
@@ -839,8 +1012,35 @@ export function createResponsesWsProxy({
     throw new Error("createResponsesWsProxy requires a bridgeSecret");
   }
 
+  let replayInFlight = false;
+  const replayPendingSettlements = async () => {
+    if (replayInFlight) return;
+    replayInFlight = true;
+    try {
+      await callInternal(fetchImpl, baseUrl, bridgeSecret, "replay", {});
+    } catch {
+      // Replay is best-effort here. Pending records remain durable in SQLite and
+      // the next bounded retry will try again.
+    } finally {
+      replayInFlight = false;
+    }
+  };
+  let settlementReplayTimer = null;
+  if (pattyGatewayEnabled) {
+    void replayPendingSettlements();
+    settlementReplayTimer = setInterval(
+      replayPendingSettlements,
+      normalizePositiveInteger(settlementReplayIntervalMs, 30000)
+    );
+    settlementReplayTimer.unref?.();
+  }
+
   return {
     isResponsesWsPath,
+    dispose() {
+      if (settlementReplayTimer) clearInterval(settlementReplayTimer);
+      settlementReplayTimer = null;
+    },
     async handleUpgrade(req, socket, head) {
       const pathname = new URL(req.url || "/", baseUrl).pathname;
       if (!isResponsesWsPath(pathname)) {

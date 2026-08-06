@@ -6,9 +6,11 @@ import {
   PattyGatewayError,
   isPattyBillingEndpoint,
   pattyHeaders,
+  pattyCodexRateLimitsEvent,
   pattyNativeErrorResponse,
   pattyPreflight,
   preparePattyRequest,
+  preparePattyWebSocketTurn,
   pattySettle,
   pattyTerminalUsageFromUsage,
   type PattyDecision,
@@ -411,4 +413,59 @@ test("request preparation rejects a trusted-harness mismatch before policy looku
     (error: unknown) =>
       error instanceof PattyGatewayError && error.code === "patty_harness_mismatch"
   );
+});
+
+test("websocket preparation binds every turn and account to Patty without mutating input", async () => {
+  const body = { model: "gpt-5.3-codex", input: [{ role: "user", content: "hello" }] };
+  const request = new Request("https://chatgpt.com/v1/responses", {
+    headers: {
+      "x-patty-harness": "codex",
+      "x-patty-original-authorization": "employee-secret",
+      "x-patty-client-ip": "10.0.0.7",
+      "x-patty-account-id": "account-7",
+    },
+  });
+  let sent: Record<string, unknown> | null = null;
+  const prepared = await preparePattyWebSocketTurn(request, body, "request-ws", "turn-9", {
+    env,
+    fetchImpl: async (_url, init) => {
+      sent = JSON.parse(String(init?.body));
+      return jsonResponse({
+        ...preflightBody,
+        request_id: "request-ws",
+        turn_id: "turn-9",
+      });
+    },
+  });
+
+  assert.deepEqual(sent, {
+    request_id: "request-ws",
+    turn_id: "turn-9",
+    harness: "codex",
+    public_model: "gpt-5.3-codex",
+    endpoint: "/v1/responses",
+    transport: "websocket",
+    credential: "employee-secret",
+    account_id: "account-7",
+  });
+  assert.equal(prepared.decision?.turnId, "turn-9");
+  assert.equal(prepared.body.model, "codex/gpt-5.3-codex");
+  assert.equal(body.model, "gpt-5.3-codex");
+});
+
+test("Codex Enterprise rate-limit events use Patty's primary and secondary windows", async () => {
+  const event = pattyCodexRateLimitsEvent(await decision());
+  assert.deepEqual(event, {
+    type: "codex.rate_limits",
+    plan_type: "enterprise",
+    rate_limits: {
+      allowed: true,
+      limit_reached: false,
+      primary: { used_percent: 20, window_minutes: 300, reset_at: 2_000_000_000 },
+      secondary: { used_percent: 40, window_minutes: 10080, reset_at: 2_000_500_000 },
+    },
+    code_review_rate_limits: null,
+    credits: null,
+    promo: null,
+  });
 });
