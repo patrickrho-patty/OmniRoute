@@ -153,6 +153,14 @@ import {
 } from "../services/cooldownAwareRetry";
 import { constrainConnectionsToQuota, resolveQuotaKeyScope } from "../../lib/quota/quotaKey";
 import { checkConnectionCapacity } from "../utils/backpressure";
+import {
+  hasPattySettlementAttempted,
+  PattyGatewayError,
+  pattyNativeErrorResponse,
+  pattySettle,
+  preparePattyRequest,
+  type PattyDecision,
+} from "@omniroute/open-sse/services/pattyGateway.ts";
 
 registerCodexQuotaFetcher();
 
@@ -255,6 +263,72 @@ export async function handleChat(
   preParsedBody: any = null,
   runtimeOptions: HandleChatRuntimeOptions = {},
   correlationId?: string
+) {
+  let pattyDecision: PattyDecision | null = null;
+  try {
+    const response = await handleChatInternal(
+      request,
+      clientRawRequest,
+      preParsedBody,
+      runtimeOptions,
+      correlationId,
+      (decision) => {
+        pattyDecision = decision;
+      }
+    );
+    if (pattyDecision && !response.ok && !hasPattySettlementAttempted(pattyDecision)) {
+      try {
+        await pattySettle(pattyDecision, {
+          status: "error",
+          errorCode: `http_${response.status}`,
+        });
+      } catch (error) {
+        const gatewayError =
+          error instanceof PattyGatewayError
+            ? error
+            : new PattyGatewayError(
+                503,
+                "patty_settlement_unavailable",
+                "Patty settlement is unavailable"
+              );
+        return pattyNativeErrorResponse(pattyDecision.harness, gatewayError);
+      }
+    }
+    return response;
+  } catch (error) {
+    if (!pattyDecision) throw error;
+    if (!hasPattySettlementAttempted(pattyDecision)) {
+      try {
+        await pattySettle(pattyDecision, {
+          status: "error",
+          errorCode: "request_failed",
+        });
+      } catch (settlementError) {
+        const gatewayError =
+          settlementError instanceof PattyGatewayError
+            ? settlementError
+            : new PattyGatewayError(
+                503,
+                "patty_settlement_unavailable",
+                "Patty settlement is unavailable"
+              );
+        return pattyNativeErrorResponse(pattyDecision.harness, gatewayError);
+      }
+    }
+    return pattyNativeErrorResponse(
+      pattyDecision.harness,
+      new PattyGatewayError(502, "upstream_error", "Upstream request failed")
+    );
+  }
+}
+
+async function handleChatInternal(
+  request: any,
+  clientRawRequest: any = null,
+  preParsedBody: any = null,
+  runtimeOptions: HandleChatRuntimeOptions = {},
+  correlationId?: string,
+  onPattyDecision?: (decision: PattyDecision) => void
 ) {
   const peerRejection = rejectPeerRequest(request?.headers, log.warn, errorResponse);
   if (peerRejection) return peerRejection;
@@ -414,6 +488,22 @@ export async function handleChat(
     );
   }
 
+  let pattyDecision: PattyDecision | null = null;
+  try {
+    const prepared = await preparePattyRequest(request, body, reqId);
+    body = prepared.body;
+    pattyDecision = prepared.decision;
+    if (pattyDecision) onPattyDecision?.(pattyDecision);
+  } catch (error) {
+    const harness =
+      new URL(request.url).pathname.replace(/\/$/, "") === "/v1/messages" ? "claude" : "codex";
+    const gatewayError =
+      error instanceof PattyGatewayError
+        ? error
+        : new PattyGatewayError(503, "patty_policy_unavailable", "Patty policy is unavailable");
+    return pattyNativeErrorResponse(harness, gatewayError);
+  }
+
   // Log request endpoint and model
   const url = new URL(request.url);
 
@@ -431,7 +521,7 @@ export async function handleChat(
   // X-Route-Model header overrides body.model for routing purposes (see
   // resolveRoutingModel). The resolved model still passes through
   // enforceApiKeyPolicy below, so it cannot bypass per-key allowlists.
-  let modelStr = resolveRoutingModel(request, body);
+  let modelStr = pattyDecision?.routedModel ?? resolveRoutingModel(request, body);
 
   // cc discovery alias (`claude/<provider>/<model>`, `claude/combo/<name>`):
   // resolve back to the real id before any combo lookup / resolveModelOrError()
@@ -564,6 +654,10 @@ export async function handleChat(
     isModelAllowedForKey,
     log,
   }));
+  if (pattyDecision) {
+    modelStr = pattyDecision.routedModel;
+    body = { ...body, model: modelStr };
+  }
   telemetry.endPhase();
 
   // T08: per-key active session limit (0 = unlimited).
@@ -611,6 +705,10 @@ export async function handleChat(
     logTag: "Hook model override",
     log,
   }));
+  if (pattyDecision) {
+    modelStr = pattyDecision.routedModel;
+    body = { ...body, model: modelStr };
+  }
 
   // Short-circuit if a hook returned a direct response
   if (hookResponse) {
@@ -621,7 +719,7 @@ export async function handleChat(
   // Detect the semantic task type and optionally route to the optimal model
   let resolvedModelStr = modelStr;
   let taskRouteInfo: { taskType: string; wasRouted: boolean } | null = null;
-  if (getTaskRoutingConfig().enabled) {
+  if (!pattyDecision && getTaskRoutingConfig().enabled) {
     telemetry.startPhase("task-route");
     const tr = applyTaskAwareRouting(modelStr, body);
     if (tr.wasRouted) {
@@ -643,7 +741,7 @@ export async function handleChat(
   // model (some providers don't implement Anthropic's web_search_20250305 server tool).
   // Settings are read only when a web-search tool is present; the override lands before
   // auto/combo resolution and the layer-1 fallback so the target's own handling applies.
-  if (hasNativeWebSearchTool(body)) {
+  if (!pattyDecision && hasNativeWebSearchTool(body)) {
     const wsSettings = await getCachedSettings().catch(() => ({}) as Record<string, unknown>);
     const wsRoute = resolveWebSearchRouteOverride(resolvedModelStr, body, wsSettings);
     if (wsRoute.wasRouted) {
@@ -660,19 +758,21 @@ export async function handleChat(
   // combo/provider resolution. Existing behavior is untouched when no rule matches.
   let reasoningDecision: ReasoningRuleDecision | null = null;
   let requestRoutingTags: { tags: string[] } = { tags: [] };
-  const reasoningRouting = await applyReasoningRouting({
-    request,
-    body,
-    modelStr: resolvedModelStr,
-    policy,
-    apiKeyInfo,
-    reasoningIntent,
-  });
-  if (reasoningRouting.response) return reasoningRouting.response;
-  body = reasoningRouting.body;
-  resolvedModelStr = reasoningRouting.modelStr;
-  reasoningDecision = reasoningRouting.reasoningDecision;
-  requestRoutingTags = reasoningRouting.requestRoutingTags;
+  if (!pattyDecision) {
+    const reasoningRouting = await applyReasoningRouting({
+      request,
+      body,
+      modelStr: resolvedModelStr,
+      policy,
+      apiKeyInfo,
+      reasoningIntent,
+    });
+    if (reasoningRouting.response) return reasoningRouting.response;
+    body = reasoningRouting.body;
+    resolvedModelStr = reasoningRouting.modelStr;
+    reasoningDecision = reasoningRouting.reasoningDecision;
+    requestRoutingTags = reasoningRouting.requestRoutingTags;
+  }
 
   const autoRouting = await resolveAutoRoutingState(resolvedModelStr);
   if (autoRouting.response) return autoRouting.response;
@@ -859,6 +959,7 @@ export async function handleChat(
             reasoningDecision,
             reasoningIntent,
             reasoningRequestTags: requestRoutingTags.tags,
+            pattyDecision,
             // #7360 follow-up: without this, a target dispatch abandoned by
             // targetTimeoutRunner.ts's per-target timeout (comboTargetTimeoutMs)
             // never learns it was abandoned — it only watches the ORIGINAL
@@ -896,6 +997,7 @@ export async function handleChat(
     // ── Global Fallback Provider (#689) ────────────────────────────────────
     // If combo exhausted all models, try the global fallback before giving up.
     if (
+      !pattyDecision &&
       !response.ok &&
       [502, 503].includes(response.status) &&
       typeof (settings as any)?.globalFallbackModel === "string" &&
@@ -1001,6 +1103,7 @@ export async function handleChat(
       reasoningDecision,
       reasoningIntent,
       reasoningRequestTags: requestRoutingTags.tags,
+      pattyDecision,
     },
     null,
     false
@@ -1049,6 +1152,7 @@ async function handleSingleModelChat(
     reasoningDecision?: ReasoningRuleDecision | null;
     reasoningIntent?: ExtractedReasoningIntent | null;
     reasoningRequestTags?: string[];
+    pattyDecision?: PattyDecision | null;
     /**
      * Per-target abort signal from combo.ts's targetTimeoutRunner
      * (comboTargetTimeoutMs) — see the #7360 follow-up comment at the
@@ -1116,6 +1220,7 @@ async function handleSingleModelChat(
             allowRateLimitedConnection: target?.allowRateLimitedConnection === true,
             providerId: target?.providerId ?? null,
             correlationId: runtimeOptions?.correlationId ?? null,
+            pattyDecision: runtimeOptions?.pattyDecision ?? null,
             // #7360 follow-up — see the primary handleSingleModel closure above.
             modelAbortSignal: target?.modelAbortSignal ?? null,
           },
@@ -1489,6 +1594,7 @@ async function handleSingleModelChat(
         correlationId: runtimeOptions?.correlationId ?? null,
         modelPinned: runtimeOptions?.modelPinned ?? false,
         routingComboId: runtimeOptions?.routingComboId ?? null,
+        pattyDecision: runtimeOptions?.pattyDecision ?? null,
       });
       if (telemetry) telemetry.endPhase();
 
@@ -1691,7 +1797,7 @@ async function handleSingleModelChat(
       // Combo targets never emergency-hop: the combo is the operator's fallback policy
       // (target-level orchestration plus the global fallback #689 after it), and a
       // per-target hop burns extra upstream calls against exhausted providers (#1731).
-      if (!runtimeOptions.emergencyFallbackTried && !comboName) {
+      if (!runtimeOptions.pattyDecision && !runtimeOptions.emergencyFallbackTried && !comboName) {
         const fallbackDecision = shouldUseFallback(
           Number(result.status || 0),
           String(result.error || ""),

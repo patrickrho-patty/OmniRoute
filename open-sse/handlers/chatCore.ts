@@ -319,6 +319,14 @@ import {
   isModelScopeProvider,
 } from "../services/modelscopePolicy.ts";
 import { incrementRequestCount } from "../services/geminiRateLimitTracker.ts";
+import {
+  PattyGatewayError,
+  pattyHeaders,
+  pattyNativeErrorResponse,
+  pattySettle,
+  pattyTerminalUsageFromUsage,
+  type PattyDecision,
+} from "../services/pattyGateway.ts";
 
 // ── Global memory pressure guard ────────────────────────────────────────
 // Prevents OOM by rejecting new requests when V8 heap exceeds threshold.
@@ -375,6 +383,7 @@ export async function handleChatCore({
   createPiiTransform = null,
   correlationId = null,
   modelPinned = false,
+  pattyDecision = null,
 }) {
   let { provider, model, extendedContext } = modelInfo;
   // ── Memory pressure guard ────────────────────────────────────────────
@@ -389,11 +398,10 @@ export async function handleChatCore({
   }
 
   // Per-request model-routing metadata (first extracted slice of the request-setup phase).
-  const { apiFormat, customModelTargetFormat, requestedModel } = resolveChatCoreRequestSetup(
-    modelInfo,
-    body,
-    model
-  );
+  const requestSetup = resolveChatCoreRequestSetup(modelInfo, body, model);
+  const { apiFormat, customModelTargetFormat } = requestSetup;
+  const requestedModel =
+    (pattyDecision as PattyDecision | null)?.publicModel ?? requestSetup.requestedModel;
   const isModelScope = () => isModelScopeProvider(provider, credentials?.providerSpecificData);
   const startTime = Date.now();
   // Per-request trace id + checkpoint helper. Lets us see exactly which await
@@ -1214,8 +1222,7 @@ export async function handleChatCore({
       }
       // Phase 4A: unified output styles (supersedes cavemanOutputMode via the back-compat shim).
       let outputStyleResult:
-        | import("../services/compression/outputStyles/apply.ts").OutputStylesResult
-        | null = null;
+        import("../services/compression/outputStyles/apply.ts").OutputStylesResult | null = null;
       if (config.enabled) {
         try {
           const { resolveOutputStyleSelection } =
@@ -1267,8 +1274,8 @@ export async function handleChatCore({
           ? ((compressionInputBody as Record<string, unknown>).max_tokens as number)
           : null;
       let adaptiveTelemetry:
-        | import("../services/compression/adaptiveCompression/types.ts").AdaptiveTelemetry
-        | null = null;
+        import("../services/compression/adaptiveCompression/types.ts").AdaptiveTelemetry | null =
+        null;
       const compressionPlan = selectCompressionPlan(
         config,
         compressionComboKey,
@@ -2218,8 +2225,7 @@ export async function handleChatCore({
 
   let onPipelineStreamError: streamFailure.PipelineStreamErrorHandler | null = null;
   let onClientDisconnectFinalize:
-    | ((event: { reason: string; duration: number }) => boolean)
-    | null = null;
+    ((event: { reason: string; duration: number }) => boolean) | null = null;
 
   // Create stream controller for disconnect detection
   const streamController = createStreamController({
@@ -4085,6 +4091,39 @@ export async function handleChatCore({
       requestId: skillRequestId,
       compressionResponseMeta,
     });
+    if (pattyDecision) {
+      try {
+        await pattySettle(
+          pattyDecision as PattyDecision,
+          pattyTerminalUsageFromUsage(responseUsage, {
+            provider,
+            connection: getCurrentConnectionId() || undefined,
+            model,
+            status: "success",
+            latencyMs: Date.now() - startTime,
+          })
+        );
+        Object.assign(responseHeaders, pattyHeaders(pattyDecision as PattyDecision));
+      } catch (error) {
+        const gatewayError =
+          error instanceof PattyGatewayError
+            ? error
+            : new PattyGatewayError(
+                503,
+                "patty_settlement_unavailable",
+                "Patty settlement is unavailable"
+              );
+        return {
+          success: false,
+          status: gatewayError.status,
+          error: gatewayError.message,
+          response: pattyNativeErrorResponse(
+            (pattyDecision as PattyDecision).harness,
+            gatewayError
+          ),
+        };
+      }
+    }
     // #6426: align response body `model` with the `X-OmniRoute-Model` header
     // (both must be the resolved backend model). Some upstreams (notably legacy
     // /v1/completions text-completion path) return a body `model` field that
@@ -4094,6 +4133,9 @@ export async function handleChatCore({
     if (typeof model === "string" && model) echoModelInObject(translatedResponse, model);
     // #1311: echo the requested alias/combo name in the non-streaming response model.
     if (echoModel) echoModelInObject(translatedResponse, echoModel);
+    if (pattyDecision) {
+      echoModelInObject(translatedResponse, (pattyDecision as PattyDecision).publicModel);
+    }
     return {
       success: true,
       response: buildNonStreamingJsonResponse(translatedResponse, responseHeaders),
@@ -4181,6 +4223,9 @@ export async function handleChatCore({
     pendingRequestId,
     compressionResponseMeta,
   });
+  if (pattyDecision) {
+    Object.assign(responseHeaders, pattyHeaders(pattyDecision as PattyDecision));
+  }
 
   // Create transform stream with logger for streaming response
   let transformStream;
@@ -4191,6 +4236,7 @@ export async function handleChatCore({
 
   let streamCompletionRecorded = false;
   let streamFailureCompletionRecorded = false;
+  let pattySettlementPromise: Promise<void> | null = null;
 
   // Callback to save call log when stream completes (include responseBody when provided by stream)
   const onStreamComplete = ({
@@ -4209,6 +4255,20 @@ export async function handleChatCore({
     if (normalizedStreamStatus !== 200) {
       if (streamFailureCompletionRecorded) return;
       streamFailureCompletionRecorded = true;
+    }
+    if (pattyDecision) {
+      pattySettlementPromise = pattySettle(
+        pattyDecision as PattyDecision,
+        pattyTerminalUsageFromUsage(streamUsage, {
+          provider,
+          connection: getCurrentConnectionId() || undefined,
+          model,
+          status: normalizedStreamStatus === 200 ? "success" : "error",
+          errorCode: streamErrorCode || undefined,
+          latencyMs: Date.now() - startTime,
+        })
+      );
+      void pattySettlementPromise.catch(() => {});
     }
     const cacheUsageLogMeta = buildCacheUsageLogMeta(streamUsage);
     const streamConnectionId = getCurrentConnectionId();
@@ -4448,8 +4508,23 @@ export async function handleChatCore({
     createPiiTransform,
     clientRawRequestHeaders: clientRawRequest?.headers,
     clientResponseFormat,
-    echoModel,
+    echoModel: pattyDecision ? (pattyDecision as PattyDecision).publicModel : echoModel,
     responseHeaders,
+    pattySettlement: pattyDecision
+      ? {
+          harness: (pattyDecision as PattyDecision).harness,
+          awaitSettlement: async () => {
+            if (!pattySettlementPromise) {
+              throw new PattyGatewayError(
+                503,
+                "patty_settlement_unavailable",
+                "Patty settlement is unavailable"
+              );
+            }
+            await pattySettlementPromise;
+          },
+        }
+      : null,
   });
 
   // ── Gamification event (fire-and-forget) ──

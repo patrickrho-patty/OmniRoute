@@ -24,7 +24,19 @@ export function buildClientRawRequest(request: Request, body: unknown) {
     // Still a clone, not an alias — `body` is rewritten downstream (plugin onRequest hook,
     // compression), and this has to stay a snapshot of what the client actually sent.
     body: cloneBoundedForLog(body),
-    headers: Object.fromEntries(request.headers.entries()),
+    headers: Object.fromEntries(
+      Array.from(request.headers.entries()).filter(
+        ([name]) =>
+          ![
+            "authorization",
+            "cookie",
+            "x-api-key",
+            "api-key",
+            "proxy-authorization",
+            "x-patty-original-authorization",
+          ].includes(name.toLowerCase())
+      )
+    ),
     signal: request.signal ?? null,
   };
 }
