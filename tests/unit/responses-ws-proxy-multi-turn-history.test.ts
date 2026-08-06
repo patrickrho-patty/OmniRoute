@@ -276,6 +276,20 @@ test("Patty reauthorizes and settles every turn before Enterprise limits and com
     if (body.action === "prepare") {
       const response = body.response as Record<string, unknown>;
       const turnId = String(body.turnId);
+      if (turnId === "turn-3") {
+        res.writeHead(429, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: {
+              code: "usage_limit_reached",
+              message: "Patty Codex quota is exhausted",
+            },
+            plan_type: "enterprise",
+            resets_at: 1_800_000_000,
+          })
+        );
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -441,6 +455,28 @@ test("Patty reauthorizes and settles every turn before Enterprise limits and com
         "gpt-5.3-codex"
       );
     }
+
+    ws.send(
+      JSON.stringify({
+        type: "response.create",
+        model: "gpt-5.3-codex",
+        input: [{ role: "user", content: "blocked after policy changed" }],
+      })
+    );
+    const blocked = await waitFor(() =>
+      downstreamMessages.find(
+        (entry) =>
+          entry.type === "response.failed" &&
+          (entry.response as { error?: { code?: string } })?.error?.code === "usage_limit_reached"
+      )
+    );
+    assert.equal(blocked.type, "response.failed");
+    assert.equal(
+      internalRequests.filter((entry) => entry.action === "prepare").length,
+      3,
+      "a reused connection observes a later Patty block"
+    );
+    assert.equal(upstreamSends.length, 2, "the blocked turn never reaches the provider");
   } finally {
     ws.close();
     await close(server);
