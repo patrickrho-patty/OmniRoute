@@ -1,3 +1,9 @@
+# ⚠️  DISABLED — renamed from `nightly-release-green.yml` so GitHub stops
+# triggering it. Re-enable by renaming back to `.yml`. Triggers that were
+# silenced: push to release/v* and main (filtered paths), 3×/day schedule,
+# and manual workflow_dispatch. Past run history remains visible in the
+# Actions tab; only future runs are stopped.
+
 name: Release-Green (continuous)
 
 # Solution D — continuous, NON-BLOCKING drift signal for the active release branch.
