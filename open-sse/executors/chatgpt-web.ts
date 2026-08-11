@@ -1443,9 +1443,16 @@ const EXCUSE_RETRY_NUDGE =
  * attempts including session exchange). A short backoff lets the detector
  * window lapse before the second POST.
  */
-const CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS = Number(
-  process.env.CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS ?? 4000
-);
+const CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS_DEFAULT = 4000;
+
+/** Read lazily so tests can zero it via env without re-importing the module. */
+function toolRetryBackoffMs(): number {
+  const raw = process.env.CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS;
+  if (raw !== undefined && raw !== "" && Number.isFinite(Number(raw))) {
+    return Math.max(0, Number(raw));
+  }
+  return CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS_DEFAULT;
+}
 
 /** Abort-aware sleep so a client disconnect cancels the retry backoff. */
 function sleepAbortable(ms: number, signal?: AbortSignal | null): Promise<void> {
@@ -3570,6 +3577,59 @@ export class ChatGptWebExecutor extends BaseExecutor {
           ? credentials.providerSpecificData.turnstileToken
           : null;
 
+      // Fetch fresh sentinel requirement + optional PoW proof tokens for the
+      // tool-turn corrective retry. The first POST of a turn consumes the
+      // requirement/proof tokens; the retry re-POSTs seconds later, and a
+      // second POST with the SAME consumed token is rejected by ChatGPT's
+      // abuse detector with 403 "Unusual activity has been detected from your
+      // device" (verified in production). A real browser fetches fresh
+      // requirements before every message, so the retry must too. Returns
+      // null on failure — the caller falls back to the original headers.
+      const refreshSentinelHeaders = async (): Promise<Record<string, string> | null> => {
+        try {
+          const freshReqs = await prepareChatRequirements(
+            tokenEntry.accessToken,
+            tokenEntry.accountId ?? null,
+            sessionId,
+            deviceId,
+            cookie,
+            dplInfo,
+            signal,
+            log
+          );
+          let freshProof: string | null = null;
+          if (
+            freshReqs.proofofwork?.required &&
+            freshReqs.proofofwork.seed &&
+            freshReqs.proofofwork.difficulty
+          ) {
+            const powConfig = buildPrekeyConfig(CHATGPT_USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
+            freshProof = await solveProofOfWork(
+              freshReqs.proofofwork.seed,
+              freshReqs.proofofwork.difficulty,
+              powConfig,
+              log
+            );
+          }
+          const fresh: Record<string, string> = {};
+          if (freshReqs.token)
+            fresh["openai-sentinel-chat-requirements-token"] = freshReqs.token;
+          if (freshReqs.prepare_token)
+            fresh["openai-sentinel-chat-requirements-prepare-token"] = freshReqs.prepare_token;
+          if (freshProof) fresh["openai-sentinel-proof-token"] = freshProof;
+          if (turnstileToken) fresh["openai-sentinel-turnstile-token"] = turnstileToken;
+          return fresh;
+        } catch (err) {
+          log?.warn?.(
+            "CGPT-WEB",
+            `sentinel refresh for tool-turn retry failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+          return null;
+        }
+      };
+
       // 3. Solve PoW (if required) — reuses the same browser-fingerprint config
       // shape as the prekey, just with the server-provided seed + difficulty.
       let proofToken: string | null = null;
@@ -3595,7 +3655,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
         hasTools,
       });
 
-      const headers: Record<string, string> = {
+      const baseHeaders: Record<string, string> = {
         ...browserHeaders(),
         ...oaiHeaders(sessionId, deviceId),
         "Content-Type": "application/json",
@@ -3603,19 +3663,23 @@ export class ChatGptWebExecutor extends BaseExecutor {
         Authorization: `Bearer ${tokenEntry.accessToken}`,
         Cookie: buildSessionCookieHeader(cookie),
       };
-      if (tokenEntry.accountId) headers["chatgpt-account-id"] = tokenEntry.accountId;
-      if (reqs.token) headers["openai-sentinel-chat-requirements-token"] = reqs.token;
+      if (tokenEntry.accountId) baseHeaders["chatgpt-account-id"] = tokenEntry.accountId;
+      if (reqs.token) baseHeaders["openai-sentinel-chat-requirements-token"] = reqs.token;
       if (reqs.prepare_token)
-        headers["openai-sentinel-chat-requirements-prepare-token"] = reqs.prepare_token;
-      if (proofToken) headers["openai-sentinel-proof-token"] = proofToken;
-      if (turnstileToken) headers["openai-sentinel-turnstile-token"] = turnstileToken;
+        baseHeaders["openai-sentinel-chat-requirements-prepare-token"] = reqs.prepare_token;
+      if (proofToken) baseHeaders["openai-sentinel-proof-token"] = proofToken;
+      if (turnstileToken) baseHeaders["openai-sentinel-turnstile-token"] = turnstileToken;
+      const headers: Record<string, string> = { ...baseHeaders };
 
       log?.info?.("CGPT-WEB", `Conversation request → ${modelSlug} (pow=${!!proofToken})`);
 
-      const postConversation = (requestBody: Record<string, unknown>) =>
+      const postConversation = (
+        requestBody: Record<string, unknown>,
+        headersOverride?: Record<string, string>
+      ) =>
         tlsFetchChatGpt(CONV_URL, {
           method: "POST",
-          headers,
+          headers: headersOverride ?? headers,
           body: JSON.stringify(requestBody),
           timeoutMs: 120_000, // generations can take a while
           signal,
@@ -3753,12 +3817,24 @@ export class ChatGptWebExecutor extends BaseExecutor {
           expectedConversationForWrite = null;
         }
         log?.warn?.("CGPT-WEB", options.logMessage);
-        if (CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS > 0) {
+        const backoffMs = toolRetryBackoffMs();
+        if (backoffMs > 0) {
           log?.debug?.(
             "CGPT-WEB",
-            `tool-turn retry backoff ${CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS}ms (avoid 'unusual activity' 403)`
+            `tool-turn retry backoff ${backoffMs}ms (avoid 'unusual activity' 403)`
           );
-          await sleepAbortable(CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS, signal);
+          await sleepAbortable(backoffMs, signal);
+        }
+        // The first POST consumed the sentinel requirement/proof tokens.
+        // Reusing them on the retry POST is rejected with 403 "Unusual
+        // activity" — fetch fresh ones, exactly like a browser would for a
+        // follow-up message. Fall back to the original headers if the refresh
+        // fails so the retry still gets one chance.
+        const freshSentinelHeaders = await refreshSentinelHeaders();
+        let retryHeaders = headers;
+        if (freshSentinelHeaders) {
+          retryHeaders = { ...baseHeaders, ...freshSentinelHeaders };
+          log?.debug?.("CGPT-WEB", "tool-turn retry using freshly refreshed sentinel tokens");
         }
         cgptBody = buildConversationBody(parsed, modelSlug, randomUUID(), forImageGen, {
           uploadedImages,
@@ -3767,7 +3843,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
         });
         let retryResponse: TlsFetchResult;
         try {
-          retryResponse = await postConversation(cgptBody);
+          retryResponse = await postConversation(cgptBody, retryHeaders);
         } catch (retryErr) {
           return connectionFailure(retryErr);
         }

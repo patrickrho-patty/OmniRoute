@@ -3755,6 +3755,75 @@ test("Excuse guard: confabulation triggers one corrective retry yielding tool_ca
   }
 });
 
+test("Excuse guard: corrective retry fetches FRESH sentinel tokens (reused tokens → 403 'unusual activity')", async () => {
+  reset();
+  const convBodies: string[] = [];
+  const m = installMockFetch({
+    onConv: (opts: { body?: string }) => convBodies.push(opts.body ?? ""),
+    conv: (_opts: unknown, callIndex: number) => ({
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: [
+                callIndex === 1
+                  ? "I cannot access the filesystem in this chat."
+                  : '```json\n{"name":"exec_command","arguments":{"cmd":"ls"}}\n```',
+              ],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    }),
+  });
+  await withEnv({ CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS: "0" }, async () => {
+    try {
+      const executor = new ChatGptWebExecutor();
+      const result = await executor.execute({
+        model: "gpt-5.3-instant",
+        body: {
+          messages: [{ role: "user", content: "read package.json" }],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "exec_command",
+                description: "Run a command",
+                parameters: {
+                  type: "object",
+                  properties: { cmd: { type: "string" } },
+                  required: ["cmd"],
+                },
+              },
+            },
+          ],
+          stream: false,
+        },
+        stream: false,
+        credentials: { apiKey: "test" },
+        signal: AbortSignal.timeout(10_000),
+        log: null,
+      });
+      assert.equal(m.calls.conv, 2, "exactly one corrective retry was issued");
+      assert.equal(
+        m.calls.sentinel,
+        2,
+        "retry re-fetched sentinel requirements instead of reusing the consumed token"
+      );
+      const json = await result.response.json();
+      assert.equal(json.choices[0].message.tool_calls[0].function.name, "exec_command");
+    } finally {
+      m.restore();
+    }
+  });
+});
+
 test("Excuse guard: second-strike excuse passes through without another retry", async () => {
   reset();
   const m = installMockFetch({
