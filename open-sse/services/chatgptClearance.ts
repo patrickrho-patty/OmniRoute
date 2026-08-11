@@ -57,6 +57,11 @@ async function acquireViaPool(): Promise<string | null> {
       cookieDomain: CHATGPT_COOKIE_DOMAIN,
       cookieString: null,
       warmupUrl: CHATGPT_WARMUP_URL,
+      // chatgpt.com's anti-bot fingerprinting targets Playwright's default
+      // Chromium (navigator.webdriver, missing audio context shims, etc.).
+      // cloakbrowser's source-level C++ patches are the only thing that
+      // gets past the "Just a moment" challenge on a datacenter egress.
+      preferCloakbrowser: true,
     });
     return await readCfClearanceFromContext(pooled);
   } catch {
