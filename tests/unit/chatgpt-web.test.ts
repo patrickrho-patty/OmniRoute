@@ -7,7 +7,7 @@ const {
   __resetChatGptWebCachesForTesting,
   stripCdxInjectedMemory,
 } = await import("../../open-sse/executors/chatgpt-web.ts");
-const { describeChatGptWebHttpError } =
+const { describeChatGptWebHttpError, describeChatGptWebToolRetryError } =
   await import("../../open-sse/executors/chatgptWebErrors.ts");
 const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.ts");
 const { __setTlsFetchOverrideForTesting, looksLikeSse, TlsClientUnavailableError } =
@@ -3617,6 +3617,29 @@ test("describeChatGptWebHttpError maps 401 to cookie-expired, 403 to a structura
 test("describeChatGptWebHttpError falls back to the generic message for unmapped statuses", () => {
   assert.equal(describeChatGptWebHttpError(500), "ChatGPT returned HTTP 500");
   assert.equal(describeChatGptWebHttpError(502), "ChatGPT returned HTTP 502");
+});
+
+test("describeChatGptWebToolRetryError explains the 'unusual activity' 403 instead of blaming the cookie", () => {
+  const body =
+    '{"detail":"Unusual activity has been detected from your device. Try again later. (0338dc2b-4839-4f83-b63f-d11f7d52987f)"}';
+  const msg = describeChatGptWebToolRetryError(403, body);
+  assert.match(msg, /unusual activity/i, "names the real cause");
+  assert.match(msg, /rapid consecutive requests/i, "explains why it fired");
+  assert.doesNotMatch(msg, /re-paste your/i, "must not send the user to re-paste a valid cookie");
+  assert.doesNotMatch(msg, /session cookie is invalid/i, "cookie is NOT the problem here");
+});
+
+test("describeChatGptWebToolRetryError defers to the generic describer for other statuses/bodies", () => {
+  assert.equal(describeChatGptWebToolRetryError(500, "boom"), "ChatGPT returned HTTP 500");
+  // 403 without the unusual-activity marker keeps the structural hint.
+  const plain = describeChatGptWebToolRetryError(403, '{"detail":"Invalid conversation body"}');
+  assert.match(plain, /see container logs/i);
+  // 401 on the retry is still a genuine cookie problem.
+  const auth = describeChatGptWebToolRetryError(401, "");
+  assert.match(auth, /session cookie is invalid or expired/i);
+  // Empty body 403 (the pre-logging-fix shape) still names the detector.
+  const emptyBody = describeChatGptWebToolRetryError(403, "");
+  assert.match(emptyBody, /see container logs/i);
 });
 
 // ─── stripCdxInjectedMemory ───────────────────────────────────────────────────

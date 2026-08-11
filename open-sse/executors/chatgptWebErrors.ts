@@ -22,3 +22,20 @@ const CGPT_WEB_HTTP_ERROR_MESSAGES: Record<number, string> = {
 export function describeChatGptWebHttpError(status: number): string {
   return CGPT_WEB_HTTP_ERROR_MESSAGES[status] ?? `ChatGPT returned HTTP ${status}`;
 }
+
+/**
+ * Error message for the tool-turn retry path specifically.
+ *
+ * The retry re-POSTs the conversation seconds after the first request. When
+ * ChatGPT's abuse detector fires on that rapid repeat it returns 403 with
+ * `{"detail":"Unusual activity has been detected from your device. Try again
+ * later. (...)"}` and an empty body elsewhere — which used to surface as the
+ * generic 403 "auth failed" message and send the user re-pasting a valid
+ * cookie. Detect that body and tell the user what actually happened.
+ */
+export function describeChatGptWebToolRetryError(status: number, body: string): string {
+  if (status === 403 && /unusual activity/i.test(body || "")) {
+    return "ChatGPT flagged the request as unusual activity (rapid consecutive requests from the same device) and temporarily throttled the account. Wait ~10 seconds and retry — the session cookie is valid; do not re-paste it.";
+  }
+  return describeChatGptWebHttpError(status);
+}

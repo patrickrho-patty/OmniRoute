@@ -16,7 +16,7 @@
  */
 
 import { BaseExecutor, type ExecuteInput, type ProviderCredentials } from "./base.ts";
-import { describeChatGptWebHttpError } from "./chatgptWebErrors.ts";
+import { describeChatGptWebHttpError, describeChatGptWebToolRetryError } from "./chatgptWebErrors.ts";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import {
   tlsFetchChatGpt,
@@ -1429,6 +1429,42 @@ export function stripCdxInjectedMemory(systemMsg: string): string {
  */
 const EXCUSE_RETRY_NUDGE =
   "\n\n[Host correction: your previous reply did not include a tool call. If this task needs files, commands, or current data, reply with ONLY the tool call as a fenced json block. Never describe errors, connectors, or results you have not actually received from the host.]";
+
+/**
+ * How long to wait before re-POSTing /backend-api/f/conversation for the
+ * tool-turn corrective retry.
+ *
+ * ChatGPT's abuse detector flags rapid consecutive requests from the same
+ * device with HTTP 403 `{"detail":"Unusual activity has been detected from
+ * your device. Try again later."}`. The first POST of a turn just completed,
+ * so an immediate retry lands inside that detection window and the whole
+ * request dies with a misleading 403 (observed in production: excuse turn →
+ * immediate retry → 403, then the account stays flagged for subsequent
+ * attempts including session exchange). A short backoff lets the detector
+ * window lapse before the second POST.
+ */
+const CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS = Number(
+  process.env.CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS ?? 4000
+);
+
+/** Abort-aware sleep so a client disconnect cancels the retry backoff. */
+function sleepAbortable(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 /**
  * Codex CLI prepends large instruction blocks (Skills, Plugins, Engram memory
@@ -3717,6 +3753,13 @@ export class ChatGptWebExecutor extends BaseExecutor {
           expectedConversationForWrite = null;
         }
         log?.warn?.("CGPT-WEB", options.logMessage);
+        if (CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS > 0) {
+          log?.debug?.(
+            "CGPT-WEB",
+            `tool-turn retry backoff ${CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS}ms (avoid 'unusual activity' 403)`
+          );
+          await sleepAbortable(CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS, signal);
+        }
         cgptBody = buildConversationBody(parsed, modelSlug, randomUUID(), forImageGen, {
           uploadedImages,
           hasTools,
@@ -3730,7 +3773,8 @@ export class ChatGptWebExecutor extends BaseExecutor {
         }
         if (retryResponse.status >= 400) {
           const status = retryResponse.status;
-          const errMsg = describeChatGptWebHttpError(status);
+          const retryBody = (retryResponse.text || "").replace(/\s+/g, " ").slice(0, 1200);
+          const errMsg = describeChatGptWebToolRetryError(status, retryBody);
           // 401 = session-token genuinely invalid → drop the cached token so
           // the next request re-exchanges. 403 = structural rejection (model
           // not on account, empty tool-turn body, persona mismatch, ChatGPT
@@ -3744,10 +3788,9 @@ export class ChatGptWebExecutor extends BaseExecutor {
           // to 1200 chars — small enough to fit a single log line, large
           // enough to include Cloudflare challenge HTML and ChatGPT JSON
           // error bodies. Same truncation as `deserialize-fail.ts` and friends.
-          const truncated = (retryResponse.text || "").replace(/\s+/g, " ").slice(0, 1200);
           log?.warn?.(
             "CGPT-WEB",
-            `tool-turn retry ${status} (cfMitigated=${retryResponse.headers?.get("cf-mitigated") ?? "?"}, cFRay=${retryResponse.headers?.get("cf-ray") ?? "?"}): ${truncated}`
+            `tool-turn retry ${status} (cfMitigated=${retryResponse.headers?.get("cf-mitigated") ?? "?"}, cFRay=${retryResponse.headers?.get("cf-ray") ?? "?"}): ${retryBody}`
           );
           return {
             response: errorResponse(status, errMsg, `HTTP_${status}`),
