@@ -112,24 +112,55 @@ function deviceIdFor(cookie: string): string {
 // (e.g. "gpt-5-3-instant"). The slug catalog comes from
 // /backend-api/models on a logged-in account; "gpt-5-4-t-mini" is ChatGPT's
 // abbreviated slug for "GPT-5.4 Thinking Mini".
+//
+// gpt-5.6 family: OmniRoute advertises these in `src/shared/constants/modelSpecs.ts`
+// (titles: "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna") and in
+// `src/shared/constants/pricing/frontier-labs.ts`, but the actual ChatGPT-side
+// slugs are dash-form ("gpt-5-6", "gpt-5-6-thinking", "gpt-5-6-instant",
+// "gpt-5-6-mini", "gpt-5-6-pro", "gpt-5-6-t-mini"). Without these entries
+// the executor's lookup falls through to the raw dot-form id (e.g.
+// `gpt-5.6-sol`), which ChatGPT has no slug for and rejects from
+// /backend-api/f/conversation. Work-mode aliases (`gpt-5.6-sol-wm` etc.)
+// are also routed to their canonical slugs.
 const MODEL_MAP: Record<string, string> = {
-  "gpt-5.3-instant": "gpt-5-3-instant",
-  "gpt-5.3": "gpt-5-3",
-  "gpt-5.3-mini": "gpt-5-3-mini",
+  // gpt-5.6 family — added once the user reported `[403]` on gpt-5.6-sol,
+  // which was a UI label in chatgpt.com but not a slug ChatGPT understood.
+  "gpt-5.6-sol": "gpt-5-6",
+  "gpt-5.6-sol-wm": "gpt-5-6",
+  "gpt-5.6-thinking": "gpt-5-6-thinking",
+  "gpt-5.6-instant": "gpt-5-6-instant",
+  "gpt-5.6": "gpt-5-6",
+  "gpt-5.6-pro": "gpt-5-6-pro",
+  "gpt-5.6-mini": "gpt-5-6-mini",
+  "gpt-5.6-t-mini": "gpt-5-6-t-mini",
+  "gpt-5.6-terra": "gpt-5-6-terra",
+  "gpt-5.6-terra-wm": "gpt-5-6-terra",
+  "gpt-5.6-luna": "gpt-5-6-luna",
+  "gpt-5.6-luna-wm": "gpt-5-6-luna",
+  // gpt-5.5 family
   "gpt-5.5-pro": "gpt-5-5-pro",
   "gpt-5.5-thinking": "gpt-5-5-thinking",
   "gpt-5.5": "gpt-5-5",
+  // gpt-5.4 family
   "gpt-5.4-pro": "gpt-5-4-pro",
   "gpt-5.4-thinking": "gpt-5-4-thinking",
   "gpt-5.4-thinking-mini": "gpt-5-4-t-mini",
+  // gpt-5.3 family
+  "gpt-5.3-instant": "gpt-5-3-instant",
+  "gpt-5.3": "gpt-5-3",
+  "gpt-5.3-mini": "gpt-5-3-mini",
+  // gpt-5.2 family
   "gpt-5.2-pro": "gpt-5-2-pro",
   "gpt-5.2-instant": "gpt-5-2-instant",
   "gpt-5.2": "gpt-5-2",
   "gpt-5.2-thinking": "gpt-5-2-thinking",
+  // gpt-5.1 and earlier
   "gpt-5.1": "gpt-5-1",
   "gpt-5": "gpt-5",
   "gpt-5-mini": "gpt-5-mini",
+  // reasoning
   o3: "o3",
+  "o3-pro": "o3-pro",
 };
 
 /** Set of chatgpt.com slugs that the user_last_used_model_config endpoint
@@ -142,7 +173,7 @@ const MODEL_MAP: Record<string, string> = {
  * are the `o3` reasoning model; the values are the chatgpt.com-side slugs. */
 const THINKING_CAPABLE_SLUGS: ReadonlySet<string> = new Set(
   Object.entries(MODEL_MAP)
-    .filter(([k]) => k.includes("thinking") || k === "o3")
+    .filter(([k]) => k.includes("thinking") || k === "o3" || k === "o3-pro")
     .map(([, v]) => v)
 );
 
@@ -3194,11 +3225,21 @@ export class ChatGptWebExecutor extends BaseExecutor {
       tokenEntry = await exchangeSession(cookie, signal);
     } catch (err) {
       if (err instanceof SessionAuthError) {
-        log?.warn?.("CGPT-WEB", err.message);
+        // SessionAuthError comes from exchangeSession() — `/api/auth/session`
+        // itself returned 401/403 with a body that wasn't a Cloudflare
+        // challenge. That IS a real cookie problem (stale cookie, wrong
+        // account, cf_clearance expired and no browser pool clearance
+        // acquired) → tell the user to re-paste. The 403 is rarer here
+        // because exchangeSession() already tries the browser-pool fallback
+        // for cf-mitigated responses.
+        log?.warn?.(
+          "CGPT-WEB",
+          `session exchange failed: ${(err as Error).message || err}`
+        );
         return {
           response: errorResponse(
             401,
-            "ChatGPT auth failed — re-paste your __Secure-next-auth.session-token cookie from chatgpt.com.",
+            "ChatGPT returned 401 — session cookie is invalid or expired. Re-paste your __Secure-next-auth.session-token from chatgpt.com (DevTools → Application → Cookies).",
             "HTTP_401"
           ),
           url: SESSION_URL,
