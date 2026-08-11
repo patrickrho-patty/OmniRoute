@@ -3690,10 +3690,23 @@ export class ChatGptWebExecutor extends BaseExecutor {
         if (retryResponse.status >= 400) {
           const status = retryResponse.status;
           const errMsg = describeChatGptWebHttpError(status);
-          if (status === 401 || status === 403) tokenCache.delete(cookieKey(cookie));
+          // 401 = session-token genuinely invalid → drop the cached token so
+          // the next request re-exchanges. 403 = structural rejection (model
+          // not on account, empty tool-turn body, persona mismatch, ChatGPT
+          // rate-limit, cf-mitigated) → keep the cached token; re-pasting a
+          // valid cookie does NOT fix a 403, and dropping the cache here
+          // means the next request pays the full ~600ms token-exchange round
+          // for no benefit.
+          if (status === 401) tokenCache.delete(cookieKey(cookie));
+          // Surface the actual upstream body so the operator can see WHY the
+          // retry failed instead of being told "re-paste your cookie". Truncate
+          // to 1200 chars — small enough to fit a single log line, large
+          // enough to include Cloudflare challenge HTML and ChatGPT JSON
+          // error bodies. Same truncation as `deserialize-fail.ts` and friends.
+          const truncated = (retryResponse.text || "").replace(/\s+/g, " ").slice(0, 1200);
           log?.warn?.(
             "CGPT-WEB",
-            `tool-turn retry ${status}: ${(retryResponse.text || "").slice(0, 400)}`
+            `tool-turn retry ${status} (cfMitigated=${retryResponse.headers?.get("cf-mitigated") ?? "?"}, cFRay=${retryResponse.headers?.get("cf-ray") ?? "?"}): ${truncated}`
           );
           return {
             response: errorResponse(status, errMsg, `HTTP_${status}`),

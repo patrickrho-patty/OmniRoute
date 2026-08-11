@@ -3601,9 +3601,15 @@ test("describeChatGptWebHttpError maps 413 to a payload-too-large message with g
   );
 });
 
-test("describeChatGptWebHttpError preserves the existing 401/403/404/429 mappings", () => {
-  assert.match(describeChatGptWebHttpError(401), /session may have expired/i);
-  assert.match(describeChatGptWebHttpError(403), /session may have expired/i);
+test("describeChatGptWebHttpError maps 401 to cookie-expired, 403 to a structural-error hint, 404 to model-missing, 429 to rate-limited", () => {
+  // 401 stays cookie-related: a stale session-token IS genuinely invalid.
+  assert.match(describeChatGptWebHttpError(401), /session cookie is invalid or expired/i);
+  // 403 from /backend-api/f/conversation is overwhelmingly NOT a session-token
+  // problem — model not on account, empty tool-turn body, persona mismatch,
+  // Cloudflare rate limit, etc. Tell the operator where to look instead of
+  // (mis)guiding them to re-paste their cookie.
+  assert.match(describeChatGptWebHttpError(403), /see container logs/i);
+  assert.match(describeChatGptWebHttpError(403), /tool-turn empty body|model not on this account/i);
   assert.match(describeChatGptWebHttpError(404), /no longer available|fresh conversation/i);
   assert.match(describeChatGptWebHttpError(429), /rate limited/i);
 });
