@@ -204,6 +204,24 @@ const EXTRA_MODULE_ENTRIES = [
     dest: ["node_modules", "playwright-core"],
   },
   {
+    // tls-client-node provides the native .so/.dylib that chatgptTlsClient.ts
+    // loads via koffi for TLS-impersonated fetch (chatgpt-web, grok-web,
+    // perplexity-web, lmarena). Without this entry the standalone output is
+    // missing the native binary entirely and every web-cookie executor that
+    // relies on TLS impersonation throws TlsClientUnavailableError at runtime.
+    label: "tls-client-node (native TLS impersonation binary — #7802)",
+    src: ["node_modules", "tls-client-node"],
+    dest: ["node_modules", "tls-client-node"],
+  },
+  {
+    // cloakbrowser provides a stealth Chromium binary with 71 source-level C++
+    // fingerprint patches. browserPool.ts dynamically imports it; without this
+    // entry the pool falls back to plain Playwright which Cloudflare detects.
+    label: "cloakbrowser (stealth browser for cf_clearance acquisition)",
+    src: ["node_modules", "cloakbrowser"],
+    dest: ["node_modules", "cloakbrowser"],
+  },
+  {
     // esbuild's `--packages=external` leaves `undici` as a static top-level ESM
     // import in the compiled MCP server bundle (dist/open-sse/mcp-server/server.js),
     // resolved at module-link time. Next.js's standalone output-file tracer (nft)
