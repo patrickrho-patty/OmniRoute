@@ -66,6 +66,17 @@ export function classifyRoute(rawPath: string, method: string = "GET"): RouteCla
     };
   }
 
+  // The login page must always be reachable so an unauthenticated operator can
+  // establish a dashboard session. Without this it falls through to MANAGEMENT
+  // and is gated by requireLogin — making login impossible (AUTH_001 on /login).
+  if (normalizedPath === "/login") {
+    return {
+      routeClass: "PUBLIC",
+      reason: "login_page",
+      normalizedPath,
+    };
+  }
+
   // Public, ticket-gated device-flow connect pages (e.g. /connect/codex/{token}).
   // Anyone with the shared link completes the provider login in their own browser.
   if (normalizedPath === "/connect" || normalizedPath.startsWith("/connect/")) {

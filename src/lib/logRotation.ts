@@ -18,6 +18,7 @@
 
 import { existsSync, mkdirSync, statSync, renameSync, readdirSync, unlinkSync } from "fs";
 import { dirname, join, basename, extname } from "path";
+import { parsePositiveInt } from "@/shared/utils/envParsing";
 import {
   getAppLogFilePath,
   getAppLogMaxFiles,
@@ -27,12 +28,6 @@ import {
 } from "./logEnv";
 
 const DEFAULT_ROTATION_CHECK_INTERVAL_MS = 60_000;
-
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 /** Interval between runtime rotation checks (default: 60s). */
 export function getAppLogRotationCheckInterval(): number {

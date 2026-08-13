@@ -8,12 +8,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { ChatGptWebExecutor, __resetChatGptWebCachesForTesting } = await import(
-  "../../open-sse/executors/chatgpt-web.ts"
-);
-const { __setTlsFetchOverrideForTesting } = await import(
-  "../../open-sse/services/chatgptTlsClient.ts"
-);
+const { ChatGptWebExecutor, __resetChatGptWebCachesForTesting } =
+  await import("../../open-sse/executors/chatgpt-web.ts");
+const { __setTlsFetchOverrideForTesting } =
+  await import("../../open-sse/services/chatgptTlsClient.ts");
 
 // ─── Minimal TLS-fetch mock ──────────────────────────────────────────────────
 // Tailored to the tool-call flow (gpt-5.3-instant, non-thinking): root/DPL,
@@ -68,7 +66,10 @@ function installMockFetch(convEvents: unknown[]) {
       body: null,
     });
 
-    if ((u === "https://chatgpt.com/" || u === "https://chatgpt.com") && (opts.method || "GET") === "GET") {
+    if (
+      (u === "https://chatgpt.com/" || u === "https://chatgpt.com") &&
+      (opts.method || "GET") === "GET"
+    ) {
       return {
         status: 200,
         headers: makeHeaders({ "Content-Type": "text/html" }),
@@ -123,7 +124,8 @@ const WEATHER_TOOL = {
   },
 };
 
-const TOOL_CALL_TEXT = '<tool>{"name":"get_weather","arguments":{"location":"Tokyo"}}</tool>';
+const TOOL_CALL_TEXT =
+  '<tool_call>{"name":"get_weather","arguments":{"location":"Tokyo"}}</tool_call>';
 
 function baseOpts(extra: Record<string, unknown>) {
   return {
@@ -135,7 +137,7 @@ function baseOpts(extra: Record<string, unknown>) {
   };
 }
 
-test("Tools request-side: <tool> contract is serialized into the upstream system message (#5240)", async () => {
+test("Tools request-side: model-led tool contract is serialized into the upstream system message (#5240)", async () => {
   __resetChatGptWebCachesForTesting();
   const m = installMockFetch(convWithAssistantText("ok"));
   try {
@@ -156,14 +158,24 @@ test("Tools request-side: <tool> contract is serialized into the upstream system
     const systemMsg = convBody.messages.find((mm: any) => mm.author.role === "system");
     assert.ok(systemMsg, "a system message carrying the tool contract was sent");
     const systemText = systemMsg.content.parts.join("");
-    assert.match(systemText, /<tool>/, "system prompt instructs the model to emit <tool> blocks");
+    assert.match(
+      systemText,
+      /fenced JSON tool call/,
+      "system prompt instructs the model to emit explicit calls"
+    );
     assert.match(systemText, /get_weather/, "system prompt lists the requested tool");
+
+    const userMsg = convBody.messages.find((mm: any) => mm.author.role === "user");
+    assert.ok(userMsg, "current user task was sent");
+    const userText = userMsg.content.parts.join("");
+    assert.match(userText, /What is the weather in Tokyo\?/);
+    assert.doesNotMatch(userText, /TOOL USE PROTOCOL/, "the user turn must not force a tool call");
   } finally {
     m.restore();
   }
 });
 
-test("Tools non-stream: <tool>{...}</tool> text becomes OpenAI tool_calls + finish_reason (#5240)", async () => {
+test("Tools non-stream: explicit model tool text becomes OpenAI tool_calls + finish_reason (#5240)", async () => {
   __resetChatGptWebCachesForTesting();
   const m = installMockFetch(convWithAssistantText(TOOL_CALL_TEXT));
   try {
@@ -193,7 +205,7 @@ test("Tools non-stream: <tool>{...}</tool> text becomes OpenAI tool_calls + fini
   }
 });
 
-test("Tools stream: terminal chunk carries delta.tool_calls + finish_reason tool_calls (#5240)", async () => {
+test("Tools stream: emits delta.tool_calls and terminal finish_reason tool_calls (#5240)", async () => {
   __resetChatGptWebCachesForTesting();
   const m = installMockFetch(convWithAssistantText(TOOL_CALL_TEXT));
   try {
@@ -220,7 +232,8 @@ test("Tools stream: terminal chunk carries delta.tool_calls + finish_reason tool
 
     const toolChunk = chunks.find((c) => c.choices[0].delta && c.choices[0].delta.tool_calls);
     assert.ok(toolChunk, "a chunk carries delta.tool_calls");
-    assert.equal(toolChunk.choices[0].finish_reason, "tool_calls");
+    const finishChunk = chunks.find((c) => c.choices[0].finish_reason === "tool_calls");
+    assert.ok(finishChunk, "a terminal chunk carries finish_reason=tool_calls");
     const tc = toolChunk.choices[0].delta.tool_calls;
     assert.equal(tc[0].function.name, "get_weather");
     assert.deepEqual(JSON.parse(tc[0].function.arguments), { location: "Tokyo" });

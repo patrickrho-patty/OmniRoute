@@ -1,4 +1,5 @@
 import { trackPendingRequest } from "@/lib/usageDb";
+import { isLocalStreamLifecycleError } from "@/shared/utils/circuitBreaker";
 import { STREAM_IDLE_TIMEOUT_MS } from "../config/constants.ts";
 import { FORMATS } from "../translator/formats.ts";
 import { PENDING_REQUEST_CLEARED_MARKER } from "./stream.ts";
@@ -583,6 +584,17 @@ export function createDisconnectAwareStream(transformStream, streamController) {
           controller.enqueue(value);
           noteClientChunk(value);
         } catch (error) {
+          // #4602: a "Controller is already closed" throw means the DOWNSTREAM
+          // consumer (client) went away mid-stream. Treat it as a benign
+          // disconnect, not an upstream failure (which would misreport a 502).
+          if (isLocalStreamLifecycleError(error)) {
+            streamController.handleDisconnect("downstream_closed");
+            try {
+              controller.close();
+            } catch {}
+            return;
+          }
+
           if (!streamController.isConnected()) {
             try {
               controller.close();
@@ -605,7 +617,9 @@ export function createDisconnectAwareStream(transformStream, streamController) {
           streamController.handleError(error);
 
           // T35: Encapsulate mid-stream errors as SSE events instead of abruptly aborting
-          // This prevents TransferEncodingError on the client side
+          // This prevents TransferEncodingError on the client side. Each enqueue is
+          // guarded: if the downstream closed while we were building the error frame,
+          // a second "Controller is already closed" throw must not escape pull().
           const errorMsg = getErrorMessage(error);
           const statusCode = getErrorStatusCode(error);
 

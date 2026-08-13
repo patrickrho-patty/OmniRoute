@@ -28,10 +28,6 @@ export interface CompressionAnalyticsRow {
   rtk_raw_output_bytes?: number | null;
   rtk_raw_output_pointers?: string | null;
   rtk_raw_output_total_bytes?: number | null;
-  // Set on a no-op/skipped row: compression was attempted (mode active, engines
-  // ran) but produced no recordable saving. NULL on a normal saving row. Lets
-  // analytics distinguish "ran but saved nothing" from "never ran" (#4268).
-  skip_reason?: string | null;
 }
 
 /**
@@ -54,21 +50,11 @@ export interface CompressionAnalyticsSummary {
   totalTokensSaved: number;
   avgSavingsPct: number;
   avgDurationMs: number;
-  // `count`/`tokensSaved`/`avgSavingsPct` cover net-saving runs only (skip rows
-  // excluded), preserving historical semantics. `skipped` = attempted-but-no-op
-  // runs for that mode, so Stacked is no longer invisible when it saves nothing (#4268).
-  byMode: Record<
-    string,
-    { count: number; tokensSaved: number; avgSavingsPct: number; skipped: number }
-  >;
+  byMode: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }>;
   byEngine: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }>;
   byCompressionCombo: Record<string, { count: number; tokensSaved: number }>;
   byProvider: Record<string, { count: number; tokensSaved: number }>;
   last24h: Array<{ hour: string; count: number; tokensSaved: number }>;
-  // Total attempted-but-no-op compression runs (skip_reason set), and a breakdown
-  // by reason (e.g. "no_savings"). Recorded but excluded from the saving aggregates (#4268).
-  totalSkipped: number;
-  bySkipReason: Record<string, number>;
   validationFallbacks: number;
   realUsage: {
     requestsWithReceipts: number;
@@ -106,7 +92,6 @@ const COMPRESSION_ANALYTICS_COLUMNS = [
   ["rtk_raw_output_bytes", "INTEGER"],
   ["rtk_raw_output_pointers", "TEXT"],
   ["rtk_raw_output_total_bytes", "INTEGER"],
-  ["skip_reason", "TEXT"],
 ] as const;
 
 function ensureCompressionAnalyticsColumns(): void {
@@ -135,9 +120,9 @@ export function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): voi
       actual_total_tokens, actual_cache_read_tokens, actual_cache_write_tokens,
       estimated_usd_saved, mcp_description_tokens_saved, multimodal_skip_count,
       receipt_source, validation_fallback, output_mode, rtk_raw_output_pointer, rtk_raw_output_bytes,
-      rtk_raw_output_pointers, rtk_raw_output_total_bytes, skip_reason
+      rtk_raw_output_pointers, rtk_raw_output_total_bytes
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
   ).run(
     row.timestamp,
@@ -165,8 +150,7 @@ export function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): voi
     row.rtk_raw_output_pointer ?? null,
     row.rtk_raw_output_bytes ?? null,
     row.rtk_raw_output_pointers ?? null,
-    row.rtk_raw_output_total_bytes ?? null,
-    row.skip_reason ?? null
+    row.rtk_raw_output_total_bytes ?? null
   );
 }
 
@@ -222,6 +206,7 @@ function ensureCompressionEngineBreakdownTable(): void {
       duration_ms INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_ceb_engine_ts ON compression_engine_breakdown(engine, timestamp);
+    CREATE INDEX IF NOT EXISTS idx_ceb_ts_engine ON compression_engine_breakdown(timestamp, engine);
     CREATE INDEX IF NOT EXISTS idx_ceb_request ON compression_engine_breakdown(request_id);
   `);
   breakdownTableEnsuredForDb = db;
@@ -318,6 +303,20 @@ function appendCondition(whereClause: string, condition: string): string {
   return whereClause ? `${whereClause} AND ${condition}` : `WHERE ${condition}`;
 }
 
+function legacyEngineRowFilter(alias: string): string {
+  return `(
+    COALESCE(${alias}.engine, ${alias}.mode) <> 'stacked'
+    AND (
+      ${alias}.request_id IS NULL
+      OR NOT EXISTS (
+        SELECT 1
+        FROM compression_engine_breakdown ceb
+        WHERE ceb.request_id = ${alias}.request_id
+      )
+    )
+  )`;
+}
+
 type EngineAggRow = { runs: number; original: number; compressed: number; saved: number };
 
 export function getPerEngineAnalytics(engineId: string, days = 7) {
@@ -344,17 +343,12 @@ export function getPerEngineAnalytics(engineId: string, days = 7) {
   const legacy = db
     .prepare(
       `SELECT COUNT(*) AS runs,
-              COALESCE(SUM(original_tokens), 0) AS original,
-              COALESCE(SUM(compressed_tokens), 0) AS compressed,
-              COALESCE(SUM(tokens_saved), 0) AS saved
-       FROM compression_analytics
-       WHERE COALESCE(engine, mode) = ? AND timestamp >= ?
-         AND (
-           request_id IS NULL
-           OR request_id NOT IN (
-             SELECT request_id FROM compression_engine_breakdown WHERE request_id IS NOT NULL
-           )
-         )`
+              COALESCE(SUM(ca.original_tokens), 0) AS original,
+              COALESCE(SUM(ca.compressed_tokens), 0) AS compressed,
+              COALESCE(SUM(ca.tokens_saved), 0) AS saved
+       FROM compression_analytics ca
+       WHERE COALESCE(ca.engine, ca.mode) = ? AND ca.timestamp >= ?
+         AND ${legacyEngineRowFilter("ca")}`
     )
     .get(engineId, since) as EngineAggRow;
 
@@ -365,6 +359,52 @@ export function getPerEngineAnalytics(engineId: string, days = 7) {
   const avgSavingsPercent =
     original > 0 ? Math.round(((original - compressed) / original) * 1000) / 10 : 0;
   return { engineId, runs, tokensSaved, avgSavingsPercent, days };
+}
+
+export interface EngineRunHistoryRow {
+  timestamp: string;
+  requestId: string | null;
+  originalTokens: number;
+  compressedTokens: number;
+  tokensSaved: number;
+  durationMs: number | null;
+}
+
+/**
+ * Recent per-engine runs (newest first) from `compression_engine_breakdown`, for the
+ * per-engine history views (e.g. the Ponytail dashboard). Augmentation engines like
+ * `ponytail` intentionally record `compressed_tokens === original_tokens` and
+ * `tokens_saved === 0` — they inject instructions rather than reduce tokens, so a
+ * history row with zero savings is expected, not a failure.
+ */
+export function getEngineRunHistory(engineId: string, limit = 50): EngineRunHistoryRow[] {
+  const db = getDbInstance();
+  ensureCompressionEngineBreakdownTable();
+  const safeLimit = Math.min(Math.max(1, Math.floor(limit || 0)), 500);
+  const rows = db
+    .prepare(
+      `SELECT timestamp, request_id, original_tokens, compressed_tokens, tokens_saved, duration_ms
+       FROM compression_engine_breakdown
+       WHERE engine = ?
+       ORDER BY id DESC
+       LIMIT ?`
+    )
+    .all(engineId, safeLimit) as Array<{
+    timestamp: string;
+    request_id: string | null;
+    original_tokens: number;
+    compressed_tokens: number;
+    tokens_saved: number;
+    duration_ms: number | null;
+  }>;
+  return rows.map((r) => ({
+    timestamp: r.timestamp,
+    requestId: r.request_id ?? null,
+    originalTokens: r.original_tokens,
+    compressedTokens: r.compressed_tokens,
+    tokensSaved: r.tokens_saved,
+    durationMs: r.duration_ms ?? null,
+  }));
 }
 
 export function getCompressionAnalyticsSummary(since?: string): CompressionAnalyticsSummary {
@@ -381,11 +421,8 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
   }
 
   const whereClause = cutoff ? "WHERE timestamp >= ?" : "";
+  const aliasedWhereClause = cutoff ? "WHERE ca.timestamp >= ?" : "";
   const params = cutoff ? [cutoff] : [];
-  // Saving aggregates count net-saving runs only: no-op/skip rows (skip_reason set)
-  // are excluded so historical totals/avgs are unchanged, while skips are surfaced
-  // separately below. (#4268)
-  const successWhere = appendCondition(whereClause, "skip_reason IS NULL");
 
   type ScalarRow = { total: number; totalSaved: number; avgPct: number; avgDur: number };
   const scalar = db
@@ -396,7 +433,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
       COALESCE(SUM(tokens_saved), 0) as totalSaved,
       COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS REAL) / original_tokens * 100 ELSE 0 END), 0) as avgPct,
       COALESCE(AVG(duration_ms), 0) as avgDur
-    FROM compression_analytics ${successWhere}
+    FROM compression_analytics ${whereClause}
   `
     )
     .get(...params) as ScalarRow | undefined;
@@ -406,59 +443,82 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
       `
     SELECT mode, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved,
       COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS REAL) / original_tokens * 100 ELSE 0 END), 0) as avgPct
-    FROM compression_analytics ${successWhere}
+    FROM compression_analytics ${whereClause}
     GROUP BY mode
   `
     )
     .all(...params) as Array<{ mode: string; cnt: number; saved: number; avgPct: number }>;
 
-  // Attempted-but-no-op runs per mode (skip_reason set) — recorded since #4268 so
-  // Stacked is visible even when it saves nothing.
-  const skipModeRows = db
-    .prepare(
-      `
-    SELECT mode, COUNT(*) as cnt
-    FROM compression_analytics ${appendCondition(whereClause, "skip_reason IS NOT NULL")}
-    GROUP BY mode
-  `
-    )
-    .all(...params) as Array<{ mode: string; cnt: number }>;
-
-  const byMode: Record<
-    string,
-    { count: number; tokensSaved: number; avgSavingsPct: number; skipped: number }
-  > = {};
+  const byMode: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }> = {};
   for (const r of modeRows) {
-    byMode[r.mode] = {
-      count: r.cnt,
-      tokensSaved: r.saved,
-      avgSavingsPct: Math.round(r.avgPct),
-      skipped: 0,
-    };
-  }
-  for (const r of skipModeRows) {
-    if (byMode[r.mode]) byMode[r.mode].skipped = r.cnt;
-    else byMode[r.mode] = { count: 0, tokensSaved: 0, avgSavingsPct: 0, skipped: r.cnt };
+    byMode[r.mode] = { count: r.cnt, tokensSaved: r.saved, avgSavingsPct: Math.round(r.avgPct) };
   }
 
-  const engineRows = db
+  ensureCompressionEngineBreakdownTable();
+  const breakdownRows = db
     .prepare(
       `
-    SELECT COALESCE(engine, mode) as engine, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved,
-      COALESCE(AVG(CASE WHEN original_tokens > 0 THEN CAST(tokens_saved AS REAL) / original_tokens * 100 ELSE 0 END), 0) as avgPct
-    FROM compression_analytics ${successWhere}
-    GROUP BY COALESCE(engine, mode)
+    SELECT engine, COUNT(*) as cnt,
+      COALESCE(SUM(original_tokens), 0) as original,
+      COALESCE(SUM(compressed_tokens), 0) as compressed,
+      COALESCE(SUM(tokens_saved), 0) as saved
+    FROM compression_engine_breakdown ${whereClause}
+    GROUP BY engine
   `
     )
-    .all(...params) as Array<{ engine: string; cnt: number; saved: number; avgPct: number }>;
+    .all(...params) as Array<{
+    engine: string;
+    cnt: number;
+    original: number;
+    compressed: number;
+    saved: number;
+  }>;
+
+  const legacyEngineRows = db
+    .prepare(
+      `
+    SELECT COALESCE(ca.engine, ca.mode) as engine, COUNT(*) as cnt,
+      COALESCE(SUM(ca.original_tokens), 0) as original,
+      COALESCE(SUM(ca.compressed_tokens), 0) as compressed,
+      COALESCE(SUM(ca.tokens_saved), 0) as saved
+    FROM compression_analytics ca ${appendCondition(aliasedWhereClause, legacyEngineRowFilter("ca"))}
+    GROUP BY COALESCE(ca.engine, ca.mode)
+  `
+    )
+    .all(...params) as Array<{
+    engine: string;
+    cnt: number;
+    original: number;
+    compressed: number;
+    saved: number;
+  }>;
+
+  const byEngineTotals = new Map<
+    string,
+    { count: number; original: number; compressed: number; tokensSaved: number }
+  >();
+  for (const row of [...breakdownRows, ...legacyEngineRows]) {
+    const current = byEngineTotals.get(row.engine) ?? {
+      count: 0,
+      original: 0,
+      compressed: 0,
+      tokensSaved: 0,
+    };
+    current.count += row.cnt;
+    current.original += row.original;
+    current.compressed += row.compressed;
+    current.tokensSaved += row.saved;
+    byEngineTotals.set(row.engine, current);
+  }
 
   const byEngine: Record<string, { count: number; tokensSaved: number; avgSavingsPct: number }> =
     {};
-  for (const r of engineRows) {
-    byEngine[r.engine] = {
-      count: r.cnt,
-      tokensSaved: r.saved,
-      avgSavingsPct: Math.round(r.avgPct),
+  for (const [engine, row] of byEngineTotals) {
+    byEngine[engine] = {
+      count: row.count,
+      tokensSaved: row.tokensSaved,
+      avgSavingsPct:
+        row.original > 0 ? Math.round(((row.original - row.compressed) / row.original) * 100) : 0,
     };
   }
 
@@ -467,7 +527,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
       `
     SELECT compression_combo_id as compressionComboId, COUNT(*) as cnt,
       COALESCE(SUM(tokens_saved), 0) as saved
-    FROM compression_analytics ${appendCondition(successWhere, "compression_combo_id IS NOT NULL")}
+    FROM compression_analytics ${appendCondition(whereClause, "compression_combo_id IS NOT NULL")}
     GROUP BY compression_combo_id ORDER BY cnt DESC
   `
     )
@@ -483,7 +543,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     .prepare(
       `
     SELECT provider, COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved
-    FROM compression_analytics ${successWhere}
+    FROM compression_analytics ${whereClause}
     GROUP BY provider ORDER BY cnt DESC
   `
     )
@@ -509,7 +569,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     SELECT strftime('%Y-%m-%dT%H:00:00Z', timestamp) as hour,
       COUNT(*) as cnt, COALESCE(SUM(tokens_saved), 0) as saved
     FROM compression_analytics
-    WHERE timestamp >= ? AND skip_reason IS NULL
+    WHERE timestamp >= ?
     GROUP BY hour ORDER BY hour ASC
   `
     )
@@ -537,7 +597,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
       COALESCE(SUM(actual_cache_read_tokens), 0) as cacheRead,
       COALESCE(SUM(actual_cache_write_tokens), 0) as cacheWrite,
       COALESCE(SUM(estimated_usd_saved), 0) as usdSaved
-    FROM compression_analytics ${appendCondition(successWhere, "receipt_source IS NOT NULL")}
+    FROM compression_analytics ${appendCondition(whereClause, "receipt_source IS NOT NULL")}
     GROUP BY receipt_source
   `
     )
@@ -578,7 +638,7 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     .prepare(
       `
     SELECT COUNT(*) as cnt
-    FROM compression_analytics ${appendCondition(successWhere, "validation_fallback = 1")}
+    FROM compression_analytics ${appendCondition(whereClause, "validation_fallback = 1")}
   `
     )
     .get(...params) as { cnt: number } | undefined;
@@ -587,28 +647,10 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     .prepare(
       `
     SELECT COUNT(*) as cnt, COALESCE(SUM(mcp_description_tokens_saved), 0) as saved
-    FROM compression_analytics ${appendCondition(successWhere, "mcp_description_tokens_saved > 0")}
+    FROM compression_analytics ${appendCondition(whereClause, "mcp_description_tokens_saved > 0")}
   `
     )
     .get(...params) as { cnt: number; saved: number } | undefined;
-
-  const skipReasonRows = db
-    .prepare(
-      `
-    SELECT skip_reason as reason, COUNT(*) as cnt
-    FROM compression_analytics ${appendCondition(whereClause, "skip_reason IS NOT NULL")}
-    GROUP BY skip_reason
-  `
-    )
-    .all(...params) as Array<{ reason: string | null; cnt: number }>;
-
-  const bySkipReason: Record<string, number> = {};
-  let totalSkipped = 0;
-  for (const r of skipReasonRows) {
-    const key = r.reason ?? "unknown";
-    bySkipReason[key] = r.cnt;
-    totalSkipped += r.cnt;
-  }
 
   return {
     totalRequests: scalar?.total ?? 0,
@@ -620,8 +662,6 @@ export function getCompressionAnalyticsSummary(since?: string): CompressionAnaly
     byCompressionCombo,
     byProvider,
     last24h,
-    totalSkipped,
-    bySkipReason,
     validationFallbacks: fallbackRow?.cnt ?? 0,
     realUsage,
     mcpDescriptionCompression: {

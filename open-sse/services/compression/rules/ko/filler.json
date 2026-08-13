@@ -1,0 +1,70 @@
+{
+  "language": "ko",
+  "category": "filler",
+  "rules": [
+    {
+      "name": "ko_polite_framing",
+      "pattern": "(?:부탁드립니다|부탁드려요|해주세요|해 주실 수 있나요|해주시겠어요|가능할까요)",
+      "replacement": "",
+      "context": "all",
+      "category": "filler",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_pleasantries",
+      "pattern": "(?:안녕하세요|좋은 아침입니다|감사합니다|고맙습니다|수고하세요)[\\s,.!?。！？]*",
+      "replacement": "",
+      "context": "all",
+      "category": "filler",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_hedging",
+      "pattern": "(?:라고 생각합니다|인 것 같습니다|일 수도 있습니다|아마도|어쩌면)",
+      "replacement": "",
+      "context": "all",
+      "category": "filler",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_filler_adverbs",
+      "pattern": "(?:기본적으로|본질적으로|실제로는|단순히|그냥)",
+      "replacement": "",
+      "context": "all",
+      "category": "filler",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_self_reference",
+      "pattern": "(?:저는|제가|나는|내가|하고 싶은 것은)",
+      "replacement": "",
+      "context": "user",
+      "category": "filler",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_verbose_request",
+      "pattern": "(?:자세히 설명해주세요|설명해 주실 수 있나요|알려주세요|가르쳐주세요)",
+      "replacement": "설명:",
+      "context": "user",
+      "category": "filler",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_qualifiers",
+      "pattern": "(?:조금|약간|어느 정도|대충)",
+      "replacement": "",
+      "context": "all",
+      "category": "filler",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_softeners",
+      "pattern": "(?:가능하면|시간이 되면|급하지는 않지만|괜찮다면)",
+      "replacement": "",
+      "context": "all",
+      "category": "filler",
+      "minIntensity": "lite"
+    }
+  ]
+}

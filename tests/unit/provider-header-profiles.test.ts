@@ -11,7 +11,9 @@ import {
   KIRO_AMZ_USER_AGENT,
   KIRO_SDK_USER_AGENT,
   QWEN_CLI_VERSION,
+  QWEN_STAINLESS_PACKAGE_VERSION,
   getQwenCliUserAgent,
+  getQwenOauthHeaders,
   getGitHubCopilotChatHeaders,
   getGitHubCopilotInternalUserHeaders,
   getGitHubCopilotRefreshHeaders,
@@ -43,6 +45,12 @@ test("provider header profiles expose dedicated refresh, qoder and kiro variants
   assert.equal(refreshHeaders["Editor-Version"], GITHUB_COPILOT_EDITOR_VERSION);
   assert.equal(refreshHeaders["Editor-Plugin-Version"], GITHUB_COPILOT_REFRESH_PLUGIN_VERSION);
 
+  const qwenHeaders = getQwenOauthHeaders();
+  assert.equal(qwenHeaders["User-Agent"], getQwenCliUserAgent());
+  assert.equal(qwenHeaders["X-Dashscope-UserAgent"], getQwenCliUserAgent());
+  assert.equal(qwenHeaders["X-Stainless-Package-Version"], QWEN_STAINLESS_PACKAGE_VERSION);
+  assert.equal(qwenHeaders["X-Stainless-Runtime-Version"], process.version);
+
   const qoderHeaders = getQoderDashscopeCompatHeaders();
   assert.equal(qoderHeaders["user-agent"], getQwenCliUserAgent());
   assert.equal(qoderHeaders["x-dashscope-useragent"], getQwenCliUserAgent());
@@ -68,6 +76,9 @@ test("provider header profiles tolerate browser-like process shims", async () =>
 
   try {
     assert.equal(getQwenCliUserAgent(), `QwenCode/${QWEN_CLI_VERSION} (unknown; unknown)`);
+    const qwenHeaders = getQwenOauthHeaders();
+    assert.equal(qwenHeaders["User-Agent"], `QwenCode/${QWEN_CLI_VERSION} (unknown; unknown)`);
+    assert.equal(qwenHeaders["X-Stainless-Runtime-Version"], "unknown");
     const qoderHeaders = getQoderDashscopeCompatHeaders();
     assert.equal(qoderHeaders["user-agent"], `QwenCode/${QWEN_CLI_VERSION} (unknown; unknown)`);
   } finally {

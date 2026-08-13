@@ -1,14 +1,14 @@
 ---
 title: "Compression Language Packs"
-version: 3.8.40
-lastUpdated: 2026-06-28
+version: 3.8.2
+lastUpdated: 2026-07-01
 ---
 
 # Compression Language Packs
 
 Caveman compression can load language-specific rule packs in addition to the built-in English rules.
-This keeps the core engine stable while allowing Portuguese, Spanish, German, French, Japanese, and
-future language packs to evolve independently.
+This keeps the core engine stable while allowing Portuguese, Spanish, German, French, Japanese,
+Korean, and future language packs to evolve independently.
 
 ## Location
 
@@ -29,8 +29,9 @@ Current shipped packs (verified against `rules/` directory contents):
 | German              | `rules/de/`    | `context`, `filler`, `structural`                   |
 | French              | `rules/fr/`    | `context`, `filler`, `structural`                   |
 | Japanese            | `rules/ja/`    | `context`, `filler`, `structural`                   |
+| Korean              | `rules/ko/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
 
-> **Parity note:** `en`, `es`, `pt-BR`, and `id` packs have the full 5 categories; `de`, `fr`, `ja` ship 3 categories. The missing `dedup` and `ultra` categories silently fall back to the English built-ins. Contributions welcome to add `dedup.json` and `ultra.json` for the smaller packs.
+> **Parity note:** `en`, `es`, `id`, `ko`, and `pt-BR` packs have the full 5 categories; `de`, `fr`, `ja` ship 3 categories. Languages with partial packs use their shipped rules only; missing `dedup` and `ultra` categories are not applied until those pack files exist. Contributions welcome to add `dedup.json` and `ultra.json` for the smaller packs.
 >
 > The `pt-BR` pack is based on **[Troglodita](https://github.com/leninejunior/troglodita)** by Lenine Júnior — a compression system designed from scratch for Brazilian Portuguese grammar (pleonasm reduction, PT-BR filler removal, technical abbreviations for the dev BR community).
 >
@@ -55,12 +56,12 @@ Compression settings can include:
     "enabled": true,
     "defaultLanguage": "en",
     "autoDetect": true,
-    "enabledPacks": ["en", "pt-BR", "es", "id", "de", "fr", "ja"]
+    "enabledPacks": ["en", "pt-BR", "es", "id", "de", "fr", "ja", "ko"]
   },
   "cavemanConfig": {
     "language": "en",
     "autoDetectLanguage": true,
-    "enabledLanguagePacks": ["en", "pt-BR", "es", "id", "de", "fr", "ja"]
+    "enabledLanguagePacks": ["en", "pt-BR", "es", "id", "de", "fr", "ja", "ko"]
   }
 }
 ```
@@ -103,7 +104,7 @@ curl -X POST http://localhost:20128/api/compression/preview \
 
 ## SHARED_BOUNDARIES (v3.8.0)
 
-All 6 language packs received a `SHARED_BOUNDARIES` clause in v3.8.0 that is applied at every
+All language packs receive a `SHARED_BOUNDARIES` clause that is applied at every
 Caveman intensity (LITE, FULL, ULTRA). It instructs the engine to preserve these patterns verbatim,
 regardless of surrounding filler removal:
 

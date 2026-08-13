@@ -63,6 +63,17 @@ export const VIA_PROXY_HEADER = "x-omniroute-via-proxy";
 export const AUTHZ_HEADER_PEER_LOCALITY = "x-omniroute-peer-locality";
 
 /**
+ * Trusted marker the pipeline sets ONLY on the public /login route so the root
+ * layout can ship a minimal i18n namespace (auth only) instead of the full
+ * catalog (which leaks product-identifying strings into served HTML). Stripped
+ * from client input like every other trusted header — only the pipeline can
+ * set it, so a spoofed `x-public-auth-route: 1` on /dashboard is dropped before
+ * the layout sees it (prevents a DoS that would slim the dashboard's messages).
+ */
+export const PUBLIC_AUTH_ROUTE_HEADER = "x-public-auth-route";
+export const PUBLIC_AUTH_ROUTE_MARK = "1";
+
+/**
  * Headers the pipeline must NEVER trust on incoming requests. They are
  * stripped before route classification to prevent header-spoofing attacks.
  */
@@ -73,4 +84,5 @@ export const AUTHZ_TRUSTED_HEADERS: ReadonlyArray<string> = [
   AUTHZ_HEADER_AUTH_LABEL,
   AUTHZ_HEADER_AUTH_SCOPES,
   AUTHZ_HEADER_PEER_LOCALITY,
+  PUBLIC_AUTH_ROUTE_HEADER,
 ];

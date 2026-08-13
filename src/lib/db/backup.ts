@@ -4,6 +4,7 @@
 
 import path from "path";
 import fs from "fs";
+import { parseNonNegativeInt, parsePositiveInt } from "@/shared/utils/envParsing";
 import {
   getDbInstance,
   resetDbInstance,
@@ -25,18 +26,6 @@ const BACKUP_THROTTLE_MS = 60 * 60 * 1000; // 60 minutes
 const MAX_DB_BACKUPS = 20;
 const DEFAULT_DB_BACKUP_RETENTION_DAYS = 0;
 const TRUE_ENV_VALUES = new Set(["1", "true", "yes", "on"]);
-
-function parsePositiveInt(value: string | undefined, fallback: number) {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function parseNonNegativeInt(value: string | undefined, fallback: number) {
-  if (value === undefined) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
-}
 
 // #3834: the "Keep latest backups" UI value is persisted here so it survives a page
 // refresh / the loadStorageHealth() refetch. A dedicated namespace avoids any

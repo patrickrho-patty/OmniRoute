@@ -1,4 +1,5 @@
 import type { CompressionConfig, CompressionResult } from "../types.ts";
+import type { IncrementalContext } from "../incremental/types.ts";
 
 export type CompressionEngineTarget = "messages" | "tool_results" | "code_blocks";
 
@@ -27,6 +28,33 @@ export interface CompressionEngineMetadata {
   targetLatencyMs: number;
   supportsPreview: boolean;
   stable: boolean;
+  /**
+   * True when this engine's output for message i depends ONLY on message i (no
+   * cross-message context). Such engines are safely memoised per-message by the
+   * incremental compressor: a message's compressed form is cached by its semantic
+   * hash and reused across turns. Cross-message engines (session-dedup, ccr) and
+   * context-dependent ones (rtk needs an earlier tool_use to read a tool_result)
+   * leave this false and implement their own incremental mode via `options.incremental`.
+   */
+  perMessageDeterministic?: boolean;
+  /**
+   * True when this engine produces output for a given message that is STABLE across
+   * turns — i.e. it never rewrites earlier content based on later content or total
+   * token budget. Stable engines keep the provider's prompt cache alive (the cached
+   * prefix stays byte-identical turn to turn). Budget-driven engines (headroom, ultra,
+   * aggressive) drop DIFFERENT content as the conversation grows, mutating the prefix
+   * and busting the provider cache — they are NOT cacheSafe. In a caching context the
+   * pipeline drops `cacheSafe === false` engines (unless `overflowCritical`), because
+   * the provider's ~10x cache discount far outweighs local compression savings.
+   */
+  cacheSafe?: boolean;
+  /**
+   * True for an engine that must keep running even in a caching context because it
+   * prevents context-window OVERFLOW (a hard upstream failure), not just opportunistic
+   * compression. Only `headroom`. Such an engine is exempt from the cacheSafe gate; the
+   * proper long-term fix is to make it tail-aware (compress only past the cache boundary).
+   */
+  overflowCritical?: boolean;
 }
 
 export interface CompressionEngineApplyOptions {
@@ -42,6 +70,14 @@ export interface CompressionEngineApplyOptions {
   stepConfig?: Record<string, unknown>;
   /** Authenticated principal (API key id) making the request. Used by CCR to scope its store. */
   principalId?: string;
+  /**
+   * Per-session incremental state, present only when the incremental compressor drives the
+   * pipeline. An engine MAY use it to do O(new-messages) work instead of O(all-messages) by
+   * carrying cross-turn state (e.g. session-dedup's persistent index, a cumulative tool-call
+   * lookup) — and MUST produce output byte-identical to a full run when it does (enforced by
+   * the equivalence property test). Engines that ignore it run normally and stay correct.
+   */
+  incremental?: IncrementalContext;
 }
 
 export interface CompressionEngine {

@@ -285,15 +285,27 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null) {
       (m) => m.role !== "system" && m.role !== "developer"
     );
 
-    // Process messages with merging logic
-    // CRITICAL: tool_result must be in separate message immediately after tool_use
+    // Process messages with merging logic.
+    // Anthropic has no separate `tool` role. Client tool results are `tool_result`
+    // blocks inside a `user` message, and any user text after those results must
+    // remain in that same content array after all tool_result blocks. OpenAI-style
+    // histories represent this as role:"tool" followed by role:"user"; keep a
+    // small pending buffer so OpenAI -> Claude preserves that Anthropic shape.
     let currentRole: string | undefined = undefined;
     let currentParts: ClaudeContentBlock[] = [];
+    let pendingToolResultParts: ClaudeContentBlock[] = [];
 
     const flushCurrentMessage = () => {
       if (currentRole && currentParts.length > 0) {
         result.messages.push({ role: currentRole, content: currentParts });
         currentParts = [];
+      }
+    };
+
+    const flushPendingToolResults = () => {
+      if (pendingToolResultParts.length > 0) {
+        result.messages.push({ role: "user", content: pendingToolResultParts });
+        pendingToolResultParts = [];
       }
     };
 
@@ -309,22 +321,30 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null) {
       const hasToolUse = blocks.some((b) => b.type === "tool_use");
       const hasToolResult = blocks.some((b) => b.type === "tool_result");
 
-      // Separate tool_result from other content
+      // Separate tool_result from other content. Keep results pending so a
+      // following OpenAI user message can be restored as Anthropic's valid
+      // `[tool_result..., text...]` user content array.
       if (hasToolResult) {
         const toolResultBlocks = blocks.filter((b) => b.type === "tool_result");
         const otherBlocks = blocks.filter((b) => b.type !== "tool_result");
 
         flushCurrentMessage();
-
-        if (toolResultBlocks.length > 0) {
-          result.messages.push({ role: "user", content: toolResultBlocks });
-        }
+        pendingToolResultParts.push(...toolResultBlocks);
 
         if (otherBlocks.length > 0) {
-          currentRole = newRole;
-          currentParts.push(...otherBlocks);
+          pendingToolResultParts.push(...otherBlocks);
+          flushPendingToolResults();
         }
         continue;
+      }
+
+      if (pendingToolResultParts.length > 0) {
+        if (newRole === "user" && !hasToolUse) {
+          pendingToolResultParts.push(...blocks);
+          flushPendingToolResults();
+          continue;
+        }
+        flushPendingToolResults();
       }
 
       if (currentRole !== newRole) {
@@ -340,6 +360,7 @@ export function openaiToClaudeRequest(model, body, stream, credentials = null) {
     }
 
     flushCurrentMessage();
+    flushPendingToolResults();
 
     // Remove assistant messages with empty content (can happen when all tool_use blocks were skipped)
     result.messages = result.messages.filter((msg) => {

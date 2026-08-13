@@ -5,6 +5,11 @@ import { addModelsSuffix } from "./urlHelpers";
 import { applyCustomUserAgent } from "./headers";
 import { toValidationErrorResult, validationRead, validationWrite } from "./transport";
 import {
+  acquireFreshChatgptClearance,
+  mergeCfClearance,
+  shouldUseChatgptBrowserBacked,
+} from "@omniroute/open-sse/services/chatgptClearance.ts";
+import {
   buildGrokCookieHeader,
   buildQwenCookieHeader,
   extractCookieValue,
@@ -521,6 +526,62 @@ export async function validateChatGptWebProvider({ apiKey, providerSpecificData 
       throw err;
     }
 
+    // Browser-backed cf_clearance refresh: mirrors the executor's catch-block
+    // for live chatgpt-web traffic. When Cloudflare's "Just a moment" challenge
+    // is the blocker (not the cookie itself), launch the stealth browser pool
+    // — which uses cloakbrowser when available — to mint a fresh cf_clearance
+    // bound to the server's IP, then retry the validator once.
+    //
+    // Without this, the validator is a dead end: dashboards can't save the
+    // credential because the test always fails, and dashboard-driven cf_clearance
+    // refresh isn't possible.
+    if (
+      (response.status === 401 || response.status === 403) &&
+      (/just a moment|cloudflare|cf-chl|attention required/i.test(response.text || "") ||
+        response.headers.get("cf-mitigated")) &&
+      shouldUseChatgptBrowserBacked()
+    ) {
+      try {
+        const freshClearance = await acquireFreshChatgptClearance();
+        if (freshClearance) {
+          const refreshedCookie = mergeCfClearance(cookieHeader, freshClearance);
+          const retryCookieHeader = /__Secure-next-auth\.session-token(?:\.\d+)?\s*=/.test(
+            refreshedCookie
+          )
+            ? refreshedCookie
+            : `__Secure-next-auth.session-token=${refreshedCookie}`;
+          const retryResp = await tlsFetchChatGpt("https://chatgpt.com/api/auth/session", {
+            method: "GET",
+            headers: applyCustomUserAgent(
+              {
+                Accept: "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Cache-Control": "no-cache",
+                Cookie: retryCookieHeader,
+                Origin: "https://chatgpt.com",
+                Pragma: "no-cache",
+                Referer: "https://chatgpt.com/",
+                "Sec-Fetch-Dest": "empty",
+                "Sec-Fetch-Mode": "cors",
+                "Sec-Fetch-Site": "same-origin",
+                "User-Agent":
+                  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:152.0) Gecko/20100101 Firefox/152.0",
+              },
+              providerSpecificData
+            ),
+            timeoutMs: 30_000,
+          });
+          if (retryResp.status < 400) {
+            response = retryResp;
+          }
+        }
+      } catch {
+        // Browser acquire failed — fall through to the error branches below.
+      }
+    }
+
+    // Read these AFTER the retry block so the content-type / cf-mitigated
+    // checks reflect whichever response we ultimately committed to.
     const contentType = response.headers.get("content-type") || "";
     const cfRay = response.headers.get("cf-ray");
     const cfMitigated = response.headers.get("cf-mitigated");

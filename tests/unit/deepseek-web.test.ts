@@ -7,7 +7,8 @@ const { DeepSeekWebExecutor, DEEPSEEK_WEB_BASE } =
 const { DeepSeekWebWithAutoRefreshExecutor } =
   await import("../../open-sse/executors/deepseek-web-with-auto-refresh.ts");
 const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/executors/index.ts");
-const { serializeToolsToPrompt } = await import("../../open-sse/translator/webTools.ts");
+const { buildWebToolContract } =
+  await import("../../open-sse/services/webProvider/toolContract.ts");
 
 const COMPLETION_URL = `${DEEPSEEK_WEB_BASE}/api/v0/chat/completion`;
 
@@ -64,7 +65,7 @@ test("tools[] is translated into a <tool> prompt contract, not rejected - issue 
   // tools[] is now serialized into a <tool> prompt contract and the model's text reply
   // is parsed back into OpenAI tool_calls. Full execute() round-trip coverage lives in
   // deepseek-web-tools-execute-2820.test.ts.
-  const prompt = serializeToolsToPrompt([
+  const prompt = buildWebToolContract([
     {
       type: "function",
       function: {
@@ -75,7 +76,7 @@ test("tools[] is translated into a <tool> prompt contract, not rejected - issue 
     },
   ]);
   assert.ok(prompt.includes("my_tool"), "tool name serialized into the prompt");
-  assert.ok(prompt.includes("<tool>"), "invocation contract present");
+  assert.ok(prompt.includes("<tool_call>"), "invocation contract present");
 });
 
 test("execute does NOT 400 on tools[]=[] (empty array, equivalent to no tools)", async () => {

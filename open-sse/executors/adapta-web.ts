@@ -1,5 +1,9 @@
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 
 const ADAPTA_APP_URL = "https://agent.adapta.one";
@@ -354,7 +358,10 @@ export class AdaptaWebExecutor extends BaseExecutor {
   async execute({ model, body, stream, credentials, signal, log }: ExecuteInput) {
     const bodyObj = (body ?? {}) as Record<string, unknown>;
     const messages = (Array.isArray(bodyObj.messages) ? bodyObj.messages : []) as OpenAIMessage[];
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(bodyObj, messages);
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
+      bodyObj,
+      messages
+    );
 
     // 1. Extract and validate credentials
     const rawKey = String((credentials as Record<string, unknown>)?.apiKey ?? "");
@@ -492,11 +499,20 @@ export class AdaptaWebExecutor extends BaseExecutor {
     }
 
     if (hasTools) {
-      const { content, toolCalls, finishReason } = buildToolAwareResult(
+      const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
         fullText,
         requestedTools,
-        "adp"
+        "adp",
+        toolChoice
       );
+      if (policyViolation) {
+        return {
+          response: buildWebToolPolicyErrorResponse(),
+          url: ADAPTA_STREAM_URL,
+          headers,
+          transformedBody: requestPayload,
+        };
+      }
       if (toolCalls) {
         return {
           response: new Response(

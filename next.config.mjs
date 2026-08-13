@@ -1,7 +1,9 @@
 import createNextIntlPlugin from "next-intl/plugin";
 import { createMDX } from "fumadocs-mdx/next";
+import os from "node:os";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseBooleanEnv, parsePositiveIntegerEnv } from "./scripts/build/buildEnv.mjs";
 import { mitmManagerAliasFor } from "./scripts/build/mitm-stub-flag.mjs";
 import { normalizeBasePath } from "./scripts/build/normalizeBasePath.mjs";
 
@@ -74,6 +76,11 @@ function isNextIntlExtractorDynamicImportWarning(warning) {
 // The resulting artifact is intended to be published as `omniroute-secure`
 // for security-sensitive environments. See docs/security/SOCKET_DEV_FINDINGS.md.
 const isMinimalBuild = process.env.OMNIROUTE_BUILD_PROFILE === "minimal";
+const detectedBuildCpus = os.cpus()?.length || 1;
+const buildCpuCount = parsePositiveIntegerEnv(
+  process.env.OMNIROUTE_BUILD_CPUS,
+  Math.max(1, detectedBuildCpus - 1)
+);
 
 const minimalBuildAliases = isMinimalBuild
   ? {
@@ -170,6 +177,16 @@ const nextConfig = {
   // accept for image-bearing requests; tune via env if a deployment needs
   // more.
   experimental: {
+    // The VPS has enough RAM/CPU to benefit from Next's workerized webpack build.
+    // With a custom webpack() config, Next opts out unless webpackBuildWorker is
+    // forced. These remain env-disableable for emergency rollback.
+    cpus: buildCpuCount,
+    webpackBuildWorker: parseBooleanEnv(process.env.OMNIROUTE_WEBPACK_BUILD_WORKER, true),
+    parallelServerCompiles: parseBooleanEnv(process.env.OMNIROUTE_PARALLEL_SERVER_COMPILES, true),
+    parallelServerBuildTraces: parseBooleanEnv(
+      process.env.OMNIROUTE_PARALLEL_SERVER_BUILD_TRACES,
+      true
+    ),
     serverActions: {
       bodySizeLimit: process.env.OMNIROUTE_SERVER_ACTIONS_BODY_LIMIT || "50mb",
     },

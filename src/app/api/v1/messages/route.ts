@@ -1,7 +1,6 @@
-import { handleChat } from "@/sse/handlers/chat";
+import { handleChat, type HandleChatRuntimeOptions } from "@/sse/handlers/chat";
 import { initTranslators } from "@omniroute/open-sse/translator/index.ts";
 import { withInjectionGuard } from "@/middleware/promptInjectionGuard";
-import { requireJsonContentType } from "@/shared/middleware/requireJsonContentType";
 import {
   withEarlyStreamKeepalive,
   ANTHROPIC_PING_FRAME,
@@ -39,12 +38,12 @@ export async function OPTIONS() {
  * `preParsedBody` is threaded from withInjectionGuard (#4041) so the body is
  * parsed at most once per request.
  */
-async function postHandler(request: any, context: any, preParsedBody: any = null) {
-  // Reject non-JSON Content-Type with 415 before touching the body — mirrors OpenAI's
-  // reference API and matches /v1/chat/completions (#6414).
-  const ctRejection = requireJsonContentType(request);
-  if (ctRejection) return ctRejection;
-
+async function postHandler(
+  request: any,
+  context: any,
+  preParsedBody: any = null,
+  runtimeOptions: HandleChatRuntimeOptions = {}
+) {
   await ensureInitialized();
   // Streaming Anthropic clients (Claude Code, the Anthropic SDK) drop the connection
   // when no bytes arrive while a large prompt is processed before the first token — a
@@ -56,20 +55,20 @@ async function postHandler(request: any, context: any, preParsedBody: any = null
   // verbatim path.
   const accept = String(request.headers?.get?.("accept") || "").toLowerCase();
   if (accept.includes("text/event-stream")) {
-    let model;
-    try {
-      const body = preParsedBody ?? (await request.clone().json().catch(() => null));
-      model = body?.model;
-    } catch {
-      // body unavailable / non-JSON — fall back to the default keepalive threshold
-    }
-    return await withEarlyStreamKeepalive(handleChat(request, null, preParsedBody), {
-      signal: request.signal,
-      thresholdMs: resolveKeepaliveThreshold(model),
-      keepaliveFrame: ANTHROPIC_PING_FRAME,
-    });
+    const model =
+      preParsedBody && typeof preParsedBody === "object" && !Array.isArray(preParsedBody)
+        ? preParsedBody.model
+        : undefined;
+    return await withEarlyStreamKeepalive(
+      handleChat(request, null, preParsedBody, runtimeOptions),
+      {
+        signal: request.signal,
+        thresholdMs: resolveKeepaliveThreshold(model),
+        keepaliveFrame: ANTHROPIC_PING_FRAME,
+      }
+    );
   }
-  return await handleChat(request, null, preParsedBody);
+  return await handleChat(request, null, preParsedBody, runtimeOptions);
 }
 
 export const POST = withInjectionGuard(postHandler);

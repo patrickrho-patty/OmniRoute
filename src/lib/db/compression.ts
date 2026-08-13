@@ -313,20 +313,7 @@ function normalizeContextEditingConfig(value: unknown): ContextEditingConfig {
 // compression-combo KNOWN_ENGINE_IDS (src/lib/db/compressionCombos.ts) and with
 // stackedPipelineStepSchema / ENGINE_CATALOG — otherwise the global setting silently
 // strips engines the combo path accepts (B-PIPELINE-DIVERGENCE / #6747).
-const STACKED_PIPELINE_ENGINE_IDS = new Set([
-  "lite",
-  "caveman",
-  "aggressive",
-  "ultra",
-  "rtk",
-  "codex-responses",
-  "headroom",
-  "session-dedup",
-  "ccr",
-  "llmlingua",
-  "relevance",
-  "omniglyph",
-]);
+const STACKED_PIPELINE_ENGINE_IDS = new Set(ENGINE_IDS);
 
 export function normalizeStackedPipeline(value: unknown): CompressionPipelineStep[] {
   const source = Array.isArray(value) ? value : (DEFAULT_COMPRESSION_CONFIG.stackedPipeline ?? []);

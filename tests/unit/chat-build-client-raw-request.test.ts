@@ -42,6 +42,27 @@ test("endpoint and headers are captured from the request", () => {
   assert.equal(out.headers["content-type"], "application/json");
 });
 
+test("credential headers are never retained in the observability snapshot", () => {
+  const request = new Request("http://x/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer internal-omniroute-key",
+      "x-api-key": "employee-claude-key",
+      "x-patty-original-authorization": "employee-codex-key",
+      "x-patty-harness": "codex",
+      "user-agent": "codex_cli_rs/1.0",
+    },
+    body: JSON.stringify({ model: "gpt-5.3-codex", input: [] }),
+  });
+  const out = buildClientRawRequest(request, { model: "gpt-5.3-codex", input: [] });
+
+  assert.equal(out.headers.authorization, undefined);
+  assert.equal(out.headers["x-api-key"], undefined);
+  assert.equal(out.headers["x-patty-original-authorization"], undefined);
+  assert.equal(out.headers["x-patty-harness"], "codex");
+  assert.equal(out.headers["user-agent"], "codex_cli_rs/1.0");
+});
+
 // #7360 follow-up (live incident, log id 1784418258231-14961a): a combo target
 // abandoned by comboTargetTimeoutMs used to hang forever because chatCore.ts's
 // createStreamController/withRateLimit only ever watches the ORIGINAL client's

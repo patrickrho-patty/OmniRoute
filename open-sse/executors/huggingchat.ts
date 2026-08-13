@@ -26,6 +26,10 @@ import {
 } from "./base.ts";
 import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { buildErrorBody, sanitizeErrorMessage } from "../utils/error.ts";
+import {
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 import { normalizeSessionCookieHeader } from "@/lib/providers/webCookieAuth";
 import { streamJsonlToOpenAi, readJsonlResponse } from "./huggingchat/jsonlStream.ts";
 
@@ -256,8 +260,8 @@ export class HuggingChatExecutor extends BaseExecutor {
     transformedBody: unknown;
   }> {
     const { model, body, stream, credentials, signal, log, upstreamExtraHeaders } = input;
-    const messages = (body as Record<string, unknown>).messages as
-      Array<Record<string, unknown>> | undefined;
+    const bodyObj = (body || {}) as Record<string, unknown>;
+    const messages = bodyObj.messages as Array<Record<string, unknown>> | undefined;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return {
@@ -328,6 +332,16 @@ export class HuggingChatExecutor extends BaseExecutor {
         transformedBody: body,
       };
     }
+
+    // Tool-call support: serialize the OpenAI `tools` array into a system-prompt
+    // contract (HuggingChat's web API has no native function-calling). The model
+    // emits <tool>{...}</tool> blocks, parsed back into OpenAI tool_calls on the
+    // response side. Mirrors chatgpt-web / qwen-web / gemini-web via webTools.
+    const { hasTools, requestedTools, toolChoice, toolContract } = prepareWebToolRequest(
+      bodyObj,
+      messages as Array<{ role: string; content: unknown }>
+    );
+    const finalInputs = hasTools ? `${toolContract}\n\n${inputs}` : inputs;
 
     const baseHeaders: Record<string, string> = {
       Cookie: cookieHeader,
@@ -441,7 +455,7 @@ export class HuggingChatExecutor extends BaseExecutor {
     const messageUrl = `${CONVERSATION_URL}/${conversationId}`;
     const formData = new FormData();
     const sendDataPayload: Record<string, unknown> = {
-      inputs,
+      inputs: finalInputs,
       is_retry: false,
       is_continue: false,
       generationId: crypto.randomUUID(),
@@ -521,6 +535,102 @@ export class HuggingChatExecutor extends BaseExecutor {
     const id = `chatcmpl-huggingchat-${crypto.randomUUID().slice(0, 12)}`;
     const created = Math.floor(Date.now() / 1000);
 
+    // Tool-call path: buffer the full JSONL response, parse <tool>{...}</tool>
+    // blocks into OpenAI tool_calls. The HuggingChat web API has no native
+    // function-calling, so calls come back as text per the injected contract.
+    if (hasTools) {
+      const fullText = await readJsonlResponse(upstreamResponse.body, signal);
+      const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
+        fullText,
+        requestedTools,
+        "huggingchat",
+        toolChoice
+      );
+      if (policyViolation) {
+        return {
+          response: new Response(
+            JSON.stringify({
+              error: {
+                message: "HuggingChat did not honor the requested tool policy.",
+                type: "upstream_error",
+              },
+            }),
+            { status: 502, headers: { "Content-Type": "application/json" } }
+          ),
+          url: messageUrl,
+          headers: baseHeaders,
+          transformedBody: sendDataPayload,
+        };
+      }
+      const message: Record<string, unknown> = { role: "assistant", content: content || null };
+      if (toolCalls) message.tool_calls = toolCalls;
+      const completionTokens = estimateTokens(fullText);
+      const usage = {
+        prompt_tokens: estimateTokens(finalInputs),
+        completion_tokens: completionTokens,
+        total_tokens: estimateTokens(finalInputs) + completionTokens,
+      };
+
+      if (stream) {
+        const encoder = new TextEncoder();
+        const readable = new ReadableStream({
+          start(controller) {
+            if (content) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model: resolvedModel, choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`
+                )
+              );
+            }
+            if (toolCalls) {
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model: resolvedModel, choices: [{ index: 0, delta: { role: "assistant", tool_calls: toolCalls }, finish_reason: null }] })}\n\n`
+                )
+              );
+            }
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ id, object: "chat.completion.chunk", created, model: resolvedModel, choices: [{ index: 0, delta: {}, finish_reason: finishReason }] })}\n\n`
+              )
+            );
+            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+            controller.close();
+          },
+        });
+        return {
+          response: new Response(readable, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/event-stream",
+              "Cache-Control": "no-cache",
+              "X-Accel-Buffering": "no",
+            },
+          }),
+          url: messageUrl,
+          headers: baseHeaders,
+          transformedBody: sendDataPayload,
+        };
+      }
+
+      return {
+        response: new Response(
+          JSON.stringify({
+            id,
+            object: "chat.completion",
+            created,
+            model: resolvedModel,
+            choices: [{ index: 0, message, finish_reason: finishReason }],
+            usage,
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        ),
+        url: messageUrl,
+        headers: baseHeaders,
+        transformedBody: sendDataPayload,
+      };
+    }
+
     if (stream) {
       const encoder = new TextEncoder();
       const jsonlStream = streamJsonlToOpenAi(
@@ -578,9 +688,9 @@ export class HuggingChatExecutor extends BaseExecutor {
             },
           ],
           usage: {
-            prompt_tokens: estimateTokens(inputs),
+            prompt_tokens: estimateTokens(finalInputs),
             completion_tokens: completionTokens,
-            total_tokens: estimateTokens(inputs) + completionTokens,
+            total_tokens: estimateTokens(finalInputs) + completionTokens,
           },
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }

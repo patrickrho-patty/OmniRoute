@@ -1,3 +1,5 @@
+import { normalizeResponsesUsageToOpenAI } from "../utils/usageTracking.ts";
+
 /**
  * Extract usage from non-streaming response body
  * Handles different provider response formats
@@ -73,19 +75,14 @@ export function extractUsageFromResponse(responseBody, provider) {
     typeof responsesUsage === "object" &&
     (responsesUsage.input_tokens !== undefined || responsesUsage.output_tokens !== undefined)
   ) {
+    const usage = normalizeResponsesUsageToOpenAI(responsesUsage);
     return {
-      prompt_tokens: responsesUsage.input_tokens || 0,
-      completion_tokens: responsesUsage.output_tokens || 0,
+      prompt_tokens: usage?.prompt_tokens || 0,
+      completion_tokens: usage?.completion_tokens || 0,
       cache_read_input_tokens: responsesUsage.cache_read_input_tokens,
-      cached_tokens:
-        responsesUsage.input_tokens_details?.cached_tokens ??
-        responsesUsage.prompt_tokens_details?.cached_tokens ??
-        responsesUsage.cache_read_input_tokens,
-      cache_creation_input_tokens: responsesUsage.cache_creation_input_tokens,
-      reasoning_tokens:
-        responsesUsage.output_tokens_details?.reasoning_tokens ??
-        responsesUsage.completion_tokens_details?.reasoning_tokens ??
-        responsesUsage.reasoning_tokens,
+      cached_tokens: usage?.prompt_tokens_details?.cached_tokens,
+      cache_creation_input_tokens: usage?.prompt_tokens_details?.cache_creation_tokens,
+      reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens,
     };
   }
 

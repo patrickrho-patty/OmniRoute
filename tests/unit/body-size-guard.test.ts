@@ -4,12 +4,17 @@ import * as bodySizeGuard from "../../src/shared/middleware/bodySizeGuard.ts";
 import {
   MAX_BODY_BYTES_AUDIO,
   MAX_BODY_BYTES_FILE,
+  CLAUDE_MESSAGES_ROUTE,
+  CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES,
+  CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES,
   MAX_BODY_BYTES_IMAGE_EDIT,
   MAX_BODY_BYTES_LLM_API,
   RequestBodyTooLargeError,
   readRequestBodyWithLimit,
   getBodySizeLimit,
   checkBodySize,
+  checkClaudeMessagesBodySize,
+  isClaudeMessagesPath,
 } from "../../src/shared/middleware/bodySizeGuard.ts";
 import { requestBodyLimitMbToBytes } from "../../src/shared/constants/bodySize.ts";
 
@@ -170,4 +175,154 @@ test("/api/v1/files route guard allows 15 MB (10 MB+ real-world scenario)", () =
     headers: { "content-length": String(fifteenMb) },
   });
   assert.equal(checkBodySize(request, getBodySizeLimit("/api/v1/files")), null);
+});
+
+test("isClaudeMessagesPath accepts root and direct API Claude messages routes", () => {
+  assert.equal(isClaudeMessagesPath("/v1/messages"), true);
+  assert.equal(isClaudeMessagesPath("/api/v1/messages"), true);
+  assert.equal(isClaudeMessagesPath("/v1/chat/completions"), false);
+  assert.equal(isClaudeMessagesPath("/api/v1/responses/foo/v1/messages"), false);
+});
+
+test("Claude messages body guard rejects oversized requests without tools", async () => {
+  const response = checkClaudeMessagesBodySize(
+    new Request(`http://localhost${CLAUDE_MESSAGES_ROUTE}`, { method: "POST" }),
+    CLAUDE_MESSAGES_ROUTE,
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "x".repeat(1100 * 1024) }],
+    }
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 413);
+  const body = await response.json();
+  assert.equal(body.error.code, "PAYLOAD_TOO_LARGE");
+  assert.match(body.error.message, /maximum allowed: 1 mb/i);
+});
+
+test("Claude messages body guard also covers direct /api/v1/messages routes", async () => {
+  const response = checkClaudeMessagesBodySize(
+    new Request("http://localhost/api/v1/messages", { method: "POST" }),
+    "/api/v1/messages",
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "x".repeat(1100 * 1024) }],
+    }
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 413);
+});
+
+test("Claude messages body guard ignores non-Claude routes", () => {
+  const response = checkClaudeMessagesBodySize(
+    new Request("http://localhost/v1/chat/completions", { method: "POST" }),
+    "/v1/chat/completions",
+    {
+      model: "openai/gpt-4.1",
+      messages: [{ role: "user", content: "x".repeat(1100 * 1024) }],
+      tools: Array.from({ length: 24 }, () => ({ name: "tool" })),
+    }
+  );
+
+  assert.equal(response, null);
+});
+
+test("Claude messages body guard rejects parsed body even when content-length is understated", async () => {
+  const response = checkClaudeMessagesBodySize(
+    new Request(`http://localhost${CLAUDE_MESSAGES_ROUTE}`, {
+      method: "POST",
+      headers: { "content-length": "1" },
+    }),
+    CLAUDE_MESSAGES_ROUTE,
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "x".repeat(1100 * 1024) }],
+    }
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 413);
+});
+
+test("Claude messages body guard counts UTF-8 bytes for non-ASCII payloads", async () => {
+  const response = checkClaudeMessagesBodySize(
+    new Request(`http://localhost${CLAUDE_MESSAGES_ROUTE}`, { method: "POST" }),
+    CLAUDE_MESSAGES_ROUTE,
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "한".repeat(400 * 1024) }],
+    }
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 413);
+});
+
+test("Claude messages body guard counts object keys for schema-heavy payloads", async () => {
+  const keyHeavySchema = Object.fromEntries(
+    Array.from({ length: 6_000 }, (_, index) => [`field_${index}_${"x".repeat(200)}`, ""])
+  );
+
+  const response = checkClaudeMessagesBodySize(
+    new Request(`http://localhost${CLAUDE_MESSAGES_ROUTE}`, { method: "POST" }),
+    CLAUDE_MESSAGES_ROUTE,
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "small" }],
+      metadata: keyHeavySchema,
+    }
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 413);
+});
+
+test("Claude messages body guard rejects declared content-length for tool-heavy requests", async () => {
+  const response = checkClaudeMessagesBodySize(
+    new Request(`http://localhost${CLAUDE_MESSAGES_ROUTE}`, {
+      method: "POST",
+      headers: { "content-length": String(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES + 1) },
+    }),
+    CLAUDE_MESSAGES_ROUTE,
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "small" }],
+      tools: Array.from({ length: 20 }, (_, index) => ({ name: `tool_${index}` })),
+    }
+  );
+
+  assert.ok(response);
+  assert.equal(response.status, 413);
+});
+
+test("Claude messages body guard allows exact declared thresholds", () => {
+  const absoluteResponse = checkClaudeMessagesBodySize(
+    new Request(`http://localhost${CLAUDE_MESSAGES_ROUTE}`, {
+      method: "POST",
+      headers: { "content-length": String(CLAUDE_MESSAGES_ABSOLUTE_MAX_BYTES) },
+    }),
+    CLAUDE_MESSAGES_ROUTE,
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "small" }],
+    }
+  );
+
+  const toolHeavyResponse = checkClaudeMessagesBodySize(
+    new Request(`http://localhost${CLAUDE_MESSAGES_ROUTE}`, {
+      method: "POST",
+      headers: { "content-length": String(CLAUDE_MESSAGES_TOOL_HEAVY_MAX_BYTES) },
+    }),
+    CLAUDE_MESSAGES_ROUTE,
+    {
+      model: "claude/claude-opus-4-8",
+      messages: [{ role: "user", content: "small" }],
+      tools: Array.from({ length: 20 }, (_, index) => ({ name: `tool_${index}` })),
+    }
+  );
+
+  assert.equal(absoluteResponse, null);
+  assert.equal(toolHeavyResponse, null);
 });

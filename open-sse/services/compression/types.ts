@@ -214,6 +214,8 @@ export interface CompressionConfig {
   outputStyles?: OutputStyleSelectionEntry[];
   rtkConfig?: RtkConfig;
   codexResponsesConfig?: CodexResponsesConfig;
+  /** Opt-in per-session caching of an immutable compression prefix. */
+  incrementalCache?: boolean;
   relevanceConfig?: RelevanceConfig;
   languageConfig?: CompressionLanguageConfig;
   aggressive?: AggressiveConfig;
@@ -295,6 +297,8 @@ export interface CompressionStats {
   validationWarnings?: string[];
   validationErrors?: string[];
   fallbackApplied?: boolean;
+  /** Prompt tokens added by non-compression augmentation engines (e.g. ponytail); excluded from estimated savings. */
+  augmentationTokens?: number;
   riskGate?: RiskGateStats;
   /**
    * Phase 4 (B): which `ultra` tier actually ran for this request.
@@ -333,6 +337,7 @@ export interface CompressionStats {
     durationMs?: number;
     rejected?: boolean;
     rejectReason?: string;
+    augmentationTokens?: number;
   }>;
   /** Present only when QuantumLock stabilized ≥1 fragment this run. */
   quantumLock?: QuantumLockStats;

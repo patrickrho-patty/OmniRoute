@@ -10,7 +10,11 @@ import {
 } from "./base.ts";
 import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import { getAccessToken } from "../services/tokenRefresh.ts";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 import {
   buildStreamingResponse,
   buildJsonCompletion,
@@ -208,9 +212,7 @@ function buildToolExchangePrompt(messages: OpenAIMessage[]): string {
     const line = renderConversationTurn(message, role, text);
     if (line) convo.push(line);
   }
-  const header = systemParts.length
-    ? `System instructions:\n${systemParts.join("\n\n")}\n\n`
-    : "";
+  const header = systemParts.length ? `System instructions:\n${systemParts.join("\n\n")}\n\n` : "";
   const body = `${header}${convo.join(
     "\n\n"
   )}\n\nContinue the response using the tool result above; do not repeat the tool call.`.trim();
@@ -649,7 +651,7 @@ export class GitlabExecutor extends BaseExecutor {
     // prompt and parse `<tool>{...}</tool>` blocks back out of the completion text
     // into OpenAI `tool_calls` — the same web-tool-emulation idiom used by the
     // qwen-web / duckduckgo-web executors (#6051).
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
       rawMessages as Array<{ role: string; content: unknown }>
     );
@@ -770,7 +772,16 @@ export class GitlabExecutor extends BaseExecutor {
         content: toolContent,
         toolCalls,
         finishReason,
-      } = buildToolAwareResult(content, requestedTools, "gitlab");
+        policyViolation,
+      } = decodeWebToolResponse(content, requestedTools, "gitlab", toolChoice);
+      if (policyViolation) {
+        return {
+          response: buildWebToolPolicyErrorResponse(),
+          url: activeTarget.url,
+          headers: requestHeaders,
+          transformedBody,
+        };
+      }
       const message: Record<string, unknown> = { role: "assistant", content: toolContent };
       if (toolCalls) {
         message.tool_calls = toolCalls;

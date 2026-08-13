@@ -74,6 +74,10 @@ export const ionizerEngine: CompressionEngine = {
     targetLatencyMs: 2,
     supportsPreview: true,
     stable: true,
+    // Lossy statistical sampling — conservatively treated as not stable across turns, so it is
+    // gated in caching contexts to never risk busting the provider prompt cache (its local
+    // savings are far smaller than the ~10x provider cache discount it could cost).
+    cacheSafe: false,
   },
 
   apply(body: Record<string, unknown>, options?: CompressionEngineApplyOptions): CompressionResult {

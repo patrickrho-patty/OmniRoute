@@ -28,9 +28,12 @@
  *   from the reverse map attached as `__sessionDedupMap__` on the body object.
  */
 
-import crypto from "node:crypto";
 import { createCompressionStats } from "../../stats.ts";
+import { canonicalize } from "../../incremental/messageHash.ts";
 import { runFuzzyPass } from "./fuzzy.ts";
+import { dedupMessageTexts } from "./suffixDedup.ts";
+import { memoKey } from "../../incremental/types.ts";
+import type { IncrementalContext } from "../../incremental/types.ts";
 import type {
   CompressionEngine,
   CompressionEngineApplyOptions,
@@ -44,224 +47,240 @@ import type { CompressionResult } from "../../types.ts";
 const ENGINE_ID = "session-dedup";
 /** Minimum block character count to be a dedup candidate. */
 const DEFAULT_MIN_BLOCK_CHARS = 80;
-/** Minimum number of lines a block must span to be a dedup candidate. */
-const MIN_BLOCK_LINES = 3;
-/**
- * Request-wide ceiling for the suffix strings materialized by the exact pass.
- * 32 MiB keeps ordinary sessions byte-identical while preventing line-rich inputs
- * from retaining a quadratic graph of suffix copies.
- */
-const MAX_SUFFIX_WORK_CHARS = 32 * 1024 * 1024;
-const SUFFIX_WORK_BUDGET_WARNING = "session-dedup: skipped (suffix work budget exceeded)";
 
-type SuffixWorkBudget = { remaining: number };
-
-// ─── hash helper (SHA-256 prefix, collision-resistant) ───────────────────────
-
-function hashBlock(text: string): string {
-  // 24 hex / 96 bits — collision-resistant (a 32-bit djb2 could collide and make a
-  // dedup marker reference the WRONG block). Pass 2 additionally verifies block
-  // equality before substituting, so a collision can never cause corruption.
-  return crypto.createHash("sha256").update(text).digest("hex").slice(0, 24);
-}
-
-// ─── suffix-block extraction ──────────────────────────────────────────────────
-
-/**
- * Reserves the characters that findSuffixBlocks() would materialize for one text.
- * The scan observes line starts without splitting or constructing any suffix strings.
- */
-function reserveSuffixWork(text: string, passCount: number, budget: SuffixWorkBudget): boolean {
-  let start = 0;
-  while (start <= text.length) {
-    const suffixChars = (text.length - start) * passCount;
-    if (suffixChars > budget.remaining) return false;
-    budget.remaining -= suffixChars;
-
-    const nextNewline = text.indexOf("\n", start);
-    if (nextNewline === -1) break;
-    start = nextNewline + 1;
-  }
-  return true;
-}
-
-/**
- * For each starting line position, emit the suffix block `lines[start..end]`
- * (i.e. from `start` to the end of the line array). This ensures that any
- * multiline sub-content that appears verbatim in multiple messages is discoverable
- * regardless of what text precedes it in each message.
- *
- * Only emits blocks that meet minBlockChars AND have at least MIN_BLOCK_LINES lines.
- * Uses a seen-set to deduplicate identical suffix blocks.
- */
-function findSuffixBlocks(
-  lines: string[],
-  minBlockChars: number
-): Array<{ block: string; startLine: number }> {
-  const n = lines.length;
-  const seen = new Set<string>();
-  const results: Array<{ block: string; startLine: number }> = [];
-
-  for (let start = 0; start < n; start++) {
-    const block = lines.slice(start).join("\n");
-    const blockLines = n - start;
-    if (blockLines >= MIN_BLOCK_LINES && block.length >= minBlockChars && !seen.has(block)) {
-      seen.add(block);
-      results.push({ block, startLine: start });
-    }
-  }
-  return results;
-}
-
-// ─── two-pass dedup on message texts ─────────────────────────────────────────
-
-/**
- * Deduplicates repeated lines within a single message (intra-message dedup).
- * Replaces repeated suffix blocks with markers.
- */
-function dedupeWithinMessage(
-  text: string,
-  minBlockChars: number
-): { deduped: string; changed: boolean } {
-  const lines = text.split("\n");
-  const blocks = findSuffixBlocks(lines, minBlockChars);
-
-  if (blocks.length < 2) return { deduped: text, changed: false };
-
-  // Find the most common block (likely candidate for intra-message dedup).
-  const blockFreq = new Map<string, number>();
-  for (const { block } of blocks) {
-    blockFreq.set(block, (blockFreq.get(block) || 0) + 1);
-  }
-
-  // Sort by frequency descending, then by length descending (prefer replacing more common, longer blocks first).
-  const sortedBlocks = [...blocks].sort((a, b) => {
-    const freqDiff = (blockFreq.get(b.block) || 0) - (blockFreq.get(a.block) || 0);
-    return freqDiff !== 0 ? freqDiff : b.block.length - a.block.length;
-  });
-
-  let result = text;
-  let changed = false;
-
-  for (const { block } of sortedBlocks) {
-    // Only dedup blocks that appear 2+ times in the text.
-    const occurrences = (
-      result.match(new RegExp(block.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []
-    ).length;
-    if (occurrences < 2) continue;
-
-    const sha = hashBlock(block);
-    const marker = `[dedup:ref sha=${sha}]`;
-    // Replace ALL occurrences except the first (keep the original once).
-    let count = 0;
-    result = result.replace(new RegExp(block.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), () => {
-      count++;
-      return count === 1 ? block : marker;
-    });
-    changed = true;
-  }
-
-  return { deduped: result, changed };
-}
-
-/**
- * Runs two-pass dedup over an ordered list of (msgIdx, text) pairs.
- * Returns the replaced texts for duplicate messages, a reverse map, and a count.
- */
-function dedupMessageTexts(
-  msgTexts: Array<{ msgIdx: number; text: string }>,
-  minBlockChars: number
-): {
-  deduped: Map<number, string>;
-  dedupCount: number;
-} {
-  const deduped = new Map<number, string>();
-  let dedupCount = 0;
-
-  // Single-message case: apply intra-message dedup.
-  if (msgTexts.length === 1) {
-    const { text, msgIdx } = msgTexts[0];
-    const { deduped: dedupedText, changed } = dedupeWithinMessage(text, minBlockChars);
-    if (changed) {
-      deduped.set(msgIdx, dedupedText);
-      dedupCount++;
-    }
-    return { deduped, dedupCount };
-  }
-
-  // Multi-message case: apply cross-turn dedup.
-  // Pass 1: for each message, extract suffix blocks and record first ownership.
-  // `firstSeen`: sha → { ownerMsgIdx, block }
-  const firstSeen = new Map<string, { ownerMsgIdx: number; block: string }>();
-
-  for (const { msgIdx, text } of msgTexts) {
-    const lines = text.split("\n");
-    const blocks = findSuffixBlocks(lines, minBlockChars);
-    for (const { block } of blocks) {
-      const sha = hashBlock(block);
-      if (!firstSeen.has(sha)) {
-        firstSeen.set(sha, { ownerMsgIdx: msgIdx, block });
-      }
-    }
-  }
-
-  // Pass 2: for each message, find blocks that were FIRST seen in an earlier message.
-  for (const { msgIdx, text } of msgTexts) {
-    const lines = text.split("\n");
-    const blocks = findSuffixBlocks(lines, minBlockChars);
-
-    // Collect blocks that are duplicates (owned by an earlier message).
-    const dupBlocks: Array<{ block: string; sha: string }> = [];
-    for (const { block } of blocks) {
-      const sha = hashBlock(block);
-      const owner = firstSeen.get(sha);
-      // owner.block === block guards against a (now astronomically unlikely) hash
-      // collision substituting a marker that would reference the wrong block.
-      if (owner && owner.ownerMsgIdx < msgIdx && owner.block === block) {
-        dupBlocks.push({ block, sha });
-      }
-    }
-
-    if (dupBlocks.length === 0) continue;
-
-    // Sort longest-first to prefer replacing the longest matching block.
-    dupBlocks.sort((a, b) => b.block.length - a.block.length);
-
-    let result = text;
-    let changed = false;
-    const replaced = new Set<string>(); // avoid double-replacing overlapping blocks
-
-    for (const { block, sha } of dupBlocks) {
-      // Skip if this block is a suffix of a block already replaced (overlap guard).
-      if ([...replaced].some((r) => r.includes(block))) continue;
-
-      const idx = result.indexOf(block);
-      if (idx !== -1) {
-        const marker = `[dedup:ref sha=${sha}]`;
-        result = result.slice(0, idx) + marker + result.slice(idx + block.length);
-        changed = true;
-        replaced.add(block);
-        // Only replace once per block per message pass.
-        break;
-      }
-    }
-
-    if (changed) {
-      deduped.set(msgIdx, result);
-      dedupCount++;
-    }
-  }
-
-  return { deduped, dedupCount };
-}
+// Cross-message suffix dedup is implemented in ./suffixDedup.ts (single-pass, O(n)).
+// `dedupMessageTexts` preserves the exact external contract of the previous O(n²)
+// implementation (longest-suffix match, first-occurrence kept, reversible markers).
 
 // ─── message array processing ─────────────────────────────────────────────────
 
 type MessageLike = {
   role?: string;
   content?: string | Array<Record<string, unknown>>;
+  tool_call_id?: string;
+  toolCallId?: string;
+  toolName?: string;
+  name?: string;
+  tool_calls?: Array<Record<string, unknown>>;
   [key: string]: unknown;
 };
+
+type ToolResultLocation =
+  | { kind: "openai"; msgIdx: number; toolCallId: string; toolName?: string }
+  | { kind: "anthropic"; msgIdx: number; partIdx: number; toolCallId: string; toolName?: string }
+  | { kind: "pi"; msgIdx: number; toolCallId: string; toolName?: string };
+
+const DCP_PLACEHOLDER_PREFIX = "[dedup:duplicate-tool-result";
+const DEFAULT_PROTECTED_TOOLS = new Set([
+  "compress",
+  "edit",
+  "multi_edit",
+  "write",
+  "todo",
+  "task",
+  "skill",
+]);
+
+function stableToolArgs(value: unknown): string {
+  if (typeof value === "string") {
+    try {
+      return JSON.stringify(canonicalize(JSON.parse(value)));
+    } catch {
+      return JSON.stringify(value);
+    }
+  }
+  return JSON.stringify(canonicalize(value ?? {}));
+}
+
+function toolCallKey(name: string, input: unknown): string {
+  return `${name}::${stableToolArgs(input)}`;
+}
+
+function protectedTools(stepConfig: Record<string, unknown>): Set<string> {
+  const extra = Array.isArray(stepConfig["protectedTools"])
+    ? (stepConfig["protectedTools"] as unknown[]).filter(
+        (tool): tool is string => typeof tool === "string"
+      )
+    : [];
+  return new Set([...DEFAULT_PROTECTED_TOOLS, ...extra]);
+}
+
+function extractToolNameFromOpenAiCall(call: Record<string, unknown>): string | undefined {
+  const fn = call["function"];
+  if (fn && typeof fn === "object" && typeof (fn as Record<string, unknown>)["name"] === "string") {
+    return (fn as Record<string, unknown>)["name"] as string;
+  }
+  return typeof call["name"] === "string" ? (call["name"] as string) : undefined;
+}
+
+function extractToolArgsFromOpenAiCall(call: Record<string, unknown>): unknown {
+  const fn = call["function"];
+  if (fn && typeof fn === "object" && "arguments" in (fn as Record<string, unknown>)) {
+    return (fn as Record<string, unknown>)["arguments"];
+  }
+  return call["input"] ?? call["arguments"] ?? {};
+}
+
+function buildToolCallIndex(
+  messages: MessageLike[],
+  protectedNames: Set<string>
+): Map<string, { key: string; name: string }> {
+  const index = new Map<string, { key: string; name: string }>();
+
+  for (const msg of messages) {
+    if (msg.role !== "assistant") continue;
+
+    if (Array.isArray(msg.tool_calls)) {
+      for (const call of msg.tool_calls) {
+        const id = typeof call["id"] === "string" ? (call["id"] as string) : undefined;
+        const name = extractToolNameFromOpenAiCall(call);
+        if (!id || !name || protectedNames.has(name)) continue;
+        index.set(id, { key: toolCallKey(name, extractToolArgsFromOpenAiCall(call)), name });
+      }
+    }
+
+    if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part["type"] !== "tool_use") continue;
+        const id = typeof part["id"] === "string" ? (part["id"] as string) : undefined;
+        const name = typeof part["name"] === "string" ? (part["name"] as string) : undefined;
+        if (!id || !name || protectedNames.has(name)) continue;
+        index.set(id, { key: toolCallKey(name, part["input"] ?? {}), name });
+      }
+    }
+  }
+
+  return index;
+}
+
+function collectToolResultLocations(
+  messages: MessageLike[],
+  protectedNames: Set<string>
+): ToolResultLocation[] {
+  const locations: ToolResultLocation[] = [];
+
+  for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
+    const msg = messages[msgIdx];
+    if (msg.role === "tool") {
+      const toolCallId = typeof msg.tool_call_id === "string" ? msg.tool_call_id : undefined;
+      const toolName = typeof msg.name === "string" ? msg.name : undefined;
+      if (toolCallId && !protectedNames.has(toolName ?? "")) {
+        locations.push({ kind: "openai", msgIdx, toolCallId, toolName });
+      }
+      continue;
+    }
+
+    if (msg.role === "toolResult") {
+      const toolCallId = typeof msg.toolCallId === "string" ? msg.toolCallId : undefined;
+      const toolName = typeof msg.toolName === "string" ? msg.toolName : undefined;
+      if (toolCallId && !protectedNames.has(toolName ?? "")) {
+        locations.push({ kind: "pi", msgIdx, toolCallId, toolName });
+      }
+      continue;
+    }
+
+    if (Array.isArray(msg.content)) {
+      for (let partIdx = 0; partIdx < msg.content.length; partIdx++) {
+        const part = msg.content[partIdx];
+        if (part["type"] !== "tool_result") continue;
+        const toolCallId =
+          typeof part["tool_use_id"] === "string"
+            ? (part["tool_use_id"] as string)
+            : typeof part["id"] === "string"
+              ? (part["id"] as string)
+              : undefined;
+        if (toolCallId) locations.push({ kind: "anthropic", msgIdx, partIdx, toolCallId });
+      }
+    }
+  }
+
+  return locations;
+}
+
+function isPlaceholderText(value: unknown): boolean {
+  return typeof value === "string" && value.startsWith(DCP_PLACEHOLDER_PREFIX);
+}
+
+function cloneMessagesForToolDedup(messages: MessageLike[]): MessageLike[] {
+  return messages.map((msg) => {
+    if (Array.isArray(msg.content))
+      return { ...msg, content: msg.content.map((part) => ({ ...part })) };
+    return { ...msg };
+  });
+}
+
+function replaceToolResult(
+  messages: MessageLike[],
+  location: ToolResultLocation,
+  reason: string
+): boolean {
+  const placeholder = `${DCP_PLACEHOLDER_PREFIX} ${reason}]`;
+  const msg = messages[location.msgIdx];
+  if (!msg) return false;
+
+  if (location.kind === "openai") {
+    if (isPlaceholderText(msg.content)) return false;
+    msg.content = placeholder;
+    return true;
+  }
+
+  if (location.kind === "pi") {
+    const content = msg.content;
+    if (Array.isArray(content)) {
+      const first = content[0];
+      if (first && first["type"] === "text" && isPlaceholderText(first["text"])) return false;
+      msg.content = [{ type: "text", text: placeholder }];
+    } else {
+      if (isPlaceholderText(content)) return false;
+      msg.content = placeholder;
+    }
+    delete msg["details"];
+    return true;
+  }
+
+  if (!Array.isArray(msg.content)) return false;
+  const part = msg.content[location.partIdx];
+  if (!part) return false;
+  if (isPlaceholderText(part["content"])) return false;
+  part["content"] = placeholder;
+  return true;
+}
+
+/**
+ * DCP-style agent/session dedup: repeated tool calls with the same stable
+ * `tool name + canonical args` keep their newest result and placeholder older results.
+ * Tool call/result structure is preserved so providers don't see orphaned calls.
+ */
+function dedupToolResults(
+  messages: MessageLike[],
+  stepConfig: Record<string, unknown>
+): { messages: MessageLike[]; dedupCount: number } {
+  const protectedNames = protectedTools(stepConfig);
+  const callIndex = buildToolCallIndex(messages, protectedNames);
+  if (callIndex.size === 0) return { messages, dedupCount: 0 };
+
+  const locations = collectToolResultLocations(messages, protectedNames);
+  if (locations.length < 2) return { messages, dedupCount: 0 };
+
+  let output: MessageLike[] | null = null;
+  const seenKeys = new Set<string>();
+  let dedupCount = 0;
+
+  for (let i = locations.length - 1; i >= 0; i--) {
+    const location = locations[i];
+    const call = callIndex.get(location.toolCallId);
+    if (!call) continue;
+    if (!seenKeys.has(call.key)) {
+      seenKeys.add(call.key);
+      continue;
+    }
+
+    output ??= cloneMessagesForToolDedup(messages);
+    if (replaceToolResult(output, location, `duplicate ${call.name} call`)) dedupCount++;
+  }
+
+  return { messages: output ?? messages, dedupCount };
+}
 
 /**
  * Process messages: collect text content, run two-pass dedup, apply results.
@@ -269,75 +288,160 @@ type MessageLike = {
 function processMessages(
   messages: MessageLike[],
   minBlockChars: number
-): { messages: MessageLike[]; dedupCount: number; suffixWorkBudgetExceeded: boolean } {
-  // Collect (msgIdx, text) for non-system string-content messages.
-  // For multipart, index each text part separately.
+): { messages: MessageLike[]; dedupCount: number } {
+  // Collect (msgIdx, text) for non-system content. Keys live in a per-message namespace of
+  // 100000 so string content (`i*100000`) and multipart text parts (`i*100000 + p + 1`)
+  // never collide across adjacent string/multipart messages, while preserving message order
+  // (earlier messages keep strictly smaller keys, which the dedup ordering relies on).
   const msgTexts: Array<{ msgIdx: number; text: string }> = [];
 
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     if (msg.role === "system") continue;
     if (typeof msg.content === "string") {
-      msgTexts.push({ msgIdx: i, text: msg.content });
+      msgTexts.push({ msgIdx: i * 100000, text: msg.content });
     } else if (Array.isArray(msg.content)) {
       for (let p = 0; p < msg.content.length; p++) {
         const part = msg.content[p];
         if (part["type"] === "text" && typeof part["text"] === "string") {
-          // Composite key: i * 100000 + p + 1 (safe for reasonable message counts)
           msgTexts.push({ msgIdx: i * 100000 + p + 1, text: part["text"] as string });
         }
       }
     }
   }
 
-  if (msgTexts.length === 0) {
-    return { messages, dedupCount: 0, suffixWorkBudgetExceeded: false };
-  }
-
-  // Single-message exact dedup enumerates suffixes once; cross-message dedup does so
-  // in both passes. Reserve the request-wide work up front so no quadratic suffix graph
-  // is partially materialized before the engine decides to fail open.
-  const suffixWorkBudget: SuffixWorkBudget = { remaining: MAX_SUFFIX_WORK_CHARS };
-  const passCount = msgTexts.length === 1 ? 1 : 2;
-  for (const { text } of msgTexts) {
-    if (!reserveSuffixWork(text, passCount, suffixWorkBudget)) {
-      return { messages, dedupCount: 0, suffixWorkBudgetExceeded: true };
-    }
+  if (msgTexts.length < 2) {
+    return { messages, dedupCount: 0 };
   }
 
   const { deduped, dedupCount } = dedupMessageTexts(msgTexts, minBlockChars);
 
   if (dedupCount === 0) {
-    return { messages, dedupCount: 0, suffixWorkBudgetExceeded: false };
+    return { messages, dedupCount: 0 };
   }
 
+  const result = messages.map((msg, i) => reassembleMessage(msg, i, deduped));
+
+  return { messages: result, dedupCount };
+}
+
+/**
+ * Apply the deduped-text replacements for one message, keyed by its array index `i`
+ * (string content → `i*100000`; multipart text part p → `i*100000 + p + 1`). Returns a
+ * shallow-cloned message with markers substituted where present. Shared by the full and
+ * incremental paths so they reassemble identically.
+ */
+function reassembleMessage(msg: MessageLike, i: number, deduped: Map<number, string>): MessageLike {
+  if (msg.role === "system") return { ...msg };
+
+  if (typeof msg.content === "string") {
+    const replacement = deduped.get(i * 100000);
+    return replacement !== undefined ? { ...msg, content: replacement } : { ...msg };
+  }
+
+  if (Array.isArray(msg.content)) {
+    let changed = false;
+    const newContent = msg.content.map((part, p) => {
+      if (part["type"] !== "text" || typeof part["text"] !== "string") return part;
+      const key = i * 100000 + p + 1;
+      const replacement = deduped.get(key);
+      if (replacement !== undefined) {
+        changed = true;
+        return { ...part, text: replacement };
+      }
+      return part;
+    });
+    return changed ? { ...msg, content: newContent } : { ...msg };
+  }
+
+  return { ...msg };
+}
+
+/** A session-dedup memo entry: the message's compressed output + whether dedup changed it. */
+type MemoizedMessage = { msg: MessageLike; changed: boolean };
+
+/**
+ * Whether the dedup substituted a marker for any text span of message `i` this turn — the
+ * content-level "did this message change" signal (string key `i*100000`; multipart text part p
+ * key `i*100000 + p + 1`). Mirrors the keys reassembleMessage consumes.
+ */
+function messageWasDeduped(msg: MessageLike, i: number, deduped: Map<number, string>): boolean {
+  if (typeof msg.content === "string") return deduped.has(i * 100000);
+  if (Array.isArray(msg.content)) {
+    return msg.content.some(
+      (part, p) =>
+        part["type"] === "text" &&
+        typeof part["text"] === "string" &&
+        deduped.has(i * 100000 + p + 1)
+    );
+  }
+  return false;
+}
+
+/**
+ * Incremental dedup: process only messages not yet in the session memo (the new tail),
+ * deduping them against the persistent cross-turn index (which already holds the prefix's
+ * first-seen blocks). Cached prefix messages are pulled from the memo verbatim — their dedup
+ * output is invariant because dedup only ever references EARLIER messages, and the prefix is
+ * immutable. Output is byte-identical to a full run (enforced by the equivalence property test).
+ */
+function processMessagesIncremental(
+  messages: MessageLike[],
+  minBlockChars: number,
+  ctx: IncrementalContext
+): { messages: MessageLike[]; changedCount: number } {
+  const cumulative = ctx.cumulativeByIndex;
+
+  // Collect (msgIdx, text) ONLY for messages we haven't compressed before. Array index is the
+  // msgIdx namespace base, identical across turns (append-only) so it matches the persistent
+  // index's existing ownership.
+  const newMsgTexts: Array<{ msgIdx: number; text: string }> = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role === "system") continue;
+    const h = cumulative[i];
+    if (h !== undefined && ctx.memo.has(memoKey(ENGINE_ID, h))) continue; // cached prefix
+    if (typeof msg.content === "string") {
+      newMsgTexts.push({ msgIdx: i * 100000, text: msg.content });
+    } else if (Array.isArray(msg.content)) {
+      for (let p = 0; p < msg.content.length; p++) {
+        const part = msg.content[p];
+        if (part["type"] === "text" && typeof part["text"] === "string") {
+          newMsgTexts.push({ msgIdx: i * 100000 + p + 1, text: part["text"] as string });
+        }
+      }
+    }
+  }
+
+  // Dedup the new tail against the carried index (prefix blocks already registered there).
+  const deduped =
+    newMsgTexts.length > 0
+      ? dedupMessageTexts(newMsgTexts, minBlockChars, ctx.dedupIndex).deduped
+      : new Map<number, string>();
+
+  let changedCount = 0;
   const result = messages.map((msg, i) => {
     if (msg.role === "system") return { ...msg };
+    const h = cumulative[i];
+    const key = h !== undefined ? memoKey(ENGINE_ID, h) : undefined;
 
-    if (typeof msg.content === "string") {
-      const replacement = deduped.get(i);
-      return replacement !== undefined ? { ...msg, content: replacement } : { ...msg };
+    // Cached prefix message → reuse its stored output AND its real change flag.
+    const cached = key ? (ctx.memo.get(key) as MemoizedMessage | undefined) : undefined;
+    if (cached) {
+      if (cached.changed) changedCount++;
+      return cached.msg;
     }
 
-    if (Array.isArray(msg.content)) {
-      let changed = false;
-      const newContent = msg.content.map((part, p) => {
-        if (part["type"] !== "text" || typeof part["text"] !== "string") return part;
-        const key = i * 100000 + p + 1;
-        const replacement = deduped.get(key);
-        if (replacement !== undefined) {
-          changed = true;
-          return { ...part, text: replacement };
-        }
-        return part;
-      });
-      return changed ? { ...msg, content: newContent } : { ...msg };
-    }
-
-    return { ...msg };
+    // New message → "changed" iff the dedup actually substituted a marker for it (a content-
+    // level fact, not a cross-turn object-reference compare which is always true for multipart).
+    const changed = messageWasDeduped(msg, i, deduped);
+    const out = reassembleMessage(msg, i, deduped);
+    if (key) ctx.memo.set(key, { msg: out, changed });
+    if (changed) changedCount++;
+    return out;
   });
 
-  return { messages: result, dedupCount, suffixWorkBudgetExceeded: false };
+  return { messages: result, changedCount };
 }
 
 // ─── schema & validation ──────────────────────────────────────────────────────
@@ -434,19 +538,55 @@ export const sessionDedupEngine: CompressionEngine = {
       return { body, compressed: false, stats: null };
     }
 
-    const start = performance.now();
-    const {
-      messages: exactMessages,
-      dedupCount,
-      suffixWorkBudgetExceeded,
-    } = processMessages(messages as MessageLike[], minBlockChars);
-
-    if (suffixWorkBudgetExceeded) {
-      const durationMs = Math.round(performance.now() - start);
-      const stats = createCompressionStats(body, body, "stacked", [], undefined, durationMs);
-      stats.validationWarnings = [SUFFIX_WORK_BUDGET_WARNING];
-      return { body, compressed: false, stats };
+    // ── Incremental path ──────────────────────────────────────────────────────
+    // When the incremental compressor supplies a per-session context (and fuzzy is off),
+    // process only the new tail against the persistent index and reuse cached prefix output.
+    // The length guard ensures the cumulative keys line up with this body 1:1; otherwise fall
+    // back to the full path (always correct).
+    const ctx = options?.incremental;
+    const fuzzyRaw = stepConfig["fuzzy"];
+    const fuzzyOn =
+      fuzzyRaw === true ||
+      (typeof fuzzyRaw === "object" &&
+        fuzzyRaw !== null &&
+        (fuzzyRaw as Record<string, unknown>)["enabled"] === true);
+    if (
+      ctx &&
+      !fuzzyOn &&
+      Array.isArray(ctx.cumulativeByIndex) &&
+      ctx.cumulativeByIndex.length === messages.length
+    ) {
+      const startInc = performance.now();
+      const { messages: incMessages, changedCount } = processMessagesIncremental(
+        messages as MessageLike[],
+        minBlockChars,
+        ctx
+      );
+      if (changedCount === 0) {
+        return { body, compressed: false, stats: null };
+      }
+      const incBody: Record<string, unknown> = { ...body, messages: incMessages };
+      const durationMs = Math.round(performance.now() - startInc);
+      const stats = createCompressionStats(
+        body,
+        incBody,
+        "stacked",
+        ["session-dedup"],
+        [`deduplicated-${changedCount}-blocks`],
+        durationMs
+      );
+      return { body: incBody, compressed: true, stats };
     }
+
+    const start = performance.now();
+    const { messages: toolDedupMessages, dedupCount: toolResultDedupCount } = dedupToolResults(
+      messages as MessageLike[],
+      stepConfig
+    );
+    const { messages: exactMessages, dedupCount } = processMessages(
+      toolDedupMessages,
+      minBlockChars
+    );
 
     const { messages: finalMessages, fuzzyCount } = runFuzzyPass(
       exactMessages,
@@ -455,7 +595,7 @@ export const sessionDedupEngine: CompressionEngine = {
       options?.principalId
     );
 
-    if (dedupCount + fuzzyCount === 0) {
+    if (toolResultDedupCount + dedupCount + fuzzyCount === 0) {
       return { body, compressed: false, stats: null };
     }
 
@@ -464,6 +604,7 @@ export const sessionDedupEngine: CompressionEngine = {
     const techniques = ["session-dedup"];
     if (fuzzyCount > 0) techniques.push("fuzzy-dedup");
     const rules: string[] = [];
+    if (toolResultDedupCount > 0) rules.push(`tool-deduplicated-${toolResultDedupCount}-results`);
     if (dedupCount > 0) rules.push(`deduplicated-${dedupCount}-blocks`);
     if (fuzzyCount > 0) rules.push(`fuzzy-${fuzzyCount}-blocks`);
     const stats = createCompressionStats(body, newBody, "stacked", techniques, rules, durationMs);

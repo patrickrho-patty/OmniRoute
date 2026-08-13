@@ -135,6 +135,20 @@ export const ENGINE_CATALOG: Record<string, EngineMeta> = {
       cacheImpact: "moderate",
     },
   },
+  ponytail: {
+    id: "ponytail",
+    label: "Ponytail",
+    stackPriority: 25,
+    levels: ["lite", "full", "ultra"],
+    isSingleMode: false,
+    description: "Lazy-senior-dev YAGNI instruction injection.",
+    guidance: {
+      tradeoffs:
+        "Adds an instruction encouraging smaller, simpler code. It does not remove existing context, but changes the model's response style.",
+      lossy: false,
+      cacheImpact: "low",
+    },
+  },
   aggressive: {
     id: "aggressive",
     label: "Aggressive",

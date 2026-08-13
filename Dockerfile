@@ -36,6 +36,7 @@ RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
   && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
+COPY .npmrc ./
 # Workspace package manifests MUST be present before `npm ci` so npm materializes
 # the workspace and installs its *workspace-only* deps (e.g. safe-regex,
 # @toon-format/toon — declared in open-sse/package.json, not hoisted to root).
@@ -213,6 +214,10 @@ USER root
 # ensures the same playwright version is available at runtime for web-session providers.
 COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-core
 COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
+# cloakbrowser (stealth Chromium for cf_clearance acquisition) is a dynamic
+# import — copy it explicitly like playwright rather than relying on the
+# standalone tracer.
+COPY --from=builder /app/node_modules/cloakbrowser ./node_modules/cloakbrowser
 
 # Install Playwright browser binaries + OS dependencies under root, then hand
 # ownership of the browsers cache to the node user.
@@ -227,9 +232,23 @@ RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
   && chown -R node:node /home/node/.cache \
   && rm -rf /var/lib/apt/lists/*
 
+# Bake the cloakbrowser patched-Chromium binary into the image. The package
+# downloads it lazily on FIRST launch (~200 MB from GitHub) — doing that at
+# request time is slow and GitHub-rate-limit prone, so pre-download here under
+# the node user's HOME (/home/node/.cloakbrowser). Set CLOAKBROWSER_DOWNLOAD_URL
+# to a mirror to bypass GitHub rate limits during CI builds.
+ARG CLOAKBROWSER_DOWNLOAD_URL=""
+ENV CLOAKBROWSER_DOWNLOAD_URL=$CLOAKBROWSER_DOWNLOAD_URL
+RUN HOME=/home/node node --input-type=module -e "import('/app/node_modules/cloakbrowser/dist/download.js').then(async (m) => { await m.ensureBinary(); }).catch((e) => { console.error('[cloakbrowser] binary download failed:', e.message); process.exit(1); })" \
+  && chown -R node:node /home/node/.cloakbrowser
+
 USER node
 
-FROM runner-base AS runner-cli
+# Inherit from runner-web (not runner-base) so the CLI image ALSO ships the
+# Playwright Chromium browser — required by web-cookie providers (gemini-web,
+# chatgpt-web, claude-web/turnstile, etc.). Otherwise those providers 503 with
+# "Playwright Chromium browser is not installed".
+FROM runner-web AS runner-cli
 
 # Drop back to root briefly so we can install system + global npm packages,
 # then return to the `node` non-root user before the CMD inherited from

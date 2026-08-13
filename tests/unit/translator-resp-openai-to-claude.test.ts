@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+const { openaiResponsesToOpenAIResponse } =
+  await import("../../open-sse/translator/response/openai-responses.ts");
 const { openaiToClaudeResponse } =
   await import("../../open-sse/translator/response/openai-to-claude.ts");
 const { translateNonStreamingResponse } =
@@ -293,6 +295,35 @@ test("OpenAI stream: tool calls strip Claude OAuth prefix and keep cache usage",
   assert.equal(result[5].usage.output_tokens, 4);
   assert.equal(result[5].usage.cache_read_input_tokens, 2);
   assert.equal(result[5].usage.cache_creation_input_tokens, 1);
+});
+
+test("Responses -> OpenAI -> Claude keeps cached input out of Claude input_tokens", () => {
+  const responsesState = {};
+  const openaiChunk = openaiResponsesToOpenAIResponse(
+    {
+      type: "response.completed",
+      response: {
+        usage: {
+          input_tokens: 252450,
+          output_tokens: 125,
+          input_tokens_details: { cached_tokens: 125440 },
+        },
+      },
+    },
+    responsesState
+  );
+
+  const claudeState = createState();
+  openaiToClaudeResponse(
+    { id: "chatcmpl-cache", model: "gpt-5.5", choices: [{ delta: {} }] },
+    claudeState
+  );
+  const result = flatten([openaiToClaudeResponse(openaiChunk, claudeState)]);
+  const delta = result.find((item) => item.type === "message_delta");
+
+  assert.equal(delta.usage.input_tokens, 127010);
+  assert.equal(delta.usage.cache_read_input_tokens, 125440);
+  assert.equal(delta.usage.output_tokens, 125);
 });
 
 test("OpenAI stream: two finish_reason chunks emit finish events exactly once", () => {

@@ -34,6 +34,20 @@ import { resolveRequestRoutingTags } from "@/domain/tagRouter";
 import { validateApiKeyRoutingTarget } from "@/shared/utils/apiKeyPolicy";
 import { persistResponsesWsCallHistory } from "./history";
 import { applyResponsesWsCompression } from "./compression";
+import {
+  PattyGatewayError,
+  pattyCodexRateLimitsEvent,
+  pattySettleRef,
+  pattyTerminalUsageFromUsage,
+  preparePattyWebSocketTurn,
+  type PattyDecision,
+  type PattyTerminalUsage,
+} from "@omniroute/open-sse/services/pattyGateway.ts";
+import {
+  ackPattySettlement,
+  enqueuePattySettlement,
+  replayPattySettlements,
+} from "@/lib/db/pattySettlementOutbox";
 
 const CODEX_RESPONSES_WS_URL = "wss://chatgpt.com/backend-api/codex/responses";
 const executor = new CodexExecutor();
@@ -506,10 +520,46 @@ async function resolveCodexProxy(provider: string): Promise<string | undefined> 
 async function prepare(body: JsonRecord) {
   const context = await resolveCodexRequestContext(body);
   if ("error" in context) return context.error;
-  const upstream = await resolveCodexUpstreamContext(context);
+  const originalResponseBody = context.responseBody;
+  const requestId = toStringOrNull(body.requestId) || randomUUID();
+  const turnId = toStringOrNull(body.turnId) || "turn-1";
+  let pattyDecision: PattyDecision | null = null;
+  let preparedResponseBody = originalResponseBody;
+  try {
+    const patty = await preparePattyWebSocketTurn(
+      context.authRequest,
+      originalResponseBody,
+      requestId,
+      turnId
+    );
+    preparedResponseBody = patty.body;
+    pattyDecision = patty.decision;
+  } catch (error) {
+    if (error instanceof PattyGatewayError) {
+      return NextResponse.json(
+        {
+          error: { code: error.code, type: error.code, message: error.message },
+          plan_type: "enterprise",
+          ...(error.quota?.resetAt !== undefined ? { resets_at: error.quota.resetAt } : {}),
+        },
+        { status: error.status }
+      );
+    }
+    throw error;
+  }
+
+  const routedContext = pattyDecision
+    ? {
+        ...context,
+        responseBody: preparedResponseBody,
+        requestedModel: pattyDecision.routedModel,
+        decision: null,
+      }
+    : context;
+  const upstream = await resolveCodexUpstreamContext(routedContext);
   if ("error" in upstream) return upstream.error;
   const { responseBody, metadata, provider, model, credentials: refreshedCredentials } = upstream;
-  const reasoningDecision = upstream.reasoningDecision;
+  const reasoningDecision = pattyDecision ? null : upstream.reasoningDecision;
 
   let responseBodyWithMemory = await maybeInjectResponsesWsMemory(responseBody, metadata);
   let reasoningRouting: JsonRecord | null = null;
@@ -564,7 +614,85 @@ async function prepare(body: JsonRecord) {
     proxy,
     reasoningRouting,
     response: transformed,
+    pattyDecision,
   });
+}
+
+function settlementDecision(body: JsonRecord) {
+  const decision = isRecord(body.decision) ? body.decision : null;
+  const preflightRef = toStringOrNull(decision?.preflightRef);
+  const requestId = toStringOrNull(decision?.requestId);
+  const turnId = toStringOrNull(decision?.turnId);
+  const routedModel = toStringOrNull(decision?.routedModel);
+  if (!preflightRef || !requestId || !turnId || !routedModel) return null;
+  return { preflightRef, requestId, turnId, routedModel };
+}
+
+function settlementTerminal(body: JsonRecord): PattyTerminalUsage | null {
+  const terminal = isRecord(body.terminal) ? body.terminal : null;
+  const status = toStringOrNull(terminal?.status);
+  if (!terminal || !status) return null;
+  return pattyTerminalUsageFromUsage(terminal.usage, {
+    status,
+    provider: toStringOrNull(terminal.provider) || undefined,
+    connection: toStringOrNull(terminal.connection) || undefined,
+    model: toStringOrNull(terminal.model) || undefined,
+    errorCode: toStringOrNull(terminal.errorCode) || undefined,
+    latencyMs:
+      typeof terminal.latencyMs === "number" && Number.isFinite(terminal.latencyMs)
+        ? terminal.latencyMs
+        : undefined,
+  });
+}
+
+async function settle(body: JsonRecord) {
+  const decision = settlementDecision(body);
+  const terminal = settlementTerminal(body);
+  if (!decision || !terminal) {
+    return jsonError(400, "invalid_settlement", "Settlement decision and usage are required");
+  }
+
+  enqueuePattySettlement({
+    requestId: decision.requestId,
+    turnId: decision.turnId,
+    preflightRef: decision.preflightRef,
+    routeTarget: decision.routedModel,
+    terminalUsage: terminal,
+  });
+  try {
+    await pattySettleRef(decision, terminal);
+    ackPattySettlement(decision.requestId, decision.turnId);
+    return NextResponse.json({
+      ok: true,
+      settled: true,
+      rateLimits: pattyCodexRateLimitsEvent(body.decision as unknown as PattyDecision),
+    });
+  } catch (error) {
+    const gatewayError =
+      error instanceof PattyGatewayError
+        ? error
+        : new PattyGatewayError(
+            503,
+            "patty_settlement_unavailable",
+            "Patty settlement is unavailable"
+          );
+    return jsonError(gatewayError.status, gatewayError.code, gatewayError.message);
+  }
+}
+
+async function replaySettlements() {
+  const result = await replayPattySettlements(async (record) => {
+    await pattySettleRef(
+      {
+        preflightRef: record.preflightRef,
+        requestId: record.requestId,
+        turnId: record.turnId,
+        routedModel: record.routeTarget,
+      },
+      record.terminalUsage
+    );
+  });
+  return NextResponse.json({ ok: true, ...result });
 }
 
 export async function POST(request: Request) {
@@ -591,6 +719,12 @@ export async function POST(request: Request) {
   }
   if (action === "prepare") {
     return prepare(body);
+  }
+  if (action === "settle") {
+    return settle(body);
+  }
+  if (action === "replay") {
+    return replaySettlements();
   }
   if (action === "log") {
     try {

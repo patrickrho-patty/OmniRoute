@@ -89,7 +89,7 @@ export interface ImagePart {
   messageIndex: number;
   partIndex: number;
   imageUrl: string;
-  imageType: "image_url" | "image";
+  imageType: "image_url" | "image" | "input_image";
 }
 
 export interface RequestMessage {
@@ -100,7 +100,9 @@ export interface RequestMessage {
 export type RequestContentPart =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string; detail?: string } }
-  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } }
+  | { type: "input_image"; image_url: string | { url: string } }
+  | { type: "input_text"; text: string };
 
 /**
  * Extract image parts from messages array.
@@ -138,6 +140,18 @@ export function extractImageParts(messages: RequestMessage[]): ImagePart[] {
           imageUrl: dataUri,
           imageType: "image",
         });
+      } else if (part?.type === "input_image") {
+        // Responses API image part. image_url is a bare string (data URI or https
+        // URL) — the same payload the chat path carries as image_url.url.
+        const url = typeof part.image_url === "string" ? part.image_url : part.image_url?.url || "";
+        if (url) {
+          results.push({
+            messageIndex: msgIdx,
+            partIndex: partIdx,
+            imageUrl: url,
+            imageType: "input_image",
+          });
+        }
       }
     }
   }
@@ -354,6 +368,14 @@ async function callVisionModelSingle(
         headers,
         body: JSON.stringify({
           model: requestModel,
+          // Force a single JSON object, not an SSE stream. The describe call is
+          // parsed with response.json(); a provider that defaults to streaming
+          // when `stream` is omitted (e.g. codex via the OmniRoute self-loop)
+          // would return `data: {…chunk…}` frames that JSON.parse cannot read,
+          // so the describe is treated as failed and the guardrail falls back to
+          // other (possibly broken) vision models. Explicit stream:false keeps
+          // the JSON path authoritative regardless of the backend's default.
+          stream: false,
           messages: [
             {
               role: "user",
@@ -437,7 +459,24 @@ async function callVisionModelSingle(
 export interface RequestBody {
   model?: string;
   messages?: RequestMessage[];
+  /** Responses API conversation array (input items). */
+  input?: RequestMessage[];
   [key: string]: unknown;
+}
+
+/**
+ * Select the conversation array to scan/mutate. Chat-completions / Anthropic carry
+ * it in `messages`; the Responses API carries it in `input`. Prefers `messages`,
+ * falling back to `input` — and an EMPTY `messages: []` does not shadow a populated
+ * `input` (it would otherwise make the guardrail skip a Responses image-bearing
+ * request). extractImageParts and replaceImageParts both go through this so they
+ * always agree on the same array.
+ */
+export function conversationArray(body: RequestBody): RequestMessage[] | undefined {
+  const messages = Array.isArray(body.messages) ? body.messages : undefined;
+  if (messages && messages.length > 0) return messages;
+  const input = Array.isArray(body.input) ? body.input : undefined;
+  return input && input.length > 0 ? input : undefined;
 }
 
 /**
@@ -456,14 +495,18 @@ export function replaceImageParts(
 
   const result = structuredClone(body) as RequestBody;
 
-  if (!Array.isArray(result.messages)) {
+  // Operate on the SAME conversation array extractImageParts scanned (see
+  // conversationArray). Walking both arrays with a shared index would misalign
+  // descriptions if a body ever held images in both.
+  const list = conversationArray(result);
+  if (!list) {
     return result;
   }
 
   let descriptionIndex = 0;
 
-  for (let msgIdx = 0; msgIdx < result.messages.length; msgIdx++) {
-    const message = result.messages[msgIdx];
+  for (let msgIdx = 0; msgIdx < list.length; msgIdx++) {
+    const message = list[msgIdx];
     if (!message || !Array.isArray(message.content)) {
       continue;
     }
@@ -471,7 +514,9 @@ export function replaceImageParts(
     const newContent: RequestContentPart[] = [];
 
     for (const part of message.content) {
-      if (part?.type === "image_url" || part?.type === "image") {
+      const isImage =
+        part?.type === "image_url" || part?.type === "image" || part?.type === "input_image";
+      if (isImage) {
         if (descriptionIndex < descriptions.length) {
           const description = descriptions[descriptionIndex];
           descriptionIndex++;
@@ -480,9 +525,14 @@ export function replaceImageParts(
             // image so a vision-capable upstream can still process it.
             newContent.push(part as RequestContentPart);
           } else {
-            newContent.push({ type: "text", text: description });
+            // Match the surrounding API format: Responses uses input_text,
+            // chat-completions / Anthropic use text.
+            const textType = part?.type === "input_image" ? "input_text" : "text";
+            newContent.push({ type: textType, text: description });
           }
         }
+        // else: more images than descriptions (beyond maxImages) — drop,
+        // matching the existing chat-path overflow behavior.
       } else {
         newContent.push(part as RequestContentPart);
       }

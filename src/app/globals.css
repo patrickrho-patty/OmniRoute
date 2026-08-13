@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
+/* Self-hosted Pretendard variable font (official npm `pretendard`) for the
+   Patty-branded public auth surface. Self-hosted (not jsdelivr CDN) so the
+   login page has no third-party runtime dependency — same rationale as the
+   Material Symbols self-hosting below (#3695). */
+@import "pretendard/dist/web/variable/pretendardvariable.css";
 /* Self-hosted Material Symbols icon font (#3695): the Google Fonts CDN
    (fonts.googleapis.com) is blocked in some networks (e.g. mainland China),
    which made every icon ligature fall back to its literal text name and broke
@@ -87,8 +92,8 @@
   --shadow-warm: 0 2px 12px -2px rgba(229, 77, 94, 0.12);
   --shadow-elevated: 0 12px 28px -4px rgba(20, 20, 40, 0.06);
 
-  /* Graph-paper wallpaper grid — shared visual identity with the marketing site
-     (_mono_repo/omnirouteSite/css). Light theme values. Rendered by body::before.
+  /* Graph-paper wallpaper grid — shared visual identity with the marketing site.
+     Light theme values. Rendered by body::before.
      Opacity tuned up from the site's 0.045 so the wallpaper is actually visible on
      the dense dashboard (cards/chrome cover most of the viewport). */
   --grid-line: rgba(0, 0, 0, 0.07);

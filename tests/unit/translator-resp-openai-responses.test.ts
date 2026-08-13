@@ -290,6 +290,51 @@ test("Responses -> OpenAI: text delta streams as content and flush sends stop fi
   assert.equal(final.choices[0].finish_reason, "stop");
 });
 
+test("Responses -> OpenAI: repeated text deltas are not duplicated", () => {
+  const state = {};
+  const first = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Assumption: PR target is `staging`." },
+    state
+  );
+  const repeated = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Assumption: PR target is `staging`." },
+    state
+  );
+
+  assert.equal(first.choices[0].delta.content, "Assumption: PR target is `staging`.");
+  assert.equal(repeated, null);
+});
+
+test("Responses -> OpenAI: cumulative text snapshots emit only the new suffix", () => {
+  const state = {};
+  const first = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Worktree is clean." },
+    state
+  );
+  const snapshot = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "Worktree is clean. I am creating the PR." },
+    state
+  );
+
+  assert.equal(first.choices[0].delta.content, "Worktree is clean.");
+  assert.equal(snapshot.choices[0].delta.content, " I am creating the PR.");
+});
+
+test("Responses -> OpenAI: tiny repeated text chunks remain incremental", () => {
+  const state = {};
+  const first = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "ha" },
+    state
+  );
+  const second = openaiResponsesToOpenAIResponse(
+    { type: "response.output_text.delta", delta: "ha" },
+    state
+  );
+
+  assert.equal(first.choices[0].delta.content, "ha");
+  assert.equal(second.choices[0].delta.content, "ha");
+});
+
 test("Responses -> OpenAI: empty-name tool call is deferred until output_item.done", () => {
   const state = {};
   const started = openaiResponsesToOpenAIResponse(
@@ -471,10 +516,31 @@ test("Responses -> OpenAI: tool-call delta, reasoning delta and completed usage 
       prompt_tokens_details: { cached_tokens: number; cache_creation_tokens: number };
     };
   };
-  assert.equal(comp.usage.prompt_tokens, 8);
+  assert.equal(comp.usage.prompt_tokens, 5);
   assert.equal(comp.usage.completion_tokens, 2);
   assert.equal(comp.usage.prompt_tokens_details.cached_tokens, 1);
   assert.equal(comp.usage.prompt_tokens_details.cache_creation_tokens, 2);
+});
+
+test("Responses -> OpenAI: does not double count Responses cached input details", () => {
+  const state = {};
+  const completed = openaiResponsesToOpenAIResponse(
+    {
+      type: "response.completed",
+      response: {
+        usage: {
+          input_tokens: 252450,
+          output_tokens: 125,
+          input_tokens_details: { cached_tokens: 125440 },
+        },
+      },
+    },
+    state
+  );
+
+  assert.equal((completed as any).usage.prompt_tokens, 252450);
+  assert.equal((completed as any).usage.completion_tokens, 125);
+  assert.equal((completed as any).usage.prompt_tokens_details.cached_tokens, 125440);
 });
 
 test("Responses -> OpenAI: preserves upstream model instead of defaulting to gpt-4", () => {

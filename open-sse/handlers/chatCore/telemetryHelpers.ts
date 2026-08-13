@@ -1,8 +1,9 @@
 import { fetchLiveProviderLimits } from "@/lib/usage/providerLimits";
 import { isClaudeExtraUsageBlockEnabled } from "@/lib/providers/claudeExtraUsage";
+import { getRuntimePorts } from "@/lib/runtime/ports";
 
 // #4604 — Lazy backoff for the best-effort live-WS sidecar bridge. In single-port
-// deployments the sidecar (port 20132) is not running, so every compression event
+// deployments the sidecar (port 20129) is not running, so every compression event
 // POST failed with ECONNREFUSED; because the global fetch is proxyFetch, each
 // failure logged a "[ProxyFetch] Undici dispatcher failed" warning (272× in 42min).
 // After a few consecutive failures we stop attempting for a cooldown window (then
@@ -12,6 +13,20 @@ const LIVE_WS_MAX_CONSECUTIVE_FAILURES = 3;
 const LIVE_WS_DISABLE_MS = 60_000;
 let liveWsConsecutiveFailures = 0;
 let liveWsDisabledUntil = 0;
+
+/**
+ * Mirror of `src/server/ws/liveServer.ts::isLiveWsEnabled` so the caller and
+ * the server share the same on/off semantics: undefined defaults to ON; only
+ * `"1"` or `"true"` (case-insensitive) explicitly enable. Anything else (incl.
+ * `"0"` / `"false"`) disables. When OFF, the bridge skips the fetch entirely
+ * so a missing sidecar produces zero warnings, instead of three-per-minute via
+ * the lazy-backoff probe.
+ */
+function isLiveWsForwardingEnabled(): boolean {
+  const v = process.env.OMNIROUTE_ENABLE_LIVE_WS;
+  if (v === undefined) return true;
+  return v === "1" || v.toLowerCase() === "true";
+}
 
 /** Test-only: reset the live-WS forwarding backoff state. */
 export function __resetLiveWsForwardingState(): void {
@@ -25,10 +40,15 @@ export async function forwardDashboardEventToLiveWs(
   fetchImpl: typeof fetch = fetch,
   now: () => number = Date.now
 ): Promise<void> {
+  // Symmetric with the server: when OMNIROUTE_ENABLE_LIVE_WS=0 we skip the
+  // fetch entirely so a deployment that doesn't run the sidecar produces no
+  // ECONNREFUSED warnings at all (the lazy-backoff probe still emits one
+  // warning per cooldown otherwise).
+  if (!isLiveWsForwardingEnabled()) return;
   // Skip while the bridge is in a cooldown window after repeated failures.
   if (liveWsDisabledUntil > now()) return;
 
-  const port = process.env.LIVE_WS_PORT || "20132";
+  const port = getRuntimePorts().liveWsPort;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1_500);
   try {

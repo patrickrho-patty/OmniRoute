@@ -1,9 +1,5 @@
-import { handleChat } from "@/sse/handlers/chat";
-import {
-  withEarlyStreamKeepalive,
-  RESPONSES_STARTUP_THINKING_FRAME,
-  OPENAI_RESPONSES_ERROR_FRAME,
-} from "@omniroute/open-sse/utils/earlyStreamKeepalive";
+import { handleChat, type HandleChatRuntimeOptions } from "@/sse/handlers/chat";
+import { withEarlyStreamKeepalive } from "@omniroute/open-sse/utils/earlyStreamKeepalive";
 import { withInjectionGuard } from "@/middleware/promptInjectionGuard";
 import { resolveResponsesApiModel } from "@/app/api/internal/codex-responses-ws/modelResolution";
 import { getModelInfo } from "@/sse/services/model";
@@ -83,7 +79,12 @@ export async function withCodexPreferredModel(
  * `preParsedBody` is threaded from withInjectionGuard (#4041) so the body is
  * parsed at most once per request instead of 3-4x on the hot codex path.
  */
-async function postHandler(request: any, context: any, preParsedBody: any = null) {
+async function postHandler(
+  request: any,
+  context: any,
+  preParsedBody: any = null,
+  runtimeOptions: HandleChatRuntimeOptions = {}
+) {
   // Codex CLI (wire_api="responses") consumes this endpoint over SSE and its reqwest
   // client drops the connection if no bytes arrive within ~5s. Keep the connection
   // warm with early keepalives while the upstream produces its first token (#2544).
@@ -99,14 +100,15 @@ async function postHandler(request: any, context: any, preParsedBody: any = null
     // Reuse resolvedBody.model — no extra clone/parse needed (#4041).
     const model = resolvedBody?.model;
     const thresholdMs = resolveKeepaliveThreshold(model);
-    return await withEarlyStreamKeepalive(handleChat(resolved, null, resolvedBody), {
-      signal: request.signal,
-      thresholdMs,
-      startupFrame: RESPONSES_STARTUP_THINKING_FRAME,
-      errorFrame: OPENAI_RESPONSES_ERROR_FRAME,
-    });
+    return await withEarlyStreamKeepalive(
+      handleChat(resolved, null, resolvedBody, runtimeOptions),
+      {
+        signal: request.signal,
+        thresholdMs,
+      }
+    );
   }
-  return await handleChat(resolved, null, resolvedBody);
+  return await handleChat(resolved, null, resolvedBody, runtimeOptions);
 }
 
 export const POST = withInjectionGuard(postHandler);

@@ -68,7 +68,7 @@ function cacheKey(entry: LlmlinguaModelEntry, modelPath?: string): string {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getCompressor(entry: LlmlinguaModelEntry, modelPath?: string): Promise<any> {
   const { env } = await dynamicImport("@huggingface/transformers");
-  configureTransformersEnv(env as TransformersEnvLike, { modelPath });
+  configureTransformersEnv(env as TransformersEnvLike, { modelPath, hfRepo: entry.hfRepo });
 
   const { LLMLingua2 } = await dynamicImport("@atjsh/llmlingua-2");
   const { Tiktoken } = await dynamicImport("js-tiktoken/lite");

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
-import { prepareToolMessages, buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 
 const INNER_AI_CHAT_URL = "https://chatapi.innerai.com/chat";
@@ -607,7 +611,7 @@ export class InnerAiExecutor extends BaseExecutor {
 
     // Build message content from OpenAI messages array
     const rawMessages = Array.isArray(bodyObj.messages) ? bodyObj.messages : [];
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
       rawMessages
     );
@@ -711,7 +715,16 @@ export class InnerAiExecutor extends BaseExecutor {
         content: cleaned,
         toolCalls,
         finishReason,
-      } = buildToolAwareResult(content, requestedTools, "inner");
+        policyViolation,
+      } = decodeWebToolResponse(content, requestedTools, "inner", toolChoice);
+      if (policyViolation) {
+        return {
+          response: buildWebToolPolicyErrorResponse(),
+          url: INNER_AI_CHAT_URL,
+          headers: reqHeaders,
+          transformedBody: innerAiBody,
+        };
+      }
       if (toolCalls) {
         return {
           response: new Response(

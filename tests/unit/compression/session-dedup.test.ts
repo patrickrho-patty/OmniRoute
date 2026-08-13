@@ -144,6 +144,108 @@ describe("session-dedup engine", () => {
     assert.deepEqual(imageItem!.image_url, { url: "data:image/png;base64,abc" });
   });
 
+  it("does not let an adjacent multipart message collide with a string message (key namespace)", () => {
+    // Regression: string msg used key `i` while multipart used `i*100000+p+1`, so a multipart
+    // message at index 0 (part 0 → key 1) collided with a string message at index 1 (key 1),
+    // corrupting one with the other's dedup. Namespacing string keys to `i*100000` fixes it.
+    const block = `${REPEATED_BLOCK}\nextra unique tail line for namespace test padding here`;
+    const body = {
+      model: "gpt-4",
+      messages: [
+        { role: "user", content: [{ type: "text", text: block }] }, // index 0, multipart
+        { role: "assistant", content: "short string reply that is wholly unique and intact" }, // index 1, string
+        { role: "user", content: [{ type: "text", text: block }] }, // index 2, dup of 0
+      ],
+    };
+
+    const result = sessionDedupEngine.apply(body as Record<string, unknown>);
+    const messages = result.body.messages as Array<{ role: string; content: unknown }>;
+
+    // The string message at index 1 must remain byte-identical (never overwritten by a
+    // colliding multipart dedup entry).
+    assert.equal(
+      messages[1].content,
+      "short string reply that is wholly unique and intact",
+      "adjacent string message must not be corrupted by a multipart dedup key collision"
+    );
+    // Index 0 first occurrence intact; index 2 deduped.
+    const first = (messages[0].content as Array<{ type: string; text: string }>)[0].text;
+    assert.ok(first.includes(REPEATED_BLOCK), "first multipart occurrence kept intact");
+  });
+
+  it("deduplicates older OpenAI-style repeated tool results by tool name + args", () => {
+    const body = {
+      model: "gpt-4",
+      messages: [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_old",
+              type: "function",
+              function: { name: "read", arguments: '{"path":"src/a.ts"}' },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_old", name: "read", content: "old file contents" },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_new",
+              type: "function",
+              function: { name: "read", arguments: '{"path":"src/a.ts"}' },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_new", name: "read", content: "new file contents" },
+      ],
+    };
+
+    const result = sessionDedupEngine.apply(body as Record<string, unknown>);
+    assert.equal(result.compressed, true);
+    const messages = result.body.messages as Array<{ role: string; content: unknown }>;
+    assert.equal(messages[1].content, "[dedup:duplicate-tool-result duplicate read call]");
+    assert.equal(messages[3].content, "new file contents", "newest duplicate result is kept");
+    assert.ok(result.stats?.rulesApplied?.includes("tool-deduplicated-1-results"));
+  });
+
+  it("deduplicates older Anthropic-style repeated tool_result blocks", () => {
+    const body = {
+      model: "claude",
+      messages: [
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "toolu_old", name: "grep", input: { q: "needle" } }],
+        },
+        {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_old", content: "old grep output" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "tool_use", id: "toolu_new", name: "grep", input: { q: "needle" } }],
+        },
+        {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: "toolu_new", content: "new grep output" }],
+        },
+      ],
+    };
+
+    const result = sessionDedupEngine.apply(body as Record<string, unknown>);
+    assert.equal(result.compressed, true);
+    const messages = result.body.messages as Array<{ content: Array<Record<string, unknown>> }>;
+    assert.equal(
+      messages[1].content[0].content,
+      "[dedup:duplicate-tool-result duplicate grep call]"
+    );
+    assert.equal(messages[3].content[0].content, "new grep output");
+    assert.equal(messages[1].content[0].tool_use_id, "toolu_old", "tool result id is preserved");
+  });
+
   it("getConfigSchema returns an array with expected fields", () => {
     const schema = sessionDedupEngine.getConfigSchema();
     assert.ok(Array.isArray(schema));

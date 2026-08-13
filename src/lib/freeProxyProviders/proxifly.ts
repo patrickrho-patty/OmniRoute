@@ -1,5 +1,6 @@
 import type { FreeProxyItem, FreeProxySyncResult, FreeProxyProvider } from "./types";
 import { isPrivateHost } from "@/shared/network/outboundUrlGuard";
+import { parsePositiveInt } from "@/shared/utils/envParsing";
 
 const DEFAULT_QUANTITY = 100;
 const DEFAULT_ANONYMITY = "elite";
@@ -21,11 +22,6 @@ type ProxiflyProxy = {
     country?: string | null;
   } | null;
 };
-
-function parsePositiveInt(value: string | undefined, fallback: number): number {
-  const parsed = parseInt(value || "", 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
 
 function normalizeProxyResponse(value: unknown): ProxiflyProxy[] {
   if (Array.isArray(value)) return value as ProxiflyProxy[];

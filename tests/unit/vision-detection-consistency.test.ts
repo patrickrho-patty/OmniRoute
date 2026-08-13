@@ -76,4 +76,20 @@ describe("#4072 vision detection is consistent across all three sources", () => 
       assert.equal(liteStripsImage(id), false, `lite must keep the image for ${id}`);
     }
   });
+
+  it("treats every chatgpt-web / GPT-5 family id as vision (native multimodal)", () => {
+    for (const id of [
+      "cgpt-web/5.6",
+      "cgpt-web/gpt-5.3-instant",
+      "chatgpt-web/gpt-5.5",
+      "gpt-5",
+      "gpt-5.3",
+      "openai/gpt-5.5-pro",
+    ]) {
+      assert.equal(isVisionModelId(id), true, `shared isVisionModelId(${id})`);
+      assert.equal(catalogIsVisionModelId(id), true, `catalog isVisionModelId(${id})`);
+      assert.equal(modelIdLikelyVision(id), true, `modelCapabilities modelIdLikelyVision(${id})`);
+      assert.equal(liteStripsImage(id), false, `lite must KEEP the image for ${id}`);
+    }
+  });
 });

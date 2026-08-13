@@ -197,8 +197,29 @@ async function compressMessageText(
   return { text: parts.join(""), didCompress: anyCompressed };
 }
 
+function latestUserMessageIndex(messages: MessageLike[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]?.role === "user") return i;
+  }
+  return -1;
+}
+
+function shouldPreserveMessageVerbatim(
+  msg: MessageLike,
+  index: number,
+  latestUserIndex: number
+): boolean {
+  // System/developer instructions and assistant history shape model behavior. In multi-message
+  // agent sessions, the latest user turn is the live instruction; LLMLingua is semantic/prose
+  // compression, not byte-preserving normalization, so rewriting that turn can leak malformed
+  // whitespace/style into the current answer. A standalone single-user prompt remains eligible so
+  // LLMLingua can still compress large one-shot context payloads.
+  const isLatestUserInConversation = index === latestUserIndex && latestUserIndex > 0;
+  return msg.role === "system" || msg.role === "assistant" || isLatestUserInConversation;
+}
+
 /**
- * Process all non-system messages, compressing prose in each text content part.
+ * Process older non-system context, compressing prose in each eligible text content part.
  * Fail-opens per message: any unexpected error → that message kept as-is.
  */
 async function processMessages(
@@ -208,10 +229,12 @@ async function processMessages(
 ): Promise<{ messages: MessageLike[]; compressedCount: number }> {
   let compressedCount = 0;
   const result: MessageLike[] = [];
+  const latestUserIndex = latestUserMessageIndex(messages);
 
-  for (const msg of messages) {
-    // Never touch system messages
-    if (msg.role === "system") {
+  for (let index = 0; index < messages.length; index++) {
+    const msg = messages[index];
+    if (!msg) continue;
+    if (shouldPreserveMessageVerbatim(msg, index, latestUserIndex)) {
       result.push({ ...msg });
       continue;
     }
@@ -274,7 +297,7 @@ const LLMLINGUA_SCHEMA: EngineConfigField[] = [
     key: "minTokens",
     type: "number",
     label: "Min tokens (floor)",
-    defaultValue: 2000,
+    defaultValue: 1000,
     min: 0,
     max: 100000,
   },
@@ -404,7 +427,7 @@ export const llmlinguaEngine: CompressionEngine = {
     // minTokens floor: skip the model entirely on small prompts (avoid paying
     // model latency when there is little to gain). 0 disables the floor.
     const minTokens =
-      typeof stepConfig["minTokens"] === "number" ? (stepConfig["minTokens"] as number) : 2000;
+      typeof stepConfig["minTokens"] === "number" ? (stepConfig["minTokens"] as number) : 1000;
     if (minTokens > 0) {
       const nonSystemText = (messages as MessageLike[])
         .filter((m) => m.role !== "system")

@@ -10,6 +10,7 @@ import {
   getPromptCacheReadTokens,
 } from "@/lib/usage/tokenAccounting";
 import { FORMATS } from "../translator/formats.ts";
+import type { UsageData } from "../types.ts";
 
 // ANSI color codes
 export const COLORS = {
@@ -264,6 +265,64 @@ export function filterUsageForFormat(usage, targetFormat) {
   return pickFields(fields);
 }
 
+function toUsageNumber(value) {
+  if (value === undefined || value === null) return 0;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+/**
+ * Normalize Responses API usage to OpenAI Chat usage semantics.
+ *
+ * Contract:
+ * - OpenAI/Codex Responses `input_tokens` is total prompt-side input; cache details are
+ *   breakdown-only under `input_tokens_details`/`prompt_tokens_details`.
+ * - Cache-read / cache-creation fields are breakdown only, whether they are top-level or
+ *   nested under token details. They must not be added to `input_tokens` again.
+ */
+export function normalizeResponsesUsageToOpenAI(usage) {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) return null;
+
+  const inputTokens = toUsageNumber(usage.input_tokens ?? usage.prompt_tokens);
+  const outputTokens = toUsageNumber(usage.output_tokens ?? usage.completion_tokens);
+  const detailCacheRead =
+    usage.input_tokens_details?.cached_tokens ?? usage.prompt_tokens_details?.cached_tokens;
+  const detailCacheCreation =
+    usage.input_tokens_details?.cache_creation_tokens ??
+    usage.prompt_tokens_details?.cache_creation_tokens;
+  const cacheReadTokens = toUsageNumber(usage.cache_read_input_tokens ?? detailCacheRead);
+  const cacheCreationTokens = toUsageNumber(
+    usage.cache_creation_input_tokens ?? detailCacheCreation
+  );
+  const promptTokens = inputTokens;
+  const totalTokens = toUsageNumber(usage.total_tokens) || promptTokens + outputTokens;
+
+  const normalized: UsageData = {
+    prompt_tokens: promptTokens,
+    completion_tokens: outputTokens,
+    total_tokens: totalTokens,
+  };
+
+  if (cacheReadTokens > 0 || cacheCreationTokens > 0) {
+    normalized.prompt_tokens_details = {};
+    if (cacheReadTokens > 0) normalized.prompt_tokens_details.cached_tokens = cacheReadTokens;
+    if (cacheCreationTokens > 0) {
+      normalized.prompt_tokens_details.cache_creation_tokens = cacheCreationTokens;
+    }
+  }
+
+  const reasoningTokens = toUsageNumber(
+    usage.output_tokens_details?.reasoning_tokens ??
+      usage.completion_tokens_details?.reasoning_tokens ??
+      usage.reasoning_tokens
+  );
+  if (reasoningTokens > 0) {
+    normalized.completion_tokens_details = { reasoning_tokens: reasoningTokens };
+  }
+
+  return normalized;
+}
+
 /**
  * Normalize usage object - ensure all values are valid numbers
  */
@@ -380,19 +439,12 @@ export function extractUsage(chunk) {
     chunk.response?.usage &&
     typeof chunk.response.usage === "object"
   ) {
-    const usage = chunk.response.usage;
+    const usage = normalizeResponsesUsageToOpenAI(chunk.response.usage);
     return normalizeUsage({
-      prompt_tokens: usage.input_tokens || usage.prompt_tokens || 0,
-      completion_tokens: usage.output_tokens || usage.completion_tokens || 0,
-      cached_tokens:
-        usage.input_tokens_details?.cached_tokens ??
-        usage.prompt_tokens_details?.cached_tokens ??
-        usage.cache_read_input_tokens,
-      cache_creation_input_tokens: usage.cache_creation_input_tokens,
-      reasoning_tokens:
-        usage.output_tokens_details?.reasoning_tokens ??
-        usage.completion_tokens_details?.reasoning_tokens ??
-        usage.reasoning_tokens,
+      ...usage,
+      cached_tokens: usage?.prompt_tokens_details?.cached_tokens,
+      cache_creation_input_tokens: usage?.prompt_tokens_details?.cache_creation_tokens,
+      reasoning_tokens: usage?.completion_tokens_details?.reasoning_tokens,
     });
   }
 
@@ -599,6 +651,17 @@ export function logUsage(
 
   const cacheCreation = getPromptCacheCreationTokens(usage);
   if (cacheCreation) msg += ` | cache_create=${cacheCreation}`;
+
+  // At-a-glance provider prompt-cache efficiency: what fraction of the prompt was served
+  // from the upstream cache. `inTokens` (getLoggedInputTokens) is the FULL prompt total —
+  // it already folds in cache_read + cache_creation — so the hit rate is simply
+  // cache_read / inTokens. High and rising = cache healthy; a drop signals the prefix is
+  // being mutated (e.g. a cache-unsafe compression engine busting the provider cache).
+  const cacheTotal = (cacheRead || 0) + (cacheCreation || 0);
+  if (cacheTotal > 0 && inTokens > 0) {
+    const hitPct = Math.round(((cacheRead || 0) / inTokens) * 100);
+    msg += ` | ${COLORS.cyan}cache_hit=${hitPct}%${COLORS.reset}`;
+  }
 
   const reasoning = usage.reasoning_tokens;
   if (reasoning) msg += ` | reasoning=${reasoning}`;

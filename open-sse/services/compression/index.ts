@@ -88,6 +88,7 @@ export {
   shouldAutoTrigger,
   applyStackedCompression,
   applyStackedCompressionAsync,
+  filterCacheUnsafeSteps,
 } from "./strategySelector.ts";
 
 export type {
@@ -118,6 +119,7 @@ export { registerBuiltinCompressionEngines } from "./engines/index.ts";
 export { codexResponsesEngine } from "./engines/codexResponses/index.ts";
 
 export { applyRtkCompression, processRtkText, rtkEngine } from "./engines/rtk/index.ts";
+export { applyPonytailCompression, ponytailEngine } from "./engines/ponytail/index.ts";
 export {
   detectCommandFromText,
   detectCommandOutput,

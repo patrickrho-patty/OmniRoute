@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useState, useEffect } from "react";
 import { Button, Input } from "@/shared/components";
 import { useRouter } from "next/navigation";
+import PattyShell from "./PattyShell";
 
 export default function LoginPage() {
   const t = useTranslations("auth");
@@ -13,14 +14,13 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [hasPassword, setHasPassword] = useState(null);
   const [setupComplete, setSetupComplete] = useState(null);
-  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
   const [mounted, setMounted] = useState(false);
   const [nodeVersion, setNodeVersion] = useState(null);
   const [nodeCompatible, setNodeCompatible] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    const raf = requestAnimationFrame(() => setMounted(true));
+    setMounted(true);
     async function checkAuth() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -43,17 +43,14 @@ export default function LoginPage() {
           }
           setHasPassword(!!data.hasPassword);
           setSetupComplete(!!data.setupComplete);
-          setOidcEnabled(!!data.oidcEnabled);
         } else {
           setHasPassword(true);
           setSetupComplete(true);
-          setOidcEnabled(false);
         }
       } catch (err) {
         clearTimeout(timeoutId);
         setHasPassword(true);
         setSetupComplete(true);
-        setOidcEnabled(false);
       }
     }
     checkAuth();
@@ -72,7 +69,7 @@ export default function LoginPage() {
       });
 
       if (res.ok) {
-        sessionStorage.setItem("omniroute_login_time", String(Date.now()));
+        sessionStorage.setItem("patty_login_time", String(Date.now()));
         router.push("/dashboard");
         router.refresh();
       } else {
@@ -94,26 +91,26 @@ export default function LoginPage() {
   const nodeWarningBanner =
     !nodeCompatible && nodeVersion ? (
       <div className="w-full max-w-lg mx-auto mb-6 animate-in fade-in slide-in-from-top-2 duration-500">
-        <div className="bg-red-950/60 border-2 border-red-500/40 rounded-2xl p-6 shadow-lg shadow-red-900/20 backdrop-blur-sm">
+        <div className="bg-black/5 border border-black/10 rounded-xl p-6 shadow-lg shadow-black/5 backdrop-blur-sm">
           <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-xl bg-red-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="material-symbols-outlined text-red-400 text-[28px]">error</span>
+            <div className="w-12 h-12 rounded-xl bg-black/5 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="material-symbols-outlined text-[#0a0a0b] text-[28px]">error</span>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-base font-bold text-red-300 mb-1">
+              <h3 className="text-base font-bold text-[#0a0a0b] mb-1">
                 {t("nodeIncompatibleTitle")}
               </h3>
-              <p className="text-sm text-red-200/80 leading-relaxed mb-3">
+              <p className="text-sm text-black/60 leading-relaxed mb-3">
                 {t("nodeIncompatibleDesc", { version: nodeVersion })}
               </p>
-              <div className="bg-black/40 rounded-lg px-4 py-3 font-mono text-sm border border-red-500/20">
-                <div className="flex items-center gap-2 text-red-300/60 mb-1">
+              <div className="bg-white rounded-lg px-4 py-3 font-mono text-sm border border-black/10">
+                <div className="flex items-center gap-2 text-black/50 mb-1">
                   <span className="material-symbols-outlined text-[14px]">terminal</span>
                   <span className="text-xs">{t("nodeIncompatibleFixLabel")}</span>
                 </div>
-                <code className="text-amber-300">nvm install 22 && nvm use 22</code>
+                <code className="text-[#0a0a0b]">nvm install 22 && nvm use 22</code>
               </div>
-              <p className="text-xs text-red-300/50 mt-3 flex items-center gap-1.5">
+              <p className="text-xs text-black/50 mt-3 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[14px]">info</span>
                 {t("nodeIncompatibleHint")}
               </p>
@@ -122,41 +119,35 @@ export default function LoginPage() {
         </div>
       </div>
     ) : null;
-  if (hasPassword === null || setupComplete === null || oidcEnabled === null) {
+
+  if (hasPassword === null || setupComplete === null) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        {nodeWarningBanner}
+      <PattyShell banner={nodeWarningBanner}>
         <div className="flex flex-col items-center gap-3">
           <div className="relative">
-            <div className="w-10 h-10 border-2 border-primary/20 rounded-full"></div>
-            <div className="absolute inset-0 w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-10 h-10 border-2 border-black/10 rounded-full"></div>
+            <div className="absolute inset-0 w-10 h-10 border-2 border-[#0a0a0b] border-t-transparent rounded-full animate-spin"></div>
           </div>
-          <span className="text-sm text-text-muted">{t("loading")}</span>
+          <span className="text-sm text-black/60">{t("loading")}</span>
         </div>
-      </div>
+      </PattyShell>
     );
   }
 
   if (!hasPassword && !setupComplete) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        {nodeWarningBanner}
+      <PattyShell banner={nodeWarningBanner}>
         <div
           className={`w-full max-w-md transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
         >
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10 mb-6">
-              <span className="material-symbols-outlined text-primary text-[40px]">
-                rocket_launch
-              </span>
-            </div>
-            <h1 className="text-3xl font-bold text-text-main tracking-tight">{t("welcome")}</h1>
-            <p className="text-text-muted mt-2">{t("configureInstance")}</p>
+            <h1 className="text-3xl font-bold text-[#0a0a0b] tracking-tight">{t("welcome")}</h1>
+            <p className="text-black/60 mt-2">{t("configureInstance")}</p>
           </div>
 
-          <div className="bg-surface border border-border rounded-2xl p-8 shadow-soft">
+          <div className="bg-white border border-black/10 rounded-xl p-8 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <div className="text-center">
-              <p className="text-text-muted leading-relaxed mb-6">{t("runOnboardingWizard")}</p>
+              <p className="text-black/60 leading-relaxed mb-6">{t("runOnboardingWizard")}</p>
               <Button
                 variant="primary"
                 className="w-full h-11 text-sm font-medium"
@@ -167,36 +158,28 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="text-center text-xs text-text-muted/60 mt-8">
-            OmniRoute — {t("unifiedProxy")}
-          </p>
+          <p className="text-center text-xs text-black/40 mt-8">© Patty</p>
         </div>
-      </div>
+      </PattyShell>
     );
   }
 
   if (!hasPassword && setupComplete) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center p-6">
-        {nodeWarningBanner}
+      <PattyShell banner={nodeWarningBanner}>
         <div
           className={`w-full max-w-md transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
         >
           <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-amber-500/10 to-amber-500/5 border border-amber-500/10 mb-6">
-              <span className="material-symbols-outlined text-amber-500 text-[40px]">
-                shield_person
-              </span>
-            </div>
-            <h1 className="text-3xl font-bold text-text-main tracking-tight">
+            <h1 className="text-3xl font-bold text-[#0a0a0b] tracking-tight">
               {t("secureYourInstance")}
             </h1>
-            <p className="text-text-muted mt-2">{t("passwordNotEnabled")}</p>
+            <p className="text-black/60 mt-2">{t("passwordNotEnabled")}</p>
           </div>
 
-          <div className="bg-surface border border-border rounded-2xl p-8 shadow-soft">
+          <div className="bg-white border border-black/10 rounded-xl p-8 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <div className="text-center">
-              <p className="text-text-muted leading-relaxed mb-6">{t("setPasswordDescription")}</p>
+              <p className="text-black/60 leading-relaxed mb-6">{t("setPasswordDescription")}</p>
               <Button
                 variant="primary"
                 className="w-full h-11 text-sm font-medium"
@@ -207,139 +190,56 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="text-center text-xs text-text-muted/60 mt-8">
-            OmniRoute — {t("unifiedAiApiProxy")}
-          </p>
+          <p className="text-center text-xs text-black/40 mt-8">© Patty</p>
         </div>
-      </div>
+      </PattyShell>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      {nodeWarningBanner && (
-        <div className="flex justify-center pt-6 px-6">{nodeWarningBanner}</div>
-      )}
-      <div className="flex-1 flex">
-        <div className="flex-1 flex items-center justify-center p-6">
-          <div
-            className={`w-full max-w-sm transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
-          >
-            <div className="mb-10">
-              <div className="flex items-center gap-3 mb-8">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primary-hover flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white text-[20px]">hub</span>
-                </div>
-                <span className="text-xl font-semibold text-text-main tracking-tight">
-                  OmniRoute
-                </span>
-              </div>
-              <h1 className="text-2xl font-bold text-text-main tracking-tight">{t("signIn")}</h1>
-              <p className="text-text-muted mt-1.5">{t("enterPassword")}</p>
-            </div>
+    <PattyShell banner={nodeWarningBanner}>
+      <div
+        className={`w-full max-w-sm transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+      >
+        <div className="text-center mb-10">
+          <span className="text-xl font-semibold text-[#0a0a0b] tracking-tight">Patty</span>
+        </div>
 
-            <form onSubmit={handleLogin} className="space-y-5">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-text-main">{t("password")}</label>
-                <Input
-                  type="password"
-                  placeholder={t("enterPassword")}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  autoFocus
-                  className="h-11"
-                />
-                {error && (
-                  <p className="text-sm text-red-500 flex items-center gap-1.5 pt-1">
-                    <span className="material-symbols-outlined text-base">error</span>
-                    {error}
-                  </p>
-                )}
-                <p className="text-xs text-text-muted/60 pt-0.5">{t("defaultPasswordHint")}</p>
-              </div>
+        <h1 className="text-2xl font-bold text-[#0a0a0b] tracking-tight text-center mb-1.5">
+          {t("signIn")}
+        </h1>
+        <p className="text-black/60 text-center mb-8">{t("enterPassword")}</p>
 
-              <Button
-                type="submit"
-                variant="primary"
-                className="w-full h-11 text-sm font-medium"
-                loading={loading}
-              >
-                {t("continue")}
-              </Button>
-            </form>
-            {oidcEnabled && (
-              <div className="mt-4">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full h-11 text-sm font-medium"
-                  onClick={() => (window.location.href = "/api/auth/oidc/login")}
-                >
-                  {t("continueWithOidc") || "Continue with OIDC"}
-                </Button>
-              </div>
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-[#0a0a0b]">{t("password")}</label>
+            <Input
+              type="password"
+              placeholder={t("enterPassword")}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoFocus
+              className="h-11"
+            />
+            {error && (
+              <p className="text-sm text-[#0a0a0b] flex items-center gap-1.5 pt-1">
+                <span className="material-symbols-outlined text-base">error</span>
+                {error}
+              </p>
             )}
-
-            <div className="mt-6 pt-6 border-t border-border">
-              <a
-                href="/forgot-password"
-                className="text-sm text-text-muted hover:text-primary transition-colors"
-              >
-                {t("forgotPassword")}
-              </a>
-            </div>
           </div>
-        </div>
 
-        <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary/5 via-primary/3 to-transparent items-center justify-center p-12">
-          <div
-            className={`max-w-md transition-all duration-700 delay-200 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
+          <Button
+            type="submit"
+            variant="primary"
+            className="w-full h-11 text-sm font-medium"
+            loading={loading}
           >
-            <div className="space-y-8">
-              <div>
-                <h2 className="text-2xl font-bold text-text-main mb-3">{t("unifiedAiApiProxy")}</h2>
-                <p className="text-text-muted leading-relaxed">{t("unifiedAiApiProxyDesc")}</p>
-              </div>
-
-              <div className="space-y-4">
-                {[
-                  {
-                    icon: "swap_horiz",
-                    title: t("featureMultiProviderTitle"),
-                    desc: t("featureMultiProviderDesc"),
-                  },
-                  {
-                    icon: "speed",
-                    title: t("featureLoadBalancingTitle"),
-                    desc: t("featureLoadBalancingDesc"),
-                  },
-                  {
-                    icon: "analytics",
-                    title: t("featureUsageTrackingTitle"),
-                    desc: t("featureUsageTrackingDesc"),
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.icon}
-                    className="flex items-start gap-4 p-4 rounded-xl bg-surface/50 border border-border"
-                  >
-                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-primary text-[20px]">
-                        {item.icon}
-                      </span>
-                    </div>
-                    <div>
-                      <h3 className="font-medium text-text-main">{item.title}</h3>
-                      <p className="text-sm text-text-muted">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+            {t("continue")}
+          </Button>
+        </form>
       </div>
-    </div>
+    </PattyShell>
   );
 }

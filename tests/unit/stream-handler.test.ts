@@ -98,6 +98,42 @@ test("createDisconnectAwareStream treats errors after OpenAI DONE as successful 
   assert.doesNotMatch(text, /terminated/);
 });
 
+test("createDisconnectAwareStream: a 'Controller is already closed' lifecycle error is a benign disconnect, not a 502", async () => {
+  const lifecycleError = new Error("Invalid state: Controller is already closed");
+  const transformStream = {
+    readable: new ReadableStream({
+      start(controller) {
+        controller.error(lifecycleError);
+      },
+    }),
+    writable: createNoopAbortWritable(),
+  };
+
+  const onErrorCalls = [];
+  const onDisconnectCalls = [];
+  const streamController = createStreamController({
+    onError: (e) => {
+      onErrorCalls.push(e);
+      return false;
+    },
+    onDisconnect: (e) => {
+      onDisconnectCalls.push(e);
+    },
+  });
+
+  const stream = createDisconnectAwareStream(transformStream, streamController);
+  const text = await readStreamText(stream);
+
+  assert.equal(
+    onErrorCalls.length,
+    0,
+    "benign disconnect must not be reported via onError (no 502)"
+  );
+  assert.doesNotMatch(text, /"finish_reason":"error"/, "must not emit a fake SSE error chunk");
+  assert.doesNotMatch(text, /Controller is already closed/, "must not leak the lifecycle message");
+  assert.equal(onDisconnectCalls.length, 1, "should be recorded as a disconnect");
+});
+
 test("createDisconnectAwareStream treats cancel after OpenAI DONE as successful completion", async () => {
   let disconnectHandled = false;
   const transformStream = {

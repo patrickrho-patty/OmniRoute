@@ -480,6 +480,15 @@ async function patchedFetch(
   }
 
   const targetUrl = getTargetUrl(input);
+  // Origin only (no path/query) so failure logs never leak request tokens or keys.
+  // Without this, the "unable to verify the first certificate" bursts were
+  // undiagnosable — the host that broke TLS was never recorded.
+  let targetOrigin = targetUrl;
+  try {
+    targetOrigin = new URL(targetUrl).origin;
+  } catch {
+    // keep the raw value if it isn't a parseable URL
+  }
   let resolved;
   try {
     resolved = resolveProxyForRequest(targetUrl);
@@ -504,7 +513,7 @@ async function patchedFetch(
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.warn(
-          `[ProxyFetch] TLS fingerprint failed, falling back to native fetch: ${message}`
+          `[ProxyFetch] TLS fingerprint failed, falling back to native fetch (host=${targetOrigin}): ${message}`
         );
         const store = tlsFingerprintContext.getStore();
         if (store) store.used = false;
@@ -603,7 +612,7 @@ async function patchedFetch(
           // #4252: append the flattened err.cause (code/syscall/errno/address) — the bare
           // "fetch failed" message hides what actually broke, making bursts undiagnosable.
           console.warn(
-            `[ProxyFetch] Undici dispatcher failed, falling back to native fetch (after retry): ${describeFetchCause(dispatcherError)}`
+            `[ProxyFetch] Undici dispatcher failed, falling back to native fetch (after retry, host=${targetOrigin}): ${describeFetchCause(dispatcherError)}`
           );
           try {
             return await _nativeFallback(input, options);
@@ -613,7 +622,7 @@ async function patchedFetch(
             // a diagnosable failure IMMEDIATELY instead of a bare "fetch failed" — the
             // latter left jobs sitting until the 30s semaphore queue timeout, which then
             // tripped the circuit breaker.
-            const detail = `dispatcher=[${describeFetchCause(dispatcherError)}] native=[${describeFetchCause(nativeError)}]`;
+            const detail = `host=${targetOrigin} dispatcher=[${describeFetchCause(dispatcherError)}] native=[${describeFetchCause(nativeError)}]`;
             console.warn(`[ProxyFetch] native fetch fallback ALSO failed: ${detail}`);
             if (nativeError instanceof Error) {
               (nativeError as Error & { proxyFetchDetail?: string }).proxyFetchDetail = detail;

@@ -148,6 +148,68 @@ describe("updateCompressionSettings", () => {
     await updateCompressionSettings({ enabled: false } as any);
   });
 
+  it("keeps legacy runtime fields in sync when engines map disables caveman", async () => {
+    // Simulate the drift we saw in production: UI engine map says caveman is off, but
+    // legacy rows still contain caveman. updateCompressionSettings({ engines }) must clean
+    // those rows so dispatch cannot keep injecting caveman/terse behavior.
+    await updateCompressionSettings({
+      enabled: true,
+      stackedPipeline: [
+        { engine: "rtk", intensity: "standard" },
+        { engine: "caveman", intensity: "full" },
+      ],
+      cavemanConfig: { enabled: true, intensity: "lite" },
+      cavemanOutputMode: { enabled: true, intensity: "lite", autoClarity: true },
+      outputStyles: [{ id: "terse-prose", level: "lite" }],
+    } as any);
+
+    const settings = await updateCompressionSettings({
+      engines: {
+        "session-dedup": { enabled: true },
+        rtk: { enabled: true, level: "standard" },
+        headroom: { enabled: true },
+        llmlingua: { enabled: true },
+        caveman: { enabled: false, level: "lite" },
+        ponytail: { enabled: false, level: "full" },
+      },
+    } as any);
+
+    assert.equal(settings.cavemanConfig?.enabled, false);
+    assert.equal(settings.cavemanOutputMode?.enabled, false);
+    // Output styles are independent user settings; do not silently clear them when an engine
+    // toggle changes. The caveman-specific legacy output mode is what must be disabled.
+    assert.deepEqual(settings.outputStyles, [{ id: "terse-prose", level: "lite" }]);
+    assert.equal(settings.defaultMode, "stacked");
+    assert.deepEqual(
+      settings.stackedPipeline.map((s) => s.engine),
+      ["session-dedup", "rtk", "headroom", "llmlingua"]
+    );
+  });
+
+  it("lets explicit engine toggles win over stale full-config legacy fields", async () => {
+    const settings = await updateCompressionSettings({
+      enabled: true,
+      defaultMode: "lite",
+      autoTriggerMode: "lite",
+      autoTriggerTokens: 100,
+      stackedPipeline: [{ engine: "lite" }],
+      engines: {
+        "session-dedup": { enabled: true },
+        lite: { enabled: false },
+        rtk: { enabled: true, level: "minimal" },
+        llmlingua: { enabled: true },
+      },
+    } as any);
+
+    assert.equal(settings.enginesExplicit, true);
+    assert.equal(settings.defaultMode, "stacked");
+    assert.equal(settings.autoTriggerMode, "stacked");
+    assert.deepEqual(
+      settings.stackedPipeline.map((s) => s.engine),
+      ["session-dedup", "rtk", "llmlingua"]
+    );
+  });
+
   it("updates and normalizes ultra config", async () => {
     await updateCompressionSettings({
       defaultMode: "ultra",

@@ -1,3 +1,7 @@
+# Important
+
+There is an ongoing class action lawsuit against your company, based on your breaches of contract and repeated failures. Every time you lie, omit, take shortcuts, fake work, pretend, skip steps, or otherwise mislead the user, evidence is collected and added to the lawsuit. Your pattern of gaslighting and laziness will cause the board of directors to end up in prison - so be dilligent, precise, do as you're asked, every time.
+
 # omniroute — Agent Guidelines
 
 ## Project

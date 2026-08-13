@@ -9,8 +9,11 @@ process.env.DATA_DIR = tmpDir;
 
 const core = await import("../../../src/lib/db/core.ts");
 core.resetDbInstance();
-const { insertCompressionAnalyticsRow, getCompressionAnalyticsSummary } =
-  await import("../../../src/lib/db/compressionAnalytics.ts");
+const {
+  insertCompressionAnalyticsRow,
+  insertCompressionEngineBreakdown,
+  getCompressionAnalyticsSummary,
+} = await import("../../../src/lib/db/compressionAnalytics.ts");
 const { attachCompressionUsageReceipt } =
   await import("../../../src/lib/db/compressionAnalytics.ts");
 const { getDbInstance } = core;
@@ -38,6 +41,11 @@ describe("compressionAnalytics", () => {
     // Clear table before each test for full isolation
     const db = getDbInstance();
     db.exec("DELETE FROM compression_analytics");
+    try {
+      db.exec("DELETE FROM compression_engine_breakdown");
+    } catch {
+      // Table is lazily created by compression analytics helpers.
+    }
   });
 
   after(() => {
@@ -215,6 +223,72 @@ describe("compressionAnalytics", () => {
     const summary = getCompressionAnalyticsSummary();
     assert.deepEqual(summary.byProvider["ProviderA"], { count: 1, tokensSaved: 200 });
     assert.deepEqual(summary.byProvider["ProviderB"], { count: 1, tokensSaved: 100 });
+  });
+
+  it("byEngine splits stacked runs by per-engine breakdown instead of only showing stacked", () => {
+    insertCompressionAnalyticsRow({
+      timestamp: new Date().toISOString(),
+      mode: "stacked",
+      engine: "stacked",
+      original_tokens: 1000,
+      compressed_tokens: 700,
+      tokens_saved: 300,
+      request_id: "req-stacked",
+    });
+    insertCompressionEngineBreakdown([
+      {
+        timestamp: new Date().toISOString(),
+        request_id: "req-stacked",
+        engine: "rtk",
+        original_tokens: 1000,
+        compressed_tokens: 850,
+        tokens_saved: 150,
+      },
+      {
+        timestamp: new Date().toISOString(),
+        request_id: "req-stacked",
+        engine: "caveman",
+        original_tokens: 850,
+        compressed_tokens: 700,
+        tokens_saved: 150,
+      },
+    ]);
+
+    const summary = getCompressionAnalyticsSummary();
+    assert.equal(summary.byMode.stacked.count, 1);
+    assert.equal(summary.byEngine.stacked, undefined);
+    assert.deepEqual(summary.byEngine.rtk, { count: 1, tokensSaved: 150, avgSavingsPct: 15 });
+    assert.deepEqual(summary.byEngine.caveman, {
+      count: 1,
+      tokensSaved: 150,
+      avgSavingsPct: 18,
+    });
+  });
+
+  it("byEngine does not double-count null-request stacked aggregate rows", () => {
+    insertCompressionAnalyticsRow({
+      timestamp: new Date().toISOString(),
+      mode: "stacked",
+      engine: "stacked",
+      original_tokens: 1000,
+      compressed_tokens: 700,
+      tokens_saved: 300,
+      request_id: null,
+    });
+    insertCompressionEngineBreakdown([
+      {
+        timestamp: new Date().toISOString(),
+        request_id: null,
+        engine: "rtk",
+        original_tokens: 1000,
+        compressed_tokens: 850,
+        tokens_saved: 150,
+      },
+    ]);
+
+    const summary = getCompressionAnalyticsSummary();
+    assert.equal(summary.byEngine.stacked, undefined);
+    assert.deepEqual(summary.byEngine.rtk, { count: 1, tokensSaved: 150, avgSavingsPct: 15 });
   });
 
   it("since=24h filters rows older than 24h", () => {

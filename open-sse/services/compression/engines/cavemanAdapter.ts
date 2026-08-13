@@ -289,22 +289,24 @@ export const cavemanEngine: CompressionEngine = {
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);
-    // Mirror rtkAdapter's default-enabled behavior (see rtk/index.ts:530-535). When this engine
-    // is invoked as a stacked step without explicit `enabled` on either the cavemanConfig or the
-    // stepConfig, default `enabled: true` so the rules actually run. Without this,
-    // DEFAULT_CAVEMAN_CONFIG.enabled=false made cavemanCompress() a silent no-op, and the
-    // preview route's default [rtk, caveman] pipeline reported 0% savings even on trigger prose.
-    // (Issue #6425.)
-    const explicitCavemanConfig = options?.config?.cavemanConfig;
-    const explicitStepConfig = options?.stepConfig;
-    const explicitEnabled =
-      (explicitCavemanConfig && "enabled" in explicitCavemanConfig) ||
-      (explicitStepConfig && "enabled" in explicitStepConfig);
-    const enabledDefault = explicitEnabled ? {} : { enabled: true };
+    // Precedence: stepConfig.enabled > per-engine toggle (engines.caveman.enabled) >
+    // cavemanConfig.enabled. Default `enabled: true` when none is explicit — mirrors
+    // rtkAdapter so the rules actually run instead of being a silent no-op
+    // (DEFAULT_CAVEMAN_CONFIG.enabled=false, Issue #6425).
+    const stepEnabled = options?.stepConfig?.enabled;
+    const engineToggleEnabled = options?.config?.engines?.caveman?.enabled;
+    const effectiveEnabled =
+      stepEnabled === false
+        ? false
+        : stepEnabled === true
+          ? true
+          : engineToggleEnabled !== undefined
+            ? engineToggleEnabled
+            : true;
     const cavemanConfig = {
-      ...enabledDefault,
-      ...(explicitCavemanConfig ?? {}),
-      ...(explicitStepConfig ?? {}),
+      ...(options?.config?.cavemanConfig ?? {}),
+      ...(options?.stepConfig ?? {}),
+      ...(effectiveEnabled !== undefined ? { enabled: effectiveEnabled } : {}),
       ...(options?.config?.languageConfig?.enabled
         ? {
             language: options.config.languageConfig.defaultLanguage,
@@ -353,6 +355,9 @@ export const aggressiveEngine: CompressionEngine = {
     targetLatencyMs: 5,
     supportsPreview: true,
     stable: true,
+    // Summarization + progressive aging rewrite earlier content as the conversation grows →
+    // mutates the cached prefix → busts provider prompt caching. Gated in caching contexts.
+    cacheSafe: false,
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);
@@ -411,6 +416,9 @@ export const ultraEngine: CompressionEngine = {
     targetLatencyMs: 5,
     supportsPreview: true,
     stable: true,
+    // Budget-driven token pruning drops different tokens as total grows → non-stable prefix
+    // → busts provider prompt caching. Gated in caching contexts.
+    cacheSafe: false,
   },
   apply(body, options) {
     const adapter = adaptBodyForCompression(body);

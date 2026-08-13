@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 
 const { claudeToOpenAIRequest } =
   await import("../../open-sse/translator/request/claude-to-openai.ts");
+const { openaiToClaudeRequest } =
+  await import("../../open-sse/translator/request/openai-to-claude.ts");
 const { translateRequest } = await import("../../open-sse/translator/index.ts");
 const { FORMATS } = await import("../../open-sse/translator/formats.ts");
 
@@ -343,6 +345,69 @@ test("Claude -> OpenAI converts tool_result blocks into tool messages and preser
     role: "user",
     content: "Thanks",
   });
+});
+
+test("Claude -> OpenAI -> Claude preserves tool_result followed by user text in one Anthropic message", () => {
+  const claudeBody = {
+    messages: [
+      { role: "user", content: [{ type: "text", text: "inspect package scripts" }] },
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "tu_read", name: "read", input: { path: "package.json" } }],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "tu_read",
+            content: '{"scripts":{"dev":"bash scripts/dev.sh"}}',
+          },
+          { type: "text", text: "yes please inspect that" },
+        ],
+      },
+    ],
+    tools: [
+      {
+        name: "read",
+        description: "Read file contents",
+        input_schema: { type: "object", properties: { path: { type: "string" } } },
+      },
+    ],
+  };
+
+  const openai = claudeToOpenAIRequest("gpt-5.5", claudeBody, false);
+  assert.deepEqual(openai.messages.slice(1), [
+    {
+      role: "assistant",
+      tool_calls: [
+        {
+          id: "tu_read",
+          type: "function",
+          function: { name: "read", arguments: '{"path":"package.json"}' },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      tool_call_id: "tu_read",
+      content: '{"scripts":{"dev":"bash scripts/dev.sh"}}',
+    },
+    { role: "user", content: "yes please inspect that" },
+  ]);
+
+  const roundTripped = openaiToClaudeRequest(
+    "claude-test",
+    { ...openai, _disableToolPrefix: true },
+    false
+  );
+  const toolResultMessage = roundTripped.messages[2];
+
+  assert.equal(toolResultMessage.role, "user");
+  assert.equal(toolResultMessage.content[0].type, "tool_result");
+  assert.equal(toolResultMessage.content[0].tool_use_id, "tu_read");
+  assert.equal(toolResultMessage.content[1].type, "text");
+  assert.equal(toolResultMessage.content[1].text, "yes please inspect that");
 });
 
 test("Claude -> OpenAI maps output_config.effort to reasoning_effort", () => {

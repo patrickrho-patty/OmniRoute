@@ -255,8 +255,30 @@ test("extractUsage reads response.done with input_tokens_details and output_toke
     },
   });
 
+  assert.equal(usage.prompt_tokens, 80);
   assert.equal(usage.cached_tokens, 20);
   assert.equal(usage.reasoning_tokens, 8);
+});
+
+/* Responses details-shape contract: OpenAI/Codex `input_tokens` already includes cached tokens. */
+test("extractUsageFromResponse does not double count Responses input_tokens_details cache", () => {
+  const usage = extractUsageFromResponse(
+    {
+      response: {
+        usage: {
+          input_tokens: 252450,
+          output_tokens: 125,
+          input_tokens_details: { cached_tokens: 125440 },
+        },
+      },
+    },
+    "codex"
+  );
+
+  assert.equal(usage.prompt_tokens, 252450);
+  assert.equal(usage.completion_tokens, 125);
+  assert.equal(usage.cached_tokens, 125440);
+  assert.equal(usage.cache_read_input_tokens, undefined);
 });
 
 test("extractUsage reads response.completed with cache_read_input_tokens", () => {
@@ -273,6 +295,7 @@ test("extractUsage reads response.completed with cache_read_input_tokens", () =>
     },
   });
 
+  assert.equal(usage.prompt_tokens, 60);
   assert.equal(usage.cached_tokens, 15);
   assert.equal(usage.cache_creation_input_tokens, 5);
   assert.equal(usage.reasoning_tokens, 3);

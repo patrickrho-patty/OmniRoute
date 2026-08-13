@@ -20,8 +20,12 @@ process.env.DATA_DIR = TEST_DATA_DIR;
 const core = await import("../../../src/lib/db/core.ts");
 core.resetDbInstance();
 
-const { insertCompressionAnalyticsRow, getPerEngineAnalytics } =
-  await import("../../../src/lib/db/compressionAnalytics.ts");
+const {
+  insertCompressionAnalyticsRow,
+  getPerEngineAnalytics,
+  insertCompressionEngineBreakdown,
+  getEngineRunHistory,
+} = await import("../../../src/lib/db/compressionAnalytics.ts");
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -148,4 +152,71 @@ test("getPerEngineAnalytics falls back to mode column when engine is null (COALE
 test("getPerEngineAnalytics accepts custom days parameter", () => {
   const result = getPerEngineAnalytics("headroom", 30);
   assert.equal(result.days, 30);
+});
+
+// ─── getEngineRunHistory (Ponytail dashboard) ──────────────────────────────────
+
+test("getEngineRunHistory returns [] for an engine with no breakdown rows", () => {
+  assert.deepEqual(getEngineRunHistory("ponytail"), []);
+});
+
+test("getEngineRunHistory returns only the engine's rows, newest-first, in augmentation shape", () => {
+  insertCompressionEngineBreakdown([
+    {
+      timestamp: "2026-06-28T00:00:01.000Z",
+      request_id: "req-1",
+      engine: "ponytail",
+      original_tokens: 100,
+      compressed_tokens: 100,
+      tokens_saved: 0,
+      duration_ms: null,
+    },
+    {
+      timestamp: "2026-06-28T00:00:02.000Z",
+      request_id: "req-2",
+      engine: "ponytail",
+      original_tokens: 200,
+      compressed_tokens: 200,
+      tokens_saved: 0,
+      duration_ms: 5,
+    },
+    // a caveman row that must NOT appear in ponytail history
+    {
+      timestamp: "2026-06-28T00:00:03.000Z",
+      request_id: "req-x",
+      engine: "caveman",
+      original_tokens: 900,
+      compressed_tokens: 700,
+      tokens_saved: 200,
+      duration_ms: 9,
+    },
+  ]);
+
+  const rows = getEngineRunHistory("ponytail");
+  assert.equal(rows.length, 2, "only ponytail rows; caveman excluded");
+  // newest-first (id DESC → last-inserted ponytail row first)
+  assert.equal(rows[0].requestId, "req-2");
+  assert.equal(rows[1].requestId, "req-1");
+  // camelCase mapping + augmentation invariant (compressed === original, saved === 0)
+  for (const r of rows) {
+    assert.equal(r.compressedTokens, r.originalTokens);
+    assert.equal(r.tokensSaved, 0);
+  }
+  assert.equal(rows[0].durationMs, 5);
+  assert.equal(rows[1].durationMs, null);
+});
+
+test("getEngineRunHistory respects the limit", () => {
+  insertCompressionEngineBreakdown(
+    Array.from({ length: 5 }, (_, i) => ({
+      timestamp: `2026-06-28T00:00:0${i}.000Z`,
+      request_id: `req-${i}`,
+      engine: "ponytail",
+      original_tokens: 100,
+      compressed_tokens: 100,
+      tokens_saved: 0,
+      duration_ms: null,
+    }))
+  );
+  assert.equal(getEngineRunHistory("ponytail", 3).length, 3);
 });

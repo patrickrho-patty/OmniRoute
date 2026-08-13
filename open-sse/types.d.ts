@@ -136,6 +136,13 @@ export interface UsageData {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+    cache_creation_tokens?: number;
+  };
+  completion_tokens_details?: {
+    reasoning_tokens?: number;
+  };
 }
 
 // ============ Lib gap: Transformer.cancel ============

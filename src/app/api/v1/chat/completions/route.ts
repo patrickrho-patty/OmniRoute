@@ -18,7 +18,7 @@ import {
   admitChatRequest,
   admitChatStructure,
   releaseChatAdmissionAfterHandler,
-  releaseChatAdmissionWhenDone,
+  releaseChatAdmissionWhenStreaming,
 } from "@/shared/middleware/chatBodyAdmission";
 import {
   readCompressionRequestHeader,
@@ -103,7 +103,7 @@ export async function POST(request) {
   const admission = admissionResult;
   request = admission.request;
   const finishAdmission = (response: Response) =>
-    releaseChatAdmissionWhenDone(response, admission.lease);
+    releaseChatAdmissionWhenStreaming(response, admission.lease);
 
   try {
     // One-line marker for diagnosing 413 / Server-Action interceptions.
@@ -135,7 +135,9 @@ export async function POST(request) {
           if (!shapeCheck.success) {
             const issue = shapeCheck.error.issues[0];
             const field = issue?.path?.length ? issue.path.join(".") : "body";
-            return finishAdmission(errorResponse(400, `${field}: ${issue?.message ?? "Invalid request"}`));
+            return finishAdmission(
+              errorResponse(400, `${field}: ${issue?.message ?? "Invalid request"}`)
+            );
           }
         }
 

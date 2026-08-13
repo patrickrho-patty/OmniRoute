@@ -4,13 +4,13 @@ import os from "os";
 import path from "path";
 import { spawn, execFileSync } from "child_process";
 import { getHermesHome } from "@/lib/cli-helper/config-generator/hermesHome";
+import { parseBoolean } from "@/shared/utils/envParsing";
 import { getCachedLoginShellPath, mergeShellPath } from "./loginShellPath";
 import { withSettingsFallback } from "./cliInstallFallback";
 import { GROK_BUILD_RUNTIME_ENTRY, AMP_RUNTIME_ENTRY } from "./cliRuntimeGrokBuild";
 import { isLocationTrusted, findKnownPathMatch } from "./cliRuntimeKnownPath";
 import { buildHealthcheckPath } from "./cliRuntimeHealthcheckPath";
 const VALID_RUNTIME_MODES = new Set(["auto", "host", "container"]);
-const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
 
 const CLI_TOOLS: Record<string, any> = {
   claude: {
@@ -285,11 +285,6 @@ const normalizeMsys2Path = (p: string): string => {
     return `${drive}:\\${rest}`;
   }
   return p;
-};
-
-const parseBoolean = (value: unknown, defaultValue = true) => {
-  if (value == null || value === "") return defaultValue;
-  return !FALSE_VALUES.has(String(value).trim().toLowerCase());
 };
 
 export const shouldUseShellForCommand = (command: string): boolean => {

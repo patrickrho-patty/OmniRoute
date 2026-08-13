@@ -56,6 +56,7 @@ export interface PooledContext {
 export interface BrowserPoolMetrics {
   browserLaunches: number;
   browserLaunchFailures: number;
+  cloakLaunchFailures: number;
   contextsCreated: number;
   contextsReused: number;
   contextsEvicted: number;
@@ -69,6 +70,7 @@ function createBrowserPoolMetrics(): BrowserPoolMetrics {
   return {
     browserLaunches: 0,
     browserLaunchFailures: 0,
+    cloakLaunchFailures: 0,
     contextsCreated: 0,
     contextsReused: 0,
     contextsEvicted: 0,
@@ -229,10 +231,30 @@ async function launchBrowser(): Promise<Browser> {
     const cloakLaunch = await resolveCloakLaunch();
     let browser: Browser;
     if (cloakLaunch) {
-      browser = await cloakLaunch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-dev-shm-usage"],
-      });
+      try {
+        browser = await cloakLaunch({
+          headless: true,
+          args: ["--no-sandbox", "--disable-dev-shm-usage"],
+        });
+      } catch (err) {
+        // cloakbrowser's patched Chromium binary is downloaded lazily on first
+        // launch; if it is missing (or the download fails) the launch throws.
+        // Fall back to plain Playwright instead of killing the pool — the
+        // import may succeed while the binary is absent.
+        state.metrics.cloakLaunchFailures++;
+        console.warn(
+          `[BrowserPool] cloakbrowser launch failed (${err instanceof Error ? err.message : String(err)}); falling back to plain Playwright`
+        );
+        const { chromium } = await import("playwright");
+        browser = await chromium.launch({
+          headless: true,
+          args: [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-blink-features=AutomationControlled",
+          ],
+        });
+      }
     } else {
       // Fallback: plain Playwright. Works for Claude web (cookie-only
       // auth) but DDG's VQD challenge will detect this Chromium build.

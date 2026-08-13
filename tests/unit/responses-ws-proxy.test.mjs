@@ -51,6 +51,33 @@ function waitFor(predicate, { timeoutMs = 3000, intervalMs = 10 } = {}) {
   });
 }
 
+test("responses ws proxy requests durable Patty settlement replay at startup", async () => {
+  const actions = [];
+  const server = http.createServer(async (req, res) => {
+    const body = JSON.parse((await readRequestBody(req)) || "{}");
+    actions.push(body.action);
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, attempted: 0, acknowledged: 0, failed: 0 }));
+  });
+  const port = await listen(server);
+  const proxy = createResponsesWsProxy({
+    baseUrl: `http://127.0.0.1:${port}`,
+    bridgeSecret: "bridge-secret",
+    pattyGatewayEnabled: true,
+    settlementReplayIntervalMs: 60_000,
+    wsFactory: async () => {
+      throw new Error("not used");
+    },
+  });
+
+  try {
+    await waitFor(() => actions.includes("replay"));
+  } finally {
+    proxy.dispose();
+    await close(server);
+  }
+});
+
 test("responses ws proxy prepares and forwards OpenAI Responses websocket events", async () => {
   const internalRequests = [];
   const upstreamSends = [];
@@ -190,6 +217,123 @@ test("responses ws proxy prepares and forwards OpenAI Responses websocket events
 
   ws.close();
   await close(server);
+});
+
+test("responses ws proxy replaces an unacknowledged Patty terminal with a native failure", async () => {
+  const internalRequests = [];
+  const downstreamMessages = [];
+  const server = http.createServer(async (req, res) => {
+    const body = JSON.parse((await readRequestBody(req)) || "{}");
+    internalRequests.push(body);
+    if (body.action === "authenticate") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, authenticated: true, authType: "api_key" }));
+      return;
+    }
+    if (body.action === "prepare") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          upstreamUrl: "wss://chatgpt.com/backend-api/codex/responses",
+          headers: { Authorization: "Bearer upstream-token" },
+          connectionId: "conn-1",
+          provider: "codex",
+          model: "gpt-5.5-upstream",
+          response: { ...body.response, model: "gpt-5.5-upstream" },
+          pattyDecision: {
+            preflightRef: "pf-1",
+            requestId: body.requestId,
+            turnId: body.turnId,
+            harness: "codex",
+            publicModel: "gpt-5.3-codex",
+            routedModel: "codex/gpt-5.5-upstream",
+            quota: {
+              fiveHour: { spend: 1, limit: 10, usedPercent: 10, resetAt: 1_800_000_000 },
+              sevenDay: { spend: 1, limit: 10, usedPercent: 10, resetAt: 1_800_100_000 },
+            },
+          },
+        })
+      );
+      return;
+    }
+    if (body.action === "settle") {
+      res.writeHead(503, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            code: "patty_settlement_unavailable",
+            message: "Patty settlement is unavailable",
+          },
+        })
+      );
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ ok: true, logged: true }));
+  });
+
+  const fakeUpstream = {
+    send() {
+      setTimeout(() => {
+        fakeUpstream.onmessage?.({
+          data: JSON.stringify({
+            type: "response.completed",
+            response: {
+              id: "resp-unsettled",
+              model: "gpt-5.5-upstream",
+              status: "completed",
+              usage: { input_tokens: 2, output_tokens: 3 },
+            },
+          }),
+        });
+      }, 5);
+    },
+    close() {},
+    onmessage: null,
+    onerror: null,
+    onclose: null,
+  };
+  const port = await listen(server);
+  const proxy = createResponsesWsProxy({
+    baseUrl: `http://127.0.0.1:${port}`,
+    bridgeSecret: "bridge-secret",
+    pingIntervalMs: 1_000,
+    idleTimeoutMs: 10_000,
+    wsFactory: async () => fakeUpstream,
+  });
+  server.on("upgrade", async (req, socket, head) => {
+    const handled = await proxy.handleUpgrade(req, socket, head);
+    if (!handled && !socket.destroyed) socket.destroy();
+  });
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/v1/responses?api_key=local-token`);
+  ws.addEventListener("message", (event) => {
+    downstreamMessages.push(JSON.parse(String(event.data)));
+  });
+
+  try {
+    await new Promise((resolve) => ws.addEventListener("open", resolve, { once: true }));
+    ws.send(
+      JSON.stringify({
+        type: "response.create",
+        model: "gpt-5.3-codex",
+        input: [{ role: "user", content: "hello" }],
+      })
+    );
+    const failure = await waitFor(() =>
+      downstreamMessages.find((entry) => entry.type === "response.failed")
+    );
+    assert.equal(failure.response.error.code, "patty_settlement_unavailable");
+    assert.equal(
+      downstreamMessages.some((entry) => entry.type === "response.completed"),
+      false
+    );
+    assert.equal(internalRequests.filter((entry) => entry.action === "settle").length, 1);
+  } finally {
+    ws.close();
+    proxy.dispose();
+    await close(server);
+  }
 });
 
 test("responses ws proxy logs prepare failures to request history", async () => {

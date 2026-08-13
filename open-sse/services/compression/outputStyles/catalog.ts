@@ -28,6 +28,24 @@ export interface OutputStyle {
  * settings panel both enumerate this object, so no other file needs to change (D-A1).
  * Declaration order is the deterministic concatenation order used by the injector.
  */
+export const LESS_CODE_OUTPUT_STYLE_ID = "less-code";
+
+export const LESS_CODE_FULL_INSTRUCTIONS = [
+  "Act like a lazy senior dev applying YAGNI.",
+  "Smallest working change only.",
+  "Before writing code, stop at the first rung that holds: 1. Does this need to be built at all? 2. Does it already exist in this codebase? 3. Does the standard library already do this? 4. Does a native platform feature cover it? 5. Does an installed dependency solve it? 6. Can this be one line? 7. Only then: write the minimum that works.",
+  "No unrequested abstractions, no premature generalization, no extra layers, no defensive scaffolding the request did not ask for.",
+  "Reuse existing code over adding new code.",
+  "Never simplify away trust-boundary validation, data-loss handling, security, accessibility, or requested behavior.",
+].join(" ");
+
+export const LESS_CODE_OUTPUT_LEVELS: Record<"lite" | "full" | "ultra", string> = {
+  lite: "Write the smallest change that satisfies the request. Skip speculative abstractions.",
+  full: LESS_CODE_FULL_INSTRUCTIONS,
+  ultra:
+    'Minimal diff discipline. Touch the fewest lines that make it work. Zero new files, classes, or config unless strictly required. Inline over abstract. No "while we\'re here" extras.',
+};
+
 export const OUTPUT_STYLE_CATALOG: Record<string, OutputStyle> = {
   "terse-prose": {
     id: "terse-prose",
@@ -43,15 +61,15 @@ export const OUTPUT_STYLE_CATALOG: Record<string, OutputStyle> = {
       id: CAVEMAN_INSTRUCTION_BY_LANGUAGE.id,
     },
   },
-  "less-code": {
-    id: "less-code",
+  [LESS_CODE_OUTPUT_STYLE_ID]: {
+    id: LESS_CODE_OUTPUT_STYLE_ID,
     label: "Less code",
     description: "YAGNI ladder: smallest working change, no unrequested abstractions.",
     // Ported from 9router ponytail (ponytailPrompt.js); attribution preserved.
     levels: {
-      lite: `Write the smallest change that satisfies the request. Skip speculative abstractions. ${SHARED_BOUNDARIES}`,
-      full: `Act like a lazy senior dev applying YAGNI. Smallest working change only. No unrequested abstractions, no premature generalization, no extra layers, no defensive scaffolding the request did not ask for. Reuse existing code over adding new code. ${SHARED_BOUNDARIES}`,
-      ultra: `Minimal diff discipline. Touch the fewest lines that make it work. Zero new files, classes, or config unless strictly required. Inline over abstract. No "while we're here" extras. ${SHARED_BOUNDARIES}`,
+      lite: `${LESS_CODE_OUTPUT_LEVELS.lite} ${SHARED_BOUNDARIES}`,
+      full: `${LESS_CODE_OUTPUT_LEVELS.full} ${SHARED_BOUNDARIES}`,
+      ultra: `${LESS_CODE_OUTPUT_LEVELS.ultra} ${SHARED_BOUNDARIES}`,
     },
   },
   // Ponytail (lazy-senior-dev mode) — integrated into the output-style registry

@@ -194,7 +194,7 @@ test("shutdown route uses SIGTERM for graceful shutdown", async () => {
   }
 });
 
-test("restart route uses SIGTERM for graceful restart", async () => {
+test("restart route uses SIGTERM fallback outside systemd", async () => {
   const originalKill = process.kill;
   const originalSetTimeout = globalThis.setTimeout;
   const calls = [];
@@ -209,13 +209,26 @@ test("restart route uses SIGTERM for graceful restart", async () => {
   };
 
   try {
-    const response = await restartRoute.POST();
+    const response = await withEnv("OMNIROUTE_RESTART_MANAGER", "signal", () =>
+      restartRoute.POST()
+    );
     assert.equal(response.status, 200);
     assert.deepEqual(calls, [{ pid: process.pid, signal: "SIGTERM" }]);
   } finally {
     process.kill = originalKill;
     globalThis.setTimeout = originalSetTimeout;
   }
+});
+
+test("restart route can schedule a systemd-managed service restart", async () => {
+  await withEnv("OMNIROUTE_RESTART_MANAGER", "systemd", async () => {
+    const plan = restartRoute.resolveRestartPlan();
+    assert.equal(plan.kind, "systemd");
+    assert.equal(plan.command, "/usr/bin/systemd-run");
+    assert.ok(plan.args.includes("--collect"));
+    assert.ok(plan.args.includes("/bin/systemctl"));
+    assert.deepEqual(plan.args.slice(-2), ["restart", "omniroute.service"]);
+  });
 });
 
 test("unlinkFileWithRetry retries EBUSY/EPERM and eventually succeeds", async () => {

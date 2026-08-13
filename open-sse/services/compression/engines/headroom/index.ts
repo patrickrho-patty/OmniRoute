@@ -107,6 +107,12 @@ export const headroomEngine: CompressionEngine = {
     targetLatencyMs: 5,
     supportsPreview: true,
     stable: true,
+    // Budget-driven: compacts/drops different content as the conversation grows → mutates the
+    // cached prefix → busts provider prompt caching. NOT cacheSafe. But it is overflowCritical:
+    // it prevents context-window overflow, so it must keep running even in a caching context
+    // (the proper fix is to make it tail-aware — compress only past the cache boundary).
+    cacheSafe: false,
+    overflowCritical: true,
   },
 
   apply(body: Record<string, unknown>, options?: CompressionEngineApplyOptions): CompressionResult {

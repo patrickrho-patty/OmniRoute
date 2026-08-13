@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
-import type {
-  CompressionEngineId,
-  CompressionPipelineStep,
+import {
+  ENGINE_IDS,
+  type CompressionEngineId,
+  type CompressionPipelineStep,
 } from "@omniroute/open-sse/services/compression/types.ts";
 
 import { backupDbFile } from "./backup";
@@ -56,24 +57,11 @@ function parseJsonArray<T>(value: unknown, fallback: T[]): T[] {
   }
 }
 
-// Keep in sync with stackedPipelineStepSchema + ENGINE_CATALOG (#6747).
-const KNOWN_ENGINE_IDS = [
-  "lite",
-  "caveman",
-  "aggressive",
-  "ultra",
-  "rtk",
-  "headroom",
-  "session-dedup",
-  "ccr",
-  "llmlingua",
-  "relevance",
-  "codex-responses",
-];
+const KNOWN_ENGINE_IDS = new Set(ENGINE_IDS);
 
 function normalizePipeline(value: unknown): CompressionPipelineStep[] {
   return parseJsonArray<CompressionPipelineStep>(value, []).filter((step) => {
-    return step && typeof step === "object" && KNOWN_ENGINE_IDS.includes(String(step.engine));
+    return step && typeof step === "object" && KNOWN_ENGINE_IDS.has(String(step.engine));
   });
 }
 
@@ -95,7 +83,8 @@ function upgradeLegacySeededDefaultCompressionCombo(): void {
   const row = db
     .prepare("SELECT name, description, pipeline FROM compression_combos WHERE id = ?")
     .get(DEFAULT_COMPRESSION_COMBO_ID) as
-    { name?: string; description?: string; pipeline?: string } | undefined;
+    | { name?: string; description?: string; pipeline?: string }
+    | undefined;
 
   if (!row) return;
 
@@ -411,10 +400,10 @@ const ENGINE_STACK_PRIORITY: Record<string, number> = {
   rtk: 10,
   headroom: 15,
   caveman: 20,
+  ponytail: 25,
   aggressive: 30,
   llmlingua: 35,
   ultra: 40,
-  "codex-responses": 12,
 };
 
 export function setEngineInDefaultCombo(
@@ -422,7 +411,7 @@ export function setEngineInDefaultCombo(
   enabled: boolean,
   config?: Record<string, unknown>
 ): CompressionCombo | null {
-  if (!KNOWN_ENGINE_IDS.includes(engineId)) return null;
+  if (!KNOWN_ENGINE_IDS.has(engineId)) return null;
   ensureCompressionComboTables();
   const existing = getDefaultCompressionCombo();
   if (!existing) return null;

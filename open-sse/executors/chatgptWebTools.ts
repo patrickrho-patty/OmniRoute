@@ -2,9 +2,10 @@
 //
 // Web-cookie providers (chatgpt-web, perplexity-web, ...) have no native
 // function calling. When the OpenAI request carries `tools`, the prompt-side
-// shim (`prepareToolMessages` in ../translator/webTools.ts) injects a `<tool>`
-// contract; on the response side we parse `<tool>{...}</tool>` blocks back
-// into OpenAI `tool_calls`.
+// pipeline (`prepareWebToolRequest` in ../services/webProvider/toolPipeline.ts)
+// injects the provider's tool contract (fenced JSON for chatgpt-web, `<tool_call>`
+// for the standard style); on the response side the shared decoder parses the
+// model's reply back into OpenAI `tool_calls`.
 //
 // The whole tool-mode orchestration lives here — provider-agnostic — so each
 // (frozen) executor only gains an import + a single delegating call. Despite
@@ -12,7 +13,11 @@
 // this module is shared: `buildToolModeResponse()` accepts an `idSeed` so
 // every provider gets its own `tool_calls[].id` prefix.
 
-import { buildToolAwareResult } from "../translator/webTools.ts";
+import {
+  buildWebToolPolicyErrorResponse,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
+import type { WebToolChoice } from "../services/webProvider/types.ts";
 
 const SSE_HEADERS: Record<string, string> = {
   "Content-Type": "text/event-stream",
@@ -32,17 +37,22 @@ function sseChunk(data: unknown): string {
 async function applyToolCallsToJsonResponse(
   response: Response,
   requestedTools: unknown,
-  idSeed: string
+  idSeed: string,
+  toolChoice: WebToolChoice
 ): Promise<Response> {
   const bodyText = await response.text();
   try {
     const json = JSON.parse(bodyText);
     const rawContent = json?.choices?.[0]?.message?.content || "";
-    const { content, toolCalls, finishReason } = buildToolAwareResult(
+    const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
       rawContent,
       requestedTools,
-      idSeed
+      idSeed,
+      toolChoice
     );
+    if (policyViolation) {
+      return buildWebToolPolicyErrorResponse();
+    }
     if (toolCalls) {
       json.choices[0].message = { role: "assistant", content: null, tool_calls: toolCalls };
       json.choices[0].finish_reason = finishReason;
@@ -111,14 +121,16 @@ export async function buildToolModeResponse(
   bufferedJson: Response,
   requestedTools: unknown,
   stream: boolean,
-  meta: { cid: string; created: number; model: string; idSeed?: string }
+  meta: { cid: string; created: number; model: string; idSeed?: string; toolChoice?: WebToolChoice }
 ): Promise<Response> {
   const jsonResponse = await applyToolCallsToJsonResponse(
     bufferedJson,
     requestedTools,
-    meta.idSeed ?? "cgpt"
+    meta.idSeed ?? "cgpt",
+    meta.toolChoice ?? "auto"
   );
   if (!stream) return jsonResponse;
+  if (!jsonResponse.ok) return jsonResponse;
   const completion = await jsonResponse.json();
   return new Response(toolCompletionToSseStream(completion, meta.cid, meta.created, meta.model), {
     status: 200,

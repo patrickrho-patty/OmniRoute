@@ -1,0 +1,38 @@
+{
+  "language": "ko",
+  "category": "context",
+  "rules": [
+    {
+      "name": "ko_context_setup",
+      "pattern": "(?:아래 코드|다음 코드|이 코드|해당 코드)(?:를|을)?",
+      "replacement": "코드:",
+      "context": "user",
+      "category": "context",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_intent",
+      "pattern": "(?:목적은|목표는|필요한 것은|하고 싶은 것은)",
+      "replacement": "목적:",
+      "context": "user",
+      "category": "context",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_question_directive",
+      "pattern": "(?:왜.*설명|어떻게.*보여|어떻게.*알려)",
+      "replacement": "설명:",
+      "context": "user",
+      "category": "context",
+      "minIntensity": "lite"
+    },
+    {
+      "name": "ko_background",
+      "pattern": "(?:아시다시피|앞서 말했듯이|이전에 언급했듯이|위에서 말한 것처럼)",
+      "replacement": "",
+      "context": "all",
+      "category": "context",
+      "minIntensity": "lite"
+    }
+  ]
+}

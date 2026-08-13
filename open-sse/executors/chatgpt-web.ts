@@ -16,25 +16,53 @@
  */
 
 import { BaseExecutor, type ExecuteInput, type ProviderCredentials } from "./base.ts";
-import { describeChatGptWebHttpError } from "./chatgptWebErrors.ts";
-import { prepareToolMessages } from "../translator/webTools.ts";
-import { buildToolModeResponse } from "./chatgptWebTools.ts";
+import { describeChatGptWebHttpError, describeChatGptWebToolRetryError } from "./chatgptWebErrors.ts";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
-import { sha3_512Hex } from "../utils/sha3-512.ts";
 import {
   tlsFetchChatGpt,
   TlsClientUnavailableError,
   type TlsFetchResult,
 } from "../services/chatgptTlsClient.ts";
 import {
+  shouldUseChatgptBrowserBacked,
+  acquireFreshChatgptClearance,
+  mergeCfClearance,
+} from "../services/chatgptClearance.ts";
+import {
+  acquireChatGptConversationLock,
+  getChatGptConversationContext,
+  setChatGptConversationContext,
+  deleteChatGptConversationContext,
+  __resetChatGptConversationCacheForTesting,
+  type ChatGptConversationContext,
+} from "../services/chatgptConversationCache.ts";
+import {
   storeChatGptImage,
   getChatGptImageConversationContext,
   __resetChatGptImageCacheForTesting,
   type ChatGptImageConversationContext,
 } from "../services/chatgptImageCache.ts";
-import { isThinkingCapableModel, resolveChatGptModel } from "./chatgpt-web/models.ts";
-import { cleanChatGptText } from "./chatgpt-web/citations.ts";
-import { resumeChatGptHandoff, type FinalAssistantAnswer } from "./chatgpt-web/handoff.ts";
+import {
+  extractCurrentTurnImageUrls,
+  uploadCurrentTurnImages,
+  type UploadedChatGptImage,
+  type ChatGptUploadAuthContext,
+} from "../services/chatgptImageUpload.ts";
+import { getHeader } from "../utils/headers.ts";
+import {
+  prepareWebToolRequest,
+  decodeWebToolResponse,
+} from "../services/webProvider/toolPipeline.ts";
+import { CHATGPT_WEB_PROTOCOL_MARKER } from "../services/webProvider/toolContract.ts";
+import { CODEX_PERSONA } from "../config/codexPersona.ts";
+import {
+  detectWebToolGuardViolation,
+  type WebToolGuardMode,
+} from "../services/webProvider/excuseGuard.ts";
+import { buildWebToolContractFingerprint } from "../services/webProvider/toolFingerprint.ts";
+import type { OpenAIToolCall, WebToolChoice } from "../services/webProvider/types.ts";
+
+type JsonRecord = Record<string, unknown>;
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -45,11 +73,8 @@ const SENTINEL_CR_URL = `${CHATGPT_BASE}/backend-api/sentinel/chat-requirements`
 const CONV_URL = `${CHATGPT_BASE}/backend-api/f/conversation`;
 const USER_LAST_USED_MODEL_CONFIG_URL = `${CHATGPT_BASE}/backend-api/settings/user_last_used_model_config`;
 
-const DEFAULT_PRO_POLL_TIMEOUT_MS = 20 * 60_000;
-const DEFAULT_PRO_POLL_INTERVAL_MS = 4_000;
-
 const CHATGPT_USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:152.0) Gecko/20100101 Firefox/152.0";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) Gecko/20100101 Firefox/148.0";
 
 // Captured from a real chatgpt.com browser session (April 2026).
 const OAI_CLIENT_VERSION = "prod-81e0c5cdf6140e8c5db714d613337f4aeab94029";
@@ -82,10 +107,75 @@ function deviceIdFor(cookie: string): string {
   return id;
 }
 
-// OmniRoute model ID → ChatGPT internal slug. The public ChatGPT Web catalog
-// keeps OmniRoute's historical dot-form IDs (e.g. "gpt-5.5-pro"), while
-// ChatGPT's backend routes use dash-form slugs (e.g. "gpt-5-5-pro"). The slug
-// catalog comes from /backend-api/models on a logged-in account.
+// OmniRoute model ID → ChatGPT internal slug. OmniRoute uses dot-form IDs
+// (e.g. "gpt-5.3-instant"), ChatGPT's web routes use dash-form
+// (e.g. "gpt-5-3-instant"). The slug catalog comes from
+// /backend-api/models on a logged-in account; "gpt-5-4-t-mini" is ChatGPT's
+// abbreviated slug for "GPT-5.4 Thinking Mini".
+//
+// gpt-5.6 family: OmniRoute advertises these in `src/shared/constants/modelSpecs.ts`
+// (titles: "GPT-5.6 Sol", "GPT-5.6 Terra", "GPT-5.6 Luna") and in
+// `src/shared/constants/pricing/frontier-labs.ts`, but the actual ChatGPT-side
+// slugs are dash-form ("gpt-5-6", "gpt-5-6-thinking", "gpt-5-6-instant",
+// "gpt-5-6-mini", "gpt-5-6-pro", "gpt-5-6-t-mini"). Without these entries
+// the executor's lookup falls through to the raw dot-form id (e.g.
+// `gpt-5.6-sol`), which ChatGPT has no slug for and rejects from
+// /backend-api/f/conversation. Work-mode aliases (`gpt-5.6-sol-wm` etc.)
+// are also routed to their canonical slugs.
+const MODEL_MAP: Record<string, string> = {
+  // gpt-5.6 family — added once the user reported `[403]` on gpt-5.6-sol,
+  // which was a UI label in chatgpt.com but not a slug ChatGPT understood.
+  "gpt-5.6-sol": "gpt-5-6",
+  "gpt-5.6-sol-wm": "gpt-5-6",
+  "gpt-5.6-thinking": "gpt-5-6-thinking",
+  "gpt-5.6-instant": "gpt-5-6-instant",
+  "gpt-5.6": "gpt-5-6",
+  "gpt-5.6-pro": "gpt-5-6-pro",
+  "gpt-5.6-mini": "gpt-5-6-mini",
+  "gpt-5.6-t-mini": "gpt-5-6-t-mini",
+  "gpt-5.6-terra": "gpt-5-6-terra",
+  "gpt-5.6-terra-wm": "gpt-5-6-terra",
+  "gpt-5.6-luna": "gpt-5-6-luna",
+  "gpt-5.6-luna-wm": "gpt-5-6-luna",
+  // gpt-5.5 family
+  "gpt-5.5-pro": "gpt-5-5-pro",
+  "gpt-5.5-thinking": "gpt-5-5-thinking",
+  "gpt-5.5": "gpt-5-5",
+  // gpt-5.4 family
+  "gpt-5.4-pro": "gpt-5-4-pro",
+  "gpt-5.4-thinking": "gpt-5-4-thinking",
+  "gpt-5.4-thinking-mini": "gpt-5-4-t-mini",
+  // gpt-5.3 family
+  "gpt-5.3-instant": "gpt-5-3-instant",
+  "gpt-5.3": "gpt-5-3",
+  "gpt-5.3-mini": "gpt-5-3-mini",
+  // gpt-5.2 family
+  "gpt-5.2-pro": "gpt-5-2-pro",
+  "gpt-5.2-instant": "gpt-5-2-instant",
+  "gpt-5.2": "gpt-5-2",
+  "gpt-5.2-thinking": "gpt-5-2-thinking",
+  // gpt-5.1 and earlier
+  "gpt-5.1": "gpt-5-1",
+  "gpt-5": "gpt-5",
+  "gpt-5-mini": "gpt-5-mini",
+  // reasoning
+  o3: "o3",
+  "o3-pro": "o3-pro",
+};
+
+/** Set of chatgpt.com slugs that the user_last_used_model_config endpoint
+ * accepts a `thinking_effort` value for, derived from MODEL_MAP so adding a
+ * new thinking entry there automatically extends this set. Includes the
+ * abbreviated slug `gpt-5-4-t-mini` (no literal "thinking" substring) — the
+ * reason this set exists at all rather than a substring match.
+ *
+ * Derived from MODEL_MAP keys (always dot-form) that contain "thinking" or
+ * are the `o3` reasoning model; the values are the chatgpt.com-side slugs. */
+const THINKING_CAPABLE_SLUGS: ReadonlySet<string> = new Set(
+  Object.entries(MODEL_MAP)
+    .filter(([k]) => k.includes("thinking") || k === "o3" || k === "o3-pro")
+    .map(([, v]) => v)
+);
 
 // ─── Browser-like default headers ──────────────────────────────────────────
 
@@ -136,6 +226,70 @@ function cookieKey(cookie: string): string {
   // Not a password hash — SHA-256 is used to derive a short, collision-resistant
   // cache key from the session cookie. The output is a map lookup key.
   return createHash("sha256").update(cookie).digest("hex").slice(0, 16); // lgtm[js/insufficient-password-hash]
+}
+
+/**
+ * Resolve the client thread identity for conversation continuity. Codex-specific
+ * priority order: prompt_cache_key → client_metadata → session headers →
+ * x-codex-turn-metadata. Related resolvers with different semantics:
+ * normalizeCodexSessionId (config/codexClient.ts), extractExternalSessionId
+ * (services/sessionManager.ts), getConversationCacheKey (services/taskAwareRouting.ts).
+ */
+function resolveConversationThreadId(
+  body: Record<string, unknown>,
+  clientHeaders: Record<string, string> | null | undefined
+): string | null {
+  const promptCacheKey = body.prompt_cache_key;
+  if (typeof promptCacheKey === "string" && promptCacheKey.trim()) {
+    return promptCacheKey.trim();
+  }
+
+  const clientMetadata = body.client_metadata;
+  if (clientMetadata && typeof clientMetadata === "object" && !Array.isArray(clientMetadata)) {
+    const metadata = clientMetadata as Record<string, unknown>;
+    for (const key of ["thread_id", "session_id"]) {
+      const value = metadata[key];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+
+  for (const name of ["thread-id", "session-id", "x-codex-session-id", "x-session-id"]) {
+    const value = getHeader(clientHeaders, name)?.trim();
+    if (value) return value;
+  }
+
+  const rawTurnMetadata = getHeader(clientHeaders, "x-codex-turn-metadata")?.trim();
+  if (rawTurnMetadata) {
+    try {
+      const metadata = JSON.parse(rawTurnMetadata) as Record<string, unknown>;
+      for (const key of ["thread_id", "session_id"]) {
+        const value = metadata[key];
+        if (typeof value === "string" && value.trim()) return value.trim();
+      }
+    } catch {
+      // Ignore malformed optional client metadata.
+    }
+  }
+
+  return null;
+}
+
+function buildConversationCacheKey(
+  body: Record<string, unknown>,
+  clientHeaders: Record<string, string> | null | undefined,
+  accountIdentity: string,
+  connectionId: string | undefined,
+  model: string,
+  callerIdentity: string | null | undefined
+): string | null {
+  const threadId = resolveConversationThreadId(body, clientHeaders);
+  if (!threadId || !callerIdentity) return null;
+  // A ChatGPT account can be connected by multiple OmniRoute principals. Scope
+  // a client-selected thread id to its stored connection when available.
+  const connectionScope = connectionId || accountIdentity;
+  return createHash("sha256")
+    .update(`${callerIdentity}:${connectionScope}:${accountIdentity}:${model}:${threadId}`)
+    .digest("hex");
 }
 
 function tokenLookup(cookie: string): TokenEntry | null {
@@ -282,12 +436,36 @@ async function exchangeSession(
     Cookie: buildSessionCookieHeader(cookie),
   };
 
-  const response = await tlsFetchChatGpt(SESSION_URL, {
+  let response = await tlsFetchChatGpt(SESSION_URL, {
     method: "GET",
     headers,
     timeoutMs: 30_000,
     signal,
   });
+
+  // Browser-backed cf_clearance refresh: if Cloudflare blocks (not an auth
+  // failure), try acquiring a fresh cf_clearance from the server's IP via
+  // the stealth browser pool, merge it into the cookie, and retry once.
+  if (
+    response.status === 403 &&
+    shouldUseChatgptBrowserBacked() &&
+    (response.headers.get("cf-mitigated") ||
+      /just a moment|cloudflare|cf-chl|attention required/i.test(response.text || ""))
+  ) {
+    const freshClearance = await acquireFreshChatgptClearance(signal);
+    if (freshClearance) {
+      const refreshedCookie = mergeCfClearance(cookie, freshClearance);
+      const retryResp = await tlsFetchChatGpt(SESSION_URL, {
+        method: "GET",
+        headers: { ...headers, Cookie: buildSessionCookieHeader(refreshedCookie) },
+        timeoutMs: 30_000,
+        signal,
+      });
+      if (retryResp.status < 400) {
+        response = retryResp;
+      }
+    }
+  }
 
   if (response.status === 401 || response.status === 403) {
     throw new SessionAuthError("Invalid session cookie");
@@ -428,16 +606,70 @@ const thinkingEffortCache = new Map<string, number>();
 const THINKING_EFFORT_TTL_MS = 5 * 60 * 1000;
 const THINKING_EFFORT_CACHE_MAX = 400;
 
-function configuredProPollTimeoutMs(): number {
-  const raw = Number(process.env.OMNIROUTE_CGPT_WEB_PRO_TIMEOUT_MS);
-  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_PRO_POLL_TIMEOUT_MS;
-  return Math.floor(raw);
+/** chatgpt.com only exposes the thinking-effort toggle on dedicated thinking
+ * models and the o-series. PATCHing for a non-thinking surface is a no-op
+ * (the server accepts it but the routing-time read picks the wrong knob).
+ *
+ * Three branches because the input can arrive in three shapes:
+ *   1. OmniRoute dot-form id (`gpt-5.4-thinking-mini`) — every thinking
+ *      variant carries the literal "thinking" substring here.
+ *   2. Resolved chatgpt.com slug containing "thinking" (`gpt-5-5-thinking`).
+ *   3. Resolved chatgpt.com slug that drops the substring under abbreviation
+ *      (`gpt-5-4-t-mini`). Looked up via THINKING_CAPABLE_SLUGS, which is
+ *      derived from MODEL_MAP itself so adding a new abbreviated thinking
+ *      mapping automatically extends the check.
+ *
+ * Branch 3 also catches the case where a caller passes the chatgpt.com slug
+ * directly as the `model` field (no MODEL_MAP translation needed), which
+ * would otherwise silently bypass the PATCH. */
+function isThinkingCapableModel(modelId: string, slug: string): boolean {
+  return (
+    modelId.includes("thinking") ||
+    modelId === "o3" ||
+    slug.includes("thinking") ||
+    THINKING_CAPABLE_SLUGS.has(slug) ||
+    THINKING_CAPABLE_SLUGS.has(modelId)
+  );
 }
 
-function configuredProPollIntervalMs(): number {
-  const raw = Number(process.env.OMNIROUTE_CGPT_WEB_PRO_POLL_INTERVAL_MS);
-  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_PRO_POLL_INTERVAL_MS;
-  return Math.floor(raw);
+/** Map either a chatgpt.com-native value (`standard`/`extended`) or the
+ * OpenAI Chat Completions `reasoning_effort` field to the value the
+ * `user_last_used_model_config` endpoint expects.
+ *
+ *   minimal | low | medium | standard  → standard
+ *   high    | xhigh | extended         → extended
+ *
+ * `medium` collapses to `standard` because chatgpt.com only has two levels —
+ * there is no separate medium tier on the web product. Returns null for
+ * absent/unknown inputs. */
+function normalizeThinkingEffort(input: unknown): "standard" | "extended" | null {
+  if (typeof input !== "string") return null;
+  const v = input.trim().toLowerCase();
+  if (v === "extended" || v === "high" || v === "xhigh") return "extended";
+  if (v === "standard" || v === "low" || v === "medium" || v === "minimal") {
+    return "standard";
+  }
+  return null;
+}
+
+/** Resolve the requested effort for this turn.
+ * Order: `providerSpecificData.thinkingEffort` (raw override, takes
+ * `standard`/`extended` directly) > `body.reasoning_effort` (top-level OpenAI
+ * Chat Completions field) > `body.reasoning.effort` (Responses-API nesting).
+ * Returns null when the caller did not request one. */
+function resolveThinkingEffort(
+  body: unknown,
+  providerSpecificData: Record<string, unknown> | undefined
+): "standard" | "extended" | null {
+  if (providerSpecificData && providerSpecificData.thinkingEffort !== undefined) {
+    return normalizeThinkingEffort(providerSpecificData.thinkingEffort);
+  }
+  const b = (body as Record<string, unknown> | null) ?? null;
+  if (!b) return null;
+  const top = normalizeThinkingEffort(b.reasoning_effort);
+  if (top) return top;
+  const nested = (b.reasoning as Record<string, unknown> | undefined)?.effort;
+  return normalizeThinkingEffort(nested);
 }
 
 async function setUserThinkingEffort(
@@ -758,8 +990,9 @@ async function solvePow(opts: PowOptions): Promise<string> {
     cfg[3] = i;
     const json = JSON.stringify(cfg);
     const b64 = Buffer.from(json).toString("base64");
-    // Portable SHA3-512 — pure-JS fallback under Electron/BoringSSL (#5531).
-    const hash = sha3_512Hex(opts.seed + b64);
+    const hash = createHash("sha3-512")
+      .update(opts.seed + b64)
+      .digest("hex");
     if (opts.target && hash.slice(0, opts.target.length) <= opts.target) {
       return `${opts.prefix}${b64}`;
     }
@@ -806,11 +1039,21 @@ async function solveProofOfWork(
 
 // ─── OpenAI → ChatGPT message translation ───────────────────────────────────
 
+type ParsedToolCall = OpenAIToolCall;
+
+type ParsedHistoryItem =
+  | { role: "user"; content: string }
+  | { role: "assistant"; content: string; toolCalls: ParsedToolCall[] }
+  | { role: "tool"; content: string; toolCallId: string; toolName: string };
+
 interface ParsedMessages {
   systemMsg: string;
-  history: Array<{ role: string; content: string }>;
+  history: ParsedHistoryItem[];
+  currentInputs: ParsedHistoryItem[];
+  currentInput: ParsedHistoryItem | null;
   currentMsg: string;
   latestImageContext: ChatGptImageConversationContext | null;
+  hadToolActivityAfterLastUser: boolean;
 }
 
 /**
@@ -850,8 +1093,12 @@ function findCachedImageContext(content: string): ChatGptImageConversationContex
 
 function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMessages {
   let systemMsg = "";
-  const history: Array<{ role: string; content: string }> = [];
+  const history: ParsedHistoryItem[] = [];
   let latestImageContext: ChatGptImageConversationContext | null = null;
+  // Track tool call id→name for labelling folded tool results (mirrors deepseek-web pattern)
+  const callNameById = new Map<string, string>();
+  // Track last actual user message — used as currentMsg even when the turn ends with tool results
+  let lastUserContent = "";
 
   for (const msg of messages) {
     let role = String(msg.role || "user");
@@ -862,34 +1109,112 @@ function parseOpenAIMessages(messages: Array<Record<string, unknown>>): ParsedMe
       content = msg.content;
     } else if (Array.isArray(msg.content)) {
       content = (msg.content as Array<Record<string, unknown>>)
-        .filter((c) => c.type === "text")
-        .map((c) => String(c.text || ""))
+        .filter((c) => c["text"] !== "")
+        .map((c) => String(c["text"] || ""))
         .join(" ");
     }
+
     content = stripInlinedImages(content);
     const imageContext = findCachedImageContext(content);
-    if (imageContext) latestImageContext = imageContext;
-    if (!content.trim()) continue;
+    if (imageContext) {
+      latestImageContext = imageContext;
+      content = content.trim();
+      continue;
+    }
 
     if (role === "system") {
-      systemMsg += (systemMsg ? "\n" : "") + content;
-    } else if (role === "user" || role === "assistant") {
-      history.push({ role, content });
+      systemMsg += systemMsg ? "\n" + content : content;
+    } else if (role === "assistant") {
+      // Track tool_calls id→name so tool result messages can be labelled
+      const rawToolCalls = (msg as Record<string, unknown>)["tool_calls"];
+      const toolCalls = Array.isArray(rawToolCalls)
+        ? (rawToolCalls as Array<{
+            id?: string;
+            function?: { name?: string; arguments?: unknown };
+          }>)
+        : [];
+      const parsedToolCalls: ParsedToolCall[] = toolCalls.flatMap((call) => {
+        const id = typeof call.id === "string" ? call.id : "";
+        const name = typeof call.function?.name === "string" ? call.function.name : "";
+        if (!id || !name) return [];
+        const args =
+          typeof call.function?.arguments === "string"
+            ? call.function.arguments
+            : JSON.stringify(call.function?.arguments ?? {});
+        return [{ id, type: "function" as const, function: { name, arguments: args } }];
+      });
+      for (const c of toolCalls) {
+        if (c?.id && typeof c.function?.name === "string") {
+          callNameById.set(c.id, c.function.name);
+        }
+      }
+
+      if (content.trim() || parsedToolCalls.length > 0) {
+        history.push({
+          role: "assistant",
+          content: content.trim(),
+          toolCalls: parsedToolCalls,
+        });
+      }
+    } else if (role === "tool" || role === "function") {
+      const toolCallId = String((msg as Record<string, unknown>)["tool_call_id"] ?? "");
+      const toolName = callNameById.get(toolCallId) ?? (toolCallId || "tool");
+      history.push({
+        role: "tool",
+        content: content.trim(),
+        toolCallId,
+        toolName,
+      });
+    } else if (role === "user") {
+      history.push({ role: "user", content });
+      if (content.trim()) {
+        lastUserContent = content;
+      }
     }
   }
 
-  let currentMsg = "";
-  if (history.length > 0 && history[history.length - 1].role === "user") {
-    currentMsg = history.pop()!.content;
+  const currentInputs: ParsedHistoryItem[] = [];
+  if (history.at(-1)?.role === "tool") {
+    while (history.at(-1)?.role === "tool") {
+      currentInputs.unshift(history.pop() as ParsedHistoryItem);
+    }
+  } else {
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (history[index].role === "user") {
+        currentInputs.push(history[index]);
+        history.splice(index, 1);
+        break;
+      }
+    }
   }
+  const currentInput = currentInputs.at(-1) ?? null;
 
-  return { systemMsg, history, currentMsg, latestImageContext };
+  return {
+    systemMsg: compressChatGptWebSystemContext(stripCdxInjectedMemory(systemMsg)),
+    history,
+    currentInputs,
+    currentInput,
+    currentMsg: lastUserContent,
+    latestImageContext,
+    hadToolActivityAfterLastUser: currentInput?.role === "tool",
+  };
+}
+
+interface ChatGptImageAssetPointer {
+  content_type: "image_asset_pointer";
+  asset_pointer: string;
+  size_bytes: number;
+  width: number;
+  height: number;
 }
 
 interface ChatGptMessage {
   id: string;
   author: { role: string };
-  content: { content_type: "text"; parts: string[] };
+  content:
+    | { content_type: "text"; parts: string[] }
+    | { content_type: "multimodal_text"; parts: Array<string | ChatGptImageAssetPointer> };
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -976,41 +1301,305 @@ function looksLikeImageEditRequest(parsed: ParsedMessages): boolean {
   return IMAGE_EDIT_REGEXES.some((re) => re.test(text));
 }
 
+/**
+ * Rebuild the exact fenced-JSON tool call the model emitted upstream. History
+ * replay must use the SAME envelope the contract instructs (and the few-shot
+ * example demonstrates) — replaying OpenAI function_call JSON (a syntax the
+ * model never wrote and cannot use upstream) teaches it to answer in prose on
+ * later turns.
+ */
+function serializeActionRecord(call: ParsedToolCall): string {
+  let args: unknown;
+  try {
+    args = JSON.parse(call.function.arguments || "{}");
+  } catch {
+    // The harness sent non-JSON arguments — the replay must still use the
+    // contract's object form, so fall back to an empty object rather than
+    // emit a string the model would learn to copy (and the decoder reject).
+    args = {};
+  }
+  return `\`\`\`json\n${JSON.stringify({ name: call.function.name, arguments: args })}\n\`\`\``;
+}
+
+/** Host-side result wrapper — same shape for current-turn and replayed results. */
+function serializeActionResult(item: Extract<ParsedHistoryItem, { role: "tool" }>): string {
+  return [
+    `Tool result for \`${item.toolName}\`:`,
+    "```json",
+    JSON.stringify({ type: "tool_result", name: item.toolName, output: item.content }),
+    "```",
+  ].join("\n");
+}
+
+function serializeHistoryItems(item: ParsedHistoryItem): Record<string, unknown>[] {
+  if (item.role === "assistant") {
+    const items: Record<string, unknown>[] = [];
+    if (item.content) {
+      items.push({ type: "message", role: "assistant", content: item.content });
+    }
+    for (const call of item.toolCalls) {
+      items.push({ type: "message", role: "assistant", content: serializeActionRecord(call) });
+    }
+    return items;
+  }
+  if (item.role === "tool") {
+    return [{ type: "message", role: "user", content: serializeActionResult(item) }];
+  }
+  return [{ type: "message", role: "user", content: item.content }];
+}
+
+function serializeToolResults(items: Extract<ParsedHistoryItem, { role: "tool" }>[]): string {
+  return [
+    ...items.map(serializeActionResult),
+    "Continue the existing task from these tool results. Answer if they resolve the task; otherwise emit the next tool call as a fenced json block.",
+  ].join("\n");
+}
+
+const MAX_REPLAY_HISTORY_ITEMS = 24;
+const MAX_REPLAY_HISTORY_CHARS = 64 * 1024;
+
+function estimateSerializedHistoryItem(item: ParsedHistoryItem): { items: number; chars: number } {
+  if (item.role === "assistant") {
+    return {
+      items: (item.content ? 1 : 0) + item.toolCalls.length,
+      chars:
+        item.content.length +
+        item.toolCalls.reduce(
+          (total, call) =>
+            total + call.id.length + call.function.name.length + call.function.arguments.length,
+          96
+        ),
+    };
+  }
+  if (item.role === "tool") {
+    return {
+      items: 1,
+      chars: item.toolCallId.length + item.toolName.length + item.content.length + 96,
+    };
+  }
+  return { items: 1, chars: item.content.length + 64 };
+}
+
+function serializeBoundedHistory(history: ParsedHistoryItem[]): string {
+  const selected: ParsedHistoryItem[][] = [];
+  let itemCount = 0;
+  let chars = 0;
+  let end = history.length;
+  while (end > 0) {
+    let start = end - 1;
+    while (start > 0 && history[start].role !== "user") start -= 1;
+    const groupItems = history.slice(start, end);
+    const estimate = groupItems.reduce(
+      (total, item) => {
+        const current = estimateSerializedHistoryItem(item);
+        return { items: total.items + current.items, chars: total.chars + current.chars };
+      },
+      { items: 0, chars: 2 }
+    );
+    if (
+      itemCount + estimate.items > MAX_REPLAY_HISTORY_ITEMS ||
+      chars + estimate.chars > MAX_REPLAY_HISTORY_CHARS
+    ) {
+      break;
+    }
+    itemCount += estimate.items;
+    chars += estimate.chars;
+    selected.unshift(groupItems);
+    end = start;
+  }
+  return JSON.stringify(selected.flatMap((group) => group.flatMap(serializeHistoryItems)));
+}
+
+// Codex CLI injects cross-session memory blocks (session_summary, bugfix,
+// discovery, architecture, etc.) into the system message. These bias fresh
+// user turns toward previous tasks even when the user starts a new session.
+// Strip each memory bullet individually (bullet + its indented continuation
+// lines) — a single span-to-marker regex previously destroyed legitimate
+// instructions that happened to follow a memory bullet.
+const CDX_MEMORY_SECTION_RE =
+  /(?:\n|^)\s*-\s*\[(?:session_summary|bugfix|discovery|architecture|note|goal|instructions|discoveries)\][^\n]*(?:\n[ \t]+[^\n]*)*/gi;
+export function stripCdxInjectedMemory(systemMsg: string): string {
+  return systemMsg.replace(CDX_MEMORY_SECTION_RE, "").trim();
+}
+
+/**
+ * Appended to the live user message on the single corrective retry after the
+ * model answered with an excuse/confabulation instead of a tool call. Replaces
+ * the default recency anchor for that attempt.
+ */
+const EXCUSE_RETRY_NUDGE =
+  "\n\n[Host correction: your previous reply did not include a tool call. If this task needs files, commands, or current data, reply with ONLY the tool call as a fenced json block. Never describe errors, connectors, or results you have not actually received from the host.]";
+
+/**
+ * How long to wait before re-POSTing /backend-api/f/conversation for the
+ * tool-turn corrective retry.
+ *
+ * ChatGPT's abuse detector flags rapid consecutive requests from the same
+ * device with HTTP 403 `{"detail":"Unusual activity has been detected from
+ * your device. Try again later."}`. The first POST of a turn just completed,
+ * so an immediate retry lands inside that detection window and the whole
+ * request dies with a misleading 403 (observed in production: excuse turn →
+ * immediate retry → 403, then the account stays flagged for subsequent
+ * attempts including session exchange). A short backoff lets the detector
+ * window lapse before the second POST.
+ */
+const CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS_DEFAULT = 4000;
+
+/** Read lazily so tests can zero it via env without re-importing the module. */
+function toolRetryBackoffMs(): number {
+  const raw = process.env.CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS;
+  if (raw !== undefined && raw !== "" && Number.isFinite(Number(raw))) {
+    return Math.max(0, Number(raw));
+  }
+  return CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS_DEFAULT;
+}
+
+/**
+ * Opt-in gate for the excuse-guard corrective retry. OFF by default: the
+ * retry re-POSTs the conversation seconds after the first turn, which is
+ * exactly the pattern ChatGPT's "unusual activity" detector punishes. With
+ * the gate off the model's prose answer passes through untouched.
+ */
+function excuseRetryEnabled(): boolean {
+  const raw = process.env.CHATGPT_WEB_EXCUSE_RETRY;
+  if (raw === undefined || raw === "") return false;
+  const lower = raw.trim().toLowerCase();
+  return lower === "1" || lower === "true" || lower === "on";
+}
+
+/** Abort-aware sleep so a client disconnect cancels the retry backoff. */
+function sleepAbortable(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// ─── Per-account pacing ────────────────────────────────────────────────────
+// ChatGPT's abuse detector ("Unusual activity has been detected from your
+// device") punishes burst traffic from one device. Enforce a minimum interval
+// between conversation POSTs per account (keyed by account identity) so even
+// agentic clients cannot trip the detector with back-to-back requests. The
+// same gate covers first POSTs and any opt-in retry POSTs.
+const CHATGPT_WEB_PACE_MAX_ENTRIES = 200;
+const chatgptWebPaceState = new Map<string, number>(); // accountKey -> nextAllowedAtMs
+
+function chatGptWebMinIntervalMs(): number {
+  const raw = process.env.CHATGPT_WEB_MIN_INTERVAL_MS;
+  if (raw !== undefined && raw !== "" && Number.isFinite(Number(raw))) {
+    return Math.max(0, Number(raw));
+  }
+  return 2500;
+}
+
+async function paceChatGptConversation(
+  accountKey: string,
+  signal?: AbortSignal | null
+): Promise<void> {
+  const minMs = chatGptWebMinIntervalMs();
+  if (minMs <= 0) return;
+  const now = Date.now();
+  const nextAllowedAt = chatgptWebPaceState.get(accountKey) ?? 0;
+  const waitMs = nextAllowedAt - now;
+  chatgptWebPaceState.set(accountKey, now + minMs);
+  if (chatgptWebPaceState.size > CHATGPT_WEB_PACE_MAX_ENTRIES) {
+    const oldest = chatgptWebPaceState.keys().next().value;
+    if (oldest !== undefined) chatgptWebPaceState.delete(oldest);
+  }
+  if (waitMs > 0) {
+    await sleepAbortable(waitMs, signal);
+  }
+}
+
+/**
+ * Codex CLI prepends large instruction blocks (Skills, Plugins, Engram memory
+ * protocol) that are irrelevant to ChatGPT Web and bloat the payload. ChatGPT
+ * Web rejects oversized payloads with an empty body, so strip these sections
+ * while preserving the tool protocol and project AGENTS.md instructions.
+ */
+const CHATGPT_WEB_NOISE_XML_SECTIONS_RE =
+  /<(skills_instructions|plugins_instructions)>[\s\S]*?<\/\1>/gi;
+const ESCAPED_PROTOCOL_MARKER = CHATGPT_WEB_PROTOCOL_MARKER.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const CHATGPT_WEB_NOISE_MARKDOWN_SECTIONS_RE = new RegExp(
+  `(?:^|\\n)## (?:Engram Persistent Memory|Skills|Plugins)[\\s\\S]*?(?=\\n## |\\n${ESCAPED_PROTOCOL_MARKER}|$)`,
+  "g"
+);
+function compressChatGptWebSystemContext(systemMsg: string): string {
+  return systemMsg
+    .replace(CHATGPT_WEB_NOISE_XML_SECTIONS_RE, "")
+    .replace(CHATGPT_WEB_NOISE_MARKDOWN_SECTIONS_RE, "")
+    .trim();
+}
+
+function getClientSystemContext(systemMsg: string): string {
+  if (systemMsg.startsWith(CHATGPT_WEB_PROTOCOL_MARKER)) return "";
+  const protocolIndex = systemMsg.lastIndexOf(`\n${CHATGPT_WEB_PROTOCOL_MARKER}`);
+  return (protocolIndex >= 0 ? systemMsg.slice(0, protocolIndex) : systemMsg).trim();
+}
+
 function buildConversationBody(
   parsed: ParsedMessages,
   modelSlug: string,
   parentMessageId: string,
+  // When true, send as a regular (non-temporary) chat so the image_gen tool
+  // is available. When false (default), use Temporary Chat to keep chats
+  // out of the user's chatgpt.com history.
+  forImageGen: boolean,
   options: {
-    // Keep text/API calls in Temporary Chat so they do not clutter the user's
-    // chatgpt.com history. Disable Temporary Chat only when ChatGPT needs a
-    // durable image conversation (image generation/editing).
-    persistConversation: boolean;
-    thinkingEffort: "standard" | "extended" | null;
-    continuation?: ChatGptImageConversationContext | null;
-  }
+    continuation?: ChatGptConversationContext | null;
+    continuationSystemDelta?: string;
+    // Inbound images the user sent, already uploaded to chatgpt.com. When
+    // present, the current user turn becomes a multimodal_text message that
+    // references each uploaded file so GPT actually sees the images.
+    uploadedImages?: UploadedChatGptImage[];
+    hasTools?: boolean;
+    // Appended to the live user message (corrective retry nudge). Replaces the
+    // default recency anchor when present.
+    userContentSuffix?: string;
+  } = {}
 ): Record<string, unknown> {
-  // Critical: do NOT send prior turns as separate `assistant` and `user`
-  // messages in the `messages` array. ChatGPT's web API ("action: next")
-  // treats those as in-progress turns and the model will literally CONTINUE
-  // a prior assistant response in the new generation — observed as
-  // `[1] -> [12] -> [1123]` across three turns.
-  //
-  // Instead, fold all prior history into the system message and send only
-  // the current user message as a single new turn. The model then sees a
-  // single prompt with full context and responds fresh.
+  const {
+    continuation = null,
+    continuationSystemDelta = "",
+    uploadedImages = [],
+    hasTools = false,
+    userContentSuffix = "",
+  } = options;
+  // Temporary Chat conversations are stateless on the server side, so every
+  // request must carry the full system context and prior history. Non-temporary
+  // (image-gen) chats rely on upstream memory and only need the delta.
+  const isTemporaryChat = !forImageGen;
   const systemParts: string[] = [];
-  if (parsed.systemMsg.trim()) {
-    systemParts.push(parsed.systemMsg.trim());
+  let historyReplay = "";
+  // parseOpenAIMessages already ran the memory/noise strippers — use its output
+  // verbatim instead of stripping the same large context twice per request.
+  const sanitizedSystemMsg = parsed.systemMsg;
+  // The curated Codex persona is always-on so the upstream model adopts Codex's
+  // work style and persistence even when the harness instructions are thin; it
+  // leads the system block, with the harness context + tool protocol following
+  // so the protocol remains the closest instruction to the user turn.
+  if (CODEX_PERSONA.trim()) systemParts.unshift(CODEX_PERSONA.trim());
+  if ((!continuation || isTemporaryChat) && sanitizedSystemMsg.trim()) {
+    systemParts.push(sanitizedSystemMsg.trim());
+  } else if (continuation && continuationSystemDelta.trim()) {
+    systemParts.push(continuationSystemDelta.trim());
   }
-  const continuation = options.continuation ?? null;
-
-  if (!continuation && parsed.history.length > 0) {
-    const formatted = parsed.history
-      .map((h) => `${h.role === "assistant" ? "Assistant" : "User"}: ${h.content}`)
-      .join("\n\n");
-    systemParts.push(
-      `Prior conversation (for context — answer only the new user message below):\n\n${formatted}`
-    );
+  if ((!continuation || isTemporaryChat) && parsed.history.length > 0) {
+    historyReplay = [
+      `Prior conversation turns (structured JSON replay; tool calls and results are fenced JSON blocks per the ${CHATGPT_WEB_PROTOCOL_MARKER}):`,
+      serializeBoundedHistory(parsed.history),
+    ].join("\n");
   }
 
   const messages: ChatGptMessage[] = [];
@@ -1021,18 +1610,78 @@ function buildConversationBody(
       content: { content_type: "text", parts: [systemParts.join("\n\n")] },
     });
   }
+  if (historyReplay) {
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "text", parts: [historyReplay] },
+    });
+  }
 
-  const currentUserContent = hasOpenWebUIImageContext(parsed)
+  const currentToolResults = parsed.currentInputs.filter(
+    (item): item is Extract<ParsedHistoryItem, { role: "tool" }> => item.role === "tool"
+  );
+  const isImageAck = hasOpenWebUIImageContext(parsed);
+  let currentUserContent = isImageAck
     ? "Briefly acknowledge the image result described in the system context. Do not generate, edit, or request another image."
-    : parsed.currentMsg || "";
+    : currentToolResults.length > 0
+      ? serializeToolResults(currentToolResults)
+      : parsed.currentInput?.role === "user"
+        ? parsed.currentInput.content
+        : parsed.currentMsg || "";
 
-  messages.push({
-    id: randomUUID(),
-    author: { role: "user" },
-    content: { content_type: "text", parts: [currentUserContent] },
-  });
+  if (userContentSuffix.trim()) {
+    currentUserContent = `${currentUserContent}${userContentSuffix}`;
+  } else if (hasTools && currentToolResults.length === 0 && !isImageAck) {
+    // Recency anchor: the tool contract sits at the very top of a large
+    // replayed payload. Restate the one rule that matters right next to the
+    // live user turn so it is the closest instruction the model sees.
+    currentUserContent = `${currentUserContent}\n\n[Host: if this request needs files, commands, or current data, reply with ONLY the tool call as a fenced json block. Never describe results you have not received.]`;
+  }
 
-  return {
+  if (uploadedImages.length > 0) {
+    // Multimodal turn: text first, then one image_asset_pointer per uploaded
+    // file, plus a metadata.attachments entry — exactly what chatgpt.com's
+    // browser client sends when a user attaches images. Image-only turns have
+    // empty text; give the model a minimal instruction so it responds to the
+    // image instead of an empty prompt.
+    const multimodalText = currentUserContent.trim()
+      ? currentUserContent
+      : "What is in this image?";
+    const parts: Array<string | ChatGptImageAssetPointer> = [multimodalText];
+    for (const img of uploadedImages) {
+      parts.push({
+        content_type: "image_asset_pointer",
+        asset_pointer: `file-service://${img.fileId}`,
+        size_bytes: img.sizeBytes,
+        width: img.width,
+        height: img.height,
+      });
+    }
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "multimodal_text", parts },
+      metadata: {
+        attachments: uploadedImages.map((img) => ({
+          id: img.fileId,
+          size: img.sizeBytes,
+          name: img.name,
+          mime_type: img.mimeType,
+          width: img.width,
+          height: img.height,
+        })),
+      },
+    });
+  } else {
+    messages.push({
+      id: randomUUID(),
+      author: { role: "user" },
+      content: { content_type: "text", parts: [currentUserContent] },
+    });
+  }
+
+  const body: Record<string, unknown> = {
     action: "next",
     messages,
     model: modelSlug,
@@ -1043,17 +1692,31 @@ function buildConversationBody(
     conversation_id: continuation?.conversationId ?? null,
     parent_message_id: continuation?.parentMessageId ?? parentMessageId,
     timezone_offset_min: -new Date().getTimezoneOffset(),
-    // Temporary Chat is the default. Disable it only for image generation /
-    // image edits, where ChatGPT needs durable conversation state for tools.
-    history_and_training_disabled: !options.persistConversation,
+    // Temporary Chat is the default. Disable it ONLY when the user is asking
+    // for an image — that lets ChatGPT use its image_gen tool, at the cost of
+    // saving the chat to the user's history. For text-only requests we keep
+    // Temporary Chat on so the user's history stays clean, even for continuity-
+    // keyed clients. The cached upstream conversation_id is enough to continue
+    // a temporary chat across turns.
+    history_and_training_disabled: !forImageGen,
     suggestions: [],
     websocket_request_id: randomUUID(),
+    // Match the real chatgpt.com f/conversation payload shape. The
+    // conversation_mode must be "primary_assistant"; the system_hints array is
+    // the slot where the client can "interject" behavior hints to the backend.
     conversation_mode: { kind: "primary_assistant" },
+    enable_message_followups: true,
+    // The regular conversation endpoint accepts this coding-workflow hint while
+    // retaining the normal ChatGPT Web usage path and payload shape.
+    system_hints: ["codex"],
     supports_buffering: true,
-    force_parallel_switch: "auto",
+    // supported_encodings: ["v1"],
+    client_prepare_state: "none",
     paragen_cot_summary_display_override: "allow",
-    ...(options.thinkingEffort ? { thinking_effort: options.thinkingEffort } : {}),
+    force_parallel_switch: "auto",
   };
+
+  return body;
 }
 
 // ─── ChatGPT SSE parsing ────────────────────────────────────────────────────
@@ -1069,7 +1732,6 @@ interface ChatGptStreamEvent {
   conversation_id?: string;
   error?: string | { message?: string; code?: string };
   type?: string;
-  token?: string;
   v?: unknown;
 }
 
@@ -1095,23 +1757,19 @@ async function* readChatGptSseEvents(
   const decoder = new TextDecoder();
   let buffer = "";
   let dataLines: string[] = [];
-  let eventName: string | null = null;
+  const cancelReader = () => {
+    void reader.cancel(signal?.reason).catch(() => {});
+  };
+  signal?.addEventListener("abort", cancelReader, { once: true });
 
   function flush(): ChatGptStreamEvent | null | "done" {
-    if (dataLines.length === 0) {
-      eventName = null;
-      return null;
-    }
+    if (dataLines.length === 0) return null;
     const payload = dataLines.join("\n");
     dataLines = [];
-    const sseEventName = eventName;
-    eventName = null;
     const trimmed = payload.trim();
     if (!trimmed || trimmed === "[DONE]") return "done";
     try {
-      const parsed = JSON.parse(trimmed) as ChatGptStreamEvent;
-      if (sseEventName && !parsed.type) parsed.type = sseEventName;
-      return parsed;
+      return JSON.parse(trimmed) as ChatGptStreamEvent;
     } catch {
       console.warn("[chatgpt-web] stream event JSON parse failed");
       return null;
@@ -1138,9 +1796,7 @@ async function* readChatGptSseEvents(
           if (parsed) yield parsed;
           continue;
         }
-        if (line.startsWith("event:")) {
-          eventName = line.slice(6).trim();
-        } else if (line.startsWith("data:")) {
+        if (line.startsWith("data:")) {
           dataLines.push(line.slice(5).trimStart());
         }
       }
@@ -1153,6 +1809,7 @@ async function* readChatGptSseEvents(
     const tail = flush();
     if (tail && tail !== "done") yield tail;
   } finally {
+    signal?.removeEventListener("abort", cancelReader);
     reader.releaseLock();
   }
 }
@@ -1167,7 +1824,6 @@ interface ContentChunk {
   answer?: string;
   conversationId?: string;
   messageId?: string;
-  metadata?: Record<string, unknown>;
   error?: string;
   done?: boolean;
   /** Image asset pointers seen on the current message (e.g. file-service://file-abc). */
@@ -1179,10 +1835,6 @@ interface ContentChunk {
    * conversation endpoint for the actual image.
    */
   imageGenAsync?: boolean;
-  /** True when ChatGPT handed the turn off to a long-running worker. */
-  handoff?: boolean;
-  /** Short-lived conduit token used to resume a Temporary Chat handoff. */
-  resumeToken?: string;
 }
 
 interface ImagePointerRef {
@@ -1231,7 +1883,6 @@ async function* extractContent(
   let conversationId: string | null = null;
   let currentId: string | null = null;
   let currentParts = "";
-  let currentMetadata: Record<string, unknown> | undefined;
   let emittedLen = 0;
   let isLive = false;
   // Dedupe pointers across echoes / repeated events. Order-preserving Set.
@@ -1240,8 +1891,6 @@ async function* extractContent(
   // tool (see ContentChunk.imageGenAsync). The actual image arrives later via
   // WebSocket / polling — caller handles that.
   let imageGenAsync = false;
-  let handoff = false;
-  let resumeToken: string | null = null;
 
   for await (const event of readChatGptSseEvents(eventStream, signal)) {
     if (event.error) {
@@ -1254,21 +1903,6 @@ async function* extractContent(
     }
 
     if (event.conversation_id) conversationId = event.conversation_id;
-
-    if (event.type === "resume_conversation_token") {
-      if (typeof event.token === "string" && event.token) resumeToken = event.token;
-      continue;
-    }
-
-    if (event.type === "stream_handoff") {
-      handoff = true;
-      yield {
-        conversationId: conversationId ?? undefined,
-        handoff: true,
-        resumeToken: resumeToken ?? undefined,
-      };
-      continue;
-    }
 
     // Detect image_gen on top-level "server_ste_metadata" events. These don't
     // have a `message` field so the post-message guard would skip them, but
@@ -1308,13 +1942,8 @@ async function* extractContent(
     if (id && id !== currentId) {
       currentId = id;
       currentParts = "";
-      currentMetadata = undefined;
       emittedLen = 0;
       isLive = false;
-    }
-
-    if (m.metadata && typeof m.metadata === "object") {
-      currentMetadata = m.metadata;
     }
 
     if (status === "in_progress") {
@@ -1355,7 +1984,6 @@ async function* extractContent(
         answer: currentParts,
         conversationId: conversationId ?? undefined,
         messageId: currentId ?? undefined,
-        metadata: currentMetadata,
       };
     }
   }
@@ -1369,7 +1997,6 @@ async function* extractContent(
       answer: currentParts,
       conversationId: conversationId ?? undefined,
       messageId: currentId ?? undefined,
-      metadata: currentMetadata,
     };
   }
 
@@ -1378,209 +2005,10 @@ async function* extractContent(
     answer: currentParts,
     conversationId: conversationId ?? undefined,
     messageId: currentId ?? undefined,
-    metadata: currentMetadata,
     imagePointers: imagePointers.size > 0 ? Array.from(imagePointers.values()) : undefined,
     imageGenAsync,
-    handoff,
-    resumeToken: resumeToken ?? undefined,
     done: true,
   };
-}
-
-// ─── Long-running Pro handoff polling ──────────────────────────────────────
-
-interface ChatGptDetailMessage {
-  id?: string;
-  author?: { role?: string };
-  content?: {
-    content_type?: string;
-    parts?: unknown[];
-    text?: string;
-  };
-  status?: string;
-  end_turn?: boolean;
-  create_time?: number;
-  update_time?: number;
-  metadata?: Record<string, unknown>;
-}
-
-interface ChatGptConversationDetail {
-  mapping?: Record<string, { message?: ChatGptDetailMessage | null }>;
-}
-
-function textFromContentPart(part: unknown): string {
-  if (typeof part === "string") return part;
-  if (!part || typeof part !== "object") return "";
-  const obj = part as Record<string, unknown>;
-  for (const key of ["text", "content", "summary"]) {
-    const value = obj[key];
-    if (typeof value === "string") return value;
-  }
-  return "";
-}
-
-function detailMessageText(message: ChatGptDetailMessage): string {
-  const content = message.content;
-  if (!content) return "";
-  if (typeof content.text === "string") return content.text;
-  const parts = content.parts ?? [];
-  return parts.map(textFromContentPart).join("");
-}
-
-function extractFinalAssistantAnswer(
-  detail: ChatGptConversationDetail
-): FinalAssistantAnswer | null {
-  const nodes = Object.values(detail.mapping ?? {});
-  let best: (FinalAssistantAnswer & { sort: number }) | null = null;
-
-  for (const node of nodes) {
-    const message = node.message;
-    if (!message || message.author?.role !== "assistant") continue;
-    if (message.metadata?.is_visually_hidden === true) continue;
-    const contentType = message.content?.content_type ?? "";
-    if (contentType.includes("thought") || contentType.includes("reasoning")) continue;
-
-    const text = detailMessageText(message).trim();
-    if (!text) continue;
-    const finished = message.status === "finished_successfully" && message.end_turn !== false;
-    const sort = message.update_time ?? message.create_time ?? 0;
-    if (
-      !best ||
-      (finished && (!best.finished || sort >= best.sort)) ||
-      (!finished && !best.finished && sort >= best.sort)
-    ) {
-      best = { text, messageId: message.id, metadata: message.metadata, finished, sort };
-    }
-  }
-
-  if (!best) return null;
-  return {
-    text: best.text,
-    messageId: best.messageId,
-    metadata: best.metadata,
-    finished: best.finished,
-  };
-}
-
-function delayWithAbort(ms: number, signal?: AbortSignal | null): Promise<void> {
-  if (ms <= 0) return Promise.resolve();
-  if (signal?.aborted) return Promise.resolve();
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-function decodeUtf8DataUrl(text: string): string {
-  const marker = ";base64,";
-  if (!text.startsWith("data:") || !text.includes(marker)) return text;
-  const base64 = text.slice(text.indexOf(marker) + marker.length);
-  return new TextDecoder().decode(Buffer.from(base64, "base64"));
-}
-
-interface ConversationDetailFetchResult {
-  detail: ChatGptConversationDetail | null;
-  terminal: boolean;
-}
-
-async function fetchConversationDetail(
-  conversationId: string,
-  ctx: ResolverContext
-): Promise<ConversationDetailFetchResult> {
-  const url = `${CHATGPT_BASE}/backend-api/conversation/${encodeURIComponent(conversationId)}`;
-  const headers: Record<string, string> = {
-    ...browserHeaders(),
-    ...oaiHeaders(ctx.sessionId, ctx.deviceId),
-    Accept: "application/json",
-    Authorization: `Bearer ${ctx.accessToken}`,
-    Cookie: buildSessionCookieHeader(ctx.cookie),
-  };
-  if (ctx.accountId) headers["chatgpt-account-id"] = ctx.accountId;
-
-  try {
-    const response = await tlsFetchChatGpt(url, {
-      method: "GET",
-      headers,
-      timeoutMs: 30_000,
-      signal: ctx.signal,
-      // The native tls-client text path can surface UTF-8 JSON as mojibake
-      // (e.g. 👉 becomes ðŸ‘‰). Ask for raw bytes and decode as UTF-8 here so
-      // the final answer appended after Pro stream_handoff preserves Unicode.
-      byteResponse: true,
-    });
-    if (response.status >= 400) {
-      ctx.log?.warn?.(
-        "CGPT-WEB",
-        `conversation poll ${response.status}: ${(response.text || "").slice(0, 300)}`
-      );
-      return { detail: null, terminal: [401, 403, 404].includes(response.status) };
-    }
-    if (!response.text) return { detail: null, terminal: false };
-    return {
-      detail: JSON.parse(decodeUtf8DataUrl(response.text)) as ChatGptConversationDetail,
-      terminal: false,
-    };
-  } catch (err) {
-    ctx.log?.warn?.(
-      "CGPT-WEB",
-      `conversation poll failed: ${err instanceof Error ? err.message : String(err)}`
-    );
-    return { detail: null, terminal: false };
-  }
-}
-
-async function pollForFinalAssistantAnswer(
-  conversationId: string,
-  ctx: ResolverContext
-): Promise<FinalAssistantAnswer | null> {
-  const started = Date.now();
-  const timeoutMs = configuredProPollTimeoutMs();
-  const intervalMs = configuredProPollIntervalMs();
-  let last: FinalAssistantAnswer | null = null;
-  let terminalPollFailure = false;
-
-  while (!ctx.signal?.aborted && Date.now() - started < timeoutMs) {
-    const { detail, terminal } = await fetchConversationDetail(conversationId, ctx);
-    if (detail) {
-      const answer = extractFinalAssistantAnswer(detail);
-      if (answer) {
-        last = answer;
-        if (answer.finished) return answer;
-      }
-    }
-    if (terminal) {
-      terminalPollFailure = true;
-      break;
-    }
-    const remaining = timeoutMs - (Date.now() - started);
-    if (remaining <= 0) break;
-    await delayWithAbort(Math.min(intervalMs, remaining), ctx.signal);
-  }
-
-  if (last) {
-    ctx.log?.warn?.(
-      "CGPT-WEB",
-      terminalPollFailure
-        ? `conversation poll stopped before finished_successfully; returning latest assistant text for ${conversationId}`
-        : `conversation poll timed out before finished_successfully; returning latest assistant text for ${conversationId}`
-    );
-  } else {
-    ctx.log?.warn?.(
-      "CGPT-WEB",
-      terminalPollFailure
-        ? `conversation poll stopped without assistant text for ${conversationId}`
-        : `conversation poll timed out without assistant text for ${conversationId}`
-    );
-  }
-  return last;
 }
 
 // ─── OpenAI SSE format ──────────────────────────────────────────────────────
@@ -1599,18 +2027,6 @@ type ImageResolver = (
   conversationId: string | null,
   parentMessageId?: string | null
 ) => Promise<string | null>;
-
-/**
- * True when ChatGPT emitted an image asset pointer (the image WAS generated
- * upstream) but none of the pointers could be resolved to a downloadable URL
- * — so the assistant text carries no image markdown. Lets callers surface an
- * accurate "generated but not retrievable" error instead of the misleading
- * "no image was produced". Escalated mesh report: image visible in the ChatGPT
- * chat but returned to OmniRoute as a bare "completed without image markdown".
- */
-export function detectImageResolutionFailure(pointerCount: number, resolvedCount: number): boolean {
-  return pointerCount > 0 && resolvedCount === 0;
-}
 
 /** Build the final markdown block for a list of resolved image URLs. */
 function imageMarkdown(urls: string[]): string {
@@ -1658,16 +2074,22 @@ function buildStreamingResponse(
   // stream finishes without an image_asset_pointer. The executor passes a
   // closure here that knows how to poll the conversation endpoint.
   pollAsyncImage: ((conversationId: string) => Promise<ImagePointerRef[]>) | null,
-  // Native Temporary Chat handoff continuation. ChatGPT provides a short-lived
-  // conduit token, which resumes the turn without saving it to chat history.
-  resumeFinalAnswer:
-    ((conversationId: string, resumeToken: string) => Promise<FinalAssistantAnswer | null>) | null,
-  // Legacy fallback for handoffs that omit the conduit token.
-  pollFinalAnswer: ((conversationId: string) => Promise<FinalAssistantAnswer | null>) | null,
   log: { warn?: (tag: string, msg: string) => void } | null,
-  signal?: AbortSignal | null
+  signal?: AbortSignal | null,
+  onConversationContext?: (context: ChatGptConversationContext) => void,
+  onFinalize?: () => void
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
+  const cancellation = new AbortController();
+  const effectiveSignal = signal
+    ? AbortSignal.any([signal, cancellation.signal])
+    : cancellation.signal;
+  let finalized = false;
+  const finalize = () => {
+    if (finalized) return;
+    finalized = true;
+    onFinalize?.();
+  };
 
   return new ReadableStream(
     {
@@ -1691,96 +2113,14 @@ function buildStreamingResponse(
           let conversationId: string | null = null;
           let imagePointers: ImagePointerRef[] | undefined;
           let imageGenAsync = false;
-          let handoff = false;
-          let resumeToken: string | null = null;
-          let emittedText = "";
-          let polledFinalAnswer: FinalAssistantAnswer | null = null;
           let parentCandidateMessageId: string | null = null;
+          let streamFailed = false;
 
-          const emitRenderedDelta = (content: string): void => {
-            if (!content) return;
-            emittedText += content;
-            controller.enqueue(
-              encoder.encode(
-                sseChunk({
-                  id: cid,
-                  object: "chat.completion.chunk",
-                  created,
-                  model,
-                  system_fingerprint: null,
-                  choices: [
-                    {
-                      index: 0,
-                      delta: { content },
-                      finish_reason: null,
-                      logprobs: null,
-                    },
-                  ],
-                })
-              )
-            );
-          };
-
-          const emitRenderedAnswer = (
-            rawText: string,
-            metadata?: Record<string, unknown>
-          ): void => {
-            const rendered = cleanChatGptText(rawText, metadata);
-            if (!rendered || rendered.length <= emittedText.length) return;
-            if (!rendered.startsWith(emittedText)) {
-              // We cannot retract bytes already streamed. This should be rare;
-              // it mainly protects clients if ChatGPT rewrites earlier text.
-              const common = commonPrefixLength(rendered, emittedText);
-              if (common < emittedText.length) return;
-            }
-            emitRenderedDelta(rendered.slice(emittedText.length));
-          };
-
-          const appendFinalAnswer = (text: string, metadata?: Record<string, unknown>): void => {
-            const cleaned = cleanChatGptText(text, metadata);
-            const finalTrimmed = cleaned.trim();
-            if (!finalTrimmed) return;
-            const emittedTrimmed = emittedText.trim();
-            if (emittedTrimmed === finalTrimmed || emittedTrimmed.endsWith(finalTrimmed)) return;
-            const prefix = emittedTrimmed && !emittedText.endsWith("\n") ? "\n\n" : "";
-            emitRenderedDelta(`${prefix}${cleaned}`);
-          };
-
-          // Heartbeat: long async work (Pro polling, WebSocket image-gen,
-          // 2-3 MB image fetch) leaves the SSE quiet and Open WebUI times out
-          // at ~30s (`disconnect: ResponseAborted`). SSE comments and empty
-          // `delta:{}` chunks are both filtered upstream
-          // (`hasValuableContent` in open-sse/utils/streamHelpers.ts), so
-          // heartbeats are zero-width-space content deltas (`"​"`): they pass
-          // the filter and render invisibly.
-          const startHeartbeat = (intervalMs = 5_000): (() => void) => {
-            const heartbeatChunk = sseChunk({
-              id: cid,
-              object: "chat.completion.chunk",
-              created,
-              model,
-              system_fingerprint: null,
-              choices: [{ index: 0, delta: { content: "​" }, finish_reason: null, logprobs: null }],
-            });
-            const timer = setInterval(() => {
-              try {
-                controller.enqueue(encoder.encode(heartbeatChunk));
-              } catch {
-                // Controller may already be closed if the client disconnected
-                // — just stop firing.
-                console.warn("[chatgpt-web] heartbeat enqueue failed - controller closed");
-                clearInterval(timer);
-              }
-            }, intervalMs);
-            return () => clearInterval(timer);
-          };
-
-          for await (const chunk of extractContent(eventStream, signal)) {
+          for await (const chunk of extractContent(eventStream, effectiveSignal)) {
             if (chunk.conversationId) conversationId = chunk.conversationId;
             if (chunk.messageId) parentCandidateMessageId = chunk.messageId;
-            if (chunk.handoff) handoff = true;
-            if (chunk.resumeToken) resumeToken = chunk.resumeToken;
             if (chunk.error) {
+              streamFailed = true;
               controller.enqueue(
                 encoder.encode(
                   sseChunk({
@@ -1806,50 +2146,92 @@ function buildStreamingResponse(
             if (chunk.done) {
               imagePointers = chunk.imagePointers;
               imageGenAsync = chunk.imageGenAsync ?? false;
-              handoff = handoff || (chunk.handoff ?? false);
-              if (chunk.resumeToken) resumeToken = chunk.resumeToken;
               if (chunk.messageId) parentCandidateMessageId = chunk.messageId;
               break;
             }
 
-            if (chunk.answer) {
-              emitRenderedAnswer(chunk.answer, chunk.metadata);
-            }
-          }
-
-          if (resumeFinalAnswer && conversationId && handoff && resumeToken) {
-            const stopHb = startHeartbeat();
-            try {
-              const resumed = await resumeFinalAnswer(conversationId, resumeToken);
-              if (resumed?.text) {
-                polledFinalAnswer = resumed;
-                if (resumed.messageId) parentCandidateMessageId = resumed.messageId;
+            if (chunk.delta) {
+              const cleaned = cleanChatGptText(chunk.delta);
+              if (cleaned) {
+                controller.enqueue(
+                  encoder.encode(
+                    sseChunk({
+                      id: cid,
+                      object: "chat.completion.chunk",
+                      created,
+                      model,
+                      system_fingerprint: null,
+                      choices: [
+                        {
+                          index: 0,
+                          delta: { content: cleaned },
+                          finish_reason: null,
+                          logprobs: null,
+                        },
+                      ],
+                    })
+                  )
+                );
               }
-            } finally {
-              stopHb();
             }
           }
 
-          if (!polledFinalAnswer && pollFinalAnswer && conversationId && handoff) {
-            const stopHb = startHeartbeat();
-            try {
-              const polled = await pollFinalAnswer(conversationId);
-              if (polled?.text) {
-                polledFinalAnswer = polled;
-                if (polled.messageId) parentCandidateMessageId = polled.messageId;
+          if (
+            !streamFailed &&
+            !effectiveSignal.aborted &&
+            conversationId &&
+            parentCandidateMessageId
+          ) {
+            onConversationContext?.({
+              conversationId,
+              parentMessageId: parentCandidateMessageId,
+            });
+          }
+
+          // If the assistant kicked off the async image_gen tool, the SSE
+          // stream ends with a "Processing image..." placeholder. Poll the
+          // conversation endpoint in the background for the final pointer.
+          // We only kick polling off if the in-stream pointers are empty —
+          // sometimes the synchronous path also fires and we already have one.
+          // Heartbeat helper: while we wait on long-running async work
+          // (WebSocket for image-gen, /files/download → 2-3 MB image fetch),
+          // the SSE stream goes quiet and Open WebUI's HTTP client times out
+          // at ~30s. We saw this in production: `disconnect: ResponseAborted`
+          // followed by "Controller is already closed".
+          //
+          // Layered traps to avoid:
+          //   - SSE comments (`: ...`) are silently ignored by aiohttp's
+          //     read-activity tracker.
+          //   - Empty `delta:{}` chunks ARE emitted by us but get filtered
+          //     out upstream by `hasValuableContent` in
+          //     `open-sse/utils/streamHelpers.ts` (it requires content,
+          //     role, or finish_reason on OpenAI chunks).
+          //
+          // So heartbeats are zero-width-space content deltas (`"​"`):
+          // they pass the valuable-content filter (non-empty content), reach
+          // the client as data events, and render as nothing visible.
+          const startHeartbeat = (intervalMs = 5_000): (() => void) => {
+            const heartbeatChunk = sseChunk({
+              id: cid,
+              object: "chat.completion.chunk",
+              created,
+              model,
+              system_fingerprint: null,
+              choices: [{ index: 0, delta: { content: "​" }, finish_reason: null, logprobs: null }],
+            });
+            const timer = setInterval(() => {
+              try {
+                controller.enqueue(encoder.encode(heartbeatChunk));
+              } catch {
+                // Controller may already be closed if the client disconnected
+                // — just stop firing.
+                console.warn("[chatgpt-web] heartbeat enqueue failed - controller closed");
+                clearInterval(timer);
               }
-            } finally {
-              stopHb();
-            }
-          }
+            }, intervalMs);
+            return () => clearInterval(timer);
+          };
 
-          if (polledFinalAnswer) {
-            appendFinalAnswer(polledFinalAnswer.text, polledFinalAnswer.metadata);
-          }
-
-          // Async image_gen ends the SSE with a "Processing image..."
-          // placeholder; poll the conversation endpoint in the background for
-          // the final pointer (only when in-stream pointers are empty).
           if (
             imageGenAsync &&
             conversationId &&
@@ -1912,7 +2294,7 @@ function buildStreamingResponse(
           // any further enqueue throws "Invalid state: Controller is
           // already closed". Better to no-op than to surface that as a
           // server error.
-          if (signal?.aborted) return;
+          if (effectiveSignal.aborted) return;
           const mdBlock = imageMarkdown(urls);
           const safeEnqueue = (bytes: Uint8Array): boolean => {
             try {
@@ -1993,44 +2375,113 @@ function buildStreamingResponse(
           );
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         } finally {
+          finalize();
           try {
             controller.close();
           } catch {}
         }
+      },
+      cancel(reason) {
+        cancellation.abort(reason);
+        finalize();
       },
     },
     { highWaterMark: 16384 }
   );
 }
 
-async function buildNonStreamingResponse(
+function emitToolAwareSseChunk(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  cid: string,
+  created: number,
+  model: string,
+  delta: Record<string, unknown>,
+  finishReason: string | null
+): void {
+  controller.enqueue(
+    encoder.encode(
+      `data: ${JSON.stringify({
+        id: cid,
+        object: "chat.completion.chunk",
+        created,
+        model,
+        choices: [{ index: 0, delta, finish_reason: finishReason, logprobs: null }],
+      })}\n\n`
+    )
+  );
+}
+
+function buildToolAwareStreamingResponse(
+  cid: string,
+  created: number,
+  model: string,
+  content: string,
+  toolCalls: OpenAIToolCall[] | null,
+  finishReason: string
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      emitToolAwareSseChunk(controller, encoder, cid, created, model, { role: "assistant" }, null);
+      if (content) {
+        emitToolAwareSseChunk(controller, encoder, cid, created, model, { content }, null);
+      }
+      if (toolCalls?.length) {
+        emitToolAwareSseChunk(
+          controller,
+          encoder,
+          cid,
+          created,
+          model,
+          {
+            tool_calls: toolCalls.map((toolCall, index) => ({
+              index,
+              id: toolCall.id,
+              type: "function",
+              function: toolCall.function,
+            })),
+          },
+          null
+        );
+      }
+      emitToolAwareSseChunk(controller, encoder, cid, created, model, {}, finishReason);
+      controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
+async function buildToolAwareChatGptResponse(
   eventStream: ReadableStream<Uint8Array>,
   model: string,
   cid: string,
   created: number,
   currentMsg: string,
-  resolver: ImageResolver | null,
-  pollAsyncImage: ((conversationId: string) => Promise<ImagePointerRef[]>) | null,
-  resumeFinalAnswer:
-    ((conversationId: string, resumeToken: string) => Promise<FinalAssistantAnswer | null>) | null,
-  pollFinalAnswer: ((conversationId: string) => Promise<FinalAssistantAnswer | null>) | null,
-  log: { warn?: (tag: string, msg: string) => void } | null,
-  signal?: AbortSignal | null
+  requestedTools: unknown,
+  toolChoice: WebToolChoice,
+  stream: boolean,
+  signal?: AbortSignal | null,
+  onConversationContext?: (context: ChatGptConversationContext) => void,
+  // When not "off", an excuse/confabulation/plan-narration reply with zero
+  // decoded tool calls throws ChatGptExcuseResponseError for a corrective retry.
+  guardMode: WebToolGuardMode = "off"
 ): Promise<Response> {
   let fullAnswer = "";
   let conversationId: string | null = null;
-  let imagePointers: ImagePointerRef[] | undefined;
-  let imageGenAsync = false;
-  let handoff = false;
-  let resumeToken: string | null = null;
-  let answerMetadata: Record<string, unknown> | undefined;
-  let parentCandidateMessageId: string | null = null;
+  let parentMessageId: string | null = null;
 
   for await (const chunk of extractContent(eventStream, signal)) {
     if (chunk.conversationId) conversationId = chunk.conversationId;
-    if (chunk.messageId) parentCandidateMessageId = chunk.messageId;
-    if (chunk.handoff) handoff = true;
-    if (chunk.resumeToken) resumeToken = chunk.resumeToken;
+    if (chunk.messageId) parentMessageId = chunk.messageId;
     if (chunk.error) {
       return new Response(
         JSON.stringify({
@@ -2041,45 +2492,137 @@ async function buildNonStreamingResponse(
     }
     if (chunk.done) {
       fullAnswer = chunk.answer || fullAnswer;
-      answerMetadata = chunk.metadata ?? answerMetadata;
+      break;
+    }
+    if (chunk.answer) fullAnswer = chunk.answer;
+  }
+
+  const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
+    cleanChatGptText(fullAnswer),
+    requestedTools,
+    "cgpt",
+    toolChoice,
+    { fences: true }
+  );
+  if (!content.trim() && !toolCalls?.length) {
+    throw new ChatGptEmptyResponseError();
+  }
+  if (
+    !toolCalls?.length &&
+    toolChoice !== "none" &&
+    detectWebToolGuardViolation(content, guardMode)
+  ) {
+    throw new ChatGptExcuseResponseError();
+  }
+  if (policyViolation) {
+    return errorResponse(
+      502,
+      "ChatGPT Web did not honor the requested tool policy.",
+      "TOOL_POLICY"
+    );
+  }
+  if (conversationId && parentMessageId) {
+    onConversationContext?.({ conversationId, parentMessageId });
+  }
+
+  if (stream) {
+    return buildToolAwareStreamingResponse(cid, created, model, content, toolCalls, finishReason);
+  }
+
+  const message: Record<string, unknown> = { role: "assistant", content };
+  if (toolCalls?.length) {
+    message.tool_calls = toolCalls;
+    if (!content) message.content = null;
+  }
+  const promptTokens = Math.ceil(currentMsg.length / 4);
+  const completionTokens = Math.ceil(content.length / 4);
+
+  return new Response(
+    JSON.stringify({
+      id: cid,
+      object: "chat.completion",
+      created,
+      model,
+      system_fingerprint: null,
+      choices: [
+        {
+          index: 0,
+          message,
+          finish_reason: finishReason,
+          logprobs: null,
+        },
+      ],
+      usage: {
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
+        total_tokens: promptTokens + completionTokens,
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+}
+
+class ChatGptEmptyResponseError extends Error {
+  constructor() {
+    super("ChatGPT returned an empty assistant turn");
+    this.name = "ChatGptEmptyResponseError";
+  }
+}
+
+class ChatGptExcuseResponseError extends Error {
+  constructor() {
+    super("ChatGPT answered with an excuse instead of a tool call");
+    this.name = "ChatGptExcuseResponseError";
+  }
+}
+
+async function buildNonStreamingResponse(
+  eventStream: ReadableStream<Uint8Array>,
+  model: string,
+  cid: string,
+  created: number,
+  currentMsg: string,
+  resolver: ImageResolver | null,
+  pollAsyncImage: ((conversationId: string) => Promise<ImagePointerRef[]>) | null,
+  log: { warn?: (tag: string, msg: string) => void } | null,
+  signal?: AbortSignal | null,
+  onConversationContext?: (context: ChatGptConversationContext) => void
+): Promise<Response> {
+  let fullAnswer = "";
+  let conversationId: string | null = null;
+  let imagePointers: ImagePointerRef[] | undefined;
+  let imageGenAsync = false;
+  let parentCandidateMessageId: string | null = null;
+
+  for await (const chunk of extractContent(eventStream, signal)) {
+    if (chunk.conversationId) conversationId = chunk.conversationId;
+    if (chunk.messageId) parentCandidateMessageId = chunk.messageId;
+    if (chunk.error) {
+      return new Response(
+        JSON.stringify({
+          error: { message: chunk.error, type: "upstream_error", code: "CHATGPT_ERROR" },
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    if (chunk.done) {
+      fullAnswer = chunk.answer || fullAnswer;
       imagePointers = chunk.imagePointers;
       imageGenAsync = chunk.imageGenAsync ?? false;
-      handoff = handoff || (chunk.handoff ?? false);
-      if (chunk.resumeToken) resumeToken = chunk.resumeToken;
       if (chunk.messageId) parentCandidateMessageId = chunk.messageId;
       break;
     }
-    if (chunk.answer) {
-      fullAnswer = chunk.answer;
-      answerMetadata = chunk.metadata ?? answerMetadata;
-    }
+    if (chunk.answer) fullAnswer = chunk.answer;
   }
 
-  let resumedAnswer: FinalAssistantAnswer | null = null;
-  if (resumeFinalAnswer && conversationId && handoff && resumeToken) {
-    resumedAnswer = await resumeFinalAnswer(conversationId, resumeToken);
-    if (resumedAnswer?.text) {
-      fullAnswer = resumedAnswer.text;
-      answerMetadata = resumedAnswer.metadata ?? answerMetadata;
-      if (resumedAnswer.messageId) parentCandidateMessageId = resumedAnswer.messageId;
-    }
+  if (conversationId && parentCandidateMessageId) {
+    onConversationContext?.({
+      conversationId,
+      parentMessageId: parentCandidateMessageId,
+    });
   }
 
-  if (
-    !resumedAnswer?.text &&
-    pollFinalAnswer &&
-    conversationId &&
-    (handoff || !fullAnswer.trim())
-  ) {
-    const polled = await pollFinalAnswer(conversationId);
-    if (polled?.text) {
-      fullAnswer = polled.text;
-      answerMetadata = polled.metadata ?? answerMetadata;
-      if (polled.messageId) parentCandidateMessageId = polled.messageId;
-    }
-  }
-
-  fullAnswer = cleanChatGptText(fullAnswer, answerMetadata);
+  fullAnswer = cleanChatGptText(fullAnswer);
 
   // Async image gen: SSE ended with "Processing image..." — poll for the
   // final pointer the same way the streaming path does.
@@ -2107,23 +2650,6 @@ async function buildNonStreamingResponse(
     log,
     parentCandidateMessageId
   );
-  // The image genuinely exists upstream but no pointer resolved to a URL
-  // (unknown asset scheme, download 403/expired, oversize). Flag it so the
-  // image-generation handler can report an accurate "generated but not
-  // retrievable" error instead of the misleading "no image markdown" 502.
-  const imageResolutionFailed = detectImageResolutionFailure(
-    imagePointers?.length ?? 0,
-    urls.length
-  );
-  if (imageResolutionFailed && log?.warn) {
-    const schemes = (imagePointers ?? [])
-      .map((p) => p.pointer.split("://")[0] || p.pointer.slice(0, 24))
-      .join(", ");
-    log.warn(
-      "CGPT-WEB",
-      `Image generated upstream but no asset pointer resolved (schemes: ${schemes}) — surfacing as unretrievable`
-    );
-  }
   fullAnswer += imageMarkdown(urls);
   const promptTokens = Math.ceil(currentMsg.length / 4);
   const completionTokens = Math.ceil(fullAnswer.length / 4);
@@ -2135,7 +2661,6 @@ async function buildNonStreamingResponse(
       created,
       model,
       system_fingerprint: null,
-      ...(imageResolutionFailed ? { x_image_resolution_failed: true } : {}),
       choices: [
         {
           index: 0,
@@ -2565,17 +3090,6 @@ async function waitForImageViaWebSocket(
           conversation_id: innerPayload?.conversation_id as string | undefined,
         });
       }
-      // #7357: some deployments deliver the completion via update_content.messages[]
-      // (plural array of { message: {...} } wrappers), not the singular field above.
-      for (const entry of Array.isArray(updateContent?.messages) ? updateContent.messages : []) {
-        const wrapped = (entry as { message?: unknown } | undefined)?.message;
-        if (wrapped) {
-          candidates.push({
-            message: wrapped as ChatGptStreamEvent["message"],
-            conversation_id: innerPayload?.conversation_id as string | undefined,
-          });
-        }
-      }
       if (innerPayload?.message) {
         candidates.push({
           message: innerPayload.message as ChatGptStreamEvent["message"],
@@ -2659,7 +3173,7 @@ async function pollForAsyncImage(
           : `WebSocket re-registration failed on retry attempt ${attempt + 1}`
       );
       if (attempt === 0) continue; // try again — registration can be flaky
-      break; // fall through to the conversation-poll fallback below
+      return [];
     }
     ctx.log?.debug?.(
       "CGPT-WEB",
@@ -2671,48 +3185,11 @@ async function pollForAsyncImage(
     // Only retry when the connection died before producing anything useful.
     // A clean close with no pointers (e.g., upstream cancellation) shouldn't
     // burn a second attempt — the result would be the same.
-    if (!outcome.errored || outcome.gotAnyMessage) break;
+    if (!outcome.errored || outcome.gotAnyMessage) return [];
     ctx.log?.warn?.(
       "CGPT-WEB",
       `WebSocket attempt ${attempt + 1} ended in transport error before any frame; retrying`
     );
-  }
-
-  // Fallback: the async image websocket is unreliable in some environments —
-  // register-websocket is Cloudflare-sensitive and the plain WebSocket lacks the
-  // browser TLS fingerprint the HTTP client uses, so it can error or receive no
-  // frames even though the image was generated. The image still lands in the
-  // conversation, so poll it over the same authenticated HTTP path used
-  // everywhere else and read the image_asset_pointer directly. This is the
-  // durable fallback recommended in #7357.
-  const pollDeadline = Math.max(deadline, Date.now() + 60_000);
-  while (Date.now() < pollDeadline && !ctx.signal?.aborted) {
-    const { detail } = await fetchConversationDetail(conversationId, ctx);
-    const mapping = detail?.mapping;
-    if (mapping) {
-      // Prefer the newest message carrying image pointers, so a reused
-      // conversation doesn't surface a stale image from an earlier turn.
-      let newest: { pointers: ImagePointerRef[]; at: number } | null = null;
-      for (const node of Object.values(mapping)) {
-        const message = node?.message;
-        const parts = message?.content?.parts;
-        if (!Array.isArray(parts)) continue;
-        const pointers = extractImagePointers(parts).map(
-          (pointer) => ({ pointer, messageId: message?.id })
-        );
-        if (pointers.length === 0) continue;
-        const at = message?.create_time ?? 0;
-        if (!newest || at >= newest.at) newest = { pointers, at };
-      }
-      if (newest) {
-        ctx.log?.info?.(
-          "CGPT-WEB",
-          `Recovered ${newest.pointers.length} image pointer(s) via conversation poll (websocket yielded none)`
-        );
-        return newest.pointers;
-      }
-    }
-    await delayWithAbort(3_000, ctx.signal);
   }
   return [];
 }
@@ -2804,9 +3281,10 @@ export class ChatGptWebExecutor extends BaseExecutor {
     log,
     onCredentialsRefreshed,
     clientHeaders,
+    callerIdentity,
   }: ExecuteInput) {
-    const messages = (body as Record<string, unknown> | null)?.messages as
-      Array<Record<string, unknown>> | undefined;
+    const bodyObj = (body as Record<string, unknown> | null) ?? {};
+    const messages = bodyObj.messages as Array<Record<string, unknown>> | undefined;
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return {
         response: errorResponse(400, "Missing or empty messages array"),
@@ -2815,13 +3293,6 @@ export class ChatGptWebExecutor extends BaseExecutor {
         transformedBody: body,
       };
     }
-
-    // Tool-call emulation (#5240): inject a `<tool>` contract when `tools` are
-    // present; parsed back on the response side. Mirrors qwen-web/perplexity-web.
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
-      (body || {}) as Record<string, unknown>,
-      messages as Array<{ role: string; content: unknown }>
-    );
 
     if (!credentials.apiKey) {
       return {
@@ -2846,11 +3317,21 @@ export class ChatGptWebExecutor extends BaseExecutor {
       tokenEntry = await exchangeSession(cookie, signal);
     } catch (err) {
       if (err instanceof SessionAuthError) {
-        log?.warn?.("CGPT-WEB", err.message);
+        // SessionAuthError comes from exchangeSession() — `/api/auth/session`
+        // itself returned 401/403 with a body that wasn't a Cloudflare
+        // challenge. That IS a real cookie problem (stale cookie, wrong
+        // account, cf_clearance expired and no browser pool clearance
+        // acquired) → tell the user to re-paste. The 403 is rarer here
+        // because exchangeSession() already tries the browser-pool fallback
+        // for cf-mitigated responses.
+        log?.warn?.(
+          "CGPT-WEB",
+          `session exchange failed: ${(err as Error).message || err}`
+        );
         return {
           response: errorResponse(
             401,
-            "ChatGPT auth failed — re-paste your __Secure-next-auth.session-token cookie from chatgpt.com.",
+            "ChatGPT returned 401 — session cookie is invalid or expired. Re-paste your __Secure-next-auth.session-token from chatgpt.com (DevTools → Application → Cookies).",
             "HTTP_401"
           ),
           url: SESSION_URL,
@@ -2906,7 +3387,6 @@ export class ChatGptWebExecutor extends BaseExecutor {
     // browser does on page load. Failures here are non-fatal; the worst case
     // is Sentinel still escalates to Turnstile.
     const sessionId = randomUUID();
-    const turnTraceId = randomUUID();
     const deviceId = deviceIdFor(cookie);
     await runSessionWarmup(
       tokenEntry.accessToken,
@@ -2918,16 +3398,18 @@ export class ChatGptWebExecutor extends BaseExecutor {
       log
     );
 
-    // 2a''. Resolve model + effort and apply thinking-effort preference for
-    // thinking-capable models. Dedicated thinking models mirror the browser's
-    // user-config PATCH; GPT-5.5 Pro sends the effort with the conversation
-    // body because the Pro standard/extended budget is part of that turn.
-    const resolvedModel = resolveChatGptModel(model, body, credentials.providerSpecificData);
-    const modelSlug = resolvedModel.slug;
-    const requestedEffort = resolvedModel.effort;
-    if (requestedEffort && isThinkingCapableModel(model, modelSlug)) {
+    // 2a''. Apply thinking_effort preference for thinking-capable models.
+    // Mirrors what chatgpt.com's web UI does when the user toggles the
+    // "Standard"/"Extended" thinking switch — PATCH the user-config endpoint
+    // before issuing the conversation. The conversation request itself has
+    // no `thinking_effort` field; the server reads the stored preference at
+    // routing time. Best-effort: a failed PATCH falls back to whatever the
+    // account's current preference is.
+    const earlyModelSlug = MODEL_MAP[model] ?? model;
+    const requestedEffort = resolveThinkingEffort(body, credentials.providerSpecificData);
+    if (requestedEffort && isThinkingCapableModel(model, earlyModelSlug)) {
       await setUserThinkingEffort(
-        modelSlug,
+        earlyModelSlug,
         requestedEffort,
         tokenEntry.accessToken,
         tokenEntry.accountId,
@@ -2939,282 +3421,665 @@ export class ChatGptWebExecutor extends BaseExecutor {
       );
     }
 
-    // 2b. Sentinel chat-requirements
-    let reqs: ChatRequirements;
+    // 2b. Build the ChatGPT message plan and upload inbound images BEFORE
+    // Sentinel/PoW. Chat requirements/proof tokens are short-lived; doing
+    // network image fetches + blob uploads after minting them increases stale
+    // token / 403 risk before the actual conversation call.
+    let toolPrep: ReturnType<typeof prepareWebToolRequest>;
     try {
-      reqs = await prepareChatRequirements(
-        tokenEntry.accessToken,
-        tokenEntry.accountId,
-        sessionId,
-        deviceId,
-        cookie,
-        dplInfo,
-        signal,
-        log
+      toolPrep = prepareWebToolRequest(
+        bodyObj,
+        messages as Array<{ role: string; content: unknown }>,
+        { promptStyle: "chatgpt-web" }
       );
     } catch (err) {
-      if (err instanceof SentinelBlockedError) {
-        log?.warn?.("CGPT-WEB", err.message);
+      // Client-side tool_choice mistakes (undeclared forced tool, required
+      // with zero functions) are 400s, not upstream failures.
+      return {
+        response: errorResponse(
+          400,
+          err instanceof Error ? err.message : String(err),
+          "TOOL_POLICY"
+        ),
+        url: CONV_URL,
+        headers: {},
+        transformedBody: body,
+      };
+    }
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = toolPrep;
+    const parsed = parseOpenAIMessages(effectiveMessages as Array<Record<string, unknown>>);
+    const clientSystemContext = getClientSystemContext(parsed.systemMsg);
+    // Use stable account identity rather than the session-cookie value. ChatGPT
+    // can rotate that cookie during session exchange; credential-value keys
+    // would miss on the very next tool-result request and start a new chat.
+    const accountIdentity = tokenEntry.accountId ?? cookieKey(cookie);
+    let conversationCacheKey = buildConversationCacheKey(
+      bodyObj,
+      clientHeaders,
+      accountIdentity,
+      credentials.connectionId,
+      model,
+      callerIdentity
+    );
+    // Only consumed for continuity bookkeeping — skip the stringify+sha256 of
+    // the full tools array for non-continuity clients.
+    const toolFingerprint = conversationCacheKey
+      ? buildWebToolContractFingerprint(requestedTools, toolChoice)
+      : "";
+    const releaseConversationLock = conversationCacheKey
+      ? await acquireChatGptConversationLock(conversationCacheKey)
+      : null;
+    let releaseConversationLockFromStream = false;
+    try {
+      let cachedConversation = conversationCacheKey
+        ? getChatGptConversationContext(conversationCacheKey)
+        : null;
+      let continuationSystemDelta = "";
+      if (conversationCacheKey && cachedConversation) {
+        const cachedSystemContext = cachedConversation.systemContext ?? "";
+        const systemContextUnchanged = clientSystemContext === cachedSystemContext;
+        const systemContextAppended =
+          cachedSystemContext.length > 0 &&
+          clientSystemContext.startsWith(`${cachedSystemContext}\n`);
+        if (cachedConversation.toolFingerprint !== toolFingerprint) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          cachedConversation = null;
+        } else if (systemContextAppended) {
+          continuationSystemDelta = clientSystemContext.slice(cachedSystemContext.length + 1);
+        } else if (!systemContextUnchanged) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          cachedConversation = null;
+        }
+      }
+      let expectedConversationForWrite = cachedConversation;
+      const rememberConversation = conversationCacheKey
+        ? (context: ChatGptConversationContext) =>
+            setChatGptConversationContext(
+              conversationCacheKey,
+              {
+                ...context,
+                toolFingerprint,
+                systemContext: clientSystemContext,
+              },
+              expectedConversationForWrite
+            )
+        : undefined;
+      const inboundImageUrls = extractCurrentTurnImageUrls(
+        messages as Array<Record<string, unknown>>
+      );
+      if (
+        !parsed.currentMsg.trim() &&
+        parsed.history.length === 0 &&
+        inboundImageUrls.length === 0
+      ) {
+        return {
+          response: errorResponse(400, "Empty user message"),
+          url: CONV_URL,
+          headers: {},
+          transformedBody: body,
+        };
+      }
+
+      const imageEdit = looksLikeImageEditRequest(parsed);
+      const continuation = imageEdit ? parsed.latestImageContext : cachedConversation;
+      const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
+      if (forImageGen) {
+        log?.debug?.(
+          "CGPT-WEB",
+          continuation
+            ? "Image edit intent detected — continuing saved image conversation"
+            : "Image-gen intent detected — disabling Temporary Chat for this turn"
+        );
+      }
+
+      let uploadedImages: UploadedChatGptImage[] = [];
+      if (inboundImageUrls.length > 0) {
+        log?.info?.(
+          "CGPT-WEB",
+          `Detected ${inboundImageUrls.length} inbound image(s) — uploading to chatgpt.com`
+        );
+        const uploadCtx: ChatGptUploadAuthContext = {
+          accessToken: tokenEntry.accessToken,
+          accountId: tokenEntry.accountId ?? null,
+          sessionId,
+          deviceId,
+          baseHeaders: {
+            ...browserHeaders(),
+            ...oaiHeaders(sessionId, deviceId),
+            Cookie: buildSessionCookieHeader(cookie),
+          },
+          signal,
+          log,
+        };
+        uploadedImages = await uploadCurrentTurnImages(inboundImageUrls, uploadCtx);
+        if (uploadedImages.length !== inboundImageUrls.length) {
+          log?.warn?.(
+            "CGPT-WEB",
+            `Inbound image upload failed (${uploadedImages.length}/${inboundImageUrls.length}); returning non-OK so combo fallback can try the next target`
+          );
+          return {
+            response: errorResponse(
+              502,
+              "ChatGPT Web could not upload the attached image(s); falling back to the next combo target if available.",
+              "CGPT_IMAGE_UPLOAD_FAILED"
+            ),
+            url: `${CHATGPT_BASE}/backend-api/files`,
+            headers: {},
+            transformedBody: body,
+          };
+        }
+      }
+
+      // 2c. Sentinel chat-requirements
+      let reqs: ChatRequirements;
+      try {
+        reqs = await prepareChatRequirements(
+          tokenEntry.accessToken,
+          tokenEntry.accountId,
+          sessionId,
+          deviceId,
+          cookie,
+          dplInfo,
+          signal,
+          log
+        );
+      } catch (err) {
+        if (err instanceof SentinelBlockedError) {
+          log?.warn?.("CGPT-WEB", err.message);
+          return {
+            response: errorResponse(
+              403,
+              "ChatGPT blocked the request (Sentinel/Turnstile required). Try again later or open chatgpt.com in a browser to refresh state.",
+              "SENTINEL_BLOCKED"
+            ),
+            url: SENTINEL_PREPARE_URL,
+            headers: {},
+            transformedBody: body,
+          };
+        }
+        log?.error?.(
+          "CGPT-WEB",
+          `Sentinel failed: ${err instanceof Error ? err.message : String(err)}`
+        );
         return {
           response: errorResponse(
-            403,
-            "ChatGPT blocked the request (Sentinel/Turnstile required). Try again later or open chatgpt.com in a browser to refresh state.",
-            "SENTINEL_BLOCKED"
+            502,
+            `ChatGPT sentinel failed: ${err instanceof Error ? err.message : String(err)}`
           ),
           url: SENTINEL_PREPARE_URL,
           headers: {},
           transformedBody: body,
         };
       }
-      log?.error?.(
-        "CGPT-WEB",
-        `Sentinel failed: ${err instanceof Error ? err.message : String(err)}`
-      );
-      return {
-        response: errorResponse(
-          502,
-          `ChatGPT sentinel failed: ${err instanceof Error ? err.message : String(err)}`
-        ),
-        url: SENTINEL_PREPARE_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
 
-    log?.debug?.(
-      "CGPT-WEB",
-      `sentinel: token=${reqs.token ? "y" : "n"} pow=${reqs.proofofwork?.required ? "y" : "n"} turnstile=${reqs.turnstile?.required ? "y" : "n"}`
-    );
-
-    // Optional: if a turnstile token was supplied via providerSpecificData,
-    // pass it through. Otherwise, send the request anyway — sometimes Sentinel
-    // reports turnstile.required even when the conversation endpoint accepts
-    // requests without it.
-    const turnstileToken =
-      typeof credentials.providerSpecificData?.turnstileToken === "string"
-        ? credentials.providerSpecificData.turnstileToken
-        : null;
-
-    // 3. Solve PoW (if required) — reuses the same browser-fingerprint config
-    // shape as the prekey, just with the server-provided seed + difficulty.
-    let proofToken: string | null = null;
-    if (reqs.proofofwork?.required && reqs.proofofwork.seed && reqs.proofofwork.difficulty) {
-      const powConfig = buildPrekeyConfig(CHATGPT_USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
-      proofToken = await solveProofOfWork(
-        reqs.proofofwork.seed,
-        reqs.proofofwork.difficulty,
-        powConfig,
-        log
-      );
-    }
-
-    // 4. Build conversation request
-    const parsed = parseOpenAIMessages(effectiveMessages);
-    if (!parsed.currentMsg.trim() && parsed.history.length === 0) {
-      return {
-        response: errorResponse(400, "Empty user message"),
-        url: CONV_URL,
-        headers: {},
-        transformedBody: body,
-      };
-    }
-
-    // Toggle Temporary Chat off only when ChatGPT needs a durable image
-    // conversation. Text requests, including GPT-5.5 Pro, stay temporary so
-    // they do not show up in the user's chatgpt.com sidebar/history.
-    const imageEdit = looksLikeImageEditRequest(parsed);
-    const continuation = imageEdit ? parsed.latestImageContext : null;
-    const forImageGen = looksLikeImageGenRequest(parsed) || imageEdit;
-    const persistConversation = forImageGen || !!continuation;
-    if (forImageGen) {
       log?.debug?.(
         "CGPT-WEB",
-        continuation
-          ? "Image edit intent detected — continuing saved image conversation"
-          : "Image-gen intent detected — disabling Temporary Chat for this turn"
+        `sentinel: token=${reqs.token ? "y" : "n"} pow=${reqs.proofofwork?.required ? "y" : "n"} turnstile=${reqs.turnstile?.required ? "y" : "n"}`
       );
-    } else if (resolvedModel.isPro) {
-      log?.debug?.("CGPT-WEB", "GPT-5.5 Pro text request — keeping Temporary Chat enabled");
-    }
 
-    const parentMessageId = continuation?.parentMessageId ?? randomUUID();
-    const cgptBody = buildConversationBody(parsed, modelSlug, parentMessageId, {
-      persistConversation,
-      thinkingEffort: requestedEffort,
-      continuation,
-    });
+      // Optional: if a turnstile token was supplied via providerSpecificData,
+      // pass it through. Otherwise, send the request anyway — sometimes Sentinel
+      // reports turnstile.required even when the conversation endpoint accepts
+      // requests without it.
+      const turnstileToken =
+        typeof credentials.providerSpecificData?.turnstileToken === "string"
+          ? credentials.providerSpecificData.turnstileToken
+          : null;
 
-    const headers: Record<string, string> = {
-      ...browserHeaders(),
-      ...oaiHeaders(sessionId, deviceId),
-      "Content-Type": "application/json",
-      Accept: "text/event-stream",
-      Authorization: `Bearer ${tokenEntry.accessToken}`,
-      Cookie: buildSessionCookieHeader(cookie),
-      "x-oai-turn-trace-id": turnTraceId,
-    };
-    if (tokenEntry.accountId) headers["chatgpt-account-id"] = tokenEntry.accountId;
-    if (reqs.token) headers["openai-sentinel-chat-requirements-token"] = reqs.token;
-    if (reqs.prepare_token)
-      headers["openai-sentinel-chat-requirements-prepare-token"] = reqs.prepare_token;
-    if (proofToken) headers["openai-sentinel-proof-token"] = proofToken;
-    if (turnstileToken) headers["openai-sentinel-turnstile-token"] = turnstileToken;
-
-    log?.info?.("CGPT-WEB", `Conversation request → ${modelSlug} (pow=${!!proofToken})`);
-
-    let response: TlsFetchResult;
-    try {
-      response = await tlsFetchChatGpt(CONV_URL, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(cgptBody),
-        timeoutMs: 120_000, // generations can take a while
-        signal,
-        // For real-time streaming, ask the TLS client to write the body to
-        // a temp file and surface it as a ReadableStream as it arrives —
-        // otherwise long generations buffer entirely before the client sees
-        // anything (and the downstream HTTP request can time out).
-        stream,
-      });
-    } catch (err) {
-      log?.error?.("CGPT-WEB", `Fetch failed: ${err instanceof Error ? err.message : String(err)}`);
-      const code = err instanceof TlsClientUnavailableError ? "TLS_UNAVAILABLE" : undefined;
-      return {
-        response: errorResponse(
-          502,
-          `ChatGPT connection failed: ${err instanceof Error ? err.message : String(err)}`,
-          code
-        ),
-        url: CONV_URL,
-        headers,
-        transformedBody: cgptBody,
+      // Fetch fresh sentinel requirement + optional PoW proof tokens for the
+      // tool-turn corrective retry. The first POST of a turn consumes the
+      // requirement/proof tokens; the retry re-POSTs seconds later, and a
+      // second POST with the SAME consumed token is rejected by ChatGPT's
+      // abuse detector with 403 "Unusual activity has been detected from your
+      // device" (verified in production). A real browser fetches fresh
+      // requirements before every message, so the retry must too. Returns
+      // null on failure — the caller falls back to the original headers.
+      const refreshSentinelHeaders = async (): Promise<Record<string, string> | null> => {
+        try {
+          const freshReqs = await prepareChatRequirements(
+            tokenEntry.accessToken,
+            tokenEntry.accountId ?? null,
+            sessionId,
+            deviceId,
+            cookie,
+            dplInfo,
+            signal,
+            log
+          );
+          let freshProof: string | null = null;
+          if (
+            freshReqs.proofofwork?.required &&
+            freshReqs.proofofwork.seed &&
+            freshReqs.proofofwork.difficulty
+          ) {
+            const powConfig = buildPrekeyConfig(CHATGPT_USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
+            freshProof = await solveProofOfWork(
+              freshReqs.proofofwork.seed,
+              freshReqs.proofofwork.difficulty,
+              powConfig,
+              log
+            );
+          }
+          const fresh: Record<string, string> = {};
+          if (freshReqs.token)
+            fresh["openai-sentinel-chat-requirements-token"] = freshReqs.token;
+          if (freshReqs.prepare_token)
+            fresh["openai-sentinel-chat-requirements-prepare-token"] = freshReqs.prepare_token;
+          if (freshProof) fresh["openai-sentinel-proof-token"] = freshProof;
+          if (turnstileToken) fresh["openai-sentinel-turnstile-token"] = turnstileToken;
+          return fresh;
+        } catch (err) {
+          log?.warn?.(
+            "CGPT-WEB",
+            `sentinel refresh for tool-turn retry failed: ${
+              err instanceof Error ? err.message : String(err)
+            }`
+          );
+          return null;
+        }
       };
-    }
 
-    if (response.status >= 400) {
-      const status = response.status;
-      // Log the upstream body on 4xx/5xx — error responses are small and the
-      // upstream message is much more useful than our wrapper. Goes through
-      // the executor logger so it respects the application's log config.
-      log?.warn?.("CGPT-WEB", `conv ${status}: ${(response.text || "").slice(0, 400)}`);
-      const errMsg = describeChatGptWebHttpError(status);
-      if (status === 401 || status === 403) {
-        tokenCache.delete(cookieKey(cookie));
+      // 3. Solve PoW (if required) — reuses the same browser-fingerprint config
+      // shape as the prekey, just with the server-provided seed + difficulty.
+      let proofToken: string | null = null;
+      if (reqs.proofofwork?.required && reqs.proofofwork.seed && reqs.proofofwork.difficulty) {
+        const powConfig = buildPrekeyConfig(CHATGPT_USER_AGENT, dplInfo.dpl, dplInfo.scriptSrc);
+        proofToken = await solveProofOfWork(
+          reqs.proofofwork.seed,
+          reqs.proofofwork.difficulty,
+          powConfig,
+          log
+        );
       }
-      log?.warn?.("CGPT-WEB", errMsg);
-      return {
-        response: errorResponse(status, errMsg, `HTTP_${status}`),
-        url: CONV_URL,
-        headers,
-        transformedBody: cgptBody,
+
+      // 4. Build conversation request
+      const parentMessageId = continuation?.parentMessageId ?? randomUUID();
+      const modelSlug = MODEL_MAP[model] ?? model;
+      let cgptBody = buildConversationBody(parsed, modelSlug, parentMessageId, forImageGen, {
+        continuation,
+        // A delta computed against the conversation cache is only valid when
+        // the continuation actually came from that cache (not an image edit).
+        continuationSystemDelta: continuation === cachedConversation ? continuationSystemDelta : "",
+        uploadedImages,
+        hasTools,
+      });
+
+      const baseHeaders: Record<string, string> = {
+        ...browserHeaders(),
+        ...oaiHeaders(sessionId, deviceId),
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${tokenEntry.accessToken}`,
+        Cookie: buildSessionCookieHeader(cookie),
       };
-    }
+      if (tokenEntry.accountId) baseHeaders["chatgpt-account-id"] = tokenEntry.accountId;
+      if (reqs.token) baseHeaders["openai-sentinel-chat-requirements-token"] = reqs.token;
+      if (reqs.prepare_token)
+        baseHeaders["openai-sentinel-chat-requirements-prepare-token"] = reqs.prepare_token;
+      if (proofToken) baseHeaders["openai-sentinel-proof-token"] = proofToken;
+      if (turnstileToken) baseHeaders["openai-sentinel-turnstile-token"] = turnstileToken;
+      const headers: Record<string, string> = { ...baseHeaders };
 
-    // For streaming requests the TLS client returns a ReadableStream that
-    // tails the temp file as it's written. For non-streaming requests, it
-    // returns the full body as text — wrap that in a one-shot stream so the
-    // existing SSE parser can consume it uniformly.
-    let bodyStream: ReadableStream<Uint8Array>;
-    if (response.body) {
-      bodyStream = response.body;
-    } else if (response.text) {
-      bodyStream = stringToStream(response.text);
-    } else {
-      return {
-        response: errorResponse(502, "ChatGPT returned empty response body"),
-        url: CONV_URL,
-        headers,
-        transformedBody: cgptBody,
+      log?.info?.("CGPT-WEB", `Conversation request → ${modelSlug} (pow=${!!proofToken})`);
+
+      const postConversation = async (
+        requestBody: Record<string, unknown>,
+        headersOverride?: Record<string, string>
+      ) => {
+        await paceChatGptConversation(accountIdentity, signal);
+        return tlsFetchChatGpt(CONV_URL, {
+          method: "POST",
+          headers: headersOverride ?? headers,
+          body: JSON.stringify(requestBody),
+          timeoutMs: 120_000, // generations can take a while
+          signal,
+          // For real-time streaming, ask the TLS client to write the body to
+          // a temp file and surface it as a ReadableStream as it arrives —
+          // otherwise long generations buffer entirely before the client sees
+          // anything (and the downstream HTTP request can time out).
+          stream,
+        });
       };
-    }
+      const connectionFailure = (err: unknown) => {
+        log?.error?.(
+          "CGPT-WEB",
+          `Fetch failed: ${err instanceof Error ? err.message : String(err)}`
+        );
+        const code = err instanceof TlsClientUnavailableError ? "TLS_UNAVAILABLE" : undefined;
+        return {
+          response: errorResponse(
+            502,
+            `ChatGPT connection failed: ${err instanceof Error ? err.message : String(err)}`,
+            code
+          ),
+          url: CONV_URL,
+          headers,
+          transformedBody: cgptBody,
+        };
+      };
 
-    const cid = `chatcmpl-cgpt-${crypto.randomUUID().slice(0, 12)}`;
-    const created = Math.floor(Date.now() / 1000);
+      let response: TlsFetchResult;
+      try {
+        response = await postConversation(cgptBody);
+      } catch (err) {
+        return connectionFailure(err);
+      }
 
-    const resolverCtx: ResolverContext = {
-      accessToken: tokenEntry.accessToken,
-      accountId: tokenEntry.accountId,
-      sessionId,
-      deviceId,
-      cookie,
-      signal,
-      log,
-      publicBaseUrl: derivePublicBaseUrl(clientHeaders, log),
-    };
-    const imageResolver = makeImageResolver(resolverCtx);
-    const pollAsyncImage = (conversationId: string) =>
-      pollForAsyncImage(conversationId, resolverCtx);
-    const resumeFinalAnswer = (conversationId: string, resumeToken: string) =>
-      resumeChatGptHandoff({
-        conversationId,
-        resumeToken,
-        headers,
-        timeoutMs: configuredProPollTimeoutMs(),
+      const usedCachedContinuation =
+        cachedConversation !== null &&
+        continuation?.conversationId === cachedConversation.conversationId;
+      const staleContinuationError =
+        response.status === 404 ||
+        (response.status === 400 &&
+          /(?:conversation|parent).*(?:invalid|not found|stale)|(?:invalid|not found|stale).*(?:conversation|parent)/i.test(
+            response.text || ""
+          ));
+      if (staleContinuationError && usedCachedContinuation) {
+        if (conversationCacheKey && cachedConversation) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          expectedConversationForWrite = null;
+        }
+        log?.warn?.(
+          "CGPT-WEB",
+          `Cached conversation was rejected (${response.status}); retrying once with typed replay`
+        );
+        cgptBody = buildConversationBody(parsed, modelSlug, randomUUID(), forImageGen, {
+          uploadedImages,
+          hasTools,
+        });
+        try {
+          response = await postConversation(cgptBody);
+        } catch (err) {
+          return connectionFailure(err);
+        }
+      }
+
+      if (response.status >= 400) {
+        const status = response.status;
+        // Log the upstream body on 4xx/5xx — error responses are small and the
+        // upstream message is much more useful than our wrapper. Goes through
+        // the executor logger so it respects the application's log config.
+        log?.warn?.("CGPT-WEB", `conv ${status}: ${(response.text || "").slice(0, 400)}`);
+        const errMsg = describeChatGptWebHttpError(status);
+        if (status === 401 || status === 403) {
+          tokenCache.delete(cookieKey(cookie));
+        }
+        log?.warn?.("CGPT-WEB", errMsg);
+        return {
+          response: errorResponse(status, errMsg, `HTTP_${status}`),
+          url: CONV_URL,
+          headers,
+          transformedBody: cgptBody,
+        };
+      }
+
+      // For streaming requests the TLS client returns a ReadableStream that
+      // tails the temp file as it's written. For non-streaming requests, it
+      // returns the full body as text — wrap that in a one-shot stream so the
+      // existing SSE parser can consume it uniformly.
+      let bodyStream: ReadableStream<Uint8Array>;
+      if (response.body) {
+        bodyStream = response.body;
+      } else if (response.text) {
+        bodyStream = stringToStream(response.text);
+      } else {
+        return {
+          response: errorResponse(502, "ChatGPT returned empty response body"),
+          url: CONV_URL,
+          headers,
+          transformedBody: cgptBody,
+        };
+      }
+
+      const cid = `chatcmpl-cgpt-${crypto.randomUUID().slice(0, 12)}`;
+      const created = Math.floor(Date.now() / 1000);
+
+      const resolverCtx: ResolverContext = {
+        accessToken: tokenEntry.accessToken,
+        accountId: tokenEntry.accountId,
+        sessionId,
+        deviceId,
+        cookie,
         signal,
         log,
-        readContent: extractContent,
-      });
-    const pollFinalAnswer = resolvedModel.isPro
-      ? (conversationId: string) => pollForFinalAssistantAnswer(conversationId, resolverCtx)
-      : null;
+        publicBaseUrl: derivePublicBaseUrl(clientHeaders, log),
+      };
+      const imageResolver = makeImageResolver(resolverCtx);
+      const pollAsyncImage = (conversationId: string) =>
+        pollForAsyncImage(conversationId, resolverCtx);
 
-    // Tool mode buffers (no live streaming) and is gated off the image-gen path.
-    const toolMode = hasTools && !forImageGen;
+      // Shared stateless-retry path for the two tool-turn failure modes
+      // (excuse answer / empty turn). Temporary Chat upstreams are stateless,
+      // so a retry must rebuild the full-replay body — a delta continuation
+      // would contradict the protocol's own statelessness.
+      const runStatelessToolRetry = async (options: {
+        logMessage: string;
+        userContentSuffix?: string;
+        invalidateCachedConversation?: boolean;
+        emptyFailureMessage: string;
+      }): Promise<{
+        response: Response;
+        url: string;
+        headers: Record<string, string>;
+        transformedBody: Record<string, unknown>;
+      }> => {
+        if (options.invalidateCachedConversation && conversationCacheKey && cachedConversation) {
+          deleteChatGptConversationContext(conversationCacheKey, cachedConversation);
+          expectedConversationForWrite = null;
+        }
+        log?.warn?.("CGPT-WEB", options.logMessage);
+        const backoffMs = toolRetryBackoffMs();
+        if (backoffMs > 0) {
+          log?.debug?.(
+            "CGPT-WEB",
+            `tool-turn retry backoff ${backoffMs}ms (avoid 'unusual activity' 403)`
+          );
+          await sleepAbortable(backoffMs, signal);
+        }
+        // The first POST consumed the sentinel requirement/proof tokens.
+        // Reusing them on the retry POST is rejected with 403 "Unusual
+        // activity" — fetch fresh ones, exactly like a browser would for a
+        // follow-up message. Fall back to the original headers if the refresh
+        // fails so the retry still gets one chance.
+        const freshSentinelHeaders = await refreshSentinelHeaders();
+        let retryHeaders = headers;
+        if (freshSentinelHeaders) {
+          retryHeaders = { ...baseHeaders, ...freshSentinelHeaders };
+          log?.debug?.("CGPT-WEB", "tool-turn retry using freshly refreshed sentinel tokens");
+        }
+        cgptBody = buildConversationBody(parsed, modelSlug, randomUUID(), forImageGen, {
+          uploadedImages,
+          hasTools,
+          userContentSuffix: options.userContentSuffix,
+        });
+        let retryResponse: TlsFetchResult;
+        try {
+          retryResponse = await postConversation(cgptBody, retryHeaders);
+        } catch (retryErr) {
+          return connectionFailure(retryErr);
+        }
+        if (retryResponse.status >= 400) {
+          const status = retryResponse.status;
+          const retryBody = (retryResponse.text || "").replace(/\s+/g, " ").slice(0, 1200);
+          const errMsg = describeChatGptWebToolRetryError(status, retryBody);
+          // 401 = session-token genuinely invalid → drop the cached token so
+          // the next request re-exchanges. 403 = structural rejection (model
+          // not on account, empty tool-turn body, persona mismatch, ChatGPT
+          // rate-limit, cf-mitigated) → keep the cached token; re-pasting a
+          // valid cookie does NOT fix a 403, and dropping the cache here
+          // means the next request pays the full ~600ms token-exchange round
+          // for no benefit.
+          if (status === 401) tokenCache.delete(cookieKey(cookie));
+          // Surface the actual upstream body so the operator can see WHY the
+          // retry failed instead of being told "re-paste your cookie". Truncate
+          // to 1200 chars — small enough to fit a single log line, large
+          // enough to include Cloudflare challenge HTML and ChatGPT JSON
+          // error bodies. Same truncation as `deserialize-fail.ts` and friends.
+          log?.warn?.(
+            "CGPT-WEB",
+            `tool-turn retry ${status} (cfMitigated=${retryResponse.headers?.get("cf-mitigated") ?? "?"}, cFRay=${retryResponse.headers?.get("cf-ray") ?? "?"}): ${retryBody}`
+          );
+          return {
+            response: errorResponse(status, errMsg, `HTTP_${status}`),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
+        }
+        let retryStream: ReadableStream<Uint8Array>;
+        if (retryResponse.body) {
+          retryStream = retryResponse.body;
+        } else if (retryResponse.text) {
+          retryStream = stringToStream(retryResponse.text);
+        } else {
+          return {
+            response: errorResponse(
+              502,
+              "ChatGPT returned an empty response after stateless retry.",
+              "CHATGPT_EMPTY_RESPONSE"
+            ),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
+        }
+        try {
+          // The retry always decodes with the excuse guard disabled — a
+          // second-strike excuse passes through instead of looping.
+          const retried = await buildToolAwareChatGptResponse(
+            retryStream,
+            model,
+            cid,
+            created,
+            parsed.currentMsg,
+            requestedTools,
+            toolChoice,
+            stream !== false,
+            signal,
+            rememberConversation,
+            "off"
+          );
+          return { response: retried, url: CONV_URL, headers, transformedBody: cgptBody };
+        } catch (retryErr) {
+          if (!(retryErr instanceof ChatGptEmptyResponseError)) throw retryErr;
+          return {
+            response: errorResponse(502, options.emptyFailureMessage, "CHATGPT_EMPTY_RESPONSE"),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
+        }
+      };
 
-    let finalResponse: Response;
-    if (stream && !toolMode) {
-      const sseStream = buildStreamingResponse(
-        bodyStream,
-        model,
-        cid,
-        created,
-        imageResolver,
-        pollAsyncImage,
-        resumeFinalAnswer,
-        pollFinalAnswer,
-        log,
-        signal
-      );
-      finalResponse = new Response(sseStream, {
-        status: 200,
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache",
-          "X-Accel-Buffering": "no",
-        },
-      });
-    } else {
-      finalResponse = await buildNonStreamingResponse(
-        bodyStream,
-        model,
-        cid,
-        created,
-        parsed.currentMsg,
-        imageResolver,
-        pollAsyncImage,
-        resumeFinalAnswer,
-        pollFinalAnswer,
-        log,
-        signal
-      );
-      if (toolMode) {
-        finalResponse = await buildToolModeResponse(finalResponse, requestedTools, stream, {
+      let finalResponse: Response;
+      if (hasTools) {
+        // Excuse retry is opt-in (CHATGPT_WEB_EXCUSE_RETRY=1) and OFF by
+        // default: every retry is an extra POST against ChatGPT's abuse
+        // detector, and a retried excuse is just as likely to be flagged.
+        // With the gate off, the model's prose answer passes through and the
+        // client agent's own retry logic decides what to do.
+        const retryExcuseEnabled = excuseRetryEnabled();
+        const guardMode: WebToolGuardMode = retryExcuseEnabled
+          ? parsed.currentInput?.role === "tool"
+            ? "plan"
+            : "full"
+          : "off";
+        try {
+          finalResponse = await buildToolAwareChatGptResponse(
+            bodyStream,
+            model,
+            cid,
+            created,
+            parsed.currentMsg,
+            requestedTools,
+            toolChoice,
+            stream !== false,
+            signal,
+            rememberConversation,
+            guardMode
+          );
+        } catch (err) {
+          if (err instanceof ChatGptExcuseResponseError) {
+            // The model answered with an excuse/confabulation instead of a
+            // tool call — retry once with a corrective nudge on the user turn.
+            return runStatelessToolRetry({
+              logMessage:
+                "ChatGPT answered with an excuse instead of a tool call; retrying once with a corrective nudge",
+              userContentSuffix: EXCUSE_RETRY_NUDGE,
+              emptyFailureMessage:
+                "ChatGPT returned an empty assistant turn after corrective retry.",
+            });
+          }
+          if (!(err instanceof ChatGptEmptyResponseError)) throw err;
+          // Empty turn = the upstream rejected the request (throttled/flagged
+          // accounts return 200 with an empty stream). NEVER retry this — a
+          // retry just doubles the traffic against a throttled account. Fail
+          // fast so the client can decide.
+          log?.warn?.("CGPT-WEB", "ChatGPT returned an empty tool-aware turn; failing fast (no retry)");
+          return {
+            response: errorResponse(
+              502,
+              "ChatGPT returned an empty assistant turn (the account may be temporarily throttled). Try again in a moment.",
+              "CHATGPT_EMPTY_RESPONSE"
+            ),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
+        }
+      } else if (stream) {
+        const sseStream = buildStreamingResponse(
+          bodyStream,
+          model,
           cid,
           created,
-          model,
+          imageResolver,
+          pollAsyncImage,
+          log,
+          signal,
+          rememberConversation,
+          releaseConversationLock ?? undefined
+        );
+        releaseConversationLockFromStream = Boolean(releaseConversationLock);
+        finalResponse = new Response(sseStream, {
+          status: 200,
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+          },
         });
+      } else {
+        finalResponse = await buildNonStreamingResponse(
+          bodyStream,
+          model,
+          cid,
+          created,
+          parsed.currentMsg,
+          imageResolver,
+          pollAsyncImage,
+          log,
+          signal,
+          rememberConversation
+        );
       }
-    }
 
-    return { response: finalResponse, url: CONV_URL, headers, transformedBody: cgptBody };
+      return { response: finalResponse, url: CONV_URL, headers, transformedBody: cgptBody };
+    } finally {
+      if (!releaseConversationLockFromStream) releaseConversationLock?.();
+    }
   }
 }
 
-function commonPrefixLength(a: string, b: string): number {
-  const n = Math.min(a.length, b.length);
-  let i = 0;
-  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
-  return i;
+// Strip ChatGPT's internal entity markup. The browser renders these as proper
+// inline citations / chips via JS; for a plain text completion we just want
+// the human-readable form.
+//   entity["city","Paris","capital of France"]  →  Paris
+//   entity["…","value", …]                       →  value
+const ENTITY_RE = /entity\["[^"]*","([^"]*)"[^\]]*\]/g;
+
+function cleanChatGptText(text: string): string {
+  return text.replace(ENTITY_RE, "$1");
 }
 
 function stringToStream(text: string): ReadableStream<Uint8Array> {
@@ -3233,6 +4098,8 @@ export function __resetChatGptWebCachesForTesting(): void {
   warmupCache.clear();
   thinkingEffortCache.clear();
   deviceIdCache.clear();
+  chatgptWebPaceState.clear();
+  __resetChatGptConversationCacheForTesting();
   __resetChatGptImageCacheForTesting();
   dplCache = null;
 }

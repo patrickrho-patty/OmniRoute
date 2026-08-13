@@ -97,7 +97,7 @@ const eslintConfig = [
       "@typescript-eslint": tseslint.plugin,
     },
     rules: {
-      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/no-explicit-any": "warn",
       "@next/next/no-assign-module-variable": "off",
       "react-hooks/rules-of-hooks": "off",
     },

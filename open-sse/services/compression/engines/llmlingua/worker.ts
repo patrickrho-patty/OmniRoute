@@ -190,6 +190,7 @@ export function resolveWorkerFile(): { workerFile: string; execArgv: string[] } 
 /** Reset the idle eviction timer; terminates the worker after the idle window. */
 function bumpIdleTimer(): void {
   if (idleTimer) clearTimeout(idleTimer);
+  if (LLMLINGUA_WORKER_IDLE_MS <= 0) return;
   idleTimer = setTimeout(() => {
     resetWorker();
   }, LLMLINGUA_WORKER_IDLE_MS);
@@ -228,7 +229,7 @@ function ensureWorker(): Worker {
 
   const { workerFile, execArgv } = resolveWorkerFile();
   const absoluteWorkerFile = path.resolve(workerFile);
-  const w = new Worker(pathToFileURL(absoluteWorkerFile).href, { execArgv });
+  const w = new Worker(absoluteWorkerFile, { execArgv });
 
   w.on("message", (reply: WorkerReply) => {
     const entry = pending.get(reply.id);

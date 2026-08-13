@@ -23,6 +23,7 @@ import { createPiiSseTransform as defaultPiiSse } from "@/lib/streamingPiiTransf
 import { isFeatureFlagEnabled as defaultFeatureFlag } from "@/shared/utils/featureFlags";
 import { OMNIROUTE_RESPONSE_HEADERS } from "@/shared/constants/headers";
 import { SSE_HEARTBEAT_INTERVAL_MS } from "../../config/constants.ts";
+import { createPattySettlementTransform, type PattyHarness } from "../../services/pattyGateway.ts";
 /**
  * Pipeline assembly instrumentation — performance.mark() along the SSE hot path.
  * Marks are visible to Node.js perf_hooks consumers and DevTools' Performance
@@ -69,6 +70,10 @@ export function assembleStreamingPipeline(
     clientResponseFormat: unknown;
     echoModel: string | null | undefined;
     responseHeaders: Record<string, string>;
+    pattySettlement?: {
+      harness: PattyHarness;
+      awaitSettlement: () => Promise<void>;
+    } | null;
   },
   deps: StreamingPipelineDeps = DEFAULT_DEPS
 ) {
@@ -111,6 +116,14 @@ export function assembleStreamingPipeline(
   // #1311: echo the requested alias/combo name in each streamed SSE chunk's model field.
   if (args.echoModel) {
     finalStream = finalStream.pipeThrough(deps.createModelEchoTransform(args.echoModel));
+  }
+  if (args.pattySettlement) {
+    finalStream = finalStream.pipeThrough(
+      createPattySettlementTransform(
+        args.pattySettlement.harness,
+        args.pattySettlement.awaitSettlement
+      )
+    );
   }
   performance.mark(PIPELINE_END);
   performance.measure(PIPELINE_MEASURE, PIPELINE_START, PIPELINE_END);

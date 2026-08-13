@@ -2,16 +2,15 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "OmniRoute AI Gateway",
-    short_name: "OmniRoute",
-    description:
-      "OmniRoute is an AI gateway for multi-provider LLMs. One endpoint for all your AI providers.",
+    name: "Patty",
+    short_name: "Patty",
+    description: "Patty — where AI becomes everyone's superpower.",
     start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     orientation: "any",
-    background_color: "#0b0f1a",
-    theme_color: "#0b0f1a",
+    background_color: "#ffffff",
+    theme_color: "#ffffff",
     categories: ["developer-tools", "productivity", "utilities"],
     lang: "en",
     dir: "ltr",
@@ -47,7 +46,7 @@ export default function manifest(): MetadataRoute.Manifest {
         sizes: "1280x720",
         type: "image/png",
         form_factor: "wide",
-        label: "OmniRoute Dashboard",
+        label: "Dashboard",
       },
     ],
   };

@@ -87,6 +87,39 @@ describe("RTK compression engine", () => {
     assert.equal(result.stats?.mode, "rtk");
   });
 
+  it("incremental memo: cached messages still contribute to stats (no telemetry undercount)", () => {
+    const toolMsg = () => ({
+      role: "tool",
+      content: Array.from({ length: 20 }, () => "same").join("\n"),
+    });
+    const body = () => ({ messages: [toolMsg(), toolMsg()] });
+    // Minimal incremental context — rtk only reads cumulativeByIndex + memo.
+    const ctx = {
+      cumulativeByIndex: ["h0", "h1"],
+      memo: new Map<string, unknown>(),
+      processedDedupHashes: new Set<string>(),
+      principalId: "p",
+      pipelineSig: "sig",
+    } as never;
+    const opts = { incremental: ctx } as never; // no config → rtk defaults to enabled
+
+    // Turn 1: both messages computed, memo populated.
+    const first = applyRtkCompression(body(), opts);
+    // Turn 2: identical body → both messages served from the memo.
+    const second = applyRtkCompression(body(), opts);
+
+    assert.equal(first.compressed, true);
+    assert.equal(second.compressed, true);
+    assert.ok((first.stats?.techniquesUsed?.length ?? 0) > 0, "turn 1 should report techniques");
+    // The fix: cached messages re-accumulate their stats, so turn 2 matches turn 1 (not empty).
+    assert.deepEqual(
+      second.stats?.techniquesUsed,
+      first.stats?.techniquesUsed,
+      "cached-message stats must match a fresh run, not be undercounted"
+    );
+    assert.deepEqual(second.stats?.rulesApplied, first.stats?.rulesApplied);
+  });
+
   it("compresses multipart text parts independently without duplicating output", () => {
     const imagePart = { type: "image_url", image_url: { url: "data:image/png;base64,abc" } };
     const body = {

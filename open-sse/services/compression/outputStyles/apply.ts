@@ -1,4 +1,9 @@
 import { SHARED_BOUNDARIES, shouldBypassCavemanOutputMode } from "../outputMode.ts";
+import {
+  bodyHasSystemInstructionMarker,
+  injectSystemInstructionOnce,
+  type SystemInstructionBody,
+} from "../systemInstruction.ts";
 import { OUTPUT_STYLE_IDS, outputStyleMeta } from "./catalog.ts";
 
 export type OutputStyleLevel = "lite" | "full" | "ultra";
@@ -8,25 +13,16 @@ export interface OutputStyleSelectionEntry {
   level: OutputStyleLevel;
 }
 
-interface ChatMessage {
-  role: string;
-  content?: string | unknown[];
-  [key: string]: unknown;
-}
-
-interface ChatRequestBody {
-  messages?: ChatMessage[];
-  instructions?: string;
-  input?: unknown;
-  [key: string]: unknown;
-}
-
 export interface OutputStylesResult {
-  body: ChatRequestBody;
+  body: SystemInstructionBody;
   applied: boolean;
   skippedReason?: string;
   /** The styles actually injected (after unknown/locale filtering), in catalog order. */
   appliedStyles?: OutputStyleSelectionEntry[];
+}
+
+export interface OutputStylesOptions {
+  marker?: string;
 }
 
 /** Single idempotency marker guarding the unified injection (D-A: one marker for all styles). */
@@ -54,10 +50,7 @@ function resolveStyles(
 }
 
 /** Build the combined instruction body (no marker, no trailing boundary). Pure / deterministic. */
-function buildStyleInstructions(
-  resolved: OutputStyleSelectionEntry[],
-  language: string
-): string {
+function buildStyleInstructions(resolved: OutputStyleSelectionEntry[], language: string): string {
   const parts: string[] = [];
   for (const { id, level } of resolved) {
     const meta = outputStyleMeta(id);
@@ -77,9 +70,10 @@ function buildStyleInstructions(
  * - Content bypass runs once across the whole turn (all-or-nothing); reason recorded.
  */
 export function applyOutputStyles(
-  body: ChatRequestBody,
+  body: SystemInstructionBody,
   selection: OutputStyleSelectionEntry[],
-  language = "en"
+  language = "en",
+  options: OutputStylesOptions = {}
 ): OutputStylesResult {
   const resolved = resolveStyles(selection ?? [], language);
   if (resolved.length === 0) {
@@ -89,47 +83,27 @@ export function applyOutputStyles(
   // Single space before the shared boundary so a legacy single-style (terse-prose)
   // injection stays byte-identical to the old caveman output mode (D-A5 back-compat).
   const combined = `${buildStyleInstructions(resolved, language)} ${SHARED_BOUNDARIES}`;
-  const instruction = `${OUTPUT_STYLE_MARKER}\n${combined}`;
+  const marker = options.marker ?? OUTPUT_STYLE_MARKER;
+  const instruction = `${marker}\n${combined}`;
 
   const messages = Array.isArray(body.messages) ? body.messages : null;
-  if (!messages || messages.length === 0) {
-    if (typeof body.instructions === "string") {
-      if (body.instructions.includes(OUTPUT_STYLE_MARKER)) {
-        return { body, applied: false, skippedReason: "already_applied" };
-      }
-      return {
-        body: { ...body, instructions: `${body.instructions.trim()}\n\n${instruction}` },
-        applied: true,
-        appliedStyles: resolved,
-      };
-    }
-    if (typeof body.input === "string" || Array.isArray(body.input)) {
-      return { body: { ...body, instructions: instruction }, applied: true, appliedStyles: resolved };
-    }
-    return { body, applied: false, skippedReason: "no_messages" };
+  if (bodyHasSystemInstructionMarker(body, marker)) {
+    return { body, applied: false, skippedReason: "already_applied" };
   }
 
-  // Idempotency before bypass so an already-injected marker (which contains
-  // SHARED_BOUNDARIES keywords) cannot trigger a false-positive bypass.
-  const alreadyApplied = messages.some(
-    (message) =>
-      message.role === "system" &&
-      typeof message.content === "string" &&
-      message.content.includes(OUTPUT_STYLE_MARKER)
-  );
-  if (alreadyApplied) return { body, applied: false, skippedReason: "already_applied" };
+  if (!messages || messages.length === 0) {
+    const injected = injectSystemInstructionOnce(body, marker, instruction);
+    return injected.applied
+      ? { body: injected.body, applied: true, appliedStyles: resolved }
+      : { body, applied: false, skippedReason: injected.skippedReason };
+  }
 
   // Content bypass (all-or-nothing for the turn): reuse the existing rules verbatim.
   const bypass = shouldBypassCavemanOutputMode(messages);
   if (bypass) return { body, applied: false, skippedReason: bypass };
 
-  const nextMessages = [...messages];
-  const first = nextMessages[0];
-  if (first?.role === "system" && typeof first.content === "string") {
-    nextMessages[0] = { ...first, content: `${first.content.trim()}\n\n${instruction}` };
-  } else {
-    nextMessages.unshift({ role: "system", content: instruction });
-  }
-
-  return { body: { ...body, messages: nextMessages }, applied: true, appliedStyles: resolved };
+  const injected = injectSystemInstructionOnce(body, marker, instruction);
+  return injected.applied
+    ? { body: injected.body, applied: true, appliedStyles: resolved }
+    : { body, applied: false, skippedReason: injected.skippedReason };
 }

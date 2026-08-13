@@ -7,6 +7,7 @@ import { ccrEngine } from "./ccr/index.ts";
 import { llmlinguaEngine } from "./llmlingua/index.ts";
 import { ionizerEngine } from "./ionizer/index.ts";
 import { relevanceEngine } from "./relevance/index.ts";
+import { ponytailEngine } from "./ponytail/index.ts";
 import { llmCompressorEngine } from "./llm/index.ts";
 import { readLifecycleEngine } from "./readLifecycle/index.ts";
 import { omniglyphEngine } from "./omniglyphAdapter.ts";
@@ -35,6 +36,7 @@ export function registerBuiltinCompressionEngines(): void {
     { id: "llmlingua", engine: llmlinguaEngine },
     { id: "ionizer", engine: ionizerEngine },
     { id: "relevance", engine: relevanceEngine },
+    { id: "ponytail", engine: ponytailEngine },
     { id: "llm", engine: llmCompressorEngine },
     { id: "read-lifecycle", engine: readLifecycleEngine },
     { id: "omniglyph", engine: omniglyphEngine },

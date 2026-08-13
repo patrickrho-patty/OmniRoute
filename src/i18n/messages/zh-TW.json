@@ -7264,6 +7264,10 @@
         "label": "精簡",
         "description": "表格 JSON 壓縮。"
       },
+      "ponytail": {
+        "description": "Lazy-senior-dev YAGNI instruction injection.",
+        "label": "Ponytail"
+      },
       "relevance": {
         "label": "相關性",
         "description": "針對最新使用者查詢進行抽取式句子評分。"

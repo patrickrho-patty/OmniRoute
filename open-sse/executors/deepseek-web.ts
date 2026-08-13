@@ -1,6 +1,8 @@
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { solveDeepSeekPowAsync } from "../lib/deepseek-pow.ts";
-import { type OpenAIToolCall } from "../translator/webTools.ts";
+import { type OpenAIToolCall } from "../services/webProvider/types.ts";
+import { resolveWebToolChoice } from "../services/webProvider/toolContract.ts";
+import { enforceWebToolChoice } from "../services/webProvider/toolPipeline.ts";
 import {
   serializeDeepSeekToolPrompt,
   parseDeepSeekToolCalls,
@@ -18,6 +20,7 @@ import {
   createFinishOnceGuard,
   createFinishedDrainScheduler,
 } from "./deepseek-web-done-terminator.ts";
+import { stripInternalReasoningPlaceholder } from "../utils/reasoningPlaceholder.ts";
 
 export const DEEPSEEK_WEB_BASE = "https://chat.deepseek.com";
 const DEEPSEEK_API_BASE = `${DEEPSEEK_WEB_BASE}/api`;
@@ -222,7 +225,11 @@ function transformSSE(deepseekStream: ReadableStream, model: string): ReadableSt
           createFinishedDrainScheduler(finishStream);
 
         const sendByPath = (raw: string) => {
-          const text = formatStreamContent(raw, streamModel);
+          // Strip the internal reasoning-replay sentinel (#1682) if DeepSeek echoes
+          // it back through streamed content/reasoning — it must never reach the client.
+          const text = stripInternalReasoningPlaceholder(
+            formatStreamContent(raw, streamModel)
+          );
           if (!text) return;
           ensureRole();
           let path = currentPath;
@@ -381,7 +388,11 @@ async function collectSSEContent(
   const searchResults: DeepSeekSearchResult[] = [];
 
   const appendByPath = (raw: string) => {
-    const text = formatStreamContent(raw, streamModel);
+    // Strip the internal reasoning-replay sentinel (#1682) if DeepSeek echoes it
+    // back — it must never reach the client.
+    const text = stripInternalReasoningPlaceholder(
+      formatStreamContent(raw, streamModel)
+    );
     if (!text) return;
     let path = currentPath;
     if (!path && thinkingModel) path = "thinking";
@@ -851,8 +862,12 @@ export class DeepSeekWebExecutor extends BaseExecutor {
     // <tool>...</tool> prompt contract on the way in, and parse the model's text reply
     // back into OpenAI tool_calls on the way out.
     const requestedTools = bodyObj.tools;
-    const hasTools = Array.isArray(requestedTools) && requestedTools.length > 0;
-    const toolSystemPrompt = hasTools ? serializeDeepSeekToolPrompt(requestedTools) : "";
+    const toolChoice = resolveWebToolChoice(requestedTools, bodyObj.tool_choice);
+    const hasTools =
+      toolChoice !== "none" && Array.isArray(requestedTools) && requestedTools.length > 0;
+    const toolSystemPrompt = hasTools
+      ? serializeDeepSeekToolPrompt(requestedTools, toolChoice)
+      : "";
 
     const messages = (Array.isArray(bodyObj.messages) ? bodyObj.messages : []) as Array<{
       role: string;
@@ -1066,12 +1081,21 @@ export class DeepSeekWebExecutor extends BaseExecutor {
           `call-${Date.now()}`,
           requestedTools
         );
+        const toolResponse = enforceWebToolChoice(cleanedContent, toolCalls, toolChoice);
+        if (toolResponse.policyViolation) {
+          return {
+            response: errorResponse(502, "DeepSeek Web did not honor the requested tool policy."),
+            url: COMPLETION_URL,
+            headers: reqHeaders,
+            transformedBody: requestPayload,
+          };
+        }
         return buildToolAwareResult({
           stream: stream !== false,
           clientModel,
-          content: cleanedContent,
+          content: toolResponse.content,
           reasoningContent,
-          toolCalls,
+          toolCalls: toolResponse.toolCalls,
           reqHeaders,
           requestPayload,
         });

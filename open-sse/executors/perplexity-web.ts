@@ -13,7 +13,7 @@ import {
   TlsClientUnavailableError,
   type TlsFetchResult,
 } from "../services/perplexityTlsClient.ts";
-import { prepareToolMessages } from "../translator/webTools.ts";
+import { prepareWebToolRequest } from "../services/webProvider/toolPipeline.ts";
 import { buildToolModeResponse } from "./chatgptWebTools.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 import {
@@ -375,7 +375,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
       return { response: errResp, url: PPLX_SSE_ENDPOINT, headers: {}, transformedBody: body };
     }
 
-    const { hasTools, requestedTools, effectiveMessages } = prepareToolMessages(
+    const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
       rawMessages as Array<{ role: string; content: unknown }>
     );
@@ -591,6 +591,7 @@ export class PerplexityWebExecutor extends BaseExecutor {
         created,
         model,
         idSeed: "pplx",
+        toolChoice,
       });
     } else if (stream) {
       const sseStream = buildStreamingResponse(

@@ -2,9 +2,9 @@
 //
 // chat.deepseek.com has no native function calling, so OmniRoute serializes the OpenAI
 // `tools[]` into a prompt contract and parses the model's text reply back into OpenAI
-// `tool_calls`. The canonical `webTools.ts` parser handles the well-behaved
-// `<tool>{json}</tool>` / bare-JSON shapes used by most web-cookie providers, and it MUST
-// stay untouched (it works for the others).
+// `tool_calls`. The canonical decoder (../services/webProvider/toolDecoder.ts) handles
+// the well-behaved `<tool>{json}</tool>` / fenced-JSON shapes used by most web-cookie
+// providers.
 //
 // DeepSeek, however, emits a much wider zoo of ad-hoc shapes:
 //   <tool:todowrite>{json}</tool>            name in the tag suffix, body is the arguments
@@ -17,19 +17,22 @@
 //
 // A single regex cannot robustly cover all of these (nesting + attributes + XML children),
 // so this parser tokenizes the tool tags and walks them with a stack instead. It reuses the
-// proven JSON-normalization / fuzzy-name-matching / range-stripping helpers from webTools.ts
-// rather than duplicating them.
+// proven JSON-normalization / fuzzy-name-matching / range-stripping helpers from the
+// canonical web-provider decoder rather than duplicating them.
 
 import {
-  parseToolCallsFromText,
+  decodeExplicitWebToolCalls,
   parseLooseJsonObject,
   getRequestedToolNames,
   resolveRequestedToolName,
   toArgumentsString,
   stripRanges,
-  type OpenAIToolCall,
-  type RequestedToolName,
-} from "./webTools.ts";
+} from "../services/webProvider/toolDecoder.ts";
+import type {
+  OpenAIToolCall,
+  RequestedToolName,
+  WebToolChoice,
+} from "../services/webProvider/types.ts";
 
 interface OpenAIToolDef {
   type?: string;
@@ -41,12 +44,15 @@ interface OpenAIToolDef {
 /**
  * Serialize an OpenAI `tools` array into a DeepSeek-specific system-prompt block.
  *
- * It is deliberately stricter than the generic `serializeToolsToPrompt`: DeepSeek tends to
+ * It is deliberately stricter than the generic shared tool contract: DeepSeek tends to
  * (a) invent its own wrappers and (b) merely *describe* a plan instead of emitting a call.
  * The wording forces the single canonical `<tool>{json}</tool>` shape and forbids the
  * alternatives, while staying short to avoid wasting tokens.
  */
-export function serializeDeepSeekToolPrompt(tools: unknown): string {
+export function serializeDeepSeekToolPrompt(
+  tools: unknown,
+  toolChoice: WebToolChoice = "auto"
+): string {
   if (!Array.isArray(tools) || tools.length === 0) return "";
 
   const lines: string[] = [];
@@ -73,6 +79,11 @@ export function serializeDeepSeekToolPrompt(tools: unknown): string {
     "- Use exactly <tool>...</tool>. Do NOT use <tool:name>, <tool_call>, <name>, <parameter>, id=/name= attributes, or code fences.",
     '- "name" must be one of the tools below; "arguments" must be a JSON object.',
     "- When a tool is needed, emit the <tool> block instead of only describing the plan.",
+    ...(toolChoice === "required"
+      ? ["- You must emit one or more declared tool calls before answering this turn."]
+      : typeof toolChoice === "object"
+        ? [`- You must call the declared tool \`${toolChoice.name}\` before answering this turn.`]
+        : []),
     "- Emit one <tool> block per call; you may put several blocks back to back.",
     "- If no tool is needed, just answer normally without any <tool> block.",
     "",
@@ -421,7 +432,7 @@ function extractCall(
  * Parse a DeepSeek-web text reply into OpenAI `tool_calls`. Returns the surrounding text with the recognized blocks stripped (so it can
  * still be streamed to the client) plus the parsed calls, or `null` when none are present.
  *
- * Falls back to the canonical `webTools.parseToolCallsFromText` for tag-free replies so that
+ * Falls back to the canonical explicit-envelope decoder when no DeepSeek-specific tag is found.
  * bare-JSON and plain `<tool>` behavior stays identical to the shared implementation.
  */
 export function parseDeepSeekToolCalls(
@@ -436,7 +447,7 @@ export function parseDeepSeekToolCalls(
   const tokens = tokenizeToolTags(text);
   if (tokens.length === 0) {
     // No DeepSeek-specific tags — defer to the proven canonical parser (bare JSON, etc.).
-    return parseToolCallsFromText(text, idSeed, requestedTools);
+    return decodeExplicitWebToolCalls(text, idSeed, requestedTools);
   }
 
   const requested = getRequestedToolNames(requestedTools);
@@ -470,7 +481,7 @@ export function parseDeepSeekToolCalls(
 
   if (toolCalls.length === 0) {
     // Tags were present but none parsed (e.g. malformed) — try the canonical bare-JSON path.
-    return parseToolCallsFromText(text, idSeed, requestedTools);
+    return decodeExplicitWebToolCalls(text, idSeed, requestedTools);
   }
 
   // Strip the accepted blocks plus any stray tool tags left outside them (the unmatched outer
