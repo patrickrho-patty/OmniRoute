@@ -1353,6 +1353,10 @@ async function handleSingleModelChat(
   const retrySettings = disableCooldownAwareRetry(
     baseRetrySettings,
     provider === "claude-web" ||
+      // chatgpt-web is browser impersonation behind an abuse detector; a
+      // cooldown retry loop re-POSTs the whole conversation request and keeps
+      // re-triggering ChatGPT's "unusual activity" flag. One attempt, fail fast.
+      provider === "chatgpt-web" ||
       isCombo ||
       forceLiveComboTest ||
       runtimeOptions.emergencyFallbackTried === true

@@ -222,6 +222,16 @@ const EXTRA_MODULE_ENTRIES = [
     dest: ["node_modules", "cloakbrowser"],
   },
   {
+    // cloakbrowser's download.js (lazy Chromium fetch, also used at Docker
+    // build time to bake the binary) imports `tar` — a declared dependency
+    // that nft never traces because cloakbrowser itself is only reached via
+    // a computed dynamic import. Without this entry the download fails with
+    // "Cannot find package 'tar'".
+    label: "tar (cloakbrowser binary-download dependency)",
+    src: ["node_modules", "tar"],
+    dest: ["node_modules", "tar"],
+  },
+  {
     // esbuild's `--packages=external` leaves `undici` as a static top-level ESM
     // import in the compiled MCP server bundle (dist/open-sse/mcp-server/server.js),
     // resolved at module-link time. Next.js's standalone output-file tracer (nft)

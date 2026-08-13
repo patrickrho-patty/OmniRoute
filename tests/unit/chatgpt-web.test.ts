@@ -347,6 +347,9 @@ function installMockFetch({
 
 function reset() {
   __resetChatGptWebCachesForTesting();
+  // Disable the per-account pacing gate by default so tests run at full
+  // speed; the dedicated pacing test sets CHATGPT_WEB_MIN_INTERVAL_MS itself.
+  process.env.CHATGPT_WEB_MIN_INTERVAL_MS = "0";
 }
 
 // ─── Registration ───────────────────────────────────────────────────────────
@@ -846,7 +849,7 @@ test("Non-streaming: converts ChatGPT Web textual tool output into OpenAI tool_c
     const sentBody = JSON.parse(m.calls.bodies[convIdx]);
     const systemPart = sentBody.messages[0].content.parts[0];
     assert.match(systemPart, /get_weather/);
-    assert.match(systemPart, /fenced JSON tool call/);
+    assert.match(systemPart, /fenced JSON block/);
   } finally {
     m.restore();
   }
@@ -3687,6 +3690,7 @@ test("stripCdxInjectedMemory preserves the later-turn action protocol after memo
 
 test("Excuse guard: confabulation triggers one corrective retry yielding tool_calls", async () => {
   reset();
+  process.env.CHATGPT_WEB_EXCUSE_RETRY = "1";
   const convBodies: string[] = [];
   const m = installMockFetch({
     onConv: (opts: { body?: string }) => convBodies.push(opts.body ?? ""),
@@ -3752,6 +3756,7 @@ test("Excuse guard: confabulation triggers one corrective retry yielding tool_ca
     });
   } finally {
     m.restore();
+    delete process.env.CHATGPT_WEB_EXCUSE_RETRY;
   }
 });
 
@@ -3782,50 +3787,53 @@ test("Excuse guard: corrective retry fetches FRESH sentinel tokens (reused token
       ],
     }),
   });
-  await withEnv({ CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS: "0" }, async () => {
-    try {
-      const executor = new ChatGptWebExecutor();
-      const result = await executor.execute({
-        model: "gpt-5.3-instant",
-        body: {
-          messages: [{ role: "user", content: "read package.json" }],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "exec_command",
-                description: "Run a command",
-                parameters: {
-                  type: "object",
-                  properties: { cmd: { type: "string" } },
-                  required: ["cmd"],
-                },
+  process.env.CHATGPT_WEB_EXCUSE_RETRY = "1";
+  process.env.CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS = "0";
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "read package.json" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
               },
             },
-          ],
-          stream: false,
-        },
+          },
+        ],
         stream: false,
-        credentials: { apiKey: "test" },
-        signal: AbortSignal.timeout(10_000),
-        log: null,
-      });
-      assert.equal(m.calls.conv, 2, "exactly one corrective retry was issued");
-      assert.equal(
-        m.calls.sentinel,
-        2,
-        "retry re-fetched sentinel requirements instead of reusing the consumed token"
-      );
-      const json = await result.response.json();
-      assert.equal(json.choices[0].message.tool_calls[0].function.name, "exec_command");
-    } finally {
-      m.restore();
-    }
-  });
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    assert.equal(m.calls.conv, 2, "exactly one corrective retry was issued");
+    assert.equal(
+      m.calls.sentinel,
+      2,
+      "retry re-fetched sentinel requirements instead of reusing the consumed token"
+    );
+    const json = await result.response.json();
+    assert.equal(json.choices[0].message.tool_calls[0].function.name, "exec_command");
+  } finally {
+    m.restore();
+    delete process.env.CHATGPT_WEB_EXCUSE_RETRY;
+    delete process.env.CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS;
+  }
 });
 
 test("Excuse guard: second-strike excuse passes through without another retry", async () => {
   reset();
+  process.env.CHATGPT_WEB_EXCUSE_RETRY = "1";
   const m = installMockFetch({
     conv: {
       status: 200,
@@ -3877,6 +3885,7 @@ test("Excuse guard: second-strike excuse passes through without another retry", 
     assert.equal(json.choices[0].finish_reason, "stop");
   } finally {
     m.restore();
+    delete process.env.CHATGPT_WEB_EXCUSE_RETRY;
   }
 });
 
@@ -3911,6 +3920,7 @@ test("stripCdxInjectedMemory removes a memory bullet's indented continuation onl
 
 test("Excuse guard: no corrective retry on tool-result continuation turns", async () => {
   reset();
+  process.env.CHATGPT_WEB_EXCUSE_RETRY = "1";
   const m = installMockFetch({
     conv: {
       status: 200,
@@ -3976,11 +3986,13 @@ test("Excuse guard: no corrective retry on tool-result continuation turns", asyn
     assert.equal(json.choices[0].finish_reason, "stop");
   } finally {
     m.restore();
+    delete process.env.CHATGPT_WEB_EXCUSE_RETRY;
   }
 });
 
 test("Excuse guard: plan narration after a tool result triggers one corrective retry", async () => {
   reset();
+  process.env.CHATGPT_WEB_EXCUSE_RETRY = "1";
   const convBodies: string[] = [];
   const m = installMockFetch({
     onConv: (opts: { body?: string }) => convBodies.push(opts.body ?? ""),
@@ -4055,6 +4067,163 @@ test("Excuse guard: plan narration after a tool result triggers one corrective r
     assert.match(retryUserText, /Host correction: your previous reply did not include a tool call/);
     const json = await result.response.json();
     assert.equal(json.choices[0].finish_reason, "tool_calls");
+  } finally {
+    m.restore();
+    delete process.env.CHATGPT_WEB_EXCUSE_RETRY;
+  }
+});
+
+test("Excuse guard: gate OFF by default — an excuse passes through with NO retry (one conv POST)", async () => {
+  reset();
+  delete process.env.CHATGPT_WEB_EXCUSE_RETRY;
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: {
+              content_type: "text",
+              parts: ["I cannot access the filesystem in this chat."],
+            },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "read package.json" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+        stream: false,
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    assert.equal(m.calls.conv, 1, "gate off: exactly one conversation POST, no retry");
+    assert.equal(m.calls.sentinel, 1, "gate off: no sentinel re-fetch for a retry that never happens");
+    const json = await result.response.json();
+    assert.equal(json.choices[0].finish_reason, "stop");
+    assert.match(json.choices[0].message.content, /cannot access the filesystem/);
+  } finally {
+    m.restore();
+  }
+});
+
+test("Pacing: back-to-back requests enforce the min interval between conversation POSTs", async () => {
+  reset();
+  process.env.CHATGPT_WEB_MIN_INTERVAL_MS = "200";
+  const convTimes: number[] = [];
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["ok"] },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+    onConv: () => convTimes.push(Date.now()),
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const mkRun = (msg: string) =>
+      executor.execute({
+        model: "gpt-5.3-instant",
+        body: { messages: [{ role: "user", content: msg }], stream: false },
+        stream: false,
+        credentials: { apiKey: "test" },
+        signal: AbortSignal.timeout(10_000),
+        log: null,
+      });
+    await mkRun("first");
+    await mkRun("second");
+    assert.equal(convTimes.length, 2, "two requests → two conversation POSTs");
+    const gap = convTimes[1] - convTimes[0];
+    assert.ok(gap >= 150, `expected the second POST to wait for the min interval, gap was ${gap}ms`);
+  } finally {
+    m.restore();
+    delete process.env.CHATGPT_WEB_MIN_INTERVAL_MS;
+  }
+});
+
+test("Empty tool-aware turn: fails fast with 502 and NO retry (one conv POST)", async () => {
+  reset();
+  const m = installMockFetch({
+    conv: {
+      status: 200,
+      events: [
+        {
+          conversation_id: "conv-1",
+          message: {
+            id: "msg-1",
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: [] },
+            status: "finished_successfully",
+          },
+        },
+      ],
+    },
+  });
+  try {
+    const executor = new ChatGptWebExecutor();
+    const result = await executor.execute({
+      model: "gpt-5.3-instant",
+      body: {
+        messages: [{ role: "user", content: "list the files" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "exec_command",
+              description: "Run a command",
+              parameters: {
+                type: "object",
+                properties: { cmd: { type: "string" } },
+                required: ["cmd"],
+              },
+            },
+          },
+        ],
+        stream: false,
+      },
+      stream: false,
+      credentials: { apiKey: "test" },
+      signal: AbortSignal.timeout(10_000),
+      log: null,
+    });
+    assert.equal(m.calls.conv, 1, "empty turn: NO stateless replay retry");
+    assert.equal(result.response.status, 502);
+    const json = await result.response.json();
+    assert.match(json.error?.message || "", /empty assistant turn/i);
   } finally {
     m.restore();
   }

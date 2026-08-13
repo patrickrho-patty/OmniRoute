@@ -1454,6 +1454,19 @@ function toolRetryBackoffMs(): number {
   return CHATGPT_WEB_TOOL_RETRY_BACKOFF_MS_DEFAULT;
 }
 
+/**
+ * Opt-in gate for the excuse-guard corrective retry. OFF by default: the
+ * retry re-POSTs the conversation seconds after the first turn, which is
+ * exactly the pattern ChatGPT's "unusual activity" detector punishes. With
+ * the gate off the model's prose answer passes through untouched.
+ */
+function excuseRetryEnabled(): boolean {
+  const raw = process.env.CHATGPT_WEB_EXCUSE_RETRY;
+  if (raw === undefined || raw === "") return false;
+  const lower = raw.trim().toLowerCase();
+  return lower === "1" || lower === "true" || lower === "on";
+}
+
 /** Abort-aware sleep so a client disconnect cancels the retry backoff. */
 function sleepAbortable(ms: number, signal?: AbortSignal | null): Promise<void> {
   return new Promise((resolve) => {
@@ -1471,6 +1484,42 @@ function sleepAbortable(ms: number, signal?: AbortSignal | null): Promise<void> 
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+// ─── Per-account pacing ────────────────────────────────────────────────────
+// ChatGPT's abuse detector ("Unusual activity has been detected from your
+// device") punishes burst traffic from one device. Enforce a minimum interval
+// between conversation POSTs per account (keyed by account identity) so even
+// agentic clients cannot trip the detector with back-to-back requests. The
+// same gate covers first POSTs and any opt-in retry POSTs.
+const CHATGPT_WEB_PACE_MAX_ENTRIES = 200;
+const chatgptWebPaceState = new Map<string, number>(); // accountKey -> nextAllowedAtMs
+
+function chatGptWebMinIntervalMs(): number {
+  const raw = process.env.CHATGPT_WEB_MIN_INTERVAL_MS;
+  if (raw !== undefined && raw !== "" && Number.isFinite(Number(raw))) {
+    return Math.max(0, Number(raw));
+  }
+  return 2500;
+}
+
+async function paceChatGptConversation(
+  accountKey: string,
+  signal?: AbortSignal | null
+): Promise<void> {
+  const minMs = chatGptWebMinIntervalMs();
+  if (minMs <= 0) return;
+  const now = Date.now();
+  const nextAllowedAt = chatgptWebPaceState.get(accountKey) ?? 0;
+  const waitMs = nextAllowedAt - now;
+  chatgptWebPaceState.set(accountKey, now + minMs);
+  if (chatgptWebPaceState.size > CHATGPT_WEB_PACE_MAX_ENTRIES) {
+    const oldest = chatgptWebPaceState.keys().next().value;
+    if (oldest !== undefined) chatgptWebPaceState.delete(oldest);
+  }
+  if (waitMs > 0) {
+    await sleepAbortable(waitMs, signal);
+  }
 }
 
 /**
@@ -3673,11 +3722,12 @@ export class ChatGptWebExecutor extends BaseExecutor {
 
       log?.info?.("CGPT-WEB", `Conversation request → ${modelSlug} (pow=${!!proofToken})`);
 
-      const postConversation = (
+      const postConversation = async (
         requestBody: Record<string, unknown>,
         headersOverride?: Record<string, string>
-      ) =>
-        tlsFetchChatGpt(CONV_URL, {
+      ) => {
+        await paceChatGptConversation(accountIdentity, signal);
+        return tlsFetchChatGpt(CONV_URL, {
           method: "POST",
           headers: headersOverride ?? headers,
           body: JSON.stringify(requestBody),
@@ -3689,6 +3739,7 @@ export class ChatGptWebExecutor extends BaseExecutor {
           // anything (and the downstream HTTP request can time out).
           stream,
         });
+      };
       const connectionFailure = (err: unknown) => {
         log?.error?.(
           "CGPT-WEB",
@@ -3922,9 +3973,17 @@ export class ChatGptWebExecutor extends BaseExecutor {
 
       let finalResponse: Response;
       if (hasTools) {
-        // Full excuse detection on fresh user turns; the narrow plan-narration
-        // set on tool-result continuations (grounded answers stay exempt).
-        const guardMode: WebToolGuardMode = parsed.currentInput?.role === "tool" ? "plan" : "full";
+        // Excuse retry is opt-in (CHATGPT_WEB_EXCUSE_RETRY=1) and OFF by
+        // default: every retry is an extra POST against ChatGPT's abuse
+        // detector, and a retried excuse is just as likely to be flagged.
+        // With the gate off, the model's prose answer passes through and the
+        // client agent's own retry logic decides what to do.
+        const retryExcuseEnabled = excuseRetryEnabled();
+        const guardMode: WebToolGuardMode = retryExcuseEnabled
+          ? parsed.currentInput?.role === "tool"
+            ? "plan"
+            : "full"
+          : "off";
         try {
           finalResponse = await buildToolAwareChatGptResponse(
             bodyStream,
@@ -3952,12 +4011,21 @@ export class ChatGptWebExecutor extends BaseExecutor {
             });
           }
           if (!(err instanceof ChatGptEmptyResponseError)) throw err;
-          return runStatelessToolRetry({
-            logMessage:
-              "ChatGPT returned an empty tool-aware turn; retrying once with typed stateless replay",
-            invalidateCachedConversation: true,
-            emptyFailureMessage: "ChatGPT returned an empty assistant turn after stateless replay.",
-          });
+          // Empty turn = the upstream rejected the request (throttled/flagged
+          // accounts return 200 with an empty stream). NEVER retry this — a
+          // retry just doubles the traffic against a throttled account. Fail
+          // fast so the client can decide.
+          log?.warn?.("CGPT-WEB", "ChatGPT returned an empty tool-aware turn; failing fast (no retry)");
+          return {
+            response: errorResponse(
+              502,
+              "ChatGPT returned an empty assistant turn (the account may be temporarily throttled). Try again in a moment.",
+              "CHATGPT_EMPTY_RESPONSE"
+            ),
+            url: CONV_URL,
+            headers,
+            transformedBody: cgptBody,
+          };
         }
       } else if (stream) {
         const sseStream = buildStreamingResponse(
@@ -4030,6 +4098,7 @@ export function __resetChatGptWebCachesForTesting(): void {
   warmupCache.clear();
   thinkingEffortCache.clear();
   deviceIdCache.clear();
+  chatgptWebPaceState.clear();
   __resetChatGptConversationCacheForTesting();
   __resetChatGptImageCacheForTesting();
   dplCache = null;

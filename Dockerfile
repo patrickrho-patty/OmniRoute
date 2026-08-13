@@ -214,6 +214,10 @@ USER root
 # ensures the same playwright version is available at runtime for web-session providers.
 COPY --from=builder /app/node_modules/playwright-core ./node_modules/playwright-core
 COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
+# cloakbrowser (stealth Chromium for cf_clearance acquisition) is a dynamic
+# import — copy it explicitly like playwright rather than relying on the
+# standalone tracer.
+COPY --from=builder /app/node_modules/cloakbrowser ./node_modules/cloakbrowser
 
 # Install Playwright browser binaries + OS dependencies under root, then hand
 # ownership of the browsers cache to the node user.
@@ -227,6 +231,16 @@ RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt,sharing=locked \
   && node node_modules/playwright/cli.js install chromium --with-deps \
   && chown -R node:node /home/node/.cache \
   && rm -rf /var/lib/apt/lists/*
+
+# Bake the cloakbrowser patched-Chromium binary into the image. The package
+# downloads it lazily on FIRST launch (~200 MB from GitHub) — doing that at
+# request time is slow and GitHub-rate-limit prone, so pre-download here under
+# the node user's HOME (/home/node/.cloakbrowser). Set CLOAKBROWSER_DOWNLOAD_URL
+# to a mirror to bypass GitHub rate limits during CI builds.
+ARG CLOAKBROWSER_DOWNLOAD_URL=""
+ENV CLOAKBROWSER_DOWNLOAD_URL=$CLOAKBROWSER_DOWNLOAD_URL
+RUN HOME=/home/node node --input-type=module -e "import('/app/node_modules/cloakbrowser/dist/download.js').then(async (m) => { await m.ensureBinary(); }).catch((e) => { console.error('[cloakbrowser] binary download failed:', e.message); process.exit(1); })" \
+  && chown -R node:node /home/node/.cloakbrowser
 
 USER node
 

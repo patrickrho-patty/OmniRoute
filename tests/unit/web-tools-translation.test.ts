@@ -66,10 +66,9 @@ describe("web-provider tool contract", () => {
     assert.match(prompt, /OMNIROUTE TOOL PROTOCOL/);
     assert.match(prompt, /```json/);
     assert.match(prompt, /must emit one or more declared tool calls/i);
-    assert.match(prompt, /read, list, search, or change files/i);
-    assert.match(prompt, /never infer that a path is missing/i);
-    assert.match(prompt, /only executable invocation syntax/i);
-    assert.match(prompt, /earlier tool-channel/i);
+    assert.match(prompt, /fenced JSON block/i);
+    assert.match(prompt, /never invent tools, errors, or results/i);
+    assert.match(prompt, /Example \(forced tool call/i);
     assert.doesNotMatch(prompt, /declared tools are available/i);
   });
 

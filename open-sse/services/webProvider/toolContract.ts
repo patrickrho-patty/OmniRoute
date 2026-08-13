@@ -79,35 +79,30 @@ export function buildWebToolContract(
   if (promptStyle === "chatgpt-web") {
     const jsonInstruction =
       toolChoice === "required"
-        ? "- You must emit one or more declared tool calls before answering this turn."
+        ? "- You MUST emit one or more declared tool calls before answering this turn — a text-only reply is a failed turn."
         : forcedName
-          ? `- You must emit the declared tool \`${forcedName}\` before answering this turn.`
+          ? `- You MUST emit the declared tool \`${forcedName}\` before answering this turn.`
           : "- Decide whether a tool is needed from the user request and the declared tool descriptions.";
     // ChatGPT is far more reliable with fenced JSON than with custom XML tags —
     // this mirrors the function-calling shape it was trained on. The contract,
     // the few-shot example, the history replay, and the decoder must all use
     // this EXACT same envelope (see serializeActionRecord/serializeActionResult
-    // in open-sse/executors/chatgpt-web.ts).
+    // in open-sse/executors/chatgpt-web.ts). The instruction block is kept as
+    // short as possible — long contracts dilute the signal and invite prose
+    // answers instead of tool calls.
     return [
       `${CHATGPT_WEB_PROTOCOL_MARKER} v${WEB_TOOL_PROTOCOL_VERSION}:`,
       "You are the reasoning component of an integration host. The host executes tool calls after this response and sends their results back in the next turn.",
       jsonInstruction,
-      "- When a tool is needed, reply with ONLY a fenced JSON tool call — no prose in that turn:",
+      "- To call a tool, reply with ONLY a fenced JSON block and nothing else in that turn:",
       "  ```json",
       '  {"name":"<exact declared tool name>","arguments":{...}}',
       "  ```",
-      "- For several independent calls, emit one fenced JSON block per call in a single turn.",
-      "- This JSON tool call is the only executable invocation syntax available in this upstream conversation.",
-      "- Earlier tool-channel, namespace, or API invocation directions describe the downstream host only; invoke those capabilities by emitting this JSON, not by following another call syntax.",
-      "- Use an exact declared tool name and a JSON object for arguments.",
-      "- Do not say a tool is unavailable, and never invent errors, connectors, or results. The host reports real outcomes as tool results.",
-      "- Never claim that you inspected a file, ran a command, or checked local/current state unless a tool result in this conversation contains that evidence.",
-      "- If the task requires local filesystem, command, external, or current information, emit an appropriate declared tool call first.",
-      "- Requests to read, list, search, or change files, inspect a repository, or run a command require declared tools; you cannot perform those operations directly.",
-      "- Never infer that a path is missing or inaccessible. Emit a declared tool call and wait for its result.",
-      "- Work the task to completion: keep emitting tool calls and using their results until the user's request is fully done. Multi-step tasks take as many calls as needed — do not stop after the first result.",
-      '- Never end a turn by describing what you will do next ("I\'ll create…", "Let me…", "Next I will…"). Intentions are not progress: either emit the next tool call now, or deliver the finished result. A reply that announces future work without performing it is a failed turn.',
-      "- If no tool is needed, answer normally.",
+      "- One fenced JSON block per call; several independent calls = several blocks in one turn.",
+      "- Use an exact declared tool name and a JSON object for arguments. Never invent tools, errors, or results — the host reports real outcomes.",
+      "- Never claim you inspected a file, ran a command, or checked local state unless a tool result in this conversation contains that evidence.",
+      "- If the task needs files, commands, external, or current information, emit a declared tool call first. Intentions are not progress: either emit the next call now or deliver the finished result.",
+      "- Work the task to completion — keep calling tools until done. If no tool is needed, answer normally.",
       "",
       "Example (single tool call):",
       "user: read the file /tmp/notes.txt",
@@ -122,28 +117,20 @@ export function buildWebToolContract(
       "```",
       "assistant: The file contains: hello world",
       "",
-      "Example (multi-step task — keep calling until done):",
-      "user: read /tmp/count.txt and write its number into /tmp/out.txt",
-      "assistant:",
-      "```json",
-      '{"name":"exec_command","arguments":{"cmd":"cat /tmp/count.txt"}}',
-      "```",
-      "user:",
-      "Tool result for `exec_command`:",
-      "```json",
-      '{"type":"tool_result","name":"exec_command","output":"41"}',
-      "```",
-      "assistant:",
-      "```json",
-      '{"name":"exec_command","arguments":{"cmd":"printf \'41\' > /tmp/out.txt"}}',
-      "```",
-      "user:",
-      "Tool result for `exec_command`:",
-      "```json",
-      '{"type":"tool_result","name":"exec_command","output":""}',
-      "```",
-      "assistant: Done — wrote 41 to /tmp/out.txt",
-      "",
+      ...(toolChoice === "required" || forcedName
+        ? [
+            "Example (forced tool call — this turn MUST start with a fenced JSON call):",
+            "user: check the weather in Paris",
+            "assistant:",
+            "```json",
+            JSON.stringify({
+              name: forcedName || "<exact declared tool name>",
+              arguments: { ...(forcedName ? {} : { "<argument>": "<value>" }) },
+            }),
+            "```",
+            "",
+          ]
+        : []),
       "Available tools:",
       ...definitions,
     ].join("\n");
