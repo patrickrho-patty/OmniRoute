@@ -153,6 +153,7 @@ vscode-extension/
 
 # Local OpenCode agent config
 .config/
+.opencode/
 
 # Empty/dangling files
 typescript
