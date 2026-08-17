@@ -64,6 +64,19 @@ interface QwenSseStats {
   thinkChars: number;
 }
 
+function describeQwenJsonError(body: Buffer): string {
+  try {
+    const parsed = JSON.parse(body.toString("utf8")) as Record<string, unknown>;
+    const fields: Record<string, unknown> = {};
+    for (const key of ["code", "errorCode", "message", "error", "success", "ret"]) {
+      if (parsed[key] !== undefined) fields[key] = parsed[key];
+    }
+    return Object.keys(fields).length > 0 ? JSON.stringify(fields) : "unknown json error";
+  } catch {
+    return "unparseable json error";
+  }
+}
+
 function inspectQwenSse(body: Buffer): QwenSseStats {
   const stats: QwenSseStats = { events: 0, answerChars: 0, thinkChars: 0 };
   for (const line of body.toString("utf8").split("\n")) {
@@ -141,7 +154,7 @@ export async function qwenBrowserBackedCompletion(params: {
     }
     if (!result.contentType?.toLowerCase().includes("text/event-stream")) {
       console.warn(
-        `[QWEN_BROWSER] rejected non-SSE capture contentType=${result.contentType || "unknown"}`
+        `[QWEN_BROWSER] rejected non-SSE capture contentType=${result.contentType || "unknown"} error=${describeQwenJsonError(result.body)}`
       );
       return null;
     }
