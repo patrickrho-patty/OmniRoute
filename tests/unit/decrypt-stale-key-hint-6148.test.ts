@@ -61,10 +61,55 @@ test("a genuinely empty credential is NOT flagged as decrypt failure (#6148)", a
   assert.notEqual(decrypted.credentialDecryptFailed, true, "empty credential must not flag");
 });
 
-test("models route guard returns HTTP 424 storage_encryption_stale (#6148)", async () => {
-  const guard = await importFresh(
-    "src/app/api/providers/[id]/models/staleEncryptionGuard.ts"
+test("unset STORAGE_ENCRYPTION_KEY + stored ciphertext flags decrypt failure (#6148)", async () => {
+  // 1. Encrypt an apiKey under a real key.
+  process.env.STORAGE_ENCRYPTION_KEY = "stale-key-6148-had-a-key";
+  const encA = await importFresh("src/lib/db/encryption.ts");
+  const ciphertext = encA.encrypt("cookie-blob-should-not-leak-upstream");
+  assert.match(ciphertext, /^enc:v1:/);
+
+  // 2. Read it back with the key UNSET — the dev-server regression: the row is
+  // ciphertext but the runtime has no key. Must flag (not silently pass the
+  // ciphertext through, which sent `enc:v1:…` upstream as the credential and
+  // misreported the resulting 401/403 as "cookie expired").
+  delete process.env.STORAGE_ENCRYPTION_KEY;
+  const encNone = await importFresh("src/lib/db/encryption.ts");
+
+  const decrypted = encNone.decryptConnectionFields({
+    provider: "chatgpt-web",
+    apiKey: ciphertext,
+  });
+  assert.equal(decrypted.apiKey, null, "undecryptable ciphertext must NOT pass through");
+  assert.equal(
+    decrypted.credentialDecryptFailed,
+    true,
+    "unset key + ciphertext must set credentialDecryptFailed"
   );
+});
+
+test("unset key with PLAINTEXT credentials does not flag (#6148)", async () => {
+  // A plaintext install (never had a key) must keep working — passthrough, no flag.
+  delete process.env.STORAGE_ENCRYPTION_KEY;
+  const encNone = await importFresh("src/lib/db/encryption.ts");
+
+  const decrypted = encNone.decryptConnectionFields({
+    provider: "openai",
+    apiKey: "sk-plain-install-key",
+  });
+  assert.equal(decrypted.apiKey, "sk-plain-install-key");
+  assert.notEqual(decrypted.credentialDecryptFailed, true);
+});
+
+test("isStaleEncryptionConnection predicate matches the guard flag (#6148)", async () => {
+  const guard = await importFresh("src/app/api/providers/[id]/models/staleEncryptionGuard.ts");
+  assert.equal(guard.isStaleEncryptionConnection({ credentialDecryptFailed: true }), true);
+  assert.equal(guard.isStaleEncryptionConnection({ credentialDecryptFailed: false }), false);
+  assert.equal(guard.isStaleEncryptionConnection({}), false);
+  assert.equal(guard.isStaleEncryptionConnection(null), false);
+});
+
+test("models route guard returns HTTP 424 storage_encryption_stale (#6148)", async () => {
+  const guard = await importFresh("src/app/api/providers/[id]/models/staleEncryptionGuard.ts");
 
   // Connection flagged by decryptConnectionFields (stale key).
   const staleResponse = guard.buildStaleEncryptionKeyResponse({

@@ -9,33 +9,17 @@
  * admin, and catalog callers during Phase 2/3 of the lazy-decrypt rollout.
  */
 
-import { decrypt } from "../encryption";
+import { decrypt, looksEncrypted } from "../encryption";
+import { toNumber, toNumberOrNull } from "@/shared/utils/numeric";
 
 type JsonRecord = Record<string, unknown>;
 
 function asRecord(value: unknown): JsonRecord {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : {};
 }
 
 function toStringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  }
-  return fallback;
-}
-
-function toNullableNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const parsed = toNumber(value, Number.NaN);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export interface ProviderConnectionView {
@@ -63,6 +47,8 @@ export interface ProviderConnectionView {
   backoffLevel: number;
   maxConcurrent: number | null;
   quotaWindowThresholds: Record<string, number> | null;
+  /** #6148 — true when a stored credential is ciphertext that no longer decrypts. */
+  credentialDecryptFailed?: boolean;
 }
 
 /**
@@ -98,13 +84,22 @@ export function toProviderConnection(value: unknown): ProviderConnectionView {
     lastErrorType: toStringOrNull(row.lastErrorType),
     lastErrorSource: toStringOrNull(row.lastErrorSource),
     errorCode:
-      typeof row.errorCode === "string" || typeof row.errorCode === "number"
-        ? row.errorCode
-        : null,
+      typeof row.errorCode === "string" || typeof row.errorCode === "number" ? row.errorCode : null,
     backoffLevel: toNumber(row.backoffLevel, 0),
-    maxConcurrent: toNullableNumber(row.maxConcurrent),
+    maxConcurrent: toNumberOrNull(row.maxConcurrent),
     quotaWindowThresholds,
   };
+}
+
+// ── #6148 ──────────────────────────────────────────────────────────────────────
+// True when a credential field is stored ciphertext (`enc:v1:…`) that can no
+// longer be decrypted — a changed OR unset STORAGE_ENCRYPTION_KEY. Used by the
+// lazy proxies to expose `credentialDecryptFailed` so callers can distinguish
+// "undecryptable credential" (surface the real cause; do NOT probe upstream)
+// from "genuinely empty credential".
+
+function isUndecryptable(value: unknown): boolean {
+  return typeof value === "string" && looksEncrypted(value) && decrypt(value) === null;
 }
 
 /**
@@ -115,9 +110,7 @@ export function toProviderConnection(value: unknown): ProviderConnectionView {
  *
  * Non-credential reads hit the already-coerced view directly at zero cost.
  */
-export function createLazyConnectionView(
-  row: Record<string, unknown>
-): ProviderConnectionView {
+export function createLazyConnectionView(row: Record<string, unknown>): ProviderConnectionView {
   const base = toProviderConnection(row);
   let decrypted: Record<string, null | string> | undefined;
 
@@ -132,11 +125,16 @@ export function createLazyConnectionView(
     return decrypted;
   };
 
+  const hasUndecryptableCredential = () =>
+    [base.apiKey, base.accessToken, base.refreshToken].some(isUndecryptable);
+
   return new Proxy(base, {
     get: (_target, prop: string | symbol) => {
       if (prop === "apiKey" || prop === "accessToken" || prop === "refreshToken") {
         return ensureDecrypted()[prop];
       }
+      // #6148 — lazily computed, only when a caller actually asks for it.
+      if (prop === "credentialDecryptFailed") return hasUndecryptableCredential();
       return Reflect.get(_target, prop);
     },
   });
@@ -153,9 +151,7 @@ const CREDENTIAL_FIELDS = new Set(["apiKey", "accessToken", "refreshToken", "idT
  * without any caller changes. The typed createLazyConnectionView remains
  * available for new code that wants a structured view.
  */
-export function createLazyRowProxy(
-  row: Record<string, unknown>
-): Record<string, unknown> {
+export function createLazyRowProxy(row: Record<string, unknown>): Record<string, unknown> {
   let decrypted: Record<string, string | null | undefined> | undefined;
 
   const ensureDecrypted = () => {
@@ -170,17 +166,25 @@ export function createLazyRowProxy(
     return decrypted;
   };
 
+  // #6148 — true when any stored credential is ciphertext that no longer
+  // decrypts (changed or unset STORAGE_ENCRYPTION_KEY). Lazily computed so the
+  // zero-cost fast path (non-credential reads) stays free.
+  const hasUndecryptableCredential = () =>
+    [row.apiKey, row.accessToken, row.refreshToken, row.idToken].some(isUndecryptable);
+
   return new Proxy(row, {
     get(target, prop) {
       if (typeof prop === "string" && CREDENTIAL_FIELDS.has(prop)) {
         return ensureDecrypted()[prop];
       }
+      if (prop === "credentialDecryptFailed") {
+        return hasUndecryptableCredential();
+      }
       if (prop === "toJSON") {
         return () => {
           const result: Record<string, unknown> = {};
           for (const key of Object.keys(target)) {
-            result[key] =
-              CREDENTIAL_FIELDS.has(key) ? ensureDecrypted()[key] : target[key];
+            result[key] = CREDENTIAL_FIELDS.has(key) ? ensureDecrypted()[key] : target[key];
           }
           return result;
         };

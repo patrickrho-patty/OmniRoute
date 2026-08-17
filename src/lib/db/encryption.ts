@@ -240,7 +240,30 @@ export function encryptConnectionFields<T extends ConnectionFields | null | unde
  */
 export function decryptConnectionFields<T extends ConnectionFields | null | undefined>(row: T): T {
   if (!row) return row;
-  if (!isEncryptionEnabled()) return row;
+  if (!isEncryptionEnabled()) {
+    // #6148 follow-up (unset-key case): the key is unset but the row still
+    // carries `enc:v1:` ciphertext — written by an install that HAD a key, so
+    // the credential exists but can never be read here. Previously this branch
+    // returned the row untouched: the ciphertext leaked into the credential
+    // field and was sent upstream verbatim, so every probe failed with a
+    // misleading 401/403 ("cookie expired") instead of the real cause. Flag it
+    // and null the undecryptable fields so callers surface the honest error
+    // (same contract as the changed-key case below).
+    const hasCiphertext =
+      looksEncrypted(row.apiKey) ||
+      looksEncrypted(row.accessToken) ||
+      looksEncrypted(row.refreshToken) ||
+      looksEncrypted(row.idToken);
+    if (!hasCiphertext) return row;
+    return {
+      ...row,
+      apiKey: looksEncrypted(row.apiKey) ? null : row.apiKey,
+      accessToken: looksEncrypted(row.accessToken) ? null : row.accessToken,
+      refreshToken: looksEncrypted(row.refreshToken) ? null : row.refreshToken,
+      idToken: looksEncrypted(row.idToken) ? null : row.idToken,
+      credentialDecryptFailed: true,
+    };
+  }
 
   const apiKey = decrypt(row.apiKey);
   const accessToken = decrypt(row.accessToken);

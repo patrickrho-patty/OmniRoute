@@ -14,13 +14,32 @@ import { buildErrorBody } from "@omniroute/open-sse/utils/error";
  * Returns a 424 (Failed Dependency) response with a clear, sanitized message
  * when the connection carries that flag; otherwise null (proceed normally).
  */
-const STALE_ENCRYPTION_MESSAGE =
+/**
+ * #6148 — honest error shown when a stored credential is ciphertext that can no
+ * longer be decrypted. Shared by the models-route guard and the connection-test
+ * path (testSingleConnection) so every surface reports the same root cause
+ * instead of a misleading upstream "401/403 — cookie expired".
+ */
+export const STALE_ENCRYPTION_MESSAGE =
   "Stored API key cannot be decrypted (STORAGE_ENCRYPTION_KEY changed or unset). Re-enter the API key.";
+
+/**
+ * True when the connection carries the `credentialDecryptFailed` flag set by
+ * decryptConnectionFields / the lazy connection proxies — i.e. a stored
+ * credential exists but cannot be read. Callers must NOT probe upstream with
+ * the (null/empty) credential: the resulting 401/403 would be misreported as
+ * an expired session and hide the real, locally-fixable cause.
+ */
+export function isStaleEncryptionConnection(
+  connection: { credentialDecryptFailed?: unknown } | null | undefined
+): boolean {
+  return connection?.credentialDecryptFailed === true;
+}
 
 export function buildStaleEncryptionKeyResponse(
   connection: { credentialDecryptFailed?: unknown } | null | undefined
 ): NextResponse | null {
-  if (!connection || connection.credentialDecryptFailed !== true) return null;
+  if (!isStaleEncryptionConnection(connection)) return null;
 
   // buildErrorBody sanitizes the message (Rule #12); override the type so the
   // client can key off the specific stale-encryption cause.

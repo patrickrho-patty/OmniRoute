@@ -22,6 +22,10 @@ import { providerAllowsOptionalApiKey } from "@/shared/constants/providers";
 import { removeConnectionHealth } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import { classifyAmbiguousOrAuthError, type ClassifyFailureArgs } from "./mistralAmbiguousAuth";
 import { OAUTH_TEST_CONFIG } from "./oauthTestConfig";
+import {
+  STALE_ENCRYPTION_MESSAGE,
+  isStaleEncryptionConnection,
+} from "../models/staleEncryptionGuard";
 
 // Bound the OAuth probe so a hung upstream can't block the connection-test queue
 // forever (#1449). Mirrors the 30s timeout the API-key path uses via validateProviderApiKey.
@@ -645,6 +649,25 @@ export async function testSingleConnection(connectionId: string, validationModel
         "Connection provider is invalid",
         "provider_invalid"
       ),
+      latencyMs: 0,
+    };
+  }
+
+  // #6148 follow-up — short-circuit when the stored credential is encrypted but
+  // can no longer be decrypted (STORAGE_ENCRYPTION_KEY unset or changed). Probing
+  // upstream with the null/empty credential returns a 401/403 that validators
+  // misreport as "cookie expired" — the operator then re-pastes a perfectly
+  // valid cookie that keeps "failing". Same guard as the models route, so the
+  // connection-test UI (and the credential-health scheduler via this function)
+  // sees the honest, locally-fixable cause instead. Affects both auth branches
+  // (apikey cookies and oauth tokens are equally undecryptable in this state).
+  if (isStaleEncryptionConnection(connection)) {
+    const error = STALE_ENCRYPTION_MESSAGE;
+    return {
+      valid: false,
+      error,
+      refreshed: false,
+      diagnosis: makeDiagnosis("validation_error", "local", error, "storage_encryption_stale"),
       latencyMs: 0,
     };
   }
