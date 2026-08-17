@@ -58,6 +58,39 @@ type QwenBrowserCompletionFn = (params: {
   signal?: AbortSignal | null;
 }) => Promise<Response | null>;
 
+interface QwenSseStats {
+  events: number;
+  answerChars: number;
+  thinkChars: number;
+}
+
+function inspectQwenSse(body: Buffer): QwenSseStats {
+  const stats: QwenSseStats = { events: 0, answerChars: 0, thinkChars: 0 };
+  for (const line of body.toString("utf8").split("\n")) {
+    if (!line.startsWith("data:")) continue;
+    const payload = line.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const delta = (
+        JSON.parse(payload) as {
+          choices?: Array<{ delta?: { phase?: string | null; content?: unknown } }>;
+        }
+      ).choices?.[0]?.delta;
+      if (!delta) continue;
+      stats.events += 1;
+      const content = typeof delta.content === "string" ? delta.content : "";
+      if (delta.phase === "think" || delta.phase === "thinking_summary") {
+        stats.thinkChars += content.length;
+      } else if (delta.phase === "answer" || delta.phase == null) {
+        stats.answerChars += content.length;
+      }
+    } catch {
+      // Ignore non-JSON SSE comments/fragments; the executor's parser is tolerant too.
+    }
+  }
+  return stats;
+}
+
 // Test-only injection point — mirrors grokClearance.ts so unit tests prove the
 // gating/wiring without launching a real browser (no Chromium in CI).
 let completionOverride: QwenBrowserCompletionFn | null = null;
@@ -104,6 +137,20 @@ export async function qwenBrowserBackedCompletion(params: {
       `[QWEN_BROWSER] captured response status=${result.status} contentType=${result.contentType || "unknown"} bytes=${result.body.length} totalMs=${result.timing.totalMs}`
     );
     if (result.status < 200 || result.status >= 400 || result.body.length === 0) {
+      return null;
+    }
+    if (!result.contentType?.toLowerCase().includes("text/event-stream")) {
+      console.warn(
+        `[QWEN_BROWSER] rejected non-SSE capture contentType=${result.contentType || "unknown"}`
+      );
+      return null;
+    }
+    const sseStats = inspectQwenSse(result.body);
+    console.info(
+      `[QWEN_BROWSER] SSE phase stats events=${sseStats.events} answerChars=${sseStats.answerChars} thinkChars=${sseStats.thinkChars}`
+    );
+    if (sseStats.events === 0 || sseStats.answerChars + sseStats.thinkChars === 0) {
+      console.warn("[QWEN_BROWSER] rejected SSE capture with no Qwen phase content");
       return null;
     }
     return new Response(result.body, {

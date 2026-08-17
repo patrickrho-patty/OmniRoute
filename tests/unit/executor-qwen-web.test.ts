@@ -229,6 +229,105 @@ describe("QwenWebExecutor (v2 migration)", () => {
     assert.match(prompt, /Continue the existing task from these tool results/);
   });
 
+  it("bounds replayed tool history for very large sessions", async () => {
+    globalThis.fetch = (async (url: any, init: any = {}) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse("chat-large");
+      return sseResponse([
+        { choices: [{ delta: { phase: "answer", content: "ok", status: "finished" } }] },
+      ]);
+    }) as any;
+
+    const staleOutput = `stale-tool-marker ${"x".repeat(120_000)}`;
+    const executor = new mod.QwenWebExecutor();
+    await executor.execute({
+      model: "qwen3.7-max",
+      body: {
+        messages: [
+          { role: "system", content: "base system context" },
+          { role: "user", content: "review the repository" },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call-stale",
+                type: "function",
+                function: { name: "bash", arguments: '{"cmd":"cat old.log"}' },
+              },
+            ],
+          },
+          { role: "tool", tool_call_id: "call-stale", content: staleOutput },
+          { role: "user", content: "latest-user-marker" },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "bash",
+              description: "Run a shell command",
+              parameters: { type: "object", properties: { cmd: { type: "string" } } },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "token=jwt-tok; cna=abc" },
+      signal: null,
+    } as any);
+
+    const completionBody = JSON.parse(calls[1].init.body);
+    const prompt = String(completionBody.messages[0].content);
+    assert.ok(prompt.length < 60_000, `expected bounded prompt, got ${prompt.length}`);
+    assert.match(prompt, /latest-user-marker/);
+    assert.match(prompt, /OMNIROUTE TOOL PROTOCOL/);
+  });
+
+  it("decodes a fenced tool call emitted in the think phase when no answer phase arrives", async () => {
+    globalThis.fetch = (async (url: any, init: any = {}) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse("chat-think");
+      return sseResponse([
+        {
+          choices: [
+            {
+              delta: {
+                phase: "think",
+                content: '```json\n{"name":"bash","arguments":{"cmd":"pwd"}}\n```',
+                status: "finished",
+              },
+            },
+          ],
+        },
+      ]);
+    }) as any;
+
+    const executor = new mod.QwenWebExecutor();
+    const result = await executor.execute({
+      model: "qwen3.7-max",
+      body: {
+        messages: [{ role: "user", content: "inspect the repository" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "bash",
+              description: "Run a shell command",
+              parameters: { type: "object", properties: { cmd: { type: "string" } } },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "token=jwt-tok; cna=abc" },
+      signal: null,
+    } as any);
+
+    const json = (await result.response.json()) as any;
+    assert.equal(json.choices[0].finish_reason, "tool_calls");
+    assert.equal(json.choices[0].message.tool_calls[0].function.name, "bash");
+  });
+
   it("replays the full cookie jar and the extracted bearer token on every call", async () => {
     globalThis.fetch = (async (url: any, init: any = {}) => {
       calls.push({ url: String(url), init });

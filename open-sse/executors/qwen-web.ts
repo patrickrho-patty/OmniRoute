@@ -88,6 +88,14 @@ type QwenMessage = {
   name?: unknown;
 };
 
+// chat.qwen.ai's SPA is materially less reliable above roughly 100k-character
+// prompts: sends slow to 150-270s and can end in a zero-answer stream. Keep the
+// synthetic tool contract intact while bounding replayed history.
+const MAX_QWEN_SYSTEM_CHARS = 18_000;
+const MAX_QWEN_REPLAY_ITEMS = 24;
+const MAX_QWEN_REPLAY_CHARS = 36_000;
+const MAX_QWEN_REPLAY_ITEM_CHARS = 12_000;
+
 function mapModel(modelId: string): string {
   return MODEL_ALIASES[modelId] || modelId;
 }
@@ -314,8 +322,8 @@ export class QwenWebExecutor extends BaseExecutor {
     }
 
     if (hasTools) {
-      const { content } = await this.collectStream(upstream);
-      const finalText = content;
+      const { content, reasoning } = await this.collectStream(upstream);
+      const finalText = content.trim() ? content : reasoning;
       const id = `chatcmpl-qwen-${Date.now()}`;
       const created = Math.floor(Date.now() / 1000);
       const buffered = new Response(
@@ -461,13 +469,65 @@ export class QwenWebExecutor extends BaseExecutor {
     }
 
     if (conversationParts.length === 1 && lastRole === "user") {
-      const userContent = conversationParts[0].replace(/^User:\n/, "");
-      return systemParts.length > 0
-        ? `${systemParts.join("\n\n")}\n\nUser: ${userContent}`
+      const userContent = this.capReplayText(conversationParts[0].replace(/^User:\n/, ""));
+      const boundedSystem = this.boundSystemParts(systemParts);
+      return boundedSystem.length > 0
+        ? `${boundedSystem.join("\n\n")}\n\nUser: ${userContent}`
         : userContent;
     }
 
-    return [...systemParts, ...conversationParts].filter(Boolean).join("\n\n");
+    const boundedSystem = this.boundSystemParts(systemParts);
+    const boundedConversation = this.boundParts(
+      conversationParts,
+      MAX_QWEN_REPLAY_CHARS,
+      MAX_QWEN_REPLAY_ITEMS
+    );
+    return [...boundedSystem, ...boundedConversation].filter(Boolean).join("\n\n");
+  }
+
+  private boundSystemParts(parts: string[]): string[] {
+    if (parts.length === 0) return [];
+    // The last system block is the synthetic tool contract. It must survive
+    // even when an unusually large tool list pushes it past the normal budget.
+    const toolContract = parts[parts.length - 1];
+    const earlierBudget = Math.max(0, MAX_QWEN_SYSTEM_CHARS - toolContract.length);
+    return [...this.boundParts(parts.slice(0, -1), earlierBudget), toolContract];
+  }
+
+  private capReplayText(text: string, maxChars = MAX_QWEN_REPLAY_ITEM_CHARS): string {
+    if (text.length <= maxChars) return text;
+    const headChars = Math.floor(maxChars * 0.75);
+    const tailChars = Math.floor(maxChars * 0.2);
+    return [
+      text.slice(0, headChars),
+      `[...truncated ${text.length - headChars - tailChars} characters...]`,
+      text.slice(text.length - tailChars),
+    ].join("\n");
+  }
+
+  private boundParts(
+    parts: string[],
+    maxChars: number,
+    maxItems = Number.POSITIVE_INFINITY
+  ): string[] {
+    const selected: string[] = [];
+    let total = 0;
+    let omitted = 0;
+    for (let index = parts.length - 1; index >= 0; index -= 1) {
+      const part = parts[index];
+      if (selected.length >= maxItems || total + part.length > maxChars) {
+        omitted = index + 1;
+        break;
+      }
+      selected.unshift(part);
+      total += part.length;
+    }
+    if (omitted > 0) {
+      selected.unshift(
+        `[Host: ${omitted} older conversation part(s) omitted to fit the upstream prompt.]`
+      );
+    }
+    return selected;
   }
 
   private serializeToolCall(
@@ -489,7 +549,11 @@ export class QwenWebExecutor extends BaseExecutor {
   }
 
   private serializeToolResult(toolName: string, output: string): string {
-    const payload = JSON.stringify({ type: "tool_result", name: toolName, output });
+    const payload = JSON.stringify({
+      type: "tool_result",
+      name: toolName,
+      output: this.capReplayText(output),
+    });
     return `Tool result for \`${toolName}\`:\n\`\`\`json\n${payload}\n\`\`\``;
   }
 
@@ -597,6 +661,7 @@ export class QwenWebExecutor extends BaseExecutor {
         }
         let buffer = "";
         let fullContent = "";
+        let fullReasoning = "";
         controller.enqueue(encoder.encode(emitChunk({ role: "assistant", content: "" }, null)));
         try {
           while (true) {
@@ -613,10 +678,14 @@ export class QwenWebExecutor extends BaseExecutor {
                 if (!hasTools) {
                   controller.enqueue(encoder.encode(emitChunk({ content: delta.text }, null)));
                 }
-              } else if (delta.kind === "think" && !hasTools) {
-                controller.enqueue(
-                  encoder.encode(emitChunk({ reasoning_content: delta.text }, null))
-                );
+              } else if (delta.kind === "think") {
+                if (hasTools) {
+                  fullReasoning += delta.text;
+                } else {
+                  controller.enqueue(
+                    encoder.encode(emitChunk({ reasoning_content: delta.text }, null))
+                  );
+                }
               }
             }
           }
@@ -628,8 +697,9 @@ export class QwenWebExecutor extends BaseExecutor {
         }
 
         if (hasTools) {
+          const decodeSource = fullContent.trim() ? fullContent : fullReasoning;
           const { content, toolCalls, finishReason, policyViolation } = decodeWebToolResponse(
-            fullContent,
+            decodeSource,
             requestedTools,
             "qwen",
             toolChoice,
