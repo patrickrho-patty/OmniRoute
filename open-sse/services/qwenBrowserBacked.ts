@@ -96,6 +96,7 @@ export async function qwenBrowserBackedCompletion(params: {
       chatUrlMatchDomain: "chat.qwen.ai",
       userAgent: QWEN_BROWSER_UA,
       inputSelector: QWEN_INPUT_SELECTOR,
+      submitButtonSelector: 'button[aria-label="Send"]',
       postSubmitWaitMs: 15_000,
       signal: params.signal ?? null,
     });
