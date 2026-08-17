@@ -232,6 +232,87 @@ describe("QwenWebExecutor (v2 migration)", () => {
     assert.match(msg, /session|expired|WAF|re-?login|cookie/i, "actionable error message");
   });
 
+  // Live capture (2026-08, VPS egress): the completion endpoint answers the
+  // risk-control block with HTTP 200 + JSON (not SSE), carrying the baxia
+  // punish payload. It must surface as an honest 429 risk-control error —
+  // NOT flow downstream as an empty "successful" stream that #8649 later
+  // mislabels "Provider returned empty content".
+  function punishResponse(): Response {
+    return new Response(
+      JSON.stringify({
+        ret: ["FAIL_SYS_USER_VALIDATE", "RGV587_ERROR::SM::哎哟喂,被挤爆啦,请稍后重试"],
+        data: {
+          url: "https://chat.qwen.ai:443//api/v2/chat/completions/_____tmd_____/punish?x5secdata=xg41fa…&x5step=2&action=captcha&pureCaptcha=",
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json;charset=UTF-8" } }
+    );
+  }
+
+  it("surfaces the Aliyun baxia punish JSON (200, non-SSE) as an honest 429 risk-control error", async () => {
+    globalThis.fetch = (async (url: any) => {
+      if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse();
+      return punishResponse();
+    }) as any;
+
+    const executor = new mod.QwenWebExecutor();
+    const result = await executor.execute({
+      model: "qwen3.8-max-preview",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: true,
+      credentials: { apiKey: "token=valid-jwt; cna=abc; ssxmod_itna=1-xyz" },
+      signal: null,
+    } as any);
+
+    // 429, not 401/403: the cookie is valid (chats/new succeeded) — 401/403
+    // would expire/ban the healthy connection in chatCore's classifier.
+    assert.equal(result.response.status, 429);
+    const json = (await result.response.json()) as any;
+    const msg = String(json.error?.message || "");
+    assert.match(msg, /risk-control|captcha|proxy/i, "must name the real cause and remedy");
+    assert.match(msg, /cookie is still valid|cookie.*valid/i, "must not blame the cookie");
+  });
+
+  it("also detects the punish shape on the chats/new step", async () => {
+    globalThis.fetch = (async () => punishResponse()) as any;
+
+    const executor = new mod.QwenWebExecutor();
+    const result = await executor.execute({
+      model: "qwen3.7-max",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: "token=valid-jwt; cna=abc" },
+      signal: null,
+    } as any);
+
+    assert.equal(result.response.status, 429);
+    const json = (await result.response.json()) as any;
+    assert.match(String(json.error?.message || ""), /risk-control/i);
+  });
+
+  it("treats any other non-SSE 200 body as an honest upstream error (no empty stream)", async () => {
+    globalThis.fetch = (async (url: any) => {
+      if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse();
+      return new Response(JSON.stringify({ code: "InvalidParameter", message: "bad model" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as any;
+
+    const executor = new mod.QwenWebExecutor();
+    const result = await executor.execute({
+      model: "qwen3.7-max",
+      body: { messages: [{ role: "user", content: "hi" }] },
+      stream: false,
+      credentials: { apiKey: "token=t; cna=c" },
+      signal: null,
+    } as any);
+
+    assert.ok(result.response.status >= 400, "non-SSE 200 must not pass as success");
+    const json = (await result.response.json()) as any;
+    assert.match(String(json.error?.message || ""), /InvalidParameter|Qwen error/);
+  });
+
   it("streams answer-phase content as OpenAI chat.completion.chunk deltas", async () => {
     globalThis.fetch = (async (url: any) => {
       if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse();

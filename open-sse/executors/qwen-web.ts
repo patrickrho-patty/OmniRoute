@@ -90,6 +90,45 @@ function isWafResponse(status: number, contentType: string, bodyText: string): b
   return /aliyun_waf|baxia|<html/i.test(bodyText);
 }
 
+/**
+ * Detect Alibaba baxia's risk-control "punish" response (2026-08 live capture,
+ * VPS egress): the completions endpoint returns HTTP 200 with a JSON body —
+ * NOT text/event-stream — shaped like:
+ *   {"ret":["FAIL_SYS_USER_VALIDATE","RGV587_ERROR::SM::…"],
+ *    "data":{"url":"…/punish?x5secdata=…&action=captcha…"}}
+ * The cookie is still valid (chats/new succeeds); the SERVER's IP fails the
+ * risk check and a slider captcha is demanded. Without this detection the
+ * JSON body is parsed as a zero-delta "successful" stream, #8649 injects
+ * "Provider returned empty content", and the combo quality gate mislabels the
+ * whole thing "streaming upstream error" — hiding the real cause.
+ */
+function isAliyunPunishResponse(bodyText: string): boolean {
+  if (!bodyText) return false;
+  if (/RGV587_ERROR|FAIL_SYS_USER_VALIDATE|FAIL_SYS_TRAFFIC_CONTROL|x5secdata/.test(bodyText)) {
+    return true;
+  }
+  try {
+    const parsed = JSON.parse(bodyText) as {
+      ret?: unknown;
+      data?: { url?: unknown };
+    };
+    const ret = Array.isArray(parsed.ret) ? parsed.ret : [];
+    const punishUrl = typeof parsed.data?.url === "string" ? parsed.data.url : "";
+    return (
+      ret.some((r) => typeof r === "string" && /^FAIL_SYS/i.test(r)) ||
+      /punish|captcha/i.test(punishUrl)
+    );
+  } catch {
+    return false;
+  }
+}
+
+const ALIYUN_PUNISH_MESSAGE =
+  "Qwen risk-control block: chat.qwen.ai's anti-bot (Alibaba baxia) challenged this " +
+  "server's IP with a slider captcha. The session cookie is still valid — retry in a " +
+  "few minutes, or route this connection through a residential/mobile proxy so the " +
+  "completion call egresses from an unflagged IP.";
+
 const WAF_ERROR_MESSAGE =
   "Qwen session expired or blocked by Alibaba's WAF. Re-login at https://chat.qwen.ai and " +
   "paste a fresh full Cookie header (must include cna, ssxmod_itna and token) — a bearer token " +
@@ -160,8 +199,14 @@ export class QwenWebExecutor extends BaseExecutor {
       });
 
       const ct = newChatRes.headers.get("content-type") || "";
+      const newChatText = await newChatRes.text().catch(() => "");
+      if (isAliyunPunishResponse(newChatText)) {
+        // 429 (not 401/403): the cookie is valid — the IP is flagged. 401/403
+        // would expire/ban a healthy connection in chatCore's classifier.
+        return makeErrorResult(429, ALIYUN_PUNISH_MESSAGE, body, CHATS_NEW_URL);
+      }
       if (!newChatRes.ok || ct.includes("text/html")) {
-        const text = await newChatRes.text().catch(() => "");
+        const text = newChatText;
         if (isWafResponse(newChatRes.status, ct, text)) {
           return makeErrorResult(401, WAF_ERROR_MESSAGE, body, CHATS_NEW_URL);
         }
@@ -173,7 +218,7 @@ export class QwenWebExecutor extends BaseExecutor {
         );
       }
 
-      const data = (await newChatRes.json()) as { data?: { id?: string } };
+      const data = (await JSON.parse(newChatText)) as { data?: { id?: string } };
       chatId = data?.data?.id ?? "";
       if (!chatId) {
         return makeErrorResult(502, "Qwen create-chat returned no chat id", body, CHATS_NEW_URL);
@@ -208,18 +253,24 @@ export class QwenWebExecutor extends BaseExecutor {
       );
     }
 
+    // A healthy completion response is ALWAYS text/event-stream (the payload
+    // hardcodes stream:true). Anything else — the Aliyun punish JSON, gateway
+    // JSON errors, HTML — is a failure; surface it honestly instead of letting
+    // a zero-delta "stream" flow downstream as an empty-content 200 (#8649).
     const ct = upstream.headers.get("content-type") || "";
-    if (!upstream.ok || ct.includes("text/html")) {
+    if (!upstream.ok || !ct.includes("text/event-stream")) {
       const errText = await upstream.text().catch(() => "");
+      if (isAliyunPunishResponse(errText)) {
+        // 429 (not 401/403): risk-control "retry later" — the cookie is valid
+        // and must not be expired/banned by the error classifier.
+        return makeErrorResult(429, ALIYUN_PUNISH_MESSAGE, body, completionUrl);
+      }
       if (isWafResponse(upstream.status, ct, errText)) {
         return makeErrorResult(401, WAF_ERROR_MESSAGE, body, completionUrl);
       }
-      return makeErrorResult(
-        upstream.status || 502,
-        `Qwen error: ${errText.slice(0, 300)}`,
-        body,
-        completionUrl
-      );
+      // ok-but-non-SSE must not inherit the 200 — map it to 502.
+      const status = upstream.ok ? 502 : upstream.status || 502;
+      return makeErrorResult(status, `Qwen error: ${errText.slice(0, 300)}`, body, completionUrl);
     }
 
     if (hasTools) {
@@ -258,9 +309,14 @@ export class QwenWebExecutor extends BaseExecutor {
     }
 
     if (!wantStream) {
+      // Non-streaming, no tools: collect the full answer and return one JSON.
+      // (Was broken by the tool-pipeline refactor: `finalText` had been left
+      // referencing a variable scoped to the hasTools branch above — every
+      // plain non-streaming request threw ReferenceError.)
+      const { content } = await this.collectStream(upstream);
       return this.jsonResponse(
         modelId,
-        { role: "assistant", content: finalText },
+        { role: "assistant", content },
         "stop",
         completionUrl,
         msgPayload
