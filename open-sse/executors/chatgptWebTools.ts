@@ -30,15 +30,16 @@ function sseChunk(data: unknown): string {
 }
 
 /**
- * Parse any `<tool>` blocks in a buffered JSON completion's assistant content
- * into OpenAI tool_calls and rewrite the choice. On parse failure the original
- * body passes through untouched.
+ * Parse explicit web-tool envelopes in a buffered JSON completion's assistant
+ * content into OpenAI tool_calls and rewrite the choice. On parse failure the
+ * original body passes through untouched.
  */
 async function applyToolCallsToJsonResponse(
   response: Response,
   requestedTools: unknown,
   idSeed: string,
-  toolChoice: WebToolChoice
+  toolChoice: WebToolChoice,
+  fences = false
 ): Promise<Response> {
   const bodyText = await response.text();
   try {
@@ -48,7 +49,8 @@ async function applyToolCallsToJsonResponse(
       rawContent,
       requestedTools,
       idSeed,
-      toolChoice
+      toolChoice,
+      { fences }
     );
     if (policyViolation) {
       return buildWebToolPolicyErrorResponse();
@@ -113,21 +115,29 @@ function toolCompletionToSseStream(
 }
 
 /**
- * Tool mode: parse `<tool>` blocks in an already-buffered JSON completion into
- * tool_calls, then return either the JSON completion (non-streaming) or a
- * terminal SSE replay of it (streaming).
+ * Tool mode: parse the provider-selected explicit tool envelope in an
+ * already-buffered JSON completion into tool_calls, then return either the JSON
+ * completion (non-streaming) or a terminal SSE replay of it (streaming).
  */
 export async function buildToolModeResponse(
   bufferedJson: Response,
   requestedTools: unknown,
   stream: boolean,
-  meta: { cid: string; created: number; model: string; idSeed?: string; toolChoice?: WebToolChoice }
+  meta: {
+    cid: string;
+    created: number;
+    model: string;
+    idSeed?: string;
+    toolChoice?: WebToolChoice;
+    fences?: boolean;
+  }
 ): Promise<Response> {
   const jsonResponse = await applyToolCallsToJsonResponse(
     bufferedJson,
     requestedTools,
     meta.idSeed ?? "cgpt",
-    meta.toolChoice ?? "auto"
+    meta.toolChoice ?? "auto",
+    meta.fences === true
   );
   if (!stream) return jsonResponse;
   if (!jsonResponse.ok) return jsonResponse;

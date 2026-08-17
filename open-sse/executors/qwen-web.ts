@@ -178,9 +178,14 @@ export class QwenWebExecutor extends BaseExecutor {
     const requestedModel = (bodyObj.model as string) || DEFAULT_MODEL;
     const modelId = mapModel(requestedModel);
 
+    // Qwen's native tool-call syntax is also `<tool_call>…</tool_call>`;
+    // using the standard synthetic envelope makes chat.qwen.ai validate our
+    // downstream tool names against its own web-tool registry ("Tool bash does
+    // not exists."). Reuse the shared fenced-JSON contract instead.
     const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
-      messages
+      messages,
+      { promptStyle: "chatgpt-web" }
     );
 
     // Qwen Web is single-turn: fold the conversation into one user prompt.
@@ -327,6 +332,7 @@ export class QwenWebExecutor extends BaseExecutor {
           model: modelId,
           idSeed: "qwen",
           toolChoice,
+          fences: true,
         }),
         url: completionUrl,
         headers: this.buildHeaders(token, cookieHeader, chatId),
@@ -546,7 +552,8 @@ export class QwenWebExecutor extends BaseExecutor {
             fullContent,
             requestedTools,
             "qwen",
-            toolChoice
+            toolChoice,
+            { fences: true }
           );
           if (policyViolation) {
             controller.error(

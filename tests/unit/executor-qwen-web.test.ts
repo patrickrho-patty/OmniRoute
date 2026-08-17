@@ -104,6 +104,61 @@ describe("QwenWebExecutor (v2 migration)", () => {
     assert.equal(json.choices[0].message.content, "Hello world");
   });
 
+  it("uses the fenced JSON synthetic tool envelope instead of Qwen's native tool_call syntax", async () => {
+    globalThis.fetch = (async (url: any, init: any = {}) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse("chat-tools");
+      return sseResponse([
+        {
+          choices: [
+            {
+              delta: {
+                phase: "answer",
+                content: '```json\n{"name":"bash","arguments":{"cmd":"pwd"}}\n```',
+                status: "finished",
+              },
+            },
+          ],
+        },
+      ]);
+    }) as any;
+
+    const executor = new mod.QwenWebExecutor();
+    const result = await executor.execute({
+      model: "qwen3.7-max",
+      body: {
+        messages: [{ role: "user", content: "inspect the repository" }],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "bash",
+              description: "Run a shell command",
+              parameters: { type: "object", properties: { cmd: { type: "string" } } },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "token=jwt-tok; cna=abc" },
+      signal: null,
+    } as any);
+
+    const completionBody = JSON.parse(calls[1].init.body);
+    const prompt = String(completionBody.messages[0].content);
+    assert.match(prompt, /OMNIROUTE TOOL PROTOCOL/);
+    assert.match(prompt, /```json/);
+    assert.doesNotMatch(prompt, /<tool_call>/);
+
+    const json = (await result.response.json()) as any;
+    assert.equal(json.choices[0].finish_reason, "tool_calls");
+    assert.equal(json.choices[0].message.content, null);
+    assert.equal(json.choices[0].message.tool_calls[0].function.name, "bash");
+    assert.deepEqual(JSON.parse(json.choices[0].message.tool_calls[0].function.arguments), {
+      cmd: "pwd",
+    });
+  });
+
   it("replays the full cookie jar and the extracted bearer token on every call", async () => {
     globalThis.fetch = (async (url: any, init: any = {}) => {
       calls.push({ url: String(url), init });
