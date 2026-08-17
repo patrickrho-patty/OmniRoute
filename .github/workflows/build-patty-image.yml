@@ -1,7 +1,7 @@
 name: Build & Publish Fork Image to GHCR
 
 # Builds the OmniRoute Docker image on GitHub-hosted runners and pushes it to
-# THIS fork's own GHCR namespace (ghcr.io/patrickrho-patty/omniroute). The
+# THIS fork's own GHCR namespace (ghcr.io/patty-internal/omniroute). The
 # Contabo VPS then `docker pull`s the image instead of building it locally.
 #
 # Why: the local `next build` / Turbopack phase reaches ~14 GiB RSS and was
@@ -33,13 +33,16 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/patrickrho-patty/omniroute
+  IMAGE_NAME: ghcr.io/patty-internal/omniroute
 
 jobs:
   build:
     name: Build and push (amd64)
     # Only ever run on the fork — never on upstream diegosouzapw/OmniRoute.
-    if: github.repository == 'patrickrho-patty/OmniRoute'
+    # NOTE: this must match the repo's CANONICAL name. The repo was transferred
+    # to the patty-internal org (2026-08); the old patrickrho-patty slug stopped
+    # matching github.repository and every build since was silently skipped.
+    if: github.repository == 'patty-internal/OmniRoute'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -76,7 +79,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=omniroute
             org.opencontainers.image.description=OmniRoute fork image — CI-built, pulled by the Contabo VPS (no local build)
-            org.opencontainers.image.source=https://github.com/patrickrho-patty/OmniRoute
+            org.opencontainers.image.source=https://github.com/patty-internal/OmniRoute
             org.opencontainers.image.licenses=MIT
 
       - name: Build and push image

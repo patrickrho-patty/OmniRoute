@@ -29,7 +29,7 @@ set -euo pipefail
 # ── Config (defaults — override via ~/.omniroute-deploy.env or env) ──────────
 DEPLOY_BRANCH="${OMNIROUTE_DEPLOY_BRANCH:-custom-features}"
 WORKFLOW="${OMNIROUTE_DEPLOY_WORKFLOW:-build-patty-image.yml}"
-GHCR_IMAGE="${OMNIROUTE_DEPLOY_IMAGE:-ghcr.io/patrickrho-patty/omniroute:latest}"
+GHCR_IMAGE="${OMNIROUTE_DEPLOY_IMAGE:-ghcr.io/patty-internal/omniroute:latest}"
 VPS_HOST="${OMNIROUTE_DEPLOY_HOST:-root@109.123.231.227}"
 VPS_KEY="${OMNIROUTE_DEPLOY_KEY:-$HOME/.ssh/t1_fetcher_ed25519}"
 VPS_COMPOSE_DIR="${OMNIROUTE_DEPLOY_COMPOSE_DIR:-/opt/omniroute}"
@@ -72,7 +72,12 @@ preflight() {
   gh auth status >/dev/null 2>&1 || die "gh not authenticated (gh auth login)."
   [ -f "$VPS_KEY" ] || die "SSH key not found: $VPS_KEY"
   git remote get-url origin >/dev/null 2>&1 || die "no 'origin' git remote."
-  ok "tooling present"
+  # Pin every gh call to THIS repo. gh otherwise resolves its default repo from
+  # local config, which can point at the upstream parent (diegosouzapw/OmniRoute)
+  # and 404 the run lookups below. GH_REPO (if the operator set one) wins.
+  GH_REPO="${GH_REPO:-$(git remote get-url origin | sed -E 's#.*github.com[:/]##; s#\.git$##')}"
+  export GH_REPO
+  ok "tooling present (gh repo: $GH_REPO)"
 }
 
 commit_and_push() {
