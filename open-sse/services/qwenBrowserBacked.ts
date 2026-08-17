@@ -82,6 +82,9 @@ export async function qwenBrowserBackedCompletion(params: {
   signal?: AbortSignal | null;
 }): Promise<Response | null> {
   if (completionOverride) return completionOverride(params);
+  console.info(
+    `[QWEN_BROWSER] starting SPA fallback chat=${params.chatId.slice(0, 8)} promptChars=${params.prompt.length}`
+  );
   try {
     const result: BrowserBackedChatResult = await browserBackedChat({
       poolKey: QWEN_POOL_KEY,
@@ -96,6 +99,9 @@ export async function qwenBrowserBackedCompletion(params: {
       postSubmitWaitMs: 15_000,
       signal: params.signal ?? null,
     });
+    console.info(
+      `[QWEN_BROWSER] captured response status=${result.status} contentType=${result.contentType || "unknown"} bytes=${result.body.length} totalMs=${result.timing.totalMs}`
+    );
     if (result.status < 200 || result.status >= 400 || result.body.length === 0) {
       return null;
     }
@@ -105,7 +111,10 @@ export async function qwenBrowserBackedCompletion(params: {
         "content-type": result.contentType || "text/event-stream",
       },
     });
-  } catch {
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240);
+    console.warn(`[QWEN_BROWSER] SPA fallback failed: ${message}`);
     return null;
   }
 }
