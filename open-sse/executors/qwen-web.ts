@@ -33,7 +33,8 @@ import {
   prepareWebToolRequest,
   decodeWebToolResponse,
 } from "../services/webProvider/toolPipeline.ts";
-import type { WebToolChoice } from "../services/webProvider/types.ts";
+import { parseLooseJsonObject } from "../services/webProvider/toolDecoder.ts";
+import { toRecord, type WebToolChoice } from "../services/webProvider/types.ts";
 import { buildToolModeResponse } from "./chatgptWebTools.ts";
 import { buildQwenCookieHeader, extractQwenToken } from "@/lib/providers/webCookieAuth";
 import {
@@ -78,6 +79,14 @@ const MODEL_ALIASES: Record<string, string> = {
 
 const DEFAULT_MODEL = "qwen3.7-max";
 const REQUIRED_THINKING_MODELS = new Set(["qwen3.8-max-preview"]);
+
+type QwenMessage = {
+  role: string;
+  content: unknown;
+  tool_calls?: unknown;
+  tool_call_id?: unknown;
+  name?: unknown;
+};
 
 function mapModel(modelId: string): string {
   return MODEL_ALIASES[modelId] || modelId;
@@ -174,7 +183,7 @@ export class QwenWebExecutor extends BaseExecutor {
     let token = extractQwenToken(rawCred);
     if (!token && credentials?.accessToken) token = String(credentials.accessToken).trim();
 
-    const messages = (bodyObj.messages as Array<{ role: string; content: string }>) || [];
+    const messages = (Array.isArray(bodyObj.messages) ? bodyObj.messages : []) as QwenMessage[];
     const requestedModel = (bodyObj.model as string) || DEFAULT_MODEL;
     const modelId = mapModel(requestedModel);
 
@@ -399,18 +408,89 @@ export class QwenWebExecutor extends BaseExecutor {
     return content == null ? "" : String(content);
   }
 
-  private foldMessages(messages: Array<{ role: string; content: unknown }>): string {
-    let systemContent = "";
-    let userContent = "";
-    for (const m of messages) {
-      const text = this.contentToText(m.content);
-      if (m.role === "system") {
-        systemContent += (systemContent ? "\n\n" : "") + text;
-      } else if (m.role === "user") {
-        userContent = text;
+  private foldMessages(messages: QwenMessage[]): string {
+    const systemParts: string[] = [];
+    const conversationParts: string[] = [];
+    const toolNamesById = new Map<string, string>();
+    let lastRole = "";
+
+    for (const message of messages) {
+      const role = message.role === "developer" ? "system" : message.role;
+      const text = this.contentToText(message.content).trim();
+
+      if (role === "system") {
+        if (text) systemParts.push(text);
+        continue;
       }
+
+      lastRole = role;
+      if (role === "assistant") {
+        if (text) conversationParts.push(`Assistant:\n${text}`);
+        const rawToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+        for (const rawToolCall of rawToolCalls) {
+          const serialized = this.serializeToolCall(rawToolCall);
+          if (!serialized) continue;
+          if (serialized.id) toolNamesById.set(serialized.id, serialized.name);
+          conversationParts.push(`Assistant tool call:\n${serialized.fencedJson}`);
+        }
+        continue;
+      }
+
+      if (role === "tool" || role === "function") {
+        const toolCallId =
+          typeof message.tool_call_id === "string" ? message.tool_call_id.trim() : "";
+        const explicitName = typeof message.name === "string" ? message.name.trim() : "";
+        const toolName = explicitName || toolNamesById.get(toolCallId) || toolCallId || "tool";
+        conversationParts.push(this.serializeToolResult(toolName, text));
+        continue;
+      }
+
+      if (role === "user") {
+        if (text) conversationParts.push(`User:\n${text}`);
+        continue;
+      }
+
+      if (text) conversationParts.push(`${role || "Message"}:\n${text}`);
     }
-    return systemContent ? `${systemContent}\n\nUser: ${userContent}` : userContent;
+
+    if (lastRole === "tool" || lastRole === "function") {
+      conversationParts.push(
+        "Continue the existing task from these tool results. Answer if they resolve the task; " +
+          "otherwise emit the next tool call as a fenced json block."
+      );
+    }
+
+    if (conversationParts.length === 1 && lastRole === "user") {
+      const userContent = conversationParts[0].replace(/^User:\n/, "");
+      return systemParts.length > 0
+        ? `${systemParts.join("\n\n")}\n\nUser: ${userContent}`
+        : userContent;
+    }
+
+    return [...systemParts, ...conversationParts].filter(Boolean).join("\n\n");
+  }
+
+  private serializeToolCall(
+    rawToolCall: unknown
+  ): { id: string; name: string; fencedJson: string } | null {
+    const call = toRecord(rawToolCall);
+    const fn = toRecord(call?.function) ?? call;
+    const name = typeof fn?.name === "string" ? fn.name.trim() : "";
+    if (!name) return null;
+
+    const rawArguments = fn?.arguments;
+    const argumentsObject =
+      typeof rawArguments === "string"
+        ? (parseLooseJsonObject(rawArguments) ?? {})
+        : (toRecord(rawArguments) ?? {});
+    const id = typeof call?.id === "string" ? call.id : "";
+    const payload = JSON.stringify({ name, arguments: argumentsObject });
+    return { id, name, fencedJson: `\`\`\`json\n${payload}\n\`\`\`` };
+  }
+
+  private serializeToolResult(toolName: string, output: string): string {
+    const payload = JSON.stringify({ type: "tool_result", name: toolName, output });
+    return `Tool result for \`${toolName}\`:\n\`\`\`json\n${payload}\n\`\`\``;
   }
 
   private buildMessagePayload(

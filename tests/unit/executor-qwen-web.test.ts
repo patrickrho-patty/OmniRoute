@@ -159,6 +159,76 @@ describe("QwenWebExecutor (v2 migration)", () => {
     });
   });
 
+  it("replays assistant tool calls and tool results on follow-up turns", async () => {
+    globalThis.fetch = (async (url: any, init: any = {}) => {
+      calls.push({ url: String(url), init });
+      if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse("chat-followup");
+      return sseResponse([
+        {
+          choices: [
+            {
+              delta: {
+                phase: "answer",
+                content: "I found the relevant files.",
+                status: "finished",
+              },
+            },
+          ],
+        },
+      ]);
+    }) as any;
+
+    const executor = new mod.QwenWebExecutor();
+    await executor.execute({
+      model: "qwen3.7-max",
+      body: {
+        messages: [
+          { role: "user", content: "Inspect the repository." },
+          {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call-find",
+                type: "function",
+                function: {
+                  name: "bash",
+                  arguments: '{"cmd":"find /tmp -type f"}',
+                },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            tool_call_id: "call-find",
+            content: "/tmp/a.ts\n/tmp/b.ts",
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "bash",
+              description: "Run a shell command",
+              parameters: { type: "object", properties: { cmd: { type: "string" } } },
+            },
+          },
+        ],
+      },
+      stream: false,
+      credentials: { apiKey: "token=jwt-tok; cna=abc" },
+      signal: null,
+    } as any);
+
+    const completionBody = JSON.parse(calls[1].init.body);
+    const prompt = String(completionBody.messages[0].content);
+    assert.match(prompt, /Inspect the repository/);
+    assert.match(prompt, /find \/tmp -type f/);
+    assert.match(prompt, /Tool result for `bash`/);
+    assert.match(prompt, /\/tmp\/a\.ts/);
+    assert.match(prompt, /Continue the existing task from these tool results/);
+  });
+
   it("replays the full cookie jar and the extracted bearer token on every call", async () => {
     globalThis.fetch = (async (url: any, init: any = {}) => {
       calls.push({ url: String(url), init });
