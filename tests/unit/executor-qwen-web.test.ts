@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { RegistryModel } from "../../open-sse/config/providers/shared.ts";
 
 const mod = await import("../../open-sse/executors/qwen-web.ts");
+const clearance = await import("../../open-sse/services/qwenBrowserBacked.ts");
 const { REGISTRY } = await import("../../open-sse/config/providerRegistry.ts");
 const { FREE_MODEL_BUDGETS } = await import("../../open-sse/config/freeModelCatalog.data.ts");
 
@@ -288,6 +289,115 @@ describe("QwenWebExecutor (v2 migration)", () => {
     assert.equal(result.response.status, 429);
     const json = (await result.response.json()) as any;
     assert.match(String(json.error?.message || ""), /risk-control/i);
+  });
+
+  // ── Browser-backed fallback (baxia per-request attestation) ──────────────
+  // Only the SPA's own send path satisfies baxia; when the gate is on, a
+  // punished completion retries through browserBackedChat via the shared
+  // browser pool. These tests use the injection hook — no Chromium needed.
+
+  it("punish + browser pool on + browser fallback success → serves the captured SSE", async () => {
+    const prevPool = process.env.OMNIROUTE_BROWSER_POOL;
+    process.env.OMNIROUTE_BROWSER_POOL = "on";
+    let overrideParams: Record<string, unknown> | null = null;
+    clearance.__setQwenBrowserCompletionOverrideForTesting(async (p: any) => {
+      overrideParams = p;
+      return sseResponse([
+        { choices: [{ delta: { phase: "answer", content: "Hello", status: "finished" } }] },
+      ]);
+    });
+    try {
+      globalThis.fetch = (async (url: any) => {
+        if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse("chat-bx");
+        return punishResponse();
+      }) as any;
+
+      const executor = new mod.QwenWebExecutor();
+      const result = await executor.execute({
+        model: "qwen3.7-max",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: { apiKey: "token=jwt; cna=abc; ssxmod_itna=1-x" },
+        signal: null,
+      } as any);
+
+      const json = (await result.response.json()) as any;
+      assert.equal(
+        json.choices[0].message.content,
+        "Hello",
+        "answer must come from the browser-captured SSE"
+      );
+      assert.ok(overrideParams, "browser fallback must have been invoked");
+      assert.equal((overrideParams as any).chatId, "chat-bx");
+      assert.equal((overrideParams as any).prompt, "hi");
+    } finally {
+      clearance.__setQwenBrowserCompletionOverrideForTesting(null);
+      if (prevPool === undefined) delete process.env.OMNIROUTE_BROWSER_POOL;
+      else process.env.OMNIROUTE_BROWSER_POOL = prevPool;
+    }
+  });
+
+  it("punish + browser pool on + fallback failure → honest 429 risk-control error", async () => {
+    const prevPool = process.env.OMNIROUTE_BROWSER_POOL;
+    process.env.OMNIROUTE_BROWSER_POOL = "on";
+    clearance.__setQwenBrowserCompletionOverrideForTesting(async () => null);
+    try {
+      globalThis.fetch = (async (url: any) => {
+        if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse();
+        return punishResponse();
+      }) as any;
+
+      const executor = new mod.QwenWebExecutor();
+      const result = await executor.execute({
+        model: "qwen3.7-max",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: { apiKey: "token=jwt; cna=abc" },
+        signal: null,
+      } as any);
+
+      assert.equal(result.response.status, 429);
+    } finally {
+      clearance.__setQwenBrowserCompletionOverrideForTesting(null);
+      if (prevPool === undefined) delete process.env.OMNIROUTE_BROWSER_POOL;
+      else process.env.OMNIROUTE_BROWSER_POOL = prevPool;
+    }
+  });
+
+  it("punish + browser pool OFF → 429 without invoking the browser path", async () => {
+    const prevPool = process.env.OMNIROUTE_BROWSER_POOL;
+    const prevWeb = process.env.WEB_COOKIE_USE_BROWSER;
+    delete process.env.OMNIROUTE_BROWSER_POOL;
+    delete process.env.WEB_COOKIE_USE_BROWSER;
+    let invoked = false;
+    clearance.__setQwenBrowserCompletionOverrideForTesting(async () => {
+      invoked = true;
+      return null;
+    });
+    try {
+      globalThis.fetch = (async (url: any) => {
+        if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse();
+        return punishResponse();
+      }) as any;
+
+      const executor = new mod.QwenWebExecutor();
+      const result = await executor.execute({
+        model: "qwen3.7-max",
+        body: { messages: [{ role: "user", content: "hi" }] },
+        stream: false,
+        credentials: { apiKey: "token=jwt; cna=abc" },
+        signal: null,
+      } as any);
+
+      assert.equal(result.response.status, 429);
+      assert.equal(invoked, false, "browser path must not run with the gate off");
+    } finally {
+      clearance.__setQwenBrowserCompletionOverrideForTesting(null);
+      if (prevPool === undefined) delete process.env.OMNIROUTE_BROWSER_POOL;
+      else process.env.OMNIROUTE_BROWSER_POOL = prevPool;
+      if (prevWeb === undefined) delete process.env.WEB_COOKIE_USE_BROWSER;
+      else process.env.WEB_COOKIE_USE_BROWSER = prevWeb;
+    }
   });
 
   it("treats any other non-SSE 200 body as an honest upstream error (no empty stream)", async () => {

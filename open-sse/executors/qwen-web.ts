@@ -36,6 +36,10 @@ import {
 import type { WebToolChoice } from "../services/webProvider/types.ts";
 import { buildToolModeResponse } from "./chatgptWebTools.ts";
 import { buildQwenCookieHeader, extractQwenToken } from "@/lib/providers/webCookieAuth";
+import {
+  shouldUseQwenBrowserBacked,
+  qwenBrowserBackedCompletion,
+} from "../services/qwenBrowserBacked.ts";
 
 const BASE_URL = "https://chat.qwen.ai";
 const CHATS_NEW_URL = `${BASE_URL}/api/v2/chats/new`;
@@ -258,19 +262,41 @@ export class QwenWebExecutor extends BaseExecutor {
     // JSON errors, HTML — is a failure; surface it honestly instead of letting
     // a zero-delta "stream" flow downstream as an empty-content 200 (#8649).
     const ct = upstream.headers.get("content-type") || "";
+    let punishBlocked = false;
     if (!upstream.ok || !ct.includes("text/event-stream")) {
       const errText = await upstream.text().catch(() => "");
       if (isAliyunPunishResponse(errText)) {
-        // 429 (not 401/403): risk-control "retry later" — the cookie is valid
-        // and must not be expired/banned by the error classifier.
-        return makeErrorResult(429, ALIYUN_PUNISH_MESSAGE, body, completionUrl);
-      }
-      if (isWafResponse(upstream.status, ct, errText)) {
+        punishBlocked = true;
+      } else if (isWafResponse(upstream.status, ct, errText)) {
         return makeErrorResult(401, WAF_ERROR_MESSAGE, body, completionUrl);
+      } else {
+        // ok-but-non-SSE must not inherit the 200 — map it to 502.
+        const status = upstream.ok ? 502 : upstream.status || 502;
+        return makeErrorResult(status, `Qwen error: ${errText.slice(0, 300)}`, body, completionUrl);
       }
-      // ok-but-non-SSE must not inherit the 200 — map it to 502.
-      const status = upstream.ok ? 502 : upstream.status || 502;
-      return makeErrorResult(status, `Qwen error: ${errText.slice(0, 300)}`, body, completionUrl);
+    }
+
+    if (punishBlocked && shouldUseQwenBrowserBacked()) {
+      // Baxia attestation can only be satisfied by the SPA's own send path
+      // (see qwenBrowserBacked.ts) — drive the conversation UI through the
+      // browser pool (provider-scoped proxy applies) and capture the
+      // attested SSE. On failure, fall through to the honest 429 below.
+      const browserUpstream = await qwenBrowserBackedCompletion({
+        chatId,
+        prompt,
+        cookieHeader,
+        signal,
+      });
+      if (browserUpstream) {
+        upstream = browserUpstream;
+        punishBlocked = false;
+      }
+    }
+
+    if (punishBlocked) {
+      // 429 (not 401/403): risk-control "retry later" — the cookie is valid
+      // and must not be expired/banned by the error classifier.
+      return makeErrorResult(429, ALIYUN_PUNISH_MESSAGE, body, completionUrl);
     }
 
     if (hasTools) {
