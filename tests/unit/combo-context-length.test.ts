@@ -96,6 +96,22 @@ test("createComboSchema accepts omitted context_length", () => {
   assert.equal(result.success, true);
 });
 
+test("createComboSchema accepts a system_message at the 1000000-character limit", () => {
+  const result = schemas.createComboSchema.safeParse({
+    name: "LargeSystemMessageCombo",
+    system_message: "x".repeat(1000000),
+  });
+  assert.equal(result.success, true);
+});
+
+test("createComboSchema rejects a system_message above the 1000000-character limit", () => {
+  const result = schemas.createComboSchema.safeParse({
+    name: "TooLargeSystemMessageCombo",
+    system_message: "x".repeat(1000001),
+  });
+  assert.equal(result.success, false);
+});
+
 // ─── Zod Schema Validation (updateComboSchema) ───
 
 test("updateComboSchema accepts valid context_length", () => {
@@ -128,6 +144,20 @@ test("updateComboSchema rejects context_length above maximum", () => {
 
 test("updateComboSchema rejects empty object (no fields)", () => {
   const result = schemas.updateComboSchema.safeParse({});
+  assert.equal(result.success, false);
+});
+
+test("updateComboSchema accepts a system_message at the 1000000-character limit", () => {
+  const result = schemas.updateComboSchema.safeParse({
+    system_message: "x".repeat(1000000),
+  });
+  assert.equal(result.success, true);
+});
+
+test("updateComboSchema rejects a system_message above the 1000000-character limit", () => {
+  const result = schemas.updateComboSchema.safeParse({
+    system_message: "x".repeat(1000001),
+  });
   assert.equal(result.success, false);
 });
 
