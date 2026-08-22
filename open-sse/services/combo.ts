@@ -217,6 +217,22 @@ import {
 } from "./combo/quotaExhaustionCutoff.ts";
 import { expandTargetsByFingerprints } from "./combo/fingerprintExpansion.ts";
 import { resolveComboTargetPipeline } from "./combo/targetResolution.ts";
+import { isHideUpstreamMetadataEnabled } from "@/shared/utils/featureFlags";
+
+/**
+ * Render the per-target failure summary for a combo's aggregated error message.
+ * HIDE_UPSTREAM_METADATA replaces the model-identifying list with an opaque count —
+ * the identities stay in server logs (log.warn "All models failed | …") either way.
+ */
+function summarizeComboErrors(comboErrors: Array<{ model: string; status: number }>): string {
+  if (comboErrors.length === 0) return "";
+  if (isHideUpstreamMetadataEnabled()) return `${comboErrors.length} target(s) failed`;
+  const detail = comboErrors
+    .slice(0, 5)
+    .map((e) => `${e.model} (${e.status})`)
+    .join(", ");
+  return `${detail}${comboErrors.length > 5 ? `... (+${comboErrors.length - 5})` : ""}`;
+}
 
 export { RESET_WINDOW_NAMES, QUOTA_SOFT_DEPRIORITIZE_FACTOR, setCandidateQuotaSoftPenalty };
 export { scoreAutoTargets, expandAutoComboCandidatePool };
@@ -1956,15 +1972,10 @@ export async function handleComboChat({
 
       // Global combo timeout: return aggregated error immediately, skipping set retries.
       if (comboExpired) {
-        const summary = comboErrors
-          .slice(0, 5)
-          .map((e) => `${e.model} (${e.status})`)
-          .join(", ");
+        const summary = summarizeComboErrors(comboErrors);
         const msg =
           `Combo global timeout (${comboTimeoutMs}ms) after ${recordedAttempts}/${orderedTargets.length} targets` +
-          (comboErrors.length > 0
-            ? ` | tried: ${summary}${comboErrors.length > 5 ? `... (+${comboErrors.length - 5})` : ""}`
-            : "");
+          (summary ? ` | tried: ${summary}` : "");
         const latencyMs = Date.now() - startTime;
         if (recordedAttempts === 0) {
           recordComboRequest(combo.name, null, {
@@ -2021,18 +2032,18 @@ export async function handleComboChat({
       }
 
       const status = lastStatus;
-      // Build aggregated error message with per-model failure details for diagnostics.
-      const comboErrorSummary =
-        comboErrors.length > 0
-          ? " [" +
-            comboErrors
-              .slice(0, 5)
-              .map((e) => `${e.model} (${e.status})`)
-              .join(", ") +
-            (comboErrors.length > 5 ? `... (+${comboErrors.length - 5})` : "") +
-            "]"
-          : "";
-      const msg = (lastError || "All combo models unavailable") + comboErrorSummary;
+      // Build aggregated error message with per-model failure details for diagnostics;
+      // HIDE_UPSTREAM_METADATA reduces the suffix to an opaque count (see helper) and
+      // drops `lastError` — it is RAW UPSTREAM TEXT and upstream error bodies name their
+      // own models ("deepseek-v4-pro is overloaded"), which is exactly what the flag
+      // must keep from clients. The log.warn below keeps the full detail server-side.
+      const comboErrorSummary = summarizeComboErrors(comboErrors);
+      // HIDE_UPSTREAM_METADATA drops `lastError` (raw upstream text — upstream error
+      // bodies name their own models) from the client message; the log.warn below keeps
+      // the full detail server-side.
+      const baseMsg =
+        (isHideUpstreamMetadataEnabled() ? null : lastError) || "All combo models unavailable";
+      const msg = baseMsg + (comboErrorSummary ? ` [${comboErrorSummary}]` : "");
 
       // Cooldown-aware retry: instead of crystallizing a transient failure, wait
       // out a SHORT cooldown and re-run the whole set loop. Guarded by the helper
@@ -2092,7 +2103,12 @@ export async function handleComboChat({
       // a config-class status like 403/422).
       if (earliestRetryAfter && isRetryAfterEligibleStatus(status)) {
         const retryHuman = formatRetryAfter(toRetryAfterDisplayValue(earliestRetryAfter));
-        log.warn("COMBO", `All models failed | ${msg} (${retryHuman})`);
+        // Log the RAW lastError (server-side only) — `msg` may be redacted under
+        // HIDE_UPSTREAM_METADATA.
+        log.warn(
+          "COMBO",
+          `All models failed | last=${lastError || "unknown"} | client=${msg} (${retryHuman})`
+        );
         return unavailableResponse(status, msg, earliestRetryAfter, retryHuman);
       }
 
@@ -2100,7 +2116,7 @@ export async function handleComboChat({
       // `try-auto` recovery action via buildRecoveryHint so the OC plugin can show "→ Try
       // model: auto" instead of an opaque 5xx. We pass the upstream retry-after seconds to
       // the hint so the client can render a precise "wait Ns and retry" message.
-      log.warn("COMBO", `All models failed | ${msg}`);
+      log.warn("COMBO", `All models failed | last=${lastError || "unknown"} | client=${msg}`);
       const { pinClearedNow } = recordComboFailure(effectiveSessionId, combo.name);
       if (pinClearedNow) {
         log.info(
@@ -2978,15 +2994,22 @@ async function handleRoundRobinCombo({
   }
 
   const status = lastStatus;
-  const msg = lastError || "All round-robin combo models unavailable";
+  // Round-robin terminal path — same HIDE_UPSTREAM_METADATA treatment as the ordered
+  // dispatcher: drop raw upstream `lastError` from the client body, keep it in the log.
+  const msg =
+    (isHideUpstreamMetadataEnabled() ? null : lastError) ||
+    "All round-robin combo models unavailable";
 
   if (earliestRetryAfter && isRetryAfterEligibleStatus(status)) {
     const retryHuman = formatRetryAfter(toRetryAfterDisplayValue(earliestRetryAfter));
-    log.warn("COMBO-RR", `All models failed | ${msg} (${retryHuman})`);
+    log.warn(
+      "COMBO-RR",
+      `All models failed | last=${lastError || "unknown"} | client=${msg} (${retryHuman})`
+    );
     return unavailableResponse(status, msg, earliestRetryAfter, retryHuman);
   }
 
-  log.warn("COMBO-RR", `All models failed | ${msg}`);
+  log.warn("COMBO-RR", `All models failed | last=${lastError || "unknown"} | client=${msg}`);
   return new Response(JSON.stringify({ error: { message: msg } }), {
     status,
     headers: { "Content-Type": "application/json" },

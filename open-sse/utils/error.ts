@@ -2,6 +2,7 @@ import { CORS_HEADERS } from "./cors.ts";
 import { unwrapClinepassEnvelope } from "./clinepassEnvelope.ts";
 import { getDefaultErrorMessage, getErrorInfo } from "../config/errorConfig.ts";
 import { normalizePayloadForLog } from "@/lib/logPayloads";
+import { isHideUpstreamMetadataEnabled } from "@/shared/utils/featureFlags";
 import type { ModelCooldownErrorPayload } from "@/types";
 import { buildPassthroughErrorResponse } from "./upstreamErrorPassthrough.ts";
 
@@ -252,21 +253,34 @@ export function sanitizeRecoveryHint(
  * Whitelist projection — guarantees only id/reason string primitives + integer
  * counts can escape, regardless of what the caller assembled. This is the secret
  * containment boundary for the diagnostic trace.
+ *
+ * HIDE_UPSTREAM_METADATA: `excluded[]` and `attemptOrder[]` enumerate the exact
+ * upstream provider/model identities a combo tried (and `terminalReason` may name
+ * them too) — that is precisely what the flag must keep from clients. Under the
+ * flag only opaque counts survive; the recovery hint (whitelisted action + free-text
+ * next step) is dropped as well since next_step is operator-authored free text that
+ * has no identity guarantee.
  */
 export function sanitizeComboDiagnostics(d: ComboDiagnostics): ComboDiagnostics {
-  const recovery = sanitizeRecoveryHint(d?.recovery);
+  const hideUpstream = isHideUpstreamMetadataEnabled();
+  const recovery = hideUpstream ? undefined : sanitizeRecoveryHint(d?.recovery);
   const out: ComboDiagnostics = {
     poolSize: Number.isFinite(d?.poolSize) ? d.poolSize : 0,
     attempted: Number.isFinite(d?.attempted) ? d.attempted : 0,
-    excluded: (d?.excluded ?? []).slice(0, 64).map((e) => ({
-      provider: clampDiagStr(e?.provider, 64),
-      ...(e?.model ? { model: clampDiagStr(e.model, 96) } : {}),
-      reason: clampDiagStr(e?.reason, 64),
-    })),
-    attemptOrder: (d?.attemptOrder ?? [])
-      .slice(0, 64)
-      .map((a) => ({ provider: clampDiagStr(a?.provider, 64), model: clampDiagStr(a?.model, 96) })),
-    terminalReason: clampDiagStr(d?.terminalReason, 200),
+    excluded: hideUpstream
+      ? []
+      : (d?.excluded ?? []).slice(0, 64).map((e) => ({
+          provider: clampDiagStr(e?.provider, 64),
+          ...(e?.model ? { model: clampDiagStr(e.model, 96) } : {}),
+          reason: clampDiagStr(e?.reason, 64),
+        })),
+    attemptOrder: hideUpstream
+      ? []
+      : (d?.attemptOrder ?? []).slice(0, 64).map((a) => ({
+          provider: clampDiagStr(a?.provider, 64),
+          model: clampDiagStr(a?.model, 96),
+        })),
+    terminalReason: hideUpstream ? "" : clampDiagStr(d?.terminalReason, 200),
   };
   if (recovery) out.recovery = recovery;
   return out;
@@ -298,18 +312,27 @@ export function errorResponseWithComboDiagnostics(
   if (opts.type) body.error.type = opts.type;
   body.diagnostics = safe;
   if (safe.recovery) body.recovery_hint = safe.recovery;
-  const excludedHeader = toHeaderSafeAscii(
-    safe.excluded
-      .map((e) => `${e.provider}${e.model ? `/${e.model}` : ""}:${e.reason}`)
-      .join(",")
-      .slice(0, 900)
-  );
+  // Under HIDE_UPSTREAM_METADATA sanitizeComboDiagnostics empties `excluded`, so
+  // this header renders as "" — omit it (and the terminal-reason header) rather
+  // than sending empty markers.
+  const excludedHeader = safe.excluded.length
+    ? toHeaderSafeAscii(
+        safe.excluded
+          .map((e) => `${e.provider}${e.model ? `/${e.model}` : ""}:${e.reason}`)
+          .join(",")
+          .slice(0, 900)
+      )
+    : null;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "x-omniroute-combo-pool-size": String(safe.poolSize),
     "x-omniroute-combo-attempted": String(safe.attempted),
-    "x-omniroute-combo-excluded": excludedHeader,
-    "x-omniroute-combo-terminal-reason": toHeaderSafeAscii(safe.terminalReason.slice(0, 200)),
+    ...(excludedHeader !== null ? { "x-omniroute-combo-excluded": excludedHeader } : null),
+    ...(safe.terminalReason
+      ? {
+          "x-omniroute-combo-terminal-reason": toHeaderSafeAscii(safe.terminalReason.slice(0, 200)),
+        }
+      : null),
   };
 
   if (safe.recovery) {
@@ -628,13 +651,19 @@ export function providerCircuitOpenResponse(
   retryAfter?: string | number | Date | null
 ) {
   const retryAfterSec = normalizeRetryAfterSeconds(retryAfter);
+  // HIDE_UPSTREAM_METADATA: the provider name (message + `provider` field) identifies
+  // the upstream a combo/alias routed to — omit both under the flag; the error code and
+  // retry hint carry everything a client needs.
+  const hideUpstream = isHideUpstreamMetadataEnabled();
   return new Response(
     JSON.stringify({
       error: {
-        message: `Provider ${provider} circuit breaker is open`,
+        message: hideUpstream
+          ? "Upstream circuit breaker is open"
+          : `Provider ${provider} circuit breaker is open`,
         type: "server_error",
         code: "provider_circuit_open",
-        provider,
+        ...(hideUpstream ? null : { provider }),
         retry_after: retryAfterSec,
       },
     }),
@@ -660,7 +689,13 @@ export function buildModelCooldownBody({
   retryAfterAt?: string | null;
   credentialsCoolingCount?: number | null;
 }): ModelCooldownErrorPayload {
-  const resolvedModel = typeof model === "string" && model.trim().length > 0 ? model.trim() : null;
+  // HIDE_UPSTREAM_METADATA: the cooling model is the resolved upstream target (or an
+  // operator cooldown key derived from it) — collapse to the generic no-model branch
+  // so the 429 body carries no upstream identity.
+  const resolvedModel =
+    !isHideUpstreamMetadataEnabled() && typeof model === "string" && model.trim().length > 0
+      ? model.trim()
+      : null;
   const resolvedRetryAfterAt =
     typeof retryAfterAt === "string" && retryAfterAt.length > 0 ? retryAfterAt : null;
   const resolvedCoolingCount =

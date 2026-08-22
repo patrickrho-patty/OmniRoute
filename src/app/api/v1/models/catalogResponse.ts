@@ -20,7 +20,10 @@ import {
   disambiguateCatalogModelNames,
   enrichCatalogModelEntry,
 } from "@/lib/modelMetadataRegistry";
-import { isModelCatalogNamesEnabled } from "@/shared/utils/featureFlags";
+import {
+  isModelCatalogNamesEnabled,
+  isHideUpstreamMetadataEnabled,
+} from "@/shared/utils/featureFlags";
 import { maybeOmitCatalogModelName } from "./catalogHelpers";
 import { isCodexModelCatalogClient } from "./catalogRequest";
 
@@ -42,6 +45,25 @@ export function applyCatalogPostFilters(
   }
 ): Array<Record<string, any>> {
   let finalModels = models;
+
+  // HIDE_UPSTREAM_METADATA: drop provider-prefixed upstream ids from the listing.
+  // Provider-prefixed entries (`opencode-go/deepseek-v4-pro`, `cc/claude-fable-5`, …)
+  // disclose the upstream pool behind the gateway's public combo/alias names; a client
+  // that can enumerate them learns exactly which upstream models the service calls.
+  // Bare ids (combo names like `claude-fable-5`, aliases, custom ids) and OmniRoute's
+  // own router namespaces (`auto/*`, `qtSd/*`) carry no upstream identity, so they stay.
+  // Applied both BEFORE the variant passes (so variants derive only from survivors) and
+  // AFTER them (so suffix-variant appenders that rebuild provider-prefixed ids, e.g.
+  // appendSyncedEffortVariants, cannot re-introduce upstream identities).
+  const stripUpstreamIds = (list: Array<Record<string, any>>): Array<Record<string, any>> =>
+    isHideUpstreamMetadataEnabled()
+      ? list.filter((m) => {
+          const id = typeof m?.id === "string" ? m.id : "";
+          if (!id.includes("/")) return true;
+          return id.startsWith("auto/") || id.startsWith("qtSd/");
+        })
+      : list;
+  finalModels = stripUpstreamIds(finalModels);
 
   // variants are only generated for surviving models.
   if (new URL(request.url).searchParams.get("configuredOnly") === "true") {
@@ -97,7 +119,7 @@ export function applyCatalogPostFilters(
   // guards (e.g. `codex/gpt-5.5`, `veo-free/seedance` listed twice). Keyed by listing
   // identity (id, type, subtype) so the intentional same-id audio transcription/speech
   // pair survives. Independent of MODELS_CATALOG_PREFIX_MODE; runs as the final guard.
-  finalModels = dedupeExactCatalogIds(finalModels);
+  finalModels = dedupeExactCatalogIds(stripUpstreamIds(finalModels));
 
   return finalModels;
 }

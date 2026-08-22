@@ -12,7 +12,7 @@ export interface FeatureFlagDefinition {
 }
 
 export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
-  // ──────────────── Security (9) ────────────────
+  // ──────────────── Security (10) ────────────────
   {
     key: "REQUIRE_API_KEY",
     label: "Require API Key",
@@ -104,6 +104,18 @@ export const FEATURE_FLAG_DEFINITIONS: FeatureFlagDefinition[] = [
     type: "boolean",
     requiresRestart: false,
     warningLevel: "danger",
+  },
+  {
+    key: "HIDE_UPSTREAM_METADATA",
+    label: "Hide Upstream Metadata",
+    description:
+      "Redact upstream model/provider identities from client-facing responses: omits the X-OmniRoute-Model/Provider/Decision headers and matching SSE metadata comments, strips provider/model identities from combo failure diagnostics, filters provider-prefixed upstream ids from /v1/models, and forces the response body `model` field to echo the client-requested name.",
+    descriptionI18nKey: "featureFlagHideUpstreamMetadataDescription",
+    category: "security",
+    defaultValue: "false",
+    type: "boolean",
+    requiresRestart: false,
+    warningLevel: "caution",
   },
   // ──────────────── Network (7) ────────────────
   {

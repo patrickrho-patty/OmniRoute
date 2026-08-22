@@ -84,6 +84,25 @@ export function isApiKeyRevealEnabledFlag(): boolean {
   }
 }
 
+/**
+ * HIDE_UPSTREAM_METADATA — security redaction of upstream model/provider identities
+ * from client-facing responses (meta headers, SSE metadata comments, combo failure
+ * diagnostics, /v1/models catalog, and the response-body `model` echo).
+ *
+ * Resolved synchronously (DB override > env > default "false") because the redaction
+ * points live in pure header/diagnostic builders. When the DB is unavailable (tests,
+ * early boot), falls back to the raw env value so `HIDE_UPSTREAM_METADATA=true` still
+ * redacts — fail-open to today's behavior only when neither source says "on".
+ */
+export function isHideUpstreamMetadataEnabled(): boolean {
+  try {
+    return isFeatureFlagEnabled("HIDE_UPSTREAM_METADATA");
+  } catch {
+    const envValue = process.env.HIDE_UPSTREAM_METADATA;
+    return envValue === "true" || envValue === "1" || envValue === "yes";
+  }
+}
+
 export function isModelCatalogNamesEnabled(): boolean {
   return isFeatureFlagEnabled("MODEL_CATALOG_INCLUDE_NAMES");
 }

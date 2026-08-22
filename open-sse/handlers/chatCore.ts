@@ -304,6 +304,7 @@ import { generateRequestId } from "@/shared/utils/requestId";
 import { extractFacts } from "@/lib/memory/extraction";
 import { handleToolCallExecution } from "@/lib/skills/interception";
 import { OMNIROUTE_RESPONSE_HEADERS } from "@/shared/constants/headers";
+import { isHideUpstreamMetadataEnabled } from "@/shared/utils/featureFlags";
 import { getClaudeCodeCompatibleRequestDefaults } from "@/lib/providers/requestDefaults";
 import {
   buildClaudeCodeCompatibleRequest,
@@ -384,6 +385,16 @@ export async function handleChatCore({
   correlationId = null,
   modelPinned = false,
   pattyDecision = null,
+  /**
+   * #1311 follow-up: the model string the CLIENT sent (combo name, alias, or raw id) —
+   * captured by the dispatcher (executeChatWithBreaker) BEFORE it rewrites body.model to
+   * the resolved `${provider}/${model}` upstream id. Combo/alias dispatch flows through
+   * that rewrite, so `requestSetup.requestedModel` alone cannot recover the public name;
+   * without this the echoRequestedModelName rewrite would faithfully echo the upstream id
+   * (the exact leak the setting exists to prevent). Optional — direct dispatchers that
+   * already pass an untouched body get identical behaviour via the fallback.
+   */
+  clientRequestedModel = null,
 }) {
   let { provider, model, extendedContext } = modelInfo;
   // ── Memory pressure guard ────────────────────────────────────────────
@@ -764,9 +775,18 @@ export async function handleChatCore({
   // #1311 (opt-in): echo the client-requested alias/combo name in the response `model`
   // field instead of the upstream model, so strict clients (Claude Desktop) that validate
   // response.model === request.model stop rejecting alias/combo requests with a 401.
+  //
+  // Precedence for the echoed name: patty publicModel (settlement-billed harness requests)
+  // > clientRequestedModel (combo/alias dispatch — see param doc) > requestedModel (body
+  // model as received by chatCore, i.e. the upstream id on the combo path).
+  // HIDE_UPSTREAM_METADATA force-enables the echo — with the flag on, echoing the
+  // upstream id in the body would defeat the redaction the flag promises.
+  const echoEnabled = settings.echoRequestedModelName === true || isHideUpstreamMetadataEnabled();
   const echoModel =
-    settings.echoRequestedModelName === true && typeof requestedModel === "string" && requestedModel
-      ? requestedModel
+    echoEnabled && typeof requestedModel === "string" && requestedModel
+      ? typeof clientRequestedModel === "string" && clientRequestedModel.trim().length > 0
+        ? clientRequestedModel
+        : requestedModel
       : null;
   const detailedLoggingEnabled =
     !noLogEnabled &&
@@ -957,6 +977,9 @@ export async function handleChatCore({
     log,
     persistAttemptLogs,
     apiKeyId: apiKeyInfo?.id ?? undefined,
+    // Same patty precedence as assembleStreamingPipeline's echoModel — settlement-billed
+    // harness requests echo the patty publicModel, everything else the #1311 name.
+    echoModel: pattyDecision ? (pattyDecision as PattyDecision).publicModel : echoModel,
   });
   if (cacheHit) {
     return cacheHit;
@@ -4006,7 +4029,11 @@ export async function handleChatCore({
         connectionId,
         status: `FAILED ${HTTP_STATUS.BAD_GATEWAY}`,
       }).catch(() => {});
-      const malformedMessage = `[${provider}/${model}] returned an empty response (no usable choices/output)`;
+      // HIDE_UPSTREAM_METADATA: don't name the upstream target in the client-facing
+      // 502 message; the log line below keeps the full identity for operators.
+      const malformedMessage = isHideUpstreamMetadataEnabled()
+        ? "Upstream returned an empty response (no usable choices/output)"
+        : `[${provider}/${model}] returned an empty response (no usable choices/output)`;
       persistAttemptLogs({
         status: HTTP_STATUS.BAD_GATEWAY,
         tokens: usage,

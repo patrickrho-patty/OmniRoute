@@ -1,6 +1,7 @@
 import { getProviderAlias } from "@/shared/constants/providers";
 import { OMNIROUTE_RESPONSE_HEADERS } from "@/shared/constants/headers";
 import { APP_CONFIG } from "@/shared/constants/appConfig";
+import { isHideUpstreamMetadataEnabled } from "@/shared/utils/featureFlags";
 
 type UsageLike = Record<string, unknown> | null | undefined;
 
@@ -146,6 +147,14 @@ export function buildOmniRouteResponseMetaHeaders({
   strategy?: string | null;
   usage?: UsageLike;
 }): Record<string, string> {
+  // HIDE_UPSTREAM_METADATA: the model/provider/decision fields disclose which
+  // upstream provider a combo/alias actually routed to (e.g. a public
+  // "claude-fable-5" combo serving opencode-go/deepseek-v4-pro). Omit all three
+  // when the flag is on — this single choke point covers every attach site
+  // (streaming + non-streaming chat, semantic-cache HITs, images, audio, OCR)
+  // AND the `: x-omniroute-*=…` SSE metadata comments, which render from this map.
+  // Token/latency/cost/version telemetry stays — it carries no upstream identity.
+  const hideUpstream = isHideUpstreamMetadataEnabled();
   const tokens = getOmniRouteTokenCounts(usage);
   const headers: Record<string, string> = {
     [OMNIROUTE_RESPONSE_HEADERS.cacheHit]: toHeaderValue(String(cacheHit)),
@@ -156,7 +165,7 @@ export function buildOmniRouteResponseMetaHeaders({
     [OMNIROUTE_RESPONSE_HEADERS.version]: toHeaderValue(APP_CONFIG.version),
   };
 
-  if (typeof model === "string" && model.trim().length > 0) {
+  if (!hideUpstream && typeof model === "string" && model.trim().length > 0) {
     headers[OMNIROUTE_RESPONSE_HEADERS.model] = toHeaderValue(model);
   }
 
@@ -164,10 +173,9 @@ export function buildOmniRouteResponseMetaHeaders({
     headers[OMNIROUTE_RESPONSE_HEADERS.requestId] = toHeaderValue(requestId);
   }
 
-  if (typeof provider === "string" && provider.trim().length > 0) {
+  if (!hideUpstream && typeof provider === "string" && provider.trim().length > 0) {
     headers[OMNIROUTE_RESPONSE_HEADERS.provider] = toHeaderValue(getProviderAlias(provider));
   }
-
   // Cache-saved cost: emitted only when the caller passes a value (cache HITs), so
   // non-cache responses keep their existing header shape. `0` is a valid saved cost.
   if (costSavedUsd != null) {
@@ -181,9 +189,13 @@ export function buildOmniRouteResponseMetaHeaders({
     headers[OMNIROUTE_RESPONSE_HEADERS.fallbackAttempts] = toHeaderValue(String(attempts));
   }
 
-  const decisionValue = buildOmniRouteDecisionHeaderValue({ strategy, provider, latencyMs });
-  if (decisionValue !== null) {
-    headers[OMNIROUTE_RESPONSE_HEADERS.decision] = decisionValue;
+  // Decision value embeds the provider alias ("provider=…; latency_ms=…") — skip it
+  // entirely under HIDE_UPSTREAM_METADATA.
+  if (!hideUpstream) {
+    const decisionValue = buildOmniRouteDecisionHeaderValue({ strategy, provider, latencyMs });
+    if (decisionValue !== null) {
+      headers[OMNIROUTE_RESPONSE_HEADERS.decision] = decisionValue;
+    }
   }
 
   return headers;

@@ -14,6 +14,7 @@
  */
 import { getModelCatalogCacheVersion } from "@/lib/db/readCache";
 import { extractApiKey } from "@/sse/services/auth";
+import { isHideUpstreamMetadataEnabled } from "@/shared/utils/featureFlags";
 
 import { isCodexModelCatalogClient } from "./catalogRequest";
 
@@ -76,7 +77,13 @@ function buildCatalogCacheKey(request: Request): string {
   const apiKey = extractApiKey(request) || "";
   const isCodex = isCodexModelCatalogClient(request) ? "1" : "0";
   const configuredOnly = url.searchParams.get("configuredOnly") === "true" ? "1" : "0";
-  return `${prefix}|${isCodex}|${apiKey}|${configuredOnly}`;
+  // HIDE_UPSTREAM_METADATA changes the filtered listing; feature-flag overrides do NOT
+  // bump the model-catalog cache version (only settings/connections/combos writes do),
+  // so key the flag value directly to avoid serving an unredacted (or over-redacted)
+  // cached body after a toggle. isHideUpstreamMetadataEnabled never throws (its own
+  // fallback covers an uninitialized DB).
+  const hideUpstream = isHideUpstreamMetadataEnabled() ? "1" : "0";
+  return `${prefix}|${isCodex}|${apiKey}|${configuredOnly}|hid=${hideUpstream}`;
 }
 
 // Tracks the model-catalog cache version (src/lib/db/readCache.ts) as of the last

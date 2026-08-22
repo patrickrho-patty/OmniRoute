@@ -1,5 +1,6 @@
 import { getModelInfo, getComboForModel } from "../services/model";
 import { clearAccountError, markAccountUnavailable } from "../services/auth";
+import { isHideUpstreamMetadataEnabled } from "@/shared/utils/featureFlags";
 import { connectionHasExtraKeys } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import { createBuiltinAutoCombo } from "@omniroute/open-sse/services/autoCombo/builtinCatalog.ts";
 import * as log from "../utils/logger";
@@ -412,11 +413,20 @@ export async function executeChatWithBreaker({
     appliedProxySink ? runWithAppliedProxyCapture(appliedProxySink, fn) : fn();
 
   try {
+    // #1311 follow-up (combo/alias echo): the line below rewrites `body.model` to the
+    // resolved `${provider}/${model}` upstream id before chatCore sees it, so chatCore's
+    // `requestedModel` (and therefore the echoRequestedModelName rewrite) would echo the
+    // UPSTREAM id for combo/alias requests — exactly the leak the echo setting exists to
+    // prevent. Capture the caller-visible model here (combo name, alias, or raw id —
+    // whatever the client sent) and hand it to chatCore explicitly.
+    const clientRequestedModel =
+      typeof body?.model === "string" && body.model.trim().length > 0 ? body.model : null;
     const chatFn = () =>
       capture(() =>
         runWithProxyContext(proxyInfo?.proxy || null, () =>
           (handleChatCore as any)({
             body: { ...body, model: `${provider}/${model}` },
+            clientRequestedModel,
             modelInfo: { provider, model, extendedContext, apiFormat: modelApiFormat },
             credentials: refreshedCredentials,
             log: handlerLog,
@@ -599,9 +609,15 @@ export function handleNoCredentials(
     }
 
     log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
+    // HIDE_UPSTREAM_METADATA: the `[provider/model]` prefix names the upstream target,
+    // and `errorMsg` is RAW UPSTREAM TEXT whose error bodies name their own models —
+    // return a generic message instead. The log line above keeps full detail.
+    const clientErrorMsg = isHideUpstreamMetadataEnabled()
+      ? "Upstream temporarily unavailable"
+      : `[${provider}/${model}] ${errorMsg}`;
     return unavailableResponse(
       status,
-      `[${provider}/${model}] ${errorMsg}`,
+      clientErrorMsg,
       credentials.retryAfter,
       credentials.retryAfterHuman
     );
