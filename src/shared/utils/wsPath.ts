@@ -53,3 +53,65 @@ export function resolveLiveWsPublicUrl(env: NodeJS.ProcessEnv = process.env): st
 export function getLiveWsPath(): string {
   return deriveLiveWsPath(resolveLiveWsPublicUrl() ?? undefined);
 }
+
+/**
+ * Normalize a handshake-reported live-WS port. Returns `null` for anything
+ * that is not a usable 1–65535 integer (number or numeric string), so callers
+ * treat "no usable port" the same as "not reported" (#11331).
+ */
+export function sanitizeLiveWsPort(value: unknown): number | null {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value)) return null;
+    if (value < 1 || value > 65535) return null;
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed)) return null;
+    if (parsed < 1 || parsed > 65535) return null;
+    return parsed;
+  }
+  return null;
+}
+
+/**
+ * Compose the live-dashboard WebSocket URL (#11331).
+ *
+ * Precedence:
+ *   1. `explicit`  — operator-configured wsUrl wins over everything.
+ *   2. `handshakeUrl` — a complete URL from /api/v1/ws?handshake=1 beats a
+ *      bare port override (it already encodes host+path+port coherently).
+ *   3. `defaultUrl`  with the handshake's `handshakePort` / `handshakePath`
+ *      applied on top — a prebuilt image learns the real LIVE_WS_PORT /
+ *      custom path at runtime instead of the compiled-in default.
+ * An unparseable default falls back to the raw string (the WebSocket
+ * constructor will surface the error) rather than throwing here.
+ */
+export function resolveLiveWsUrl(options: {
+  explicit?: string | null;
+  handshakeUrl?: string | null;
+  handshakePort?: number | null;
+  handshakePath?: string | null;
+  defaultUrl: string;
+}): string {
+  const { explicit, handshakeUrl, handshakePort, handshakePath, defaultUrl } = options;
+
+  if (typeof explicit === "string" && explicit.trim() !== "") return explicit;
+  if (typeof handshakeUrl === "string" && handshakeUrl.trim() !== "") return handshakeUrl;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(defaultUrl);
+  } catch {
+    return defaultUrl;
+  }
+
+  const port = sanitizeLiveWsPort(handshakePort);
+  if (port !== null) {
+    parsed.port = String(port);
+  }
+  if (typeof handshakePath === "string" && handshakePath.startsWith("/")) {
+    parsed.pathname = handshakePath;
+  }
+  return parsed.toString();
+}
