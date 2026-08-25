@@ -185,6 +185,10 @@ ENV NODE_OPTIONS="--max-old-space-size=${OMNIROUTE_BUILD_MEMORY_MB}"
 # silently leaving no standalone bundle. Next derives the worker count from
 # CIRCLE_NODE_TOTAL (workers = N-1). (#10060)
 #
+# Lowered 3 → 2 after the v3.8.51 upstream merge (2026-08-25): the grown tree
+# pushed the real per-worker peak past the 2560 MB planning figure and a
+# 2-worker build OOM'd a 16 GB runner again (same signature, right at page-data
+# collection). One page-data worker keeps the worst case at parent + 1 worker.
 # Lowered 8 → 3 (7 workers → 2). Every page-data worker inherits NODE_OPTIONS
 # above, so the ceiling is per PROCESS, not per build: 7 workers on a 16 GB
 # GitHub runner (ubuntu-24.04 / ubuntu-24.04-arm, 4 vCPU) exhausted the host and
@@ -197,7 +201,7 @@ ENV NODE_OPTIONS="--max-old-space-size=${OMNIROUTE_BUILD_MEMORY_MB}"
 # either knob is raised past what a 16 GB runner holds. 2 workers also stops
 # oversubscribing the runner's 4 vCPU, which 7 did. Override for a big builder:
 # `--build-arg OMNIROUTE_BUILD_WORKERS=8`.
-ARG OMNIROUTE_BUILD_WORKERS=3
+ARG OMNIROUTE_BUILD_WORKERS=2
 ENV CIRCLE_NODE_TOTAL=${OMNIROUTE_BUILD_WORKERS}
 
 COPY . ./

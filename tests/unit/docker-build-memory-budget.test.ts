@@ -21,11 +21,12 @@ const RUNNER_MEMORY_MB = 16 * 1024;
 const HEADROOM_FRACTION = 0.75;
 // Planning figure for one page-data worker's peak RSS. It is an INFERENCE, not
 // a measurement: 7 workers did not fit in 16 GB alongside the parent, which
-// puts the per-worker peak somewhere north of ~1.8 GB. 2.5 GB is that bound
-// rounded up, so the budget below stays conservative. If a future build OOMs
+// puts the per-worker peak somewhere north of ~1.8 GB. Raised 2560 → 3072
+// after the v3.8.51 upstream merge (2026-08-25): a 2-worker build OOM'd a
+// 16 GB runner at the 2560 figure, falsifying it. If a future build OOMs
 // again with a worker count this test accepts, raise this number — do not
 // weaken the budget.
-const WORKER_PEAK_MB = 2560;
+const WORKER_PEAK_MB = 3072;
 
 const dockerfile = readFileSync(
   fileURLToPath(new URL("../../Dockerfile", import.meta.url)),
