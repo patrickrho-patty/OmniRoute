@@ -16,7 +16,7 @@ name: Build & Publish Fork Image to GHCR
 
 on:
   push:
-    branches: [custom-features, main]
+    branches: [patty, custom-features, main]
     tags:
       - "v*"
   workflow_dispatch:
