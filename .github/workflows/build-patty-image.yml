@@ -68,11 +68,11 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE_NAME }}
-          # :latest tracks the fork's live deploy branch (custom-features).
-          # A short-sha tag is always produced for traceability, plus per-branch
-          # and per-tag tags.
+          # :latest tracks the fork's live deploy branch (patty since 2026-08-25;
+          # custom-features before that). A short-sha tag is always produced for
+          # traceability, plus per-branch and per-tag tags.
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/custom-features' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/patty' }}
             type=sha,prefix=sha-,format=short
             type=ref,event=branch
             type=ref,event=tag
