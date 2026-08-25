@@ -185,10 +185,11 @@ ENV NODE_OPTIONS="--max-old-space-size=${OMNIROUTE_BUILD_MEMORY_MB}"
 # silently leaving no standalone bundle. Next derives the worker count from
 # CIRCLE_NODE_TOTAL (workers = N-1). (#10060)
 #
-# Lowered 3 → 2 after the v3.8.51 upstream merge (2026-08-25): the grown tree
-# pushed the real per-worker peak past the 2560 MB planning figure and a
-# 2-worker build OOM'd a 16 GB runner again (same signature, right at page-data
-# collection). One page-data worker keeps the worst case at parent + 1 worker.
+# Lowered to 1 after the v3.8.51 upstream merge (2026-08-25): the grown tree's
+# page-data pass OOM'd a 16 GB runner at 3 workers (twice — the first fix never
+# took because Next 16 ignores CIRCLE_NODE_TOTAL; see the OMNIROUTE_BUILD_CPUS
+# line above). A single page-data worker leaves the whole-runner worst case at
+# parent + 1 worker with real headroom.
 # Lowered 8 → 3 (7 workers → 2). Every page-data worker inherits NODE_OPTIONS
 # above, so the ceiling is per PROCESS, not per build: 7 workers on a 16 GB
 # GitHub runner (ubuntu-24.04 / ubuntu-24.04-arm, 4 vCPU) exhausted the host and
@@ -201,8 +202,14 @@ ENV NODE_OPTIONS="--max-old-space-size=${OMNIROUTE_BUILD_MEMORY_MB}"
 # either knob is raised past what a 16 GB runner holds. 2 workers also stops
 # oversubscribing the runner's 4 vCPU, which 7 did. Override for a big builder:
 # `--build-arg OMNIROUTE_BUILD_WORKERS=8`.
-ARG OMNIROUTE_BUILD_WORKERS=2
+ARG OMNIROUTE_BUILD_WORKERS=1
 ENV CIRCLE_NODE_TOTAL=${OMNIROUTE_BUILD_WORKERS}
+# Next 16 no longer derives page-data workers from CIRCLE_NODE_TOTAL — it reads
+# experimental.cpus (next.config.mjs), which OMNIROUTE_BUILD_CPUS feeds. Without
+# this line the 2026-08-25 runs printed "Collecting page data using 3 workers"
+# even with OMNIROUTE_BUILD_WORKERS=2 and the 16 GB runner OOM'd during the
+# v3.8.51-merged tree's page-data pass. CIRCLE_NODE_TOTAL stays for older Next.
+ENV OMNIROUTE_BUILD_CPUS=${OMNIROUTE_BUILD_WORKERS}
 
 COPY . ./
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-next-cache,target=/app/.build/next/cache \

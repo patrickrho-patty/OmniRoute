@@ -50,15 +50,24 @@ test("the Docker build's worker pool is derived from OMNIROUTE_BUILD_WORKERS", (
     /^ENV NODE_OPTIONS="--max-old-space-size=\$\{OMNIROUTE_BUILD_MEMORY_MB\}"$/m.test(dockerfile),
     "the build heap ceiling must stay wired to OMNIROUTE_BUILD_MEMORY_MB"
   );
+  // Next 16 derives page-data workers from experimental.cpus (fed by
+  // OMNIROUTE_BUILD_CPUS in next.config.mjs), NOT from CIRCLE_NODE_TOTAL —
+  // the 2026-08-25 v3.8.51-merge builds printed "using 3 workers" with the
+  // legacy env set to 2 and OOM'd the runner. Both must stay wired.
+  assert.ok(
+    /^ENV OMNIROUTE_BUILD_CPUS=\$\{OMNIROUTE_BUILD_WORKERS\}$/m.test(dockerfile),
+    "OMNIROUTE_BUILD_CPUS must stay wired to OMNIROUTE_BUILD_WORKERS or Next 16 ignores the worker cap"
+  );
 });
 
 test("worker count × per-process heap fits a 16 GB GitHub runner", () => {
   const workerPool = readArgDefault("OMNIROUTE_BUILD_WORKERS");
   const heapMb = readArgDefault("OMNIROUTE_BUILD_MEMORY_MB");
 
-  // Next derives `workers = CIRCLE_NODE_TOTAL - 1`.
-  const workers = workerPool - 1;
-  assert.ok(workers >= 1, `CIRCLE_NODE_TOTAL=${workerPool} leaves no build workers`);
+  // Next 16 derives `workers = experimental.cpus = OMNIROUTE_BUILD_CPUS`
+  // (the CIRCLE_NODE_TOTAL N-1 formula died with Next 15).
+  const workers = workerPool;
+  assert.ok(workers >= 1, `OMNIROUTE_BUILD_WORKERS=${workerPool} leaves no build workers`);
 
   // The parent `next build` process is the one that genuinely needs the raised
   // ceiling (the webpack/turbopack production pass, #4076); the workers are
@@ -75,6 +84,6 @@ test("worker count × per-process heap fits a 16 GB GitHub runner", () => {
 });
 
 test("the worker pool does not oversubscribe the runner's 4 vCPU", () => {
-  const workers = readArgDefault("OMNIROUTE_BUILD_WORKERS") - 1;
+  const workers = readArgDefault("OMNIROUTE_BUILD_WORKERS");
   assert.ok(workers <= 4, `${workers} workers oversubscribe a 4 vCPU runner`);
 });
