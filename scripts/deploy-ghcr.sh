@@ -26,8 +26,13 @@
 #
 set -euo pipefail
 
-# ── Config (defaults — override via ~/.omniroute-deploy.env or env) ──────────
-DEPLOY_BRANCH="${OMNIROUTE_DEPLOY_BRANCH:-custom-features}"
+# ── Config ───────────────────────────────────────────────────────────────────
+# Order matters: source ~/.omniroute-deploy.env FIRST so its OMNIROUTE_DEPLOY_*
+# values participate in the defaults below (env vars still win over the file).
+# shellcheck disable=SC1090
+[ -f "$HOME/.omniroute-deploy.env" ] && . "$HOME/.omniroute-deploy.env"
+
+DEPLOY_BRANCH="${OMNIROUTE_DEPLOY_BRANCH:-patty}"
 WORKFLOW="${OMNIROUTE_DEPLOY_WORKFLOW:-build-patty-image.yml}"
 GHCR_IMAGE="${OMNIROUTE_DEPLOY_IMAGE:-ghcr.io/patty-internal/omniroute:latest}"
 VPS_HOST="${OMNIROUTE_DEPLOY_HOST:-root@109.123.231.227}"
@@ -38,9 +43,6 @@ VPS_CONTAINER="${OMNIROUTE_DEPLOY_CONTAINER:-omniroute-p5}"
 # Health endpoint — the box binds the dashboard to its internal LAN IP:
 VPS_HEALTH_URL="${OMNIROUTE_DEPLOY_HEALTH_URL:-http://10.200.85.232:20128/api/monitoring/health}"
 
-# Shellcheck: the config file is intentionally not quoted so a missing one is fine.
-# shellcheck disable=SC1090
-[ -f "$HOME/.omniroute-deploy.env" ] && . "$HOME/.omniroute-deploy.env"
 
 # ── Flags ────────────────────────────────────────────────────────────────────
 COMMIT_MESSAGE=""
