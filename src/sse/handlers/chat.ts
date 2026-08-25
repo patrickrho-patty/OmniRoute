@@ -427,6 +427,7 @@ async function handleChatImplementation(
       request,
       clientRawRequest,
       preParsedBody,
+      admissionContext,
       runtimeOptions,
       correlationId,
       (decision) => {
@@ -453,6 +454,10 @@ async function handleChatImplementation(
     }
     return response;
   } catch (error) {
+    console.error(
+      "[PATTY-DBG] impl threw:",
+      error && (error.stack || String(error)).split(String.fromCharCode(10)).slice(0, 3).join(" | ")
+    );
     if (!pattyDecision) throw error;
     if (!hasPattySettlementAttempted(pattyDecision)) {
       try {
@@ -483,13 +488,11 @@ async function handleChatInternal(
   request: any,
   clientRawRequest: any = null,
   preParsedBody: any = null,
+  admissionContext: chatAdmission.ChatAdmissionContext,
   runtimeOptions: HandleChatRuntimeOptions = {},
   correlationId?: string,
   onPattyDecision?: (decision: PattyDecision) => void
 ) {
-  // Keep the admission context in scope for upstream's deferred-admission hooks
-  // (captureDeferredClientRawBody / resolveClientRawAfterAdmission).
-  void admissionContext;
   const peerRejection = rejectPeerRequest(request?.headers, log.warn, errorResponse);
   if (peerRejection) return peerRejection;
 

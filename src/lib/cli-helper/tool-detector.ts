@@ -8,6 +8,7 @@ import { getHermesConfigPath } from "./config-generator/hermesHome";
 import { getCliTool, listCliTools } from "../../shared/constants/cliTools";
 import {
   CLI_TOOL_IDS,
+  locateCommand,
   getLookupEnv,
   getCliPrimaryConfigPath,
   getCliToolCommandCandidates,
@@ -15,6 +16,13 @@ import {
   shouldUseShellForCommand,
 } from "../../shared/services/cliRuntime";
 import { resolveOpencodeConfigPath } from "../../shared/services/opencodeConfigPath";
+
+let locateCommandImpl = locateCommand;
+
+/** Test seam: override the command-resolution backend. */
+export function __setLocateCommandImplForTesting(fn: typeof locateCommand): void {
+  locateCommandImpl = fn;
+}
 
 const execFileAsync = promisify(execFile);
 let execFileImpl = execFileAsync;

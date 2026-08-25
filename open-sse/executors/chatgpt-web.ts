@@ -1875,6 +1875,11 @@ function decodeUtf8DataUrl(text: string): string {
   return new TextDecoder().decode(Buffer.from(base64, "base64"));
 }
 
+interface ConversationDetailFetchResult {
+  detail: ChatGptConversationDetail | null;
+  terminal: boolean;
+}
+
 async function fetchConversationDetail(
   conversationId: string,
   ctx: ResolverContext

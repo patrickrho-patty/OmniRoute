@@ -16,6 +16,20 @@ export function buildClientRawRequest(request: Request, body: unknown) {
   const headers = Object.fromEntries(request.headers.entries());
   delete headers["x-omniroute-lease-owner"];
   delete headers["x-omniroute-lease-generation"];
+  // Fork defense-in-depth: strip client credentials AT CAPTURE, not only at log
+  // time — clientRawRequest flows through several observability consumers and
+  // any of them must never retain the bearer/cookie/x-patty material. The
+  // request logger's maskHeaders is a second layer, not the only one.
+  for (const credentialHeader of [
+    "authorization",
+    "cookie",
+    "x-api-key",
+    "api-key",
+    "proxy-authorization",
+    "x-patty-original-authorization",
+  ]) {
+    delete headers[credentialHeader];
+  }
   return {
     endpoint: url.pathname,
     // #7847: bounded, not a full deep clone. Every consumer of clientRawRequest.body is

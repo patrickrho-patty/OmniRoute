@@ -182,6 +182,15 @@ import {
   getExplicitModelOutputCap,
   resolveInputTokenCapForGate,
 } from "@/lib/modelCapabilities.ts";
+import { collectCustomToolNamesForSourceFormat } from "../translator/request/openai-responses/additionalTools.ts";
+import { buildCodexQuotaPersistence } from "./chatCore/codexQuota.ts";
+import { enforceOutputTokenBudget } from "./chatCore/outputTokenBudget.ts";
+import { recoverAnthropicThinkingSignature } from "./chatCore/thinkingSignatureRecovery.ts";
+import { applyDefaultReasoningEffort } from "../services/defaultReasoningEffort.ts";
+import { generateSessionId } from "../services/sessionManager.ts";
+import { prepareWebFetchFallbackBody } from "../services/webFetchInterception.ts";
+import type { CompressionResult } from "../services/compression/types.ts";
+import { resolveInterceptSearch, resolveInterceptFetch } from "@/lib/db/interceptionRules";
 import {
   checkRequestCapabilityFit,
   deriveRequestCapabilityRequirements,
@@ -383,6 +392,7 @@ import {
   compressContext,
   estimateTokens,
   getTokenLimit,
+  getComboTargetTokenLimit,
   resolveComboContextLimit,
 } from "../services/contextManager.ts";
 import { resolveBackgroundTaskRedirect } from "./chatCore/backgroundRedirect.ts";
@@ -917,12 +927,15 @@ export async function handleChatCore({
   // Initialize rate limit settings from persisted DB (once, lazy)
   await initializeRateLimits();
 
+  // #3384: per-model interception rule (src/lib/db/interceptionRules.ts) overrides
+  // the native-bypass defaults when the operator explicitly configured it for this
+  // provider/model pair; undefined falls through to the existing bypass logic.
+  const interceptSearchOverride = resolveInterceptSearch(provider, effectiveModel);
   const { body: bodyWithWebSearchFallback, fallback: webSearchFallbackPlan } =
     prepareWebSearchFallbackBody(body as Record<string, unknown>, {
       provider,
       sourceFormat,
       targetFormat,
-
       nativeCodexPassthrough: nativeResponsesPassthrough,
       interceptSearchOverride,
     });
@@ -1662,6 +1675,7 @@ export async function handleChatCore({
         // that selectCompressionStrategy can only partially apply via the mode string.
         const cacheCtx = { provider, targetFormat, model: effectiveModel };
         const compressionConfig = resolveCacheAwareConfig(config, compressionInputBody, cacheCtx);
+        const compressionPrincipalId = apiKeyInfo?.id ? String(apiKeyInfo.id) : undefined;
         const compressionOptions = {
           model: effectiveModel,
           // #7237: feed the AUTHORITATIVE capability (model spec / models.dev sync / DB
@@ -1929,7 +1943,7 @@ export async function handleChatCore({
       log?.info?.("CONTEXT", `Attempting to resolve combo limits for comboName=${comboName}`);
       try {
         const { getComboByName } = await import("../../src/lib/localDb");
-        const { parseModel } = await import("../services/model.ts");
+        const { parseModel: _parseModel } = await import("../services/model.ts");
         const { resolveComboTargets } = await import("../services/combo.ts");
         let comboConfig = await getComboByName(comboName);
         if (!comboConfig && comboName.startsWith("combo/")) {
@@ -5143,6 +5157,13 @@ export async function handleChatCore({
           connectionId: credentials?.connectionId ?? null,
         })
       );
+      // Upstream's describeMalformedNonStream carries a structured code/type;
+      // the fork's HIDE_UPSTREAM_METADATA path reduces the message to an opaque
+      // string — keep the canonical upstream code/type for the error envelope.
+      const malformed = {
+        code: "empty_upstream_response" as const,
+        type: "upstream_error" as const,
+      };
       return createErrorResult(
         HTTP_STATUS.BAD_GATEWAY,
         malformedMessage,
@@ -5439,7 +5460,7 @@ export async function handleChatCore({
     errorCode: streamErrorCode,
     ttft,
     itlMs: streamItlMs,
-    interrupted: streamInterrupted,
+    interrupted: _streamInterrupted,
   }) => {
     const normalizedStreamStatus = streamStatus || 200;
     if (streamCompletionRecorded) return;
