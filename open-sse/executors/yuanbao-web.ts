@@ -180,8 +180,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
   }> {
     const { model, body, stream, credentials, signal, log, upstreamExtraHeaders } = input;
     const messages = (body as Record<string, unknown>).messages as
-      | Array<Record<string, unknown>>
-      | undefined;
+      Array<Record<string, unknown>> | undefined;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return this.errorResponse(400, "Missing or empty messages array", CHAT_URL);
@@ -253,11 +252,7 @@ export class YuanbaoWebExecutor extends BaseExecutor {
       const createData = (await createRes.json()) as Record<string, unknown>;
       conversationId = String(createData.id || "");
       if (!conversationId) {
-        return this.errorResponse(
-          502,
-          "Yuanbao did not return a conversation id",
-          CREATE_URL
-        );
+        return this.errorResponse(502, "Yuanbao did not return a conversation id", CREATE_URL);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -457,9 +452,12 @@ function transformYuanbaoStream(
             if (event.type === "think" && event.content) {
               ensureRole();
               emit({ reasoning_content: event.content });
-            } else if (event.type === "text" && typeof event.msg === "string" && event.msg) {
-              ensureRole();
-              emit({ content: event.msg });
+            } else if (event.type === "text") {
+              const text = event.msg ?? event.content;
+              if (text) {
+                ensureRole();
+                emit({ content: text });
+              }
             }
           }
         }
@@ -498,7 +496,10 @@ async function collectYuanbaoResponse(
         const event = parseYuanbaoDataLine(line);
         if (!event) continue;
         if (event.type === "think" && event.content) reasoning += event.content;
-        else if (event.type === "text" && typeof event.msg === "string") content += event.msg;
+        else if (event.type === "text") {
+          const text = event.msg ?? event.content;
+          if (text) content += text;
+        }
       }
     }
   } finally {

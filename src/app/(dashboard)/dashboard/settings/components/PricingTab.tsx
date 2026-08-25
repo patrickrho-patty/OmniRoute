@@ -1,5 +1,7 @@
 "use client";
 
+import { FilterSelect, HeroStat, SyncMini } from "./PricingTabHelpers";
+
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, Button } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
@@ -48,6 +50,8 @@ interface PricingCatalogProvider {
   format: string;
   modelCount: number;
   models: PricingCatalogModel[];
+  /** Original pricing namespace (e.g. public prefix) when it differs from `alias`. */
+  pricingKey?: string;
 }
 
 function getSourceTone(source: PricingSource): string {
@@ -133,11 +137,15 @@ export default function PricingTab() {
 
   const allProviders = useMemo(() => {
     return Object.entries(catalog)
-      .map(([alias, info]) => ({
-        ...info,
-        alias,
-        pricedModels: pricingData[alias] ? Object.keys(pricingData[alias]).length : 0,
-      }))
+      .map(([alias, info]) => {
+        const pricingKey = info.pricingKey || alias;
+        return {
+          ...info,
+          alias,
+          pricingKey,
+          pricedModels: pricingData[pricingKey] ? Object.keys(pricingData[pricingKey]).length : 0,
+        };
+      })
       .sort((left, right) => right.modelCount - left.modelCount);
   }, [catalog, pricingData]);
 
@@ -312,13 +320,14 @@ export default function PricingTab() {
   );
 
   const saveProvider = useCallback(
-    async (providerAlias: string) => {
+    async (providerAlias: string, pricingKey?: string) => {
       setSaving(true);
       try {
+        const writeKey = pricingKey || providerAlias;
         const response = await fetch("/api/pricing", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ [providerAlias]: pricingData[providerAlias] || {} }),
+          body: JSON.stringify({ [writeKey]: pricingData[writeKey] || {} }),
         });
 
         if (!response.ok) {
@@ -328,7 +337,7 @@ export default function PricingTab() {
 
         setEditedProviders((previous) => {
           const next = new Set(previous);
-          next.delete(providerAlias);
+          next.delete(writeKey);
           return next;
         });
         await loadData();
@@ -348,11 +357,13 @@ export default function PricingTab() {
   );
 
   const resetProvider = useCallback(
-    async (providerAlias: string) => {
+    async (providerAlias: string, pricingKey?: string) => {
       if (!confirm(t("resetPricingConfirm", { provider: providerAlias.toUpperCase() }))) return;
 
       try {
-        const response = await fetch(`/api/pricing?provider=${providerAlias}`, {
+        const writeKey = pricingKey || providerAlias;
+        const params = new URLSearchParams({ provider: writeKey });
+        const response = await fetch(`/api/pricing?${params.toString()}`, {
           method: "DELETE",
         });
 
@@ -363,7 +374,7 @@ export default function PricingTab() {
 
         setEditedProviders((previous) => {
           const next = new Set(previous);
-          next.delete(providerAlias);
+          next.delete(writeKey);
           return next;
         });
         await loadData();
@@ -680,16 +691,16 @@ export default function PricingTab() {
           <ProviderSection
             key={provider.alias}
             provider={provider}
-            pricingData={pricingData[provider.alias] || {}}
-            sourceMap={pricingSources[provider.alias] || {}}
+            pricingData={pricingData[provider.pricingKey || provider.alias] || {}}
+            sourceMap={pricingSources[provider.pricingKey || provider.alias] || {}}
             isExpanded={expandedProviders.has(provider.alias)}
-            isEdited={editedProviders.has(provider.alias)}
+            isEdited={editedProviders.has(provider.pricingKey || provider.alias)}
             onToggle={() => toggleProvider(provider.alias)}
             onPricingChange={(model, field, value) =>
-              handlePricingChange(provider.alias, model, field, value)
+              handlePricingChange(provider.pricingKey || provider.alias, model, field, value)
             }
-            onSave={() => void saveProvider(provider.alias)}
-            onReset={() => void resetProvider(provider.alias)}
+            onSave={() => void saveProvider(provider.alias, provider.pricingKey)}
+            onReset={() => void resetProvider(provider.alias, provider.pricingKey)}
             saving={saving}
             getSourceLabel={getSourceLabel}
           />
@@ -714,63 +725,6 @@ export default function PricingTab() {
         )}
       </div>
     </div>
-  );
-}
-
-function HeroStat({ label, value, accent }: { label: string; value: number; accent?: string }) {
-  return (
-    <div className="text-center">
-      <div className="text-[10px] uppercase tracking-wide text-text-muted font-semibold truncate">
-        {label}
-      </div>
-      <div
-        className={`text-2xl font-bold tabular-nums leading-tight ${accent || "text-text-main"}`}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function SyncMini({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border/30 bg-bg-base/40 px-2 py-1.5">
-      <p className="text-[9px] uppercase tracking-wide text-text-muted font-semibold truncate">
-        {label}
-      </p>
-      <p className="text-[11px] font-medium text-text-main mt-0.5 truncate" title={value}>
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function FilterSelect({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  options: Array<{ value: string; label: string }>;
-}) {
-  return (
-    <label className="flex items-center gap-1.5 text-xs text-text-muted">
-      <span className="font-semibold uppercase tracking-wide">{label}:</span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="bg-bg-base border border-border rounded-md px-2 py-1.5 text-xs text-text-main cursor-pointer focus:outline-none focus:border-primary"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    </label>
   );
 }
 

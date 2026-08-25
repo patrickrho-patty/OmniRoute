@@ -1,6 +1,6 @@
 {
   "name": "omniroute-desktop",
-  "version": "3.8.49",
+  "version": "3.8.51",
   "description": "OmniRoute Desktop Application",
   "main": "main.js",
   "author": {
@@ -28,7 +28,7 @@
     "electron-updater": "^6.8.9"
   },
   "devDependencies": {
-    "electron": "^43.2.0",
+    "electron": "^43.4.0",
     "electron-builder": "^26.15.3"
   },
   "overrides": {
@@ -37,13 +37,14 @@
     "plist": "^4.0.0",
     "form-data": "^4.0.6",
     "js-yaml": "^4.2.0",
-    "undici": "^7.28.0"
+    "undici": "^7.29.0"
   },
   "build": {
     "appId": "online.omniroute.desktop",
     "productName": "OmniRoute",
     "copyright": "Copyright © 2025 OmniRoute",
-    "buildDependenciesFromSource": true,
+    "buildDependenciesFromSource": false,
+    "npmRebuild": false,
     "directories": {
       "output": "dist-electron",
       "buildResources": "assets"
@@ -59,8 +60,16 @@
       "loginManager.js",
       "processTree.js",
       "sqlite-inspection.js",
+      "remoteServerPromptPreload.js",
+      "remoteServerPromptRenderer.js",
       "lib/resolveServerEntry.js",
       "lib/resolveNodeHelper.js",
+      "lib/windowLifecycle.js",
+      "lib/resolveRemoteServerUrl.js",
+      "lib/remoteServerPreferences.js",
+      "lib/serverReadiness.js",
+      "lib/windowClosePolicy.js",
+      "assets/remoteServerPrompt.html",
       "package.json",
       "node_modules/**/*"
     ],
@@ -68,14 +77,6 @@
       {
         "from": "../.build/electron-standalone",
         "to": "app",
-        "filter": [
-          "**/*",
-          "node_modules/**/*"
-        ]
-      },
-      {
-        "from": "../.build/electron-standalone/node_modules",
-        "to": "app/node_modules",
         "filter": [
           "**/*"
         ]
@@ -134,6 +135,7 @@
       "category": "Utility"
     },
     "nsis": {
+      "artifactName": "${productName}.Setup.${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,

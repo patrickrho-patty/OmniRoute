@@ -15,7 +15,9 @@ function isHttpUrl(value: string): boolean {
 
 const CODEX_REASONING_EFFORT_VALUES = new Set(["none", "low", "medium", "high", "xhigh", "max"]);
 const REQUEST_DEFAULT_SERVICE_TIER_VALUES = new Set(["default", "priority", "fast", "flex"]);
+const CODEX_FINGERPRINT_MODE_VALUES = new Set(["off", "device", "session", "full"]);
 const CACHE_PASSTHROUGH_VALUES = new Set(["strip", "openai-format", "claude-format"]);
+export const MAX_PROVIDER_SPECIFIC_TIMEOUT_MS = 86_400_000; // 24h — operator cap, anti-DoS
 
 // #6880 — per-connection prompt-cache capability override, extracted so
 // validateProviderSpecificData() stays under the complexity gate.
@@ -151,6 +153,29 @@ export function validateProviderSpecificData(
       code: z.ZodIssueCode.custom,
       message: "providerSpecificData.openaiStoreEnabled must be a boolean",
       path: ["openaiStoreEnabled"],
+    });
+  }
+
+  const codexFingerprintMode = data.codexFingerprintMode;
+  if (codexFingerprintMode !== undefined && codexFingerprintMode !== null) {
+    const normalized =
+      typeof codexFingerprintMode === "string" ? codexFingerprintMode.trim().toLowerCase() : "";
+    if (normalized && !CODEX_FINGERPRINT_MODE_VALUES.has(normalized)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "providerSpecificData.codexFingerprintMode must be one of off, device, session, full",
+        path: ["codexFingerprintMode"],
+      });
+    }
+  }
+
+  const preserveEncryptedReasoning = data.preserveEncryptedReasoning;
+  if (preserveEncryptedReasoning !== undefined && typeof preserveEncryptedReasoning !== "boolean") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "providerSpecificData.preserveEncryptedReasoning must be a boolean",
+      path: ["preserveEncryptedReasoning"],
     });
   }
 
@@ -302,6 +327,10 @@ export function validateProviderSpecificData(
     "ollamaCloudUsageCookie",
     "ollamaCloudCookie",
     "usageCookie",
+    "alibabaConsoleCookie",
+    "alibabaConsoleSecToken",
+    "qwenCloudCookie",
+    "qwenCloudSecToken",
   ] as const) {
     const value = data[key];
     if (value !== undefined && value !== null && typeof value !== "string") {
@@ -441,6 +470,49 @@ export function validateProviderSpecificData(
         code: z.ZodIssueCode.custom,
         message: "providerSpecificData.clientProfile must be ide or cli",
         path: ["clientProfile"],
+      });
+    }
+  }
+
+  const newApiAggregatorBalance = data.newApiAggregatorBalance;
+  if (
+    newApiAggregatorBalance !== undefined &&
+    newApiAggregatorBalance !== null &&
+    typeof newApiAggregatorBalance !== "boolean"
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "providerSpecificData.newApiAggregatorBalance must be a boolean",
+      path: ["newApiAggregatorBalance"],
+    });
+  }
+
+  const quotaPerUnit = data.quotaPerUnit;
+  if (quotaPerUnit !== undefined && quotaPerUnit !== null) {
+    if (typeof quotaPerUnit !== "number" || !Number.isFinite(quotaPerUnit) || quotaPerUnit <= 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "providerSpecificData.quotaPerUnit must be a positive number",
+        path: ["quotaPerUnit"],
+      });
+    }
+  }
+
+  // Per-connection operator timeout tier: a slow model must not monopolize an
+  // executor slot indefinitely. Bounded to 24h (anti-DoS); below 1ms is
+  // meaningless.
+  const timeoutMs = data.timeoutMs;
+  if (timeoutMs !== undefined && timeoutMs !== null) {
+    if (
+      typeof timeoutMs !== "number" ||
+      !Number.isInteger(timeoutMs) ||
+      timeoutMs < 1 ||
+      timeoutMs > MAX_PROVIDER_SPECIFIC_TIMEOUT_MS
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `providerSpecificData.timeoutMs must be an integer between 1 and ${MAX_PROVIDER_SPECIFIC_TIMEOUT_MS}`,
+        path: ["timeoutMs"],
       });
     }
   }

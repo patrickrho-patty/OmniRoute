@@ -405,7 +405,7 @@ describe("QwenWebExecutor (v2 migration)", () => {
     const completionCall = calls.find((call) => call.url.includes("/api/v2/chat/completions"));
     assert.ok(completionCall, "chat/completions call must have been made");
     const headers = completionCall!.init.headers as Record<string, string>;
-    assert.equal(headers.version, "0.2.66", "SPA build version header present");
+    assert.equal(headers.version, "0.2.81", "SPA build version header present");
   });
 
   it("maps the thinking phase to reasoning_content, not the answer content", async () => {
@@ -703,24 +703,17 @@ describe("QwenWebExecutor (v2 migration)", () => {
       "registry must use v2 endpoint"
     );
     const ids = provider.models.map((m: any) => m.id);
-    assert.deepEqual(ids.sort(), [
-      "qwen3.6-plus",
-      "qwen3.7-max",
-      "qwen3.7-plus",
-      "qwen3.8-max-preview",
-    ]);
+    assert.deepEqual(ids.sort(), ["qwen3.6-plus", "qwen3.7-max", "qwen3.7-plus", "qwen3.8-max"]);
 
-    const qwen38 = provider.models.find(
-      (model: RegistryModel) => model.id === "qwen3.8-max-preview"
-    );
+    const qwen38 = provider.models.find((model: RegistryModel) => model.id === "qwen3.8-max");
     assert.deepEqual(qwen38, {
-      id: "qwen3.8-max-preview",
-      name: "Qwen3.8 Max Preview",
+      id: "qwen3.8-max",
+      name: "Qwen3.8 Max",
       toolCalling: false,
       supportsReasoning: true,
       supportsVision: true,
       contextLength: 1_000_000,
-      maxOutputTokens: 65_536,
+      maxOutputTokens: 131_072,
     });
 
     const qwen37Max = provider.models.find((model: RegistryModel) => model.id === "qwen3.7-max");
@@ -730,7 +723,7 @@ describe("QwenWebExecutor (v2 migration)", () => {
   it("free-model catalog lists the current qwen-web ids (not the retired ones)", () => {
     const qwenModels = (FREE_MODEL_BUDGETS as any[]).filter((m) => m.provider === "qwen-web");
     const ids = qwenModels.map((m) => m.modelId);
-    assert.ok(ids.includes("qwen3.8-max-preview"), "catalog must list qwen3.8-max-preview");
+    assert.ok(ids.includes("qwen3.8-max"), "catalog must list qwen3.8-max");
     assert.ok(ids.includes("qwen3.7-max"), "catalog must list qwen3.7-max");
     assert.ok(!ids.includes("qwen-plus"), "retired qwen-plus must be gone");
     assert.ok(
@@ -739,7 +732,7 @@ describe("QwenWebExecutor (v2 migration)", () => {
     );
   });
 
-  it("passes qwen3.8-max-preview through unchanged", async () => {
+  it("uses qwen3.8-max and maps its preview id for compatibility", async () => {
     globalThis.fetch = (async (url: string | URL | Request, init: RequestInit = {}) => {
       calls.push({ url: String(url), init });
       if (String(url).includes("/api/v2/chats/new")) return chatCreatedResponse();
@@ -762,8 +755,8 @@ describe("QwenWebExecutor (v2 migration)", () => {
 
     const newBody = JSON.parse(calls[0].init.body);
     const completionBody = JSON.parse(calls[1].init.body);
-    assert.deepEqual(newBody.models, ["qwen3.8-max-preview"]);
-    assert.equal(completionBody.model, "qwen3.8-max-preview");
+    assert.deepEqual(newBody.models, ["qwen3.8-max"]);
+    assert.equal(completionBody.model, "qwen3.8-max");
     assert.equal(completionBody.messages[0].feature_config.thinking_enabled, true);
     assert.equal(completionBody.messages[0].feature_config.auto_thinking, true);
   });

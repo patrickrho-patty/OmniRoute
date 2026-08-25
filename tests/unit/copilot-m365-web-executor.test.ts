@@ -40,12 +40,24 @@ class MockM365WebSocket {
 
   send(data: string): void {
     this.sent.push(String(data));
-    const parsed = JSON.parse(String(data).replace(/\x1e$/, ""));
-    if (parsed.protocol === "json") {
+    // #10718 — a single socket write may carry multiple \x1e-terminated frames
+    // (the chat invocation and its Metrics follow-up ride together).
+    const parsedFrames = String(data)
+      .split("\x1e")
+      .filter((f) => f.length > 0)
+      .map((f) => {
+        try {
+          return JSON.parse(f);
+        } catch {
+          return null;
+        }
+      });
+    const parsed = parsedFrames.find((f) => f && f.protocol === "json") ?? parsedFrames[0];
+    if (parsed?.protocol === "json") {
       queueMicrotask(() => this.emit("message", Buffer.from(encodeFrame({}))));
       return;
     }
-    if (parsed.type === 4 && parsed.target === "chat") {
+    if (parsedFrames.some((f) => f?.type === 4 && f?.target === "chat")) {
       queueMicrotask(() => {
         this.emit(
           "message",
@@ -53,7 +65,9 @@ class MockM365WebSocket {
             encodeFrame({
               type: 1,
               target: "update",
-              arguments: [{ messages: [{ text: "In progress...", messageType: "Progress", author: "bot" }] }],
+              arguments: [
+                { messages: [{ text: "In progress...", messageType: "Progress", author: "bot" }] },
+              ],
             }) +
               encodeFrame({
                 type: 1,
@@ -116,17 +130,27 @@ test("CopilotM365WebExecutor streams OpenAI SSE chunks from accumulated M365 upd
     assert.doesNotMatch(result.url, /redacted-token/);
     assert.equal(MockM365WebSocket.instances.length, 1);
 
-    const sent = MockM365WebSocket.instances[0].sent.join("\n");
-    assert.match(sent, /"protocol":"json"/);
-    assert.match(sent, /"type":6/);
-    assert.match(sent, /"target":"chat"/);
+    const sent = MockM365WebSocket.instances[0].sent;
+    const sentFrames = sent.flatMap((f) => f.split("\x1e").filter((frame) => frame.length > 0));
+    assert.ok(sentFrames.some((f) => f.includes('"protocol":"json"')));
+    // #10718 — the chat invocation and its type:1 Metrics follow-up ride in ONE
+    // socket write, and no type:6 keepalive is sent before them.
+    const invocationWrite = sent.find((f) => f.includes('"target":"chat"'));
+    assert.ok(invocationWrite, "expected a chat invocation write");
+    assert.match(invocationWrite, /"target":"Metrics"/);
+    assert.ok(
+      !sentFrames.some((f) => f === '{"type":6}'),
+      "the leading keepalive ping was removed (#10718): it must not precede the invocation"
+    );
 
     const dataLines = body
       .split("\n")
       .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]");
     const payloads = dataLines.map((line) => JSON.parse(line.slice("data: ".length)));
     const deltas = payloads.map((payload) => payload.choices?.[0]?.delta?.content).filter(Boolean);
-    const finishReasons = payloads.map((payload) => payload.choices?.[0]?.finish_reason).filter(Boolean);
+    const finishReasons = payloads
+      .map((payload) => payload.choices?.[0]?.finish_reason)
+      .filter(Boolean);
 
     assert.deepEqual(deltas, ["po", "ng"]);
     assert.deepEqual(finishReasons, ["stop"]);

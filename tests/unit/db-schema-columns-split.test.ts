@@ -4,10 +4,13 @@
 // columns and is safe to re-run; hasTable/hasColumn/getTableColumns/quoteIdentifier introspect.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { tryOpenSync } from "../../src/lib/db/adapters/driverFactory.ts";
 import {
   ensureUsageHistoryColumns,
   ensureProviderConnectionsColumns,
+  ensureProxyLogsColumns,
   hasColumn,
   hasTable,
   quoteIdentifier,
@@ -81,6 +84,81 @@ test("ensureProviderConnectionsColumns repairs quota visibility with a visible d
     assert.equal(column?.notnull, 1);
     assert.equal(column?.dflt_value, "1");
     assert.doesNotThrow(() => ensureProviderConnectionsColumns(db));
+  } finally {
+    db.close?.();
+  }
+});
+
+test("ensureProxyLogsColumns self-heals a bare proxy_logs (upgrade path)", () => {
+  const db = openMemoryDb();
+  try {
+    db.exec("CREATE TABLE proxy_logs (id TEXT PRIMARY KEY, timestamp TEXT NOT NULL)");
+    assert.equal(hasColumn(db, "proxy_logs", "egress_ip"), false);
+
+    ensureProxyLogsColumns(db);
+    assert.equal(hasColumn(db, "proxy_logs", "egress_ip"), true);
+    assert.doesNotThrow(() => ensureProxyLogsColumns(db));
+  } finally {
+    db.close?.();
+  }
+});
+
+test("migration 134 SQL applies egress_ip to a bare proxy_logs", () => {
+  const db = openMemoryDb();
+  try {
+    db.exec("CREATE TABLE proxy_logs (id TEXT PRIMARY KEY, timestamp TEXT NOT NULL)");
+    const sql = fs.readFileSync(
+      path.join(process.cwd(), "src/lib/db/migrations/134_proxy_logs_egress_ip.sql"),
+      "utf8"
+    );
+    db.exec(sql);
+    assert.equal(hasColumn(db, "proxy_logs", "egress_ip"), true);
+  } finally {
+    db.close?.();
+  }
+});
+
+test("ensureProviderConnectionsColumns restores base columns required by later migrations", () => {
+  const db = openMemoryDb();
+  try {
+    db.exec(`
+      CREATE TABLE provider_connections (
+        id TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        auth_type TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+    assert.equal(hasColumn(db, "provider_connections", "provider_specific_data"), false);
+    assert.equal(hasColumn(db, "provider_connections", "default_model"), false);
+
+    ensureProviderConnectionsColumns(db);
+
+    assert.equal(hasColumn(db, "provider_connections", "provider_specific_data"), true);
+    assert.equal(hasColumn(db, "provider_connections", "default_model"), true);
+    const columnsAfterFirstRun = getTableColumns(db, "provider_connections").sort();
+    const indexesAfterFirstRun = (
+      db.prepare("PRAGMA index_list(provider_connections)").all() as Array<{ name: string }>
+    )
+      .map((index) => index.name)
+      .sort();
+    const warnings: unknown[][] = [];
+    const originalWarn = console.warn;
+    try {
+      console.warn = (...args: unknown[]) => warnings.push(args);
+      ensureProviderConnectionsColumns(db);
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.deepEqual(getTableColumns(db, "provider_connections").sort(), columnsAfterFirstRun);
+    assert.deepEqual(
+      (db.prepare("PRAGMA index_list(provider_connections)").all() as Array<{ name: string }>)
+        .map((index) => index.name)
+        .sort(),
+      indexesAfterFirstRun
+    );
+    assert.deepEqual(warnings, []);
   } finally {
     db.close?.();
   }

@@ -167,7 +167,7 @@ async function fetchTokens(
 async function extractTokensViaBrowser(
   cookie: string,
   userAgent: string,
-  signal?: AbortSignal
+  _signal?: AbortSignal
 ): Promise<GeminiTokens | null> {
   const { chromium } = await import("playwright");
   const browser = await chromium.launch({ headless: true });
@@ -213,8 +213,7 @@ async function extractTokensViaBrowser(
     // Extract tokens from the live DOM (JavaScript-executed)
     const tokens = await page.evaluate(() => {
       const wiz = (window as unknown as Record<string, unknown>).WIZ_global_data as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
       if (!wiz) return null;
       const at = typeof wiz.SNlM0e === "string" ? wiz.SNlM0e : "";
       const bl = typeof wiz.cfb2h === "string" ? wiz.cfb2h : "";
@@ -235,7 +234,7 @@ async function extractTokensViaBrowser(
  * Based on the Gemini web app's request format. The inner array is
  * JSON-stringified, then wrapped as [null, "<stringified>"].
  */
-function buildStreamGenerateBody(prompt: string, model?: string): string {
+function buildStreamGenerateBody(prompt: string, _model?: string): string {
   const metadata = ["", "", "", null, null, null, null, null, null, ""];
 
   // message_content = [prompt, 0, None, req_file_data, None, None, 0]

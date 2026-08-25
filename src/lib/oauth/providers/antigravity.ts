@@ -17,10 +17,20 @@ type AntigravityTokenPayload = {
   refresh_token?: string;
   scope?: string;
 };
+/**
+ * Why no Cloud Code projectId was discovered at connect time (#11284).
+ * - "requires_manual_project": Google answered onboardUser with 200 but no
+ *   cloudaicompanionProject in the body — the account must bring its own GCP
+ *   project (BYOP, #8491). Retrying can never succeed.
+ * - "discovery_failed": loadCodeAssist/onboardUser errored, timed out, or
+ *   still returned empty after a successful onboarding round-trip.
+ */
+type AntigravityProjectDiscoveryOutcome = "requires_manual_project" | "discovery_failed";
 type AntigravityPostExchange = {
   projectId: string;
   tierId: string;
   userInfo: { email?: string };
+  projectDiscoveryOutcome?: AntigravityProjectDiscoveryOutcome;
 };
 
 async function fetchFirstOk(endpoints: string[], init: RequestInit, timeoutMs?: number) {
@@ -112,7 +122,12 @@ async function onboardAntigravityUser(
   tierId: string,
   metadata: Record<string, string>
 ): Promise<void> {
-  for (let i = 0; i < 10; i++) {
+  // Bounded onboarding: cap retries (was 10) and jitter the delay so a stuck
+  // loop cannot look like scripted automation to the upstream (ban-safety).
+  const MAX_ONBOARD_RETRIES = 3;
+  const BASE_RETRY_MS = 3000;
+  const JITTER_MS = 4000;
+  for (let i = 0; i < MAX_ONBOARD_RETRIES; i++) {
     try {
       const response = await fetchFirstOk(
         config.onboardUserEndpoints,
@@ -124,7 +139,7 @@ async function onboardAntigravityUser(
     } catch {
       return;
     }
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, BASE_RETRY_MS + Math.random() * JITTER_MS));
   }
 }
 
@@ -145,6 +160,8 @@ async function postExchangeAntigravity(
 
   let projectId = "";
   let tierId = "legacy-tier";
+  // #11284: classify WHY discovery fails instead of silently swallowing it.
+  let loadFailed = false;
   try {
     const response = await fetchFirstOk(
       config.loadCodeAssistEndpoints,
@@ -155,6 +172,7 @@ async function postExchangeAntigravity(
     projectId = extractProjectId(data);
     tierId = extractCodeAssistOnboardTierId(data);
   } catch (error) {
+    loadFailed = true;
     console.log("Failed to load code assist:", error);
   }
 
@@ -163,21 +181,57 @@ async function postExchangeAntigravity(
   } else if (config.onboardUserEndpoints.length > 0) {
     // Accounts without an existing Cloud Code project need one bounded inline
     // onboarding attempt before loadCodeAssist can discover their project.
+    let onboardedWithoutProject = false;
     try {
-      await fetchFirstOk(
+      const response = await fetchFirstOk(
         config.onboardUserEndpoints,
         { method: "POST", headers, body: JSON.stringify({ tier_id: tierId, metadata }) },
         POSTEXCHANGE_TIMEOUT_MS
       );
-      const retryResponse = await fetchFirstOk(
-        config.loadCodeAssistEndpoints,
-        { method: "POST", headers, body: JSON.stringify({ metadata }) },
-        POSTEXCHANGE_TIMEOUT_MS
-      );
-      projectId = extractProjectId((await retryResponse.json()) as Record<string, unknown>);
-    } catch {
-      // Lazy request-time bootstrap retries if onboarding or discovery is unavailable.
+      // Google BYOP (#8491): a 200 WITHOUT cloudaicompanionProject in the
+      // onboardUser body means no project was created and none ever will be —
+      // standard-tier/personal accounts must bring their own GCP project.
+      // A body that DOES carry one (string or {id}) is a real onboarding
+      // success; the retry loadCodeAssist below picks the id up (it can lag).
+      const bodyText = await response.text().catch(() => "");
+      if (bodyText && !bodyText.includes("cloudaicompanionProject")) {
+        console.log(
+          "[oauth] antigravity onboardUser succeeded without creating a project — Google BYOP (user-defined GCP project) required"
+        );
+        onboardedWithoutProject = true;
+      }
+      if (!onboardedWithoutProject) {
+        const retryResponse = await fetchFirstOk(
+          config.loadCodeAssistEndpoints,
+          { method: "POST", headers, body: JSON.stringify({ metadata }) },
+          POSTEXCHANGE_TIMEOUT_MS
+        );
+        projectId = extractProjectId((await retryResponse.json()) as Record<string, unknown>);
+        // Prefer the id straight from the onboarding response when discovery
+        // lags behind server-side project creation.
+        if (!projectId) {
+          projectId = extractProjectId(
+            (await new Response(bodyText).json().catch(() => ({}))) as Record<string, unknown>
+          );
+        }
+      }
+    } catch (error) {
+      console.log("[oauth] antigravity inline onboarding/discovery failed:", error);
     }
+    if (!projectId) {
+      return {
+        userInfo,
+        projectId,
+        tierId,
+        projectDiscoveryOutcome: onboardedWithoutProject
+          ? "requires_manual_project"
+          : "discovery_failed",
+      };
+    }
+  } else if (loadFailed) {
+    // No onboarding path configured and discovery hard-failed — do not report
+    // this account as healthy-with-no-project (#11284).
+    return { userInfo, projectId, tierId, projectDiscoveryOutcome: "discovery_failed" };
   }
   return { userInfo, projectId, tierId };
 }
@@ -194,6 +248,9 @@ function mapAntigravityTokens(
     scope: tokens.scope,
     email: extra?.userInfo?.email,
     projectId: extra?.projectId,
+    // #11284: let the OAuth route reject connects that ended without a Cloud
+    // Code project instead of persisting a dead "active" row.
+    projectDiscoveryOutcome: extra?.projectDiscoveryOutcome,
     providerSpecificData: {
       clientProfile,
       projectId: extra?.projectId,

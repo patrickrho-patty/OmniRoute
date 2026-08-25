@@ -29,7 +29,6 @@
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { makeExecutorErrorResult as makeErrorResult } from "../utils/error.ts";
 import {
-  buildWebToolPolicyErrorResponse,
   prepareWebToolRequest,
   decodeWebToolResponse,
 } from "../services/webProvider/toolPipeline.ts";
@@ -58,8 +57,8 @@ const BX_UMIDTOKEN_FALLBACK = "T2gA0000000000000000000000000000000000000000";
 // header the upstream returns HTTP 200 with `{"success":false,"data":{"code":"Bad_Request"}}`
 // for every completion request, even with a valid session. The version string is
 // the SPA build identifier shipped in the React client's `version` request header.
-// Pinned from a live capture (2026-07); bump if Qwen ships a breaking change.
-const QWEN_SPA_VERSION = "0.2.66";
+// Pinned from a live capture (2026-08); bump if Qwen ships a breaking change.
+const QWEN_SPA_VERSION = "0.2.81";
 
 const MODEL_ALIASES: Record<string, string> = {
   // Legacy OmniRoute ids → current upstream catalog (GET /api/models).
@@ -69,6 +68,7 @@ const MODEL_ALIASES: Record<string, string> = {
   "qwen3-plus": "qwen3.7-plus",
   "qwen3-max": "qwen3.7-max",
   "qwen3-flash": "qwen3.6-plus",
+  "qwen3.8-max-preview": "qwen3.8-max",
   // Note: `qwen3-coder-plus` is a real upstream model id (Qwen3-Coder) and
   // must NOT be aliased — the previous `"qwen3-coder-plus": "qwen3.7-max"`
   // entry silently rewrote valid coder requests to the wrong model.
@@ -78,7 +78,7 @@ const MODEL_ALIASES: Record<string, string> = {
 };
 
 const DEFAULT_MODEL = "qwen3.7-max";
-const REQUIRED_THINKING_MODELS = new Set(["qwen3.8-max-preview"]);
+const REQUIRED_THINKING_MODELS = new Set(["qwen3.8-max"]);
 
 type QwenMessage = {
   role: string;

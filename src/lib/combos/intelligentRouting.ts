@@ -17,6 +17,7 @@ export type IntelligentRoutingWeights = {
   specificityMatch: number;
   contextAffinity: number;
   cacheAffinity: number;
+  sessionAvailability: number;
   resetWindowAffinity: number;
 };
 
@@ -52,10 +53,12 @@ export const DEFAULT_INTELLIGENT_WEIGHTS: IntelligentRoutingWeights = {
   specificityMatch: 0.05,
   contextAffinity: 0.08,
   cacheAffinity: 0,
+  sessionAvailability: 0.05,
   resetWindowAffinity: 0,
 };
 
 export const MODE_PACK_OPTIONS = [
+  { id: "custom", label: "Custom / None (Use Sliders)", emoji: "tune" },
   { id: "ship-fast", label: "Ship Fast", emoji: "rocket_launch" },
   { id: "cost-saver", label: "Cost Saver", emoji: "savings" },
   { id: "quality-first", label: "Quality First", emoji: "target" },
@@ -82,6 +85,7 @@ export const FACTOR_LABELS: Record<keyof IntelligentRoutingWeights, string> = {
   specificityMatch: "Specificity",
   contextAffinity: "Context Affinity",
   cacheAffinity: "Cache Hit Affinity",
+  sessionAvailability: "Session Availability",
   resetWindowAffinity: "Reset Window",
 };
 
@@ -158,6 +162,9 @@ export function normalizeIntelligentRoutingConfig(config: unknown): IntelligentR
         toFiniteNumber(rawWeights.contextAffinity) ?? DEFAULT_INTELLIGENT_WEIGHTS.contextAffinity,
       cacheAffinity:
         toFiniteNumber(rawWeights.cacheAffinity) ?? DEFAULT_INTELLIGENT_WEIGHTS.cacheAffinity,
+      sessionAvailability:
+        toFiniteNumber(rawWeights.sessionAvailability) ??
+        DEFAULT_INTELLIGENT_WEIGHTS.sessionAvailability,
       resetWindowAffinity:
         toFiniteNumber(rawWeights.resetWindowAffinity) ??
         DEFAULT_INTELLIGENT_WEIGHTS.resetWindowAffinity,

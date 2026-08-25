@@ -26,6 +26,20 @@ export interface FreeModelBudget {
    * reports this per model as `mayTrainOnYourPrompts` on its public catalog.
    */
   trainsOnPrompts?: boolean;
+  /**
+   * True only when the provider's own published terms document that exceeding
+   * the free allowance is a hard stop (request refused / rate-limited) and NOT
+   * automatic pay-as-you-go billing — e.g. an explicit "no credit card
+   * required" claim on the provider's pricing page. This is a curated fact
+   * about the upstream provider, not something derivable from `freeType` or
+   * from any live API response, so it must be set by hand per entry with the
+   * source of the claim in a comment. Leave unset (undefined) whenever this
+   * isn't independently documented — `undefined` and `false` are both treated
+   * as "not guaranteed" by `strictZeroCostFilter.ts`; never default to `true`
+   * to grow the catalog. See STRICT_ZERO_COST in
+   * `open-sse/services/autoCombo/strictZeroCostFilter.ts`.
+   */
+  hardStopGuaranteed?: boolean;
 }
 
 export interface FreeModelTotals {
@@ -56,6 +70,31 @@ export interface FreeModelTotals {
 const RECURRING = new Set<FreeModelFreeType>(["recurring-daily", "recurring-monthly", "keyless"]);
 
 /**
+ * What each free-tier regime engages for "can I route here without paying?".
+ * Exhaustive by construction: adding a member to `FreeModelFreeType` will not
+ * compile until it is classified here. `discontinued` is the one regime a
+ * provider uses to retire a free tier behind a paid key — it does NOT grant
+ * free access, and the shared predicate (`isFreeModel`) must read this instead
+ * of treating every catalogued id as free. `RECURRING` (above) answers a
+ * different question (which regimes feed the headline token totals) and is left
+ * independent on purpose — deriving it from this table would silently change
+ * the homepage totals.
+ */
+const FREE_REGIME_TRAITS = {
+  "recurring-daily": { grantsFreeAccess: true },
+  "recurring-monthly": { grantsFreeAccess: true },
+  "recurring-credit": { grantsFreeAccess: true },
+  "recurring-uncapped": { grantsFreeAccess: true },
+  "one-time-initial": { grantsFreeAccess: true },
+  keyless: { grantsFreeAccess: true },
+  discontinued: { grantsFreeAccess: false },
+} satisfies Record<FreeModelFreeType, { grantsFreeAccess: boolean }>;
+
+export function grantsFreeAccess(freeType: FreeModelFreeType): boolean {
+  return FREE_REGIME_TRAITS[freeType].grantsFreeAccess;
+}
+
+/**
  * Deposit-unlock boosts: a one-time small top-up that permanently raises a
  * provider's recurring free quota. Kept OUT of the steady headline and surfaced
  * as a separate "unlock more" figure. Keyed by the provider's recurring poolKey.
@@ -80,7 +119,7 @@ function fmt(n: number): string {
 function dedupedSum(
   models: FreeModelBudget[],
   pick: (m: FreeModelBudget) => number,
-  include: (m: FreeModelBudget) => boolean,
+  include: (m: FreeModelBudget) => boolean
 ): number {
   const poolMax = new Map<string, number>();
   let loose = 0;
@@ -100,30 +139,30 @@ export function computeFreeModelTotals(opts: { excludeTosAvoid?: boolean } = {})
   const steadyRecurringTokens = dedupedSum(
     models,
     (m) => m.monthlyTokens,
-    (m) => RECURRING.has(m.freeType),
+    (m) => RECURRING.has(m.freeType)
   );
   const recurringCredits = dedupedSum(
     models,
     (m) => m.creditTokens,
-    (m) => m.freeType === "recurring-credit",
+    (m) => m.freeType === "recurring-credit"
   );
   const oneTimeCredits = dedupedSum(
     models,
     (m) => m.creditTokens,
-    (m) => m.freeType === "one-time-initial",
+    (m) => m.freeType === "one-time-initial"
   );
 
   const steadyWithRecurringCreditsTokens = steadyRecurringTokens + recurringCredits;
   const firstMonthRealisticTokens = steadyWithRecurringCreditsTokens + oneTimeCredits;
 
   const poolCount = new Set(
-    models.filter((m) => RECURRING.has(m.freeType) && m.poolKey).map((m) => m.poolKey),
+    models.filter((m) => RECURRING.has(m.freeType) && m.poolKey).map((m) => m.poolKey)
   ).size;
 
   // Deposit-unlock boost: sum the FREE_TIER_BOOSTS whose pool still has a live
   // recurring model in the (optionally ToS-filtered) set.
   const livePools = new Set(
-    models.filter((m) => RECURRING.has(m.freeType) && m.poolKey).map((m) => m.poolKey),
+    models.filter((m) => RECURRING.has(m.freeType) && m.poolKey).map((m) => m.poolKey)
   );
   const boostMonthlyTokens = Object.entries(FREE_TIER_BOOSTS)
     .filter(([pool]) => livePools.has(pool))

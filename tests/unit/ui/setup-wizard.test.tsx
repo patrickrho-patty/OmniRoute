@@ -21,6 +21,18 @@ function makeContainer(): HTMLElement {
   return container;
 }
 
+const mockServerState = {
+  running: false,
+  port: 443,
+  certTrusted: false,
+  upstreamCa: null,
+  lastStartedAt: null,
+  activeConns: 0,
+  interceptedCount: 0,
+  dnsConfigured: false,
+  orphanedStateDetected: false,
+};
+
 const mockTarget = {
   id: "kiro" as const,
   name: "Kiro",
@@ -52,9 +64,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   });
 
   it("renders step 1 (verify) on open", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const container = makeContainer();
     await act(async () => {
@@ -64,8 +75,11 @@ describe("SetupWizard", { timeout: 30000 }, () => {
           target: mockTarget,
           agentState: undefined,
           serverRunning: false,
+          serverState: mockServerState,
+          currentMappings: [],
           onClose: vi.fn(),
           onDnsToggle: vi.fn(),
+          onMappingsSave: vi.fn(),
         })
       );
     });
@@ -76,9 +90,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   }, 30000);
 
   it("navigates to step 2 when Next clicked", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const container = makeContainer();
     await act(async () => {
@@ -88,8 +101,11 @@ describe("SetupWizard", { timeout: 30000 }, () => {
           target: mockTarget,
           agentState: undefined,
           serverRunning: true,
+          serverState: mockServerState,
+          currentMappings: [],
           onClose: vi.fn(),
           onDnsToggle: vi.fn(),
+          onMappingsSave: vi.fn(),
         })
       );
     });
@@ -107,9 +123,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   }, 30000);
 
   it("calls onDnsToggle when enabling DNS in step 2", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const onDnsToggle = vi.fn().mockResolvedValue(undefined);
     const container = makeContainer();
@@ -128,6 +143,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
             last_error: null,
           },
           serverRunning: true,
+          serverState: mockServerState,
+          currentMappings: [],
           onClose: vi.fn(),
           onDnsToggle,
         })
@@ -155,9 +172,8 @@ describe("SetupWizard", { timeout: 30000 }, () => {
   }, 30000);
 
   it("calls onClose when Cancel clicked on step 1", async () => {
-    const { SetupWizard } = await import(
-      "../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard"
-    );
+    const { SetupWizard } =
+      await import("../../../src/app/(dashboard)/dashboard/tools/agent-bridge/components/SetupWizard");
 
     const onClose = vi.fn();
     const container = makeContainer();
@@ -169,8 +185,11 @@ describe("SetupWizard", { timeout: 30000 }, () => {
           target: mockTarget,
           agentState: undefined,
           serverRunning: false,
+          serverState: mockServerState,
+          currentMappings: [],
           onClose,
           onDnsToggle: vi.fn(),
+          onMappingsSave: vi.fn(),
         })
       );
     });

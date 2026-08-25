@@ -44,10 +44,12 @@ test("default model alias seed writes missing aliases and is idempotent", async 
   const routed = await sseModelService.getModelInfo("gemini-3.1-pro");
   // The stored alias target is "agy/gemini-pro-agent", but getModelInfo canonicalizes
   // the "agy" alias to its provider id "antigravity" (ALIAS_TO_PROVIDER_ID, #8013).
+  // supportsThinking is surfaced from the registry's supportsReasoning flag since #9485.
   assert.deepEqual(routed, {
     provider: "antigravity",
     model: "gemini-pro-agent",
     extendedContext: false,
+    supportsThinking: true,
   });
 
   const second = await seedDefaultModelAliases();

@@ -10,7 +10,7 @@ lastUpdated: 2026-06-28
 > 精簡化發行流程，運用 Claude Code Skills 實現自動化。
 >
 > **在發行之間保持佇列／分支為綠色：** 請參閱 [RELEASE_GREEN.md](./RELEASE_GREEN.md)
->（`/green-prs` 系列指令 + `npm run check:release-green` + `/babysit` + 夜間排程）。定期執行此流程——
+> （`/green-prs` 系列指令 + `npm run check:release-green` + `/babysit` + 夜間排程）。定期執行此流程——
 > 尤其是在執行本檢查清單**之前**——可讓發行 PR 一開始就處於綠色狀態。
 
 ## TL;DR
@@ -121,7 +121,7 @@ CI 只能暫存；只有擁有者的 2FA 才能真正發布。
 - [ ] `npm run test:vitest` — 通過（MCP 伺服器、autoCombo、快取）
 - [ ] `npm run test:coverage` — 門檻 60/60/60/60 已達成（statements／lines／functions／branches）
 - [ ] `npm run test:integration` — 通過（若變更涉及 DB／處理器）
-- [ ] `npm run test:combo:matrix` — 通過（combo 策略矩陣：證明所有 17 種路由策略的選擇決策是確定性的；在更動 combo 路由、策略解析或備援邏輯時執行）
+- [ ] `npm run test:combo:matrix` — 通過（combo 策略矩陣：證明所有 19 種公開路由策略的選擇決策是確定性的；在更動 combo 路由、策略解析或備援邏輯時執行）
 - [ ] `RUN_COMBO_LIVE=1 npm run test:combo:live` — **選擇性／手動**（受閘控的真實上游冒煙測試；從 VPS `root@192.168.0.15` 讀取唯讀 DB 快照；會命中真實提供者，消耗額度；不在 CI 中執行；若無閘控變數則乾淨跳過）
 - [ ] `npm run test:combo:live:vps` — **選擇性／手動**（Phase-3 VPS 即時冒煙測試：透過純 Node ESM 對 `.15` 伺服器執行 7 個 HTTP 情境；需要 `ssh root@192.168.0.15`；只會建立／刪除 `__live_test__*` 類型的 combo；會命中真實提供者；不在 CI 中執行）
 - [ ] `npm run test:e2e` — 通過（UI 變更）
@@ -205,11 +205,11 @@ Husky hooks 位於 `.husky/` 目錄，會在 git 操作時自動執行。
 
 倉儲使用三個不同的輸出目錄——切勿混淆：
 
-| 目錄       | 用途                                                | 是否追蹤？    |
-| --------- | --------------------------------------------------- | ------------- |
-| `src/`    | 應用程式原始碼（TypeScript／TSX）                    | 是            |
-| `.build/` | 建置中間產物 — `next build` 輸出（`distDir`）        | 否（gitignored）|
-| `dist/`   | 可發行的 npm 套件 — 由 `assembleStandalone` 組合而成 | 否（gitignored）|
+| 目錄      | 用途                                                 | 是否追蹤？       |
+| --------- | ---------------------------------------------------- | ---------------- |
+| `src/`    | 應用程式原始碼（TypeScript／TSX）                    | 是               |
+| `.build/` | 建置中間產物 — `next build` 輸出（`distDir`）        | 否（gitignored） |
+| `dist/`   | 可發行的 npm 套件 — 由 `assembleStandalone` 組合而成 | 否（gitignored） |
 
 > **操作注意：** 遠端 VPS 映像目錄仍為 `/usr/lib/node_modules/omniroute/app/`。
 > 只有**倉儲內**的建置輸出目錄變更了（`app/` → `dist/`）。部署 skills 會將
@@ -322,14 +322,12 @@ npm run build:release
 - [ ] `npm install -g omniroute@<此版本>` 執行 postinstall 而不會致命退出
 - [ ] 更新路徑保留選擇性依賴：`omniroute update --apply` 和自動更新器
       執行 `npm install -g … --include=optional`，因此 `optionalDependencies`（better-sqlite3、
-      keytar、tls-client，以及 llmlingua SLM 堆疊：`@atjsh/llmlingua-2`、
-      `@huggingface/transformers@3.5.2`、`@tensorflow/tfjs`、`js-tiktoken`）在更新後仍會保留。
-      `@huggingface/transformers` 維持選擇性，因此其 `onnxruntime-node` CUDA 提供者的 postinstall
-      不會在 CUDA 11 主機上中斷安裝。Ultra `modelPath` SLM 層還需要
+      keytar、tls-client，以及 llmlingua SLM 堆疊：`@atjsh/llmlingua-2@2.0.5`、
+      `js-tiktoken`）在更新後仍會保留。Ultra `modelPath` SLM 層還需要
       tinybert 模型，會在首次使用時自動下載到 `${DATA_DIR}/models/llmlingua`。Postinstall
       （`scripts/build/colocateOptionals.mjs`）接著將 SLM 選擇性閉包複製到
-      `dist/node_modules`，使工作者解析到**單一** `@huggingface/transformers` 3.5.2
-      選擇性實例——獨立追蹤僅捆綁 transformers，而非動態匯入的
+      `dist/node_modules`，使工作者解析到**單一** `@huggingface/transformers` ^4.2.0
+      實例——獨立追蹤僅捆綁 transformers，而非動態匯入的
       選擇性套件，因此若無此步驟，工作者會載入 llmlingua-2 並使用根目錄的 transformers，
       導致 SLM 層靜默地失敗但仍保持運作。
 - [ ] `omniroute status` 在無 `.env` 的情況下正常運作（僅限 CLI 權杖路徑，迴環介面）

@@ -2,6 +2,7 @@ export * from "./sidebarVisibility/types";
 export { COMPRESSION_CONTEXT_GROUP, SIDEBAR_SECTIONS } from "./sidebarVisibility/sections";
 
 import { HIDEABLE_SIDEBAR_ITEM_IDS } from "./sidebarVisibility/types";
+import { parseRadarAdminUrl } from "../validation/radarAdminUrl";
 import type {
   HideableSidebarItemId,
   SidebarItemId,
@@ -45,9 +46,11 @@ export const SIDEBAR_ICON_ACCENTS: Partial<Record<SidebarItemId, string>> = {
   "logs-activity": "#60A5FA",
   health: "#EF4444",
   runtime: "#F59E0B",
+  "resilience-connections": "#22C55E",
   "costs-pricing": "#FB923C",
   "costs-budget": "#22C55E",
   "costs-quota-share": "#06B6D4",
+  "radar-admin": "#F59E0B",
   audit: "#F43F5E",
   "audit-mcp": "#818CF8",
   "audit-a2a": "#A855F7",
@@ -68,6 +71,7 @@ export const SIDEBAR_ICON_ACCENTS: Partial<Record<SidebarItemId, string>> = {
   "settings-general": "#64748B",
   "settings-appearance": "#D946EF",
   "settings-ai": "#A78BFA",
+  "settings-modality-bridge": "#8B5CF6",
   "settings-routing": "#06B6D4",
   "settings-resilience": "#22C55E",
   "settings-advanced": "#F97316",
@@ -126,12 +130,68 @@ export function getSidebarIconAccent(id: string): string {
   );
 }
 
+/**
+ * Decide whether a sidebar item should be shown given a resolved feature-flag
+ * map. Items without `featureFlagKey` are always visible. Fails OPEN when the
+ * flag isn't present in the map (e.g. `/api/settings` hasn't returned yet, or
+ * an older server response predates the flag) — a missing entry must never
+ * hide an unrelated item.
+ */
+export function isSidebarItemVisibleForFlags(
+  item: Pick<SidebarItemDefinition, "featureFlagKey">,
+  flags: Record<string, boolean>
+): boolean {
+  if (!item.featureFlagKey) return true;
+  return flags[item.featureFlagKey] !== false;
+}
+
 export function getSectionItems(
   section: SidebarSectionDefinition | { children: readonly SidebarSectionChild[] }
 ): readonly SidebarItemDefinition[] {
   return section.children.flatMap((child) =>
     "type" in child && child.type === "group" ? child.items : [child as SidebarItemDefinition]
   );
+}
+
+const RADAR_ADMIN_ITEM: SidebarItemDefinition = {
+  id: "radar-admin",
+  href: "",
+  i18nKey: "radarAdmin",
+  labelFallback: "Radar Admin ↗",
+  subtitleKey: "radarAdminSubtitle",
+  subtitleFallback: "Private operations panel",
+  icon: "admin_panel_settings",
+  external: true,
+};
+
+/**
+ * Materialize owner-only entries resolved at request time. The canonical
+ * catalog never embeds the private URL; an absent or invalid authenticated
+ * settings value returns the original sections without the admin item.
+ */
+export function resolveRuntimeSidebarSections(
+  sections: readonly SidebarSectionDefinition[],
+  runtime: { radarAdminUrl?: unknown }
+): SidebarSectionDefinition[] {
+  const radarAdminUrl = parseRadarAdminUrl(runtime.radarAdminUrl);
+  if (!radarAdminUrl) return [...sections];
+
+  return sections.map((section) => {
+    if (section.id !== "costs") return section;
+
+    const children = section.children.filter(
+      (child) => !("id" in child && child.id === RADAR_ADMIN_ITEM.id)
+    );
+    const radarIndex = children.findIndex((child) => !("type" in child) && child.id === "radar");
+    const insertionIndex = radarIndex >= 0 ? radarIndex + 1 : children.length;
+    const resolvedChildren = [...children];
+    resolvedChildren.splice(insertionIndex, 0, {
+      ...RADAR_ADMIN_ITEM,
+      href: radarAdminUrl,
+    });
+
+    return { ...section, children: resolvedChildren };
+  });
 }
 
 // ─── Ordering & preset setting keys ──────────────────────────────────────────
@@ -141,6 +201,36 @@ export const SIDEBAR_SECTION_ORDER_KEY = "sidebarSectionOrder";
 export const SIDEBAR_ITEM_ORDER_KEY = "sidebarItemOrder";
 export const SIDEBAR_PRESET_KEY = "sidebarActivePreset";
 export const SIDEBAR_SETTINGS_UPDATED_EVENT = "omniroute:settings-updated";
+
+/** Beginner Essentials: core path only. Advanced tools stay reachable via search. */
+const ESSENTIALS_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
+  "home",
+  "endpoints",
+  "api-manager",
+  "providers",
+  "health",
+  "settings-general",
+  "settings-sidebar",
+]);
+
+/** Hidden in Essentials sidebar but kept searchable in Command Palette. */
+export const ESSENTIALS_ADVANCED_TOOL_IDS: ReadonlySet<HideableSidebarItemId> = new Set([
+  "playground",
+  "logs",
+  "batch",
+  "translator",
+  "combos",
+  "quota",
+  "analytics",
+  "costs",
+  "cache",
+  "runtime",
+  "resilience-connections",
+  "mcp",
+  "a2a",
+  "memory",
+  "skills",
+]);
 
 const MINIMAL_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "home",
@@ -179,6 +269,7 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "logs",
   "health",
   "runtime",
+  "resilience-connections",
   "translator",
   "playground",
   "memory",
@@ -186,6 +277,7 @@ const DEVELOPER_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "mcp",
   "a2a",
   "settings-general",
+  "settings-modality-bridge",
   "settings-routing",
   "settings-resilience",
   "settings-sidebar",
@@ -208,6 +300,7 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "costs-pricing",
   "costs-budget",
   "costs-quota-share",
+  "radar-admin",
   "cache",
   "logs",
   "activity",
@@ -217,6 +310,7 @@ const ADMIN_SHOWN: ReadonlySet<HideableSidebarItemId> = new Set([
   "audit-mcp",
   "audit-a2a",
   "settings-general",
+  "settings-modality-bridge",
   "settings-routing",
   "settings-resilience",
   "settings-security",
@@ -233,6 +327,7 @@ function buildHiddenList(shown: ReadonlySet<HideableSidebarItemId>): HideableSid
 
 export const SIDEBAR_PRESETS: readonly SidebarPresetDefinition[] = [
   { id: "all", icon: "select_all", hiddenItems: [] },
+  { id: "essentials", icon: "star", hiddenItems: buildHiddenList(ESSENTIALS_SHOWN) },
   { id: "minimal", icon: "minimize", hiddenItems: buildHiddenList(MINIMAL_SHOWN) },
   { id: "developer", icon: "code", hiddenItems: buildHiddenList(DEVELOPER_SHOWN) },
   { id: "admin", icon: "admin_panel_settings", hiddenItems: buildHiddenList(ADMIN_SHOWN) },

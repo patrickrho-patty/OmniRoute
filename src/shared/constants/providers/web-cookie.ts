@@ -3,6 +3,20 @@
  * Pure data literal; re-exported by the providers.ts barrel. No behavior change.
  */
 export const WEB_COOKIE_PROVIDERS = {
+  "chatgpt-web-codex": {
+    id: "chatgpt-web-codex",
+    alias: "cgpt-codex",
+    name: "ChatGPT Web (Codex)",
+    icon: "terminal",
+    color: "#10A37F",
+    textIcon: "CC",
+    website: "https://chatgpt.com",
+    authHint:
+      "Paste the full ChatGPT Cookie header. OmniRoute verifies it in an isolated headless browser profile.",
+    subscriptionRisk: true,
+    riskNoticeVariant: "webCookie",
+    toolCalling: "native",
+  },
   "chatgpt-web": {
     id: "chatgpt-web",
     alias: "cgpt-web",
@@ -81,7 +95,10 @@ export const WEB_COOKIE_PROVIDERS = {
     website: "https://www.meta.ai",
     hasFree: true,
     freeNote: "Free with login — Meta AI platform with Llama models.",
-    authHint: "Paste your ecto_1_sess value or full cookie header from meta.ai",
+    authHint:
+      "Paste your ecto_1_sess cookie AND the ecto1:... WS auth token from meta.ai. " +
+      "Capture the ecto1: token in DevTools → Network → WS → the clippy request's Authorization query param. " +
+      "Example: ecto_1_sess=4240a308...NVDg0; ecto1:ABCD...",
     toolCalling: "emulated",
   },
   "claude-web": {
@@ -122,7 +139,7 @@ export const WEB_COOKIE_PROVIDERS = {
     textIcon: "CP",
     website: "https://copilot.microsoft.com",
     authHint:
-      "Paste your access_token from copilot.microsoft.com (or export a .har file from DevTools while logged in)",
+      "Paste the access_token from an authenticated copilot.microsoft.com request (DevTools → Network → Authorization), or export a HAR while logged in",
     subscriptionRisk: true,
     riskNoticeVariant: "webCookie",
   },
@@ -135,7 +152,7 @@ export const WEB_COOKIE_PROVIDERS = {
     textIcon: "M365",
     website: "https://m365.cloud.microsoft/chat",
     authHint:
-      "Sign in at m365.cloud.microsoft/chat, then open DevTools → Network → filter 'WS' → click the Chathub WebSocket connection. Copy both the access_token query parameter AND the account-specific Chathub path segment from its request URL (wss://…/Chathub/<path>?…&access_token=…). It is NOT an Authorization: Bearer header on an XHR/Fetch request. The token is short-lived; this is an unofficial integration.",
+      "Sign in at m365.cloud.microsoft/chat, then open DevTools → Network → filter 'WS' → click the Chathub WebSocket connection. Copy both the access_token query parameter AND the account-specific Chathub path segment from its request URL (wss://…/Chathub/<path>?…&access_token=…). It is NOT an Authorization: Bearer header on an XHR/Fetch request. The token is short-lived; this is an unofficial integration. Optional: store a refresh_token in providerSpecificData.refreshToken (any Microsoft device-code/refresh flow for the substrate.office.com/sydney scopes) and OmniRoute pre-flight-refreshes the access token itself — otherwise re-capture after every ~75 min expiry.",
     subscriptionRisk: true,
     riskNoticeVariant: "webCookie",
   },
@@ -228,9 +245,25 @@ export const WEB_COOKIE_PROVIDERS = {
       "Log in to yuanbao.tencent.com, then paste the full Cookie header (DevTools → Network → any /api request → Request Headers → Cookie). It must contain hy_user and hy_token.",
     riskNoticeVariant: "webCookie",
   },
+  "tencent-aistudio-web": {
+    id: "tencent-aistudio-web",
+    alias: "tasw",
+    name: "Tencent AI Studio (Free)",
+    icon: "auto_awesome",
+    color: "#0052D9",
+    textIcon: "TAS",
+    website: "https://aistudio.tencent.ai",
+    hasFree: true,
+    freeNote:
+      "Free web session on Tencent AI Studio (aistudio.tencent.ai) — Direct chat with Hunyuan models (hy3-g, HunyuanDefault, Hunyuan3D). Cookie authentication.",
+    authHint:
+      "Log in to aistudio.tencent.ai, open DevTools -> Network, copy any request Cookie header containing session tokens.",
+    riskNoticeVariant: "webCookie",
+  },
   huggingchat: {
     id: "huggingchat",
-    // "hc" belongs to the hackclub provider; huggingchat uses its own id as alias.
+    // huggingchat is addressed by its own id as alias (stable routing; the
+    // historical "hc" alias collided with another provider and was retired).
     alias: "huggingchat",
     name: "HuggingChat (Free)",
     icon: "auto_awesome",
@@ -291,14 +324,9 @@ export const WEB_COOKIE_PROVIDERS = {
     icon: "auto_awesome",
     color: "#2563EB",
     textIcon: "KW",
-    // Kimi official-partnership aff link (2026-07) — the "Kimi Coding Plan"
-    // tracking link (same origin as the plain www.kimi.com login flow below,
-    // so the "Open {host}" credential guide in WebSessionCredentialGuide.tsx /
-    // AddApiKeyModal.tsx is unaffected: origin, not path, decides localStorage
-    // access). Was `https://www.kimi.com` (no aff attribution).
-    website: "https://www.kimi.com/code?aff=omniroute",
+    website: "https://www.kimi.ai",
     authHint:
-      "Paste access_token from www.kimi.com DevTools → Application → Local Storage. A legacy kimi-auth cookie is also accepted.",
+      "Paste access_token from www.kimi.ai DevTools → Application → Local Storage. A legacy kimi-auth cookie is also accepted.",
     subscriptionRisk: true,
     riskNoticeVariant: "webCookie",
   },
@@ -324,7 +352,7 @@ export const WEB_COOKIE_PROVIDERS = {
     icon: "auto_awesome",
     color: "#5B21B6",
     textIcon: "HL",
-    website: "https://hailuo.ai",
+    website: "https://chat.minimax.io",
     authHint:
       "Open hailuo.ai, log in, then open DevTools → Application → Local Storage → copy the " +
       '"_token" value. device_id/uuid fingerprint fields are derived automatically; if ' +
@@ -376,22 +404,37 @@ export const WEB_COOKIE_PROVIDERS = {
     authHint:
       "Login at zenmux.ai, then export all cookies using EditThisCookie or Cookie-Editor and paste the full Cookie header string here. Refresh every ~30 days.",
   },
+  "tinycms-web": {
+    id: "tinycms-web",
+    alias: "tcw",
+    name: "TinyCMS Web (Free/Sub)",
+    icon: "layers",
+    color: "#ED8936",
+    textIcon: "TC",
+    website: "https://site.tinycms.xyz",
+    hasFree: true,
+    freeNote:
+      "Free tier has access to GPT 5.4, Gemini 3.5, and Grok 4.20 models. No login required. Subscription grants 300 requests/day for advanced models.",
+    authHint:
+      "Go to site.tinycms.xyz, open DevTools → Application → Local Storage, copy the value of 'app-config-uuid' (starts with 'R'), and paste it here.",
+  },
   "zai-web": {
     id: "zai-web",
     alias: "zw",
-    name: "Z.ai Web (Free)",
+    name: "Z.ai Web",
     icon: "auto_awesome",
     color: "#2563EB",
     textIcon: "ZW",
     website: "https://chat.z.ai",
     hasFree: true,
     freeNote:
-      "Free consumer web session — GLM chat models via chat.z.ai. Distinct from the API-key zai/glm providers. No subscription required.",
+      "Consumer web session for the four models currently visible in chat.z.ai. Distinct from the API-key zai/glm providers.",
     subscriptionRisk: true,
     riskNoticeVariant: "webCookie",
-    authHint: "Paste the full Cookie header from chat.z.ai (must include the token=<JWT> cookie)",
+    authHint:
+      'Copy the "token" value from chat.z.ai → DevTools → Application → Local Storage. Do not copy cookies; OmniRoute handles the per-request CAPTCHA through its browser transport.',
   },
-  "promptql": {
+  promptql: {
     id: "promptql",
     alias: "pql",
     name: "PromptQL (Unofficial/Experimental)",
@@ -448,6 +491,19 @@ export const WEB_COOKIE_PROVIDERS = {
     riskNoticeVariant: "webCookie",
     authHint:
       "Paste the full Cookie header from hyperagent.com (DevTools → Network → any request → Request Headers → Cookie). Session cookies power chat + billing usage.",
+  },
+  "conol-web": {
+    id: "conol-web",
+    alias: "cnl",
+    name: "Conol (Unofficial/Experimental)",
+    icon: "auto_awesome",
+    color: "#F6C945",
+    textIcon: "CO",
+    website: "https://conol.ai",
+    subscriptionRisk: true,
+    riskNoticeVariant: "webCookie",
+    authHint:
+      "Use browser sign-in, or paste the full Cookie header from conol.ai. The __Secure-better-auth.session_token cookie is required.",
   },
 };
 

@@ -85,6 +85,28 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
     baseUrlSupport: "full",
     defaultCommand: "codex",
   },
+  zcode: {
+    id: "zcode",
+    name: "ZCode (GLM Coding Plan)",
+    color: "#3B82F6",
+    description: "Local ZCode app-server backend; auth remains in the user's ZCode profile",
+    docsUrl: "https://zcode.z.ai",
+    configType: "custom",
+    category: "code",
+    vendor: "Z.ai",
+    // ZCode's app-server is a native length-prefixed protocol, not ACP. The
+    // zcode provider executor owns its lifecycle instead of ACP spawning it.
+    acpSpawnable: false,
+    baseUrlSupport: "none",
+    defaultCommand: "zcode",
+    notes: [
+      {
+        type: "info",
+        text: "Uses the local ZCode app-server and its existing builtin:zai-coding-plan login.",
+      },
+      { type: "warning", text: "The response is buffered until the ZCode turn completes." },
+    ],
+  },
   droid: {
     id: "droid",
     name: "Factory Droid",
@@ -220,27 +242,21 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
     acpSpawnable: false,
     baseUrlSupport: "none",
     modelAliases: [
-      "gemini-3.6-flash-high",
-      "gemini-3.6-flash-medium",
-      "gemini-3.6-flash-low",
+      "gemini-3.7-flash-high",
+      "gemini-3.7-flash-medium",
+      "gemini-3.7-flash-low",
       "claude-opus-4-6-thinking",
       "claude-sonnet-4-6",
       "gemini-pro-agent",
       "gemini-3.1-pro-low",
-      "gemini-3-flash-agent",
-      "gemini-3.5-flash-low",
-      "gemini-3.5-flash-extra-low",
       "gpt-oss-120b-medium",
     ],
     defaultModels: [
-      createCliModel("gemini-3.6-flash-high", "Gemini 3.6 Flash High"),
-      createCliModel("gemini-3.6-flash-medium", "Gemini 3.6 Flash Medium"),
-      createCliModel("gemini-3.6-flash-low", "Gemini 3.6 Flash Low"),
+      createCliModel("gemini-3.7-flash-high", "Gemini 3.7 Flash High"),
+      createCliModel("gemini-3.7-flash-medium", "Gemini 3.7 Flash Medium"),
+      createCliModel("gemini-3.7-flash-low", "Gemini 3.7 Flash Low"),
       createCliModel("gemini-pro-agent", "Gemini 3.1 Pro High"),
       createCliModel("gemini-3.1-pro-low", "Gemini 3.1 Pro Low"),
-      createCliModel("gemini-3-flash-agent", "Gemini 3.5 Flash High"),
-      createCliModel("gemini-3.5-flash-low", "Gemini 3.5 Flash Medium"),
-      createCliModel("gemini-3.5-flash-extra-low", "Gemini 3.5 Flash Low"),
       createCliModel("claude-sonnet-4-6", "Claude Sonnet 4.6"),
       createCliModel("claude-opus-4-6-thinking", "Claude Opus 4.6 Thinking"),
       createCliModel("gpt-oss-120b-medium", "GPT OSS 120B Medium"),
@@ -281,7 +297,7 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
     notes: [
       {
         type: "warning",
-        text: "Config path: ~/.config/opencode/opencode.json on all platforms (Windows: %USERPROFILE%\\\\.config\\\\opencode\\\\opencode.json)",
+        text: "Config paths: ~/.config/opencode/opencode.jsonc (preferred when present) or opencode.json on all platforms (Windows: %USERPROFILE%\\\\.config\\\\opencode\\\\opencode.jsonc or opencode.json)",
       },
       {
         type: "warning",
@@ -574,6 +590,31 @@ aider --openai-api-base "{{baseUrl}}" --model "{{model}}"`,
     acpSpawnable: false,
     baseUrlSupport: "full",
     defaultCommand: "jcode",
+  },
+
+  /**
+   * ★ Added 2026-08-22 — Prime Agent (PrimeIntellect-ai/prime-agent).
+   * A self-improving RLM coding harness (TypeScript) whose LLM toolkit
+   * (prime-agent-ai) supports "any OpenAI-compatible API" + a dedicated
+   * "OpenAI Codex (ChatGPT Plus/Pro OAuth)" provider, so it can point at
+   * OmniRoute's OpenAI-compatible base URL like codex/forge. Installed via
+   * `curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh`;
+   * provider chosen at first run via `/login`.
+   */
+  "prime-agent": {
+    id: "prime-agent",
+    name: "Prime Agent",
+    icon: "terminal",
+    color: "#6366F1",
+    description:
+      "Prime Agent — self-improving RLM coding harness with OpenAI-compatible provider support",
+    docsUrl: "https://github.com/PrimeIntellect-ai/prime-agent",
+    configType: "custom",
+    category: "agent",
+    vendor: "Prime Intellect (OSS)",
+    acpSpawnable: false,
+    baseUrlSupport: "full",
+    defaultCommand: "prime-agent",
   },
 
   /**

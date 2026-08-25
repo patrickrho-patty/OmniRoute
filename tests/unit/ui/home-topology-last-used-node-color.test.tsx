@@ -15,6 +15,10 @@ import { FLOW_EDGE_COLORS } from "../../../src/shared/components/flow/edgeStyles
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
 }));
+// ProviderTopology navigates on node click; jsdom has no Next router context.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
 vi.mock("@/shared/components/ProviderIcon", () => ({
   default: () => <span data-testid="icon" />,
 }));
@@ -48,9 +52,8 @@ vi.mock("@xyflow/react", () => ({
   Position: { Top: "top", Bottom: "bottom", Left: "left", Right: "right" },
 }));
 
-const ProviderTopology = (
-  await import("../../../src/app/(dashboard)/home/ProviderTopology")
-).default;
+const ProviderTopology = (await import("../../../src/app/(dashboard)/home/ProviderTopology"))
+  .default;
 
 // jsdom normalises inline hex colours to `rgb(...)`, so compare in that space.
 const rgb = (hex: string) => {

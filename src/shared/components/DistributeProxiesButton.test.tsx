@@ -3,6 +3,9 @@ import React from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextIntlClientProvider } from "next-intl";
+
+import messages from "../../i18n/messages/en.json";
 
 const cleanupCallbacks: Array<() => void> = [];
 
@@ -35,17 +38,20 @@ describe("DistributeProxiesButton", () => {
   async function renderButton(
     props: Partial<React.ComponentProps<typeof import("./DistributeProxiesButton").default>> = {}
   ) {
-    const { default: DistributeProxiesButton } = await import(
-      "./DistributeProxiesButton.tsx"
-    );
+    const { default: DistributeProxiesButton } = await import("./DistributeProxiesButton.tsx");
     const container = makeContainer();
     const root = createRoot(container);
     await act(async () => {
       root.render(
-        <DistributeProxiesButton
-          onDistribute={props.onDistribute ?? vi.fn().mockResolvedValue(undefined)}
-          {...props}
-        />
+        <NextIntlClientProvider
+          locale="en"
+          messages={{ sharedComponents: messages.sharedComponents }}
+        >
+          <DistributeProxiesButton
+            onDistribute={props.onDistribute ?? vi.fn().mockResolvedValue(undefined)}
+            {...props}
+          />
+        </NextIntlClientProvider>
       );
     });
     return { container, root };
@@ -91,7 +97,10 @@ describe("DistributeProxiesButton", () => {
   it("enters distributing state on click", async () => {
     let resolveDistribute: () => void;
     const onDistribute = vi.fn().mockImplementation(
-      () => new Promise<void>((resolve) => { resolveDistribute = resolve; })
+      () =>
+        new Promise<void>((resolve) => {
+          resolveDistribute = resolve;
+        })
     );
     const { container } = await renderButton({ onDistribute });
     const button = container.querySelector("button") as HTMLButtonElement;

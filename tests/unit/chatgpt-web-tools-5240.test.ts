@@ -14,7 +14,7 @@ const { __setTlsFetchOverrideForTesting } =
   await import("../../open-sse/services/chatgptTlsClient.ts");
 
 // ─── Minimal TLS-fetch mock ──────────────────────────────────────────────────
-// Tailored to the tool-call flow (gpt-5.3-instant, non-thinking): root/DPL,
+// Tailored to the tool-call flow (gpt-5.5, non-thinking): root/DPL,
 // session→accessToken, sentinel→token (no PoW), conv→SSE. Warmup GETs fall
 // through to 404, which the executor tolerates.
 
@@ -129,7 +129,7 @@ const TOOL_CALL_TEXT =
 
 function baseOpts(extra: Record<string, unknown>) {
   return {
-    model: "gpt-5.3-instant",
+    model: "gpt-5.5",
     credentials: { apiKey: "test" },
     signal: AbortSignal.timeout(10_000),
     log: null,

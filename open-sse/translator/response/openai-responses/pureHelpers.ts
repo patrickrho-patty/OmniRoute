@@ -56,12 +56,35 @@ function isDroppableEmptyEntry(entry, propSchema, required, key, allowlisted) {
   return allowlisted || (propSchema != null && !required.has(key));
 }
 
-// #7023 — the request-side counterpart (injectOptionalEnumOmissionSentinel) widens
-// no-default optional enum properties to accept `null`, meaning "omitted" (OpenAI's own
-// nullable-union idiom for Responses-API strict mode). Drop the key when the model
-// follows that idiom for a non-required, schema-declared property.
-function isDroppableNullEntry(entry, propSchema, required, key) {
-  return entry === null && propSchema != null && !required.has(key);
+function schemaTypeIncludes(type, wanted) {
+  return type === wanted || (Array.isArray(type) && type.includes(wanted));
+}
+
+function hasOmissionSentinel(propSchema) {
+  if (!propSchema || typeof propSchema !== "object") return false;
+  if (
+    typeof propSchema.description !== "string" ||
+    !propSchema.description.includes("null = omit this parameter")
+  ) {
+    return false;
+  }
+  return (
+    schemaTypeIncludes(propSchema.type, "null") ||
+    (Array.isArray(propSchema.enum) && propSchema.enum.includes(null))
+  );
+}
+
+// #7023 — the request-side counterpart widens no-default optional properties to accept
+// `null`, meaning "omitted" (OpenAI's own nullable-union idiom for Responses-API strict
+// mode). Enums use injectOptionalEnumOmissionSentinel; plain strings use
+// injectOptionalStringOmissionSentinel. Drop the key when the model follows that idiom
+// for a non-required, schema-declared property, or when OmniRoute's marker is present
+// even after an upstream strictifies the field into `required`.
+function isDroppableNullEntry(entry, propSchema, required, key, toolName) {
+  if (entry !== null) return false;
+  if (toolName === "Agent") return true;
+  if (propSchema == null) return false;
+  return !required.has(key) || hasOmissionSentinel(propSchema);
 }
 
 function stripEmptyOptionalToolArgsObject(value, toolName, schema) {
@@ -75,7 +98,7 @@ function stripEmptyOptionalToolArgsObject(value, toolName, schema) {
     if (
       matchesSchemaDefault(propSchema, entry) ||
       isDroppableEmptyEntry(entry, propSchema, required, key, allowlisted) ||
-      isDroppableNullEntry(entry, propSchema, required, key)
+      isDroppableNullEntry(entry, propSchema, required, key, toolName)
     ) {
       delete cleaned[key];
     }
@@ -99,7 +122,15 @@ export function stripEmptyOptionalToolArgs(value, toolName, schema) {
   if (typeof value === "string") {
     // JSON-string cleanup runs for allowlisted tools, or for any tool once a schema is
     // supplied (schema-aware normalization is not restricted to the allowlist).
-    if (!hasUsableSchema(schema) && !STRIPPABLE_EMPTY_ARG_TOOLS.has(toolName)) return value;
+    // "Agent" also passes without a schema: isDroppableNullEntry drops its null
+    // omission sentinels even when the strict schema snapshot is unavailable (#9423).
+    if (
+      !hasUsableSchema(schema) &&
+      !STRIPPABLE_EMPTY_ARG_TOOLS.has(toolName) &&
+      toolName !== "Agent"
+    ) {
+      return value;
+    }
     try {
       const parsed = JSON.parse(value);
       if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) return value;
@@ -166,34 +197,30 @@ export function normalizeUpstreamFailure(data, fallbackType = "server_error") {
 
 export function extractResponsesReasoningSummaryText(item) {
   if (!item || !Array.isArray(item.summary)) return "";
+  // #9500 — reasoning summary parts are discrete segments; join with "\n\n"
+  // (matches extractThinkingFromContent convention). Filter empties so an
+  // empty summary_text element does not produce a dangling separator.
   return item.summary
     .map((part) =>
       part && typeof part === "object" && typeof part.text === "string" ? part.text : ""
     )
-    .join("");
+    .filter((text) => text.length > 0)
+    .join("\n\n");
 }
 
-// #7095/#7176 — when Codex exposes a reasoning item only as encrypted private
-// reasoning (no plaintext summary), chat clients would otherwise see nothing in
-// their thinking panel. Reconciles two goals that used to be in tension:
-//   - #7095 wants a visible placeholder in the chat client.
-//   - #7176 wants the upstream response item left untouched, so `encrypted_content`
-//     (needed by Codex for subsequent requests) is never overwritten by a
-//     fabricated `summary`.
-// This function computes the placeholder text WITHOUT mutating `item` — callers
-// use the returned text for synthetic client-facing events only.
-const ENCRYPTED_REASONING_PLACEHOLDER =
-  "Codex is reasoning, but the upstream Responses API exposed this reasoning block only as encrypted private reasoning. OmniRoute cannot recover the plaintext.";
-
+// #7095/#7176/#7243 — when Codex exposes a reasoning item only as encrypted
+// private reasoning (no plaintext summary), callers may synthesize client-facing
+// reasoning summary events from this helper. Reconciles three goals:
+//   - #7176: never mutate the upstream item — `encrypted_content` (needed by
+//     Codex for subsequent requests) must not be overwritten with a fabricated
+//     `summary`.
+//   - #7095: real plaintext summaries from upstream are forwarded to chat
+//     clients that render a thinking panel.
+//   - #7243: when upstream provides no plaintext summary, do NOT fabricate an
+//     alarming error-like paragraph into `reasoning_summary_text.delta` — clients
+//     would display it as if it were real reasoning. Return empty so synthetic
+//     summary events are suppressed; the reasoning item (with `encrypted_content`)
+//     still arrives on `response.output_item.done`.
 export function getVisibleResponsesReasoningSummaryText(item) {
-  const existingSummary = extractResponsesReasoningSummaryText(item);
-  if (existingSummary) return existingSummary;
-
-  const hasEncryptedReasoning =
-    item &&
-    item.type === "reasoning" &&
-    typeof item.encrypted_content === "string" &&
-    item.encrypted_content.length > 0;
-
-  return hasEncryptedReasoning ? ENCRYPTED_REASONING_PLACEHOLDER : "";
+  return extractResponsesReasoningSummaryText(item);
 }

@@ -11,6 +11,10 @@ import {
 } from "../../open-sse/services/browserBackedChat.ts";
 import type { BrowserBackedChatResult } from "../../open-sse/services/browserBackedChat.ts";
 
+// Keep the browser pool warmup disabled in the unit test process so the real
+// (non-stubbed) browser pool does not open handles and hang the test runner.
+process.env.OMNIROUTE_BROWSER_POOL = "off";
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 const OK_RESPONSE: BrowserBackedChatResult = {
@@ -58,7 +62,9 @@ describe("tryBackedChat", () => {
   // --------------------------------------------------------------------------
   it("returns httpBackedChat result when status is 2xx", async () => {
     __setHttpBackedChatOverrideForTesting(() => Promise.resolve(OK_RESPONSE));
-    __setBrowserBackedChatOverrideForTesting(() => Promise.reject(new Error("should not be called")));
+    __setBrowserBackedChatOverrideForTesting(() =>
+      Promise.reject(new Error("should not be called"))
+    );
 
     const result = await tryBackedChat({ ...BASE_REQ });
 
@@ -75,7 +81,9 @@ describe("tryBackedChat", () => {
       status: 501,
     };
     __setHttpBackedChatOverrideForTesting(() => Promise.resolve(notImplemented));
-    __setBrowserBackedChatOverrideForTesting(() => Promise.reject(new Error("should not be called")));
+    __setBrowserBackedChatOverrideForTesting(() =>
+      Promise.reject(new Error("should not be called"))
+    );
 
     const result = await tryBackedChat({ ...BASE_REQ });
 
@@ -131,8 +139,12 @@ describe("tryBackedChat", () => {
   // 5. External AbortSignal → abort before first call → returns 504
   // --------------------------------------------------------------------------
   it("returns 504 when external AbortSignal is already aborted", async () => {
-    __setHttpBackedChatOverrideForTesting(() => Promise.reject(new DOMException("Aborted", "AbortError")));
-    __setBrowserBackedChatOverrideForTesting(() => Promise.reject(new Error("should not be called")));
+    __setHttpBackedChatOverrideForTesting(() =>
+      Promise.reject(new DOMException("Aborted", "AbortError"))
+    );
+    __setBrowserBackedChatOverrideForTesting(() =>
+      Promise.reject(new Error("should not be called"))
+    );
 
     const ac = new AbortController();
     ac.abort();
@@ -147,8 +159,12 @@ describe("tryBackedChat", () => {
   // 6. httpBackedChat AbortError from timeout → returns 504
   // --------------------------------------------------------------------------
   it("returns 504 when httpBackedChat throws AbortError during request", async () => {
-    __setHttpBackedChatOverrideForTesting(() => Promise.reject(new DOMException("Aborted", "AbortError")));
-    __setBrowserBackedChatOverrideForTesting(() => Promise.reject(new Error("should not be called")));
+    __setHttpBackedChatOverrideForTesting(() =>
+      Promise.reject(new DOMException("Aborted", "AbortError"))
+    );
+    __setBrowserBackedChatOverrideForTesting(() =>
+      Promise.reject(new Error("should not be called"))
+    );
 
     // Use a signal that aborts immediately to simulate timeout
     const ac = new AbortController();
@@ -175,7 +191,9 @@ describe("tryBackedChat", () => {
   // --------------------------------------------------------------------------
   it("does not leak AbortController timer when httpBackedChat succeeds quickly", async () => {
     __setHttpBackedChatOverrideForTesting(() => Promise.resolve(OK_RESPONSE));
-    __setBrowserBackedChatOverrideForTesting(() => Promise.reject(new Error("should not be called")));
+    __setBrowserBackedChatOverrideForTesting(() =>
+      Promise.reject(new Error("should not be called"))
+    );
 
     // Call tryBackedChat without an external signal so it creates an internal AbortController
     const result = await tryBackedChat({ ...BASE_REQ, signal: undefined });
@@ -183,5 +201,22 @@ describe("tryBackedChat", () => {
     assert.equal(result.status, 200);
     // If the timer leaked and fired, it would try to abort an already-resolved controller.
     // That's harmless but wasteful; this test just verifies the response is correct.
+  });
+
+  // --------------------------------------------------------------------------
+  // 9. Fallback when browser pool package absent (issue #5 from PR review)
+  //    HTTP challenge → no cookieDomain → browserBackedChat throws "not available"
+  // --------------------------------------------------------------------------
+  it("propagates error when browser pool package is absent after HTTP challenge", async () => {
+    __setHttpBackedChatOverrideForTesting(() => Promise.resolve(CHALLENGE_RESPONSE));
+    // Simulate what browserBackedChat does when getMod() returns null
+    __setBrowserBackedChatOverrideForTesting(() =>
+      Promise.reject(new Error("Browser pool package not available"))
+    );
+
+    await assert.rejects(
+      tryBackedChat({ ...BASE_REQ, cookieDomain: undefined }),
+      /Browser pool package not available/
+    );
   });
 });

@@ -1,11 +1,14 @@
 import { handleChat, type HandleChatRuntimeOptions } from "@/sse/handlers/chat";
 import { initTranslators } from "@omniroute/open-sse/translator/index.ts";
 import { withInjectionGuard } from "@/middleware/promptInjectionGuard";
+import { withChatAdmission } from "@/shared/middleware/withChatAdmission";
+import { requireJsonContentType } from "@/shared/middleware/requireJsonContentType";
 import {
   withEarlyStreamKeepalive,
   ANTHROPIC_PING_FRAME,
 } from "@omniroute/open-sse/utils/earlyStreamKeepalive";
 import { resolveKeepaliveThreshold } from "@omniroute/open-sse/utils/keepaliveThreshold";
+import { resolveStreamFlag } from "@omniroute/open-sse/utils/aiSdkCompat";
 
 let initialized = false;
 
@@ -44,6 +47,11 @@ async function postHandler(
   preParsedBody: any = null,
   runtimeOptions: HandleChatRuntimeOptions = {}
 ) {
+  // Reject non-JSON Content-Type with 415 before touching the body — mirrors OpenAI's
+  // reference API and matches /v1/chat/completions (#6414).
+  const ctRejection = requireJsonContentType(request);
+  if (ctRejection) return ctRejection;
+
   await ensureInitialized();
   // Streaming Anthropic clients (Claude Code, the Anthropic SDK) drop the connection
   // when no bytes arrive while a large prompt is processed before the first token — a
@@ -53,22 +61,27 @@ async function postHandler(
   // /v1/responses (#2544). Anthropic clients ignore SSE comments for their watchdog, so
   // emit a real `event: ping` (ANTHROPIC_PING_FRAME). Non-streaming callers keep the
   // verbatim path.
-  const accept = String(request.headers?.get?.("accept") || "").toLowerCase();
-  if (accept.includes("text/event-stream")) {
-    const model =
-      preParsedBody && typeof preParsedBody === "object" && !Array.isArray(preParsedBody)
-        ? preParsedBody.model
-        : undefined;
-    return await withEarlyStreamKeepalive(
-      handleChat(request, null, preParsedBody, runtimeOptions),
-      {
-        signal: request.signal,
-        thresholdMs: resolveKeepaliveThreshold(model),
-        keepaliveFrame: ANTHROPIC_PING_FRAME,
-      }
-    );
+  let body = preParsedBody;
+  if (body == null) {
+    try {
+      body = await request
+        .clone()
+        .json()
+        .catch(() => null);
+    } catch {
+      // body unavailable / non-JSON — handleChat will return its normal validation error
+    }
   }
-  return await handleChat(request, null, preParsedBody, runtimeOptions);
+  const accept = String(request.headers?.get?.("accept") || "");
+  const wantsStreaming = resolveStreamFlag(body?.stream, accept, "claude");
+  if (wantsStreaming) {
+    return await withEarlyStreamKeepalive(handleChat(request, null, body, runtimeOptions), {
+      signal: request.signal,
+      thresholdMs: resolveKeepaliveThreshold(body?.model),
+      keepaliveFrame: ANTHROPIC_PING_FRAME,
+    });
+  }
+  return await handleChat(request, null, body, runtimeOptions);
 }
 
-export const POST = withInjectionGuard(postHandler);
+export const POST = withChatAdmission(withInjectionGuard(postHandler));

@@ -23,7 +23,33 @@ export function deriveLiveWsPath(publicUrl?: string): string {
   }
 }
 
+/**
+ * The operator-declared public WebSocket URL, resolved at RUNTIME.
+ *
+ * `NEXT_PUBLIC_*` is inlined into the client bundle at BUILD time, so a prebuilt
+ * Docker or npm image can never carry an operator's value — which is exactly why
+ * the server echoes this in `/api/v1/ws?handshake=1` for the client to discover.
+ * Reading only the `NEXT_PUBLIC_`-prefixed name on the server made that echo
+ * unreachable too: behind a reverse proxy the dashboard kept dialling
+ * `wss://<host>:20132/live-ws` and reported "Live disabled" (#11331).
+ *
+ * `LIVE_WS_PUBLIC_URL` is the runtime name, alongside the existing runtime
+ * `LIVE_WS_HOST` / `LIVE_WS_PORT`. The prefixed name still wins nothing and loses
+ * nothing — it stays supported as the fallback so existing deployments that set it
+ * (build-time or in the container) keep working.
+ */
+export function resolveLiveWsPublicUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  const candidates = [env.LIVE_WS_PUBLIC_URL, env.NEXT_PUBLIC_LIVE_WS_PUBLIC_URL];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string") continue;
+    const trimmed = candidate.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith("ws://") || trimmed.startsWith("wss://")) return trimmed;
+  }
+  return null;
+}
+
 /** Convenience: read the env var at call time and derive the path. */
 export function getLiveWsPath(): string {
-  return deriveLiveWsPath(process.env.NEXT_PUBLIC_LIVE_WS_PUBLIC_URL);
+  return deriveLiveWsPath(resolveLiveWsPublicUrl() ?? undefined);
 }

@@ -21,6 +21,7 @@ import {
   _clearDrrStateForTest,
   _getDrrDeficitForTest,
 } from "../../open-sse/services/combo/quotaShareStrategy.ts";
+import { applyStrategyOrdering } from "../../open-sse/services/combo/applyStrategyOrdering.ts";
 import {
   incrementInflight,
   decrementInflight,
@@ -488,5 +489,50 @@ describe("activation: qtSd/ combos use strategy 'quota-share'", () => {
       (INTERNAL_ROUTING_STRATEGY_VALUES as readonly string[]).includes("quota-share"),
       "'quota-share' must be in the internal (non-UI) routing strategy list"
     );
+  });
+});
+
+// ─── #11371: release must travel out of the ordering path ───────────────────
+
+describe("applyStrategyOrdering threads the in-flight release (#11371)", () => {
+  const noopLog = { info() {}, warn() {}, error() {}, debug() {} };
+
+  test("quota-share ordering returns a release that restores the counter to 0", async () => {
+    const targets = [makeTarget("ek-rel-a", "conn-rel-a"), makeTarget("ek-rel-b", "conn-rel-b")];
+    const { orderedTargets, quotaShareRelease } = await applyStrategyOrdering(
+      "quota-share",
+      targets,
+      {
+        combo: { id: "c-rel", name: "qtSd/rel" },
+        config: {},
+        body: { model: "anthropic/claude-sonnet-4-5" },
+        log: noopLog,
+        apiKeyAllowedConnections: null,
+      } as never
+    );
+
+    assert.ok(orderedTargets.length > 0);
+    assert.ok(quotaShareRelease, "quota-share ordering must hand back a release callback");
+    const winnerConn = orderedTargets[0].connectionId ?? "";
+    assert.ok(winnerConn, "winner must carry a connectionId for the reservation");
+    // Selection reserved exactly one slot on the winner's connection.
+    assert.equal(getInflight(winnerConn, NOW), 1, "selection must reserve one in-flight slot");
+    // The real-caller contract: release once when the request settles.
+    quotaShareRelease!();
+    assert.equal(getInflight(winnerConn, NOW), 0, "release must return the counter to 0");
+    // Idempotent: a second call must not push the counter negative.
+    quotaShareRelease!();
+    assert.equal(getInflight(winnerConn, NOW), 0, "double release floors at 0");
+  });
+
+  test("non-quota-share strategies leave quotaShareRelease null", async () => {
+    const result = await applyStrategyOrdering("fill-first", [makeTarget("ek-null", "conn-null")], {
+      combo: { id: "c-ff", name: "plain" },
+      config: {},
+      body: {},
+      log: noopLog,
+      apiKeyAllowedConnections: null,
+    } as never);
+    assert.equal(result.quotaShareRelease, null);
   });
 });

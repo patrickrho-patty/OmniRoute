@@ -14,6 +14,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [hasPassword, setHasPassword] = useState(null);
   const [setupComplete, setSetupComplete] = useState(null);
+  const [oidcEnabled, setOidcEnabled] = useState<boolean | null>(null);
+  const [oidcDisablePasswordLogin, setOidcDisablePasswordLogin] = useState<boolean | null>(null);
   const [mounted, setMounted] = useState(false);
   const [nodeVersion, setNodeVersion] = useState(null);
   const [nodeCompatible, setNodeCompatible] = useState(true);
@@ -36,21 +38,26 @@ export default function LoginPage() {
           const data = await res.json();
           if (data.nodeVersion) setNodeVersion(data.nodeVersion);
           if (data.nodeCompatible === false) setNodeCompatible(false);
-          if (data.requireLogin === false) {
-            router.push("/dashboard");
-            router.refresh();
+          if (data.authenticated === true || data.requireLogin === false) {
+            window.location.href = "/dashboard";
             return;
           }
           setHasPassword(!!data.hasPassword);
           setSetupComplete(!!data.setupComplete);
+          setOidcEnabled(!!data.oidcEnabled);
+          setOidcDisablePasswordLogin(!!data.oidcDisablePasswordLogin);
         } else {
           setHasPassword(true);
           setSetupComplete(true);
+          setOidcEnabled(false);
+          setOidcDisablePasswordLogin(false);
         }
       } catch (err) {
         clearTimeout(timeoutId);
         setHasPassword(true);
         setSetupComplete(true);
+        setOidcEnabled(false);
+        setOidcDisablePasswordLogin(false);
       }
     }
     checkAuth();
@@ -76,7 +83,7 @@ export default function LoginPage() {
         const data = await res.json();
         // (#521) If no password is set, redirect to onboarding instead of showing an error
         if (data.needsSetup) {
-          router.push("/dashboard/onboarding");
+          window.location.href = "/dashboard/onboarding";
           return;
         }
         setError(data.error || t("invalidPassword"));
@@ -120,7 +127,12 @@ export default function LoginPage() {
       </div>
     ) : null;
 
-  if (hasPassword === null || setupComplete === null) {
+  if (
+    hasPassword === null ||
+    setupComplete === null ||
+    oidcEnabled === null ||
+    (oidcEnabled && oidcDisablePasswordLogin === null)
+  ) {
     return (
       <PattyShell banner={nodeWarningBanner}>
         <div className="flex flex-col items-center gap-3">
@@ -208,37 +220,80 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-[#0a0a0b] tracking-tight text-center mb-1.5">
           {t("signIn")}
         </h1>
-        <p className="text-black/60 text-center mb-8">{t("enterPassword")}</p>
+        <p className="text-black/60 text-center mb-8">
+          {oidcEnabled && oidcDisablePasswordLogin ? t("continueWithOidc") : t("enterPassword")}
+        </p>
 
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-[#0a0a0b]">{t("password")}</label>
-            <Input
-              type="password"
-              placeholder={t("enterPassword")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoFocus
-              className="h-11"
-            />
-            {error && (
-              <p className="text-sm text-[#0a0a0b] flex items-center gap-1.5 pt-1">
-                <span className="material-symbols-outlined text-base">error</span>
-                {error}
-              </p>
-            )}
+        {oidcEnabled && oidcDisablePasswordLogin ? (
+          <div className="space-y-4">
+            <Button
+              type="button"
+              variant="primary"
+              className="w-full h-11 text-sm font-medium flex items-center justify-center gap-2"
+              onClick={() => (window.location.href = "/api/auth/oidc/login")}
+            >
+              <span className="material-symbols-outlined text-lg">login</span>
+              {t("continueWithOidc")}
+            </Button>
           </div>
+        ) : (
+          <>
+            <form onSubmit={handleLogin} className="space-y-5">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-[#0a0a0b]">{t("password")}</label>
+                <Input
+                  type="password"
+                  placeholder={t("enterPassword")}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoFocus
+                  className="h-11"
+                />
+                {error && (
+                  <p className="text-sm text-[#0a0a0b] flex items-center gap-1.5 pt-1">
+                    <span className="material-symbols-outlined text-base">error</span>
+                    {error}
+                  </p>
+                )}
+              </div>
 
-          <Button
-            type="submit"
-            variant="primary"
-            className="w-full h-11 text-sm font-medium"
-            loading={loading}
-          >
-            {t("continue")}
-          </Button>
-        </form>
+              <Button
+                type="submit"
+                variant="primary"
+                className="w-full h-11 text-sm font-medium"
+                loading={loading}
+              >
+                {t("continue")}
+              </Button>
+            </form>
+
+            {oidcEnabled && (
+              <div className="mt-4">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full h-11 text-sm font-medium flex items-center justify-center gap-2"
+                  onClick={() => (window.location.href = "/api/auth/oidc/login")}
+                >
+                  <span className="material-symbols-outlined text-lg">login</span>
+                  {t("continueWithOidc")}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+
+        {!oidcEnabled && (
+          <div className="mt-6 pt-6 border-t border-black/10">
+            <a
+              href="/forgot-password"
+              className="text-sm text-black/60 hover:text-[#0a0a0b] transition-colors"
+            >
+              {t("forgotPassword")}
+            </a>
+          </div>
+        )}
       </div>
     </PattyShell>
   );

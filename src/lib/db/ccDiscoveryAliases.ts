@@ -22,6 +22,7 @@
 
 import { getFeatureFlagOverride } from "./featureFlags";
 import { getDbInstance } from "./core";
+import { finishModelCatalogWriteWithoutBackup } from "./models/modelCatalogWriteSignals";
 
 const NAMESPACE = "ccDiscoveryAliases";
 const FLAG_KEY = "EXPOSE_CC_DISCOVERY_ALIASES";
@@ -71,6 +72,7 @@ export function setCcAliasProviderSetting(providerId: string, v: CcAliasSetting)
   const key = providerKey(providerId);
   if (v === null) {
     db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(NAMESPACE, key);
+    finishModelCatalogWriteWithoutBackup();
     return;
   }
   db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
@@ -78,6 +80,7 @@ export function setCcAliasProviderSetting(providerId: string, v: CcAliasSetting)
     key,
     v
   );
+  finishModelCatalogWriteWithoutBackup();
 }
 
 export function getCcAliasModelSetting(providerId: string, modelId: string): CcAliasSetting {
@@ -97,6 +100,7 @@ export function setCcAliasModelSetting(
   const key = modelKey(providerId, modelId);
   if (v === null) {
     db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(NAMESPACE, key);
+    finishModelCatalogWriteWithoutBackup();
     return;
   }
   db.prepare("INSERT OR REPLACE INTO key_value (namespace, key, value) VALUES (?, ?, ?)").run(
@@ -104,6 +108,7 @@ export function setCcAliasModelSetting(
     key,
     v
   );
+  finishModelCatalogWriteWithoutBackup();
 }
 
 /**

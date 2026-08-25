@@ -1,4 +1,4 @@
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 import { createPrompt, printHeading, printInfo, printSuccess } from "../io.mjs";
 import { openOmniRouteDb } from "../sqlite.mjs";
@@ -16,7 +16,9 @@ import { t } from "../i18n.mjs";
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 async function getListCliTools() {
-  const { listCliTools } = await import(`${PROJECT_ROOT}/src/shared/constants/cliTools.ts`);
+  const { listCliTools } = await import(
+    pathToFileURL(resolve(PROJECT_ROOT, "src/shared/constants/cliTools.ts")).href
+  );
   return listCliTools;
 }
 
@@ -133,6 +135,29 @@ async function setupProvider(db, opts, prompt, nonInteractive) {
   return connection;
 }
 
+/**
+ * Merge the `setup` subcommand options with the program-level ones.
+ *
+ * The program declares a global `--api-key` (the OmniRoute *server* key, see
+ * bin/cli/program.mjs) and `setup` declares its own `--api-key` (the *provider*
+ * key). Commander binds the value to the program-level option, so the
+ * subcommand's `opts.apiKey` is always `undefined` and `--add-provider` failed
+ * with "Provider API key is required" even when `--api-key` was passed. Falling
+ * back to the global value also makes `OMNIROUTE_API_KEY` work, which the error
+ * message already told users to use.
+ *
+ * @param {Record<string, unknown>} opts Subcommand options.
+ * @param {Record<string, unknown>} globalOpts Result of `cmd.optsWithGlobals()`.
+ * @returns {Record<string, unknown>} Options to hand to `runSetupCommand`.
+ */
+export function mergeSetupOptions(opts, globalOpts) {
+  return {
+    ...opts,
+    apiKey: opts.apiKey ?? globalOpts.apiKey,
+    output: globalOpts.output,
+  };
+}
+
 export function registerSetup(program) {
   program
     .command("setup")
@@ -149,7 +174,7 @@ export function registerSetup(program) {
     .option("--list", "List all supported CLI tools")
     .action(async (opts, cmd) => {
       const globalOpts = cmd.optsWithGlobals();
-      const exitCode = await runSetupCommand({ ...opts, output: globalOpts.output });
+      const exitCode = await runSetupCommand(mergeSetupOptions(opts, globalOpts));
       if (exitCode !== 0) process.exit(exitCode);
     });
 

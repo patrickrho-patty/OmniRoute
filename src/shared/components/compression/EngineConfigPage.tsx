@@ -20,10 +20,14 @@ interface EngineEntry {
 // Engines whose detailed config has a dedicated sub-object in the compression
 // settings store. The on/off + level for ALL engines now live in the panel
 // (/dashboard/context/settings, the `engines` map); only these have a place to
-// persist the extra per-engine fields edited on this page. Structural engines
-// (lite, headroom, session-dedup, ccr, llmlingua) have no sub-object yet — their
-// page keeps the detail form + preview but has nothing extra to persist this phase.
+// persist the extra per-engine fields edited on this page. session-dedup and ccr
+// joined headroom in #8388 (they previously rendered a real, editable detail form
+// with no Save affordance — edits vanished on reload). lite gained a dedicated
+// sub-object with the compressToolResults toggle. Other structural engines
+// (llmlingua, relevance) still have no dedicated sub-object — their page
+// keeps the detail form + preview but has nothing extra to persist yet.
 const SETTINGS_SUBOBJECT: Record<string, string> = {
+  lite: "lite",
   aggressive: "aggressive",
   ultra: "ultra",
   "session-dedup": "sessionDedup",
@@ -190,8 +194,12 @@ export function EngineConfigPage({ engineId }: { engineId: string }) {
       return;
     }
     // Strip the `enabled` key — engine on/off is the panel's responsibility.
-    const { enabled: _ignored, ...detail } = configState;
+    const { enabled: _ignored, ...formDetail } = configState;
     void _ignored;
+    const detail =
+      engineId === "lite"
+        ? { compressToolResults: formDetail.compressToolResults !== false }
+        : formDetail;
     setSaving(true);
     setSaveError(null);
     try {

@@ -8,7 +8,12 @@ import type {
 import { applyHardBudget } from "./hardBudget.ts";
 import { type FidelityGateConfig } from "./fidelityGate.ts";
 import { gateAdvance } from "./fidelityGateStep.ts";
-import type { CompressionEngineApplyOptions } from "./engines/types.ts";
+import type {
+  CompressionEngineApplyOptions,
+  CompressionStage,
+  CompressionWireFormat,
+  ImageTransportFidelity,
+} from "./engines/types.ts";
 import type { IncrementalContext } from "./incremental/types.ts";
 import { incrementalCompress } from "./incremental/incrementalCompressor.ts";
 import { applyLiteCompression } from "./lite.ts";
@@ -19,6 +24,7 @@ import { createCompressionStats } from "./stats.ts";
 import { registerBuiltinCompressionEngines } from "./engines/index.ts";
 import { getCompressionEngine, getEngineEntry } from "./engines/registry.ts";
 import { applyRtkCompression } from "./engines/rtk/index.ts";
+import { applyOmniglyphSingleMode } from "./engines/omniglyphSingleMode.ts";
 import { adaptBodyForCompression } from "./bodyAdapter.ts";
 import {
   detectCachingContext,
@@ -221,6 +227,10 @@ export function selectCompressionPlan(
 ): DerivedPlan {
   let plan = resolveBasePlan(config, comboId, estimatedTokens, combos, header);
 
+  // The master switch is a hard kill. In particular, adaptive context-budget planning must
+  // never turn compression back on after resolveBasePlan() has selected the disabled plan.
+  if (!config.enabled) return plan;
+
   // Adaptive context-budget floor/escalation (D-C4): after the base plan, replacing the
   // (now-bypassed) auto-trigger branch. Pure resolver; chatCore supplies the model limit.
   if (adaptiveEnabled(config) && config.contextBudget) {
@@ -264,6 +274,10 @@ export function applyCompression(
   options?: {
     model?: string;
     supportsVision?: boolean | null;
+    imageTransportFidelity?: ImageTransportFidelity;
+    sourceFormat?: CompressionWireFormat;
+    targetFormat?: CompressionWireFormat;
+    compressionStage?: CompressionStage;
     config?: CompressionConfig;
     principalId?: string;
     /**
@@ -287,6 +301,10 @@ function runCompression(
   options?: {
     model?: string;
     supportsVision?: boolean | null;
+    imageTransportFidelity?: ImageTransportFidelity;
+    sourceFormat?: CompressionWireFormat;
+    targetFormat?: CompressionWireFormat;
+    compressionStage?: CompressionStage;
     config?: CompressionConfig;
     principalId?: string;
     bailout?: BailoutConfig;
@@ -314,6 +332,7 @@ function runCompression(
     const result = applyLiteCompression(compressionBody, {
       ...options,
       preserveSystemPrompt: options?.config?.preserveSystemPrompt !== false,
+      ...options?.config?.lite,
     });
     return adapter.adapted ? { ...result, body: adapter.restore(result.body) } : result;
   }
@@ -427,6 +446,14 @@ export async function applyCompressionAsync(
   options?: {
     model?: string;
     supportsVision?: boolean | null;
+    /** Direct-to-provider vs. aggregator transport (gates transport-sensitive engines like omniglyph). */
+    providerTransport?: "direct" | "aggregator";
+    /** Provider resolvido — a contabilidade do omniglyph depende dele. */
+    provider?: string;
+    imageTransportFidelity?: ImageTransportFidelity;
+    sourceFormat?: CompressionWireFormat;
+    targetFormat?: CompressionWireFormat;
+    compressionStage?: CompressionStage;
     config?: CompressionConfig;
     principalId?: string;
     onEngineStep?: (step: StackedCompressionStep) => void;
@@ -444,26 +471,32 @@ async function runCompressionAsync(
   options?: {
     model?: string;
     supportsVision?: boolean | null;
+    /** Direct-to-provider vs. aggregator transport (gates transport-sensitive engines like omniglyph). */
+    providerTransport?: "direct" | "aggregator";
+    /** Provider resolvido — a contabilidade do omniglyph depende dele. */
+    provider?: string;
+    imageTransportFidelity?: ImageTransportFidelity;
+    sourceFormat?: CompressionWireFormat;
+    targetFormat?: CompressionWireFormat;
+    compressionStage?: CompressionStage;
     config?: CompressionConfig;
     principalId?: string;
     onEngineStep?: (step: StackedCompressionStep) => void;
     cachingContext?: CachingDetectionContext;
   }
 ): Promise<CompressionResult> {
-  // resultMemo intentionally not wired — see the note in runCompression (incremental cache).
-  if (mode === "stacked") {
+  // ── Fork incremental path (opt-in "process-once" per-session cache) ──
+  // Runs BEFORE worker offload: it drives runStacked in-process with injectContext,
+  // which a worker cannot host. Byte-identical to a full run (equivalence property
+  // test); engines that aren't incremental-aware run normally. Gated on a STABLE
+  // pipeline: a budget-driven (cacheSafe===false) engine would let the memo return
+  // stale output — fall back to the full path when any such engine is present.
+  if (mode === "stacked" && options?.config?.incrementalCache === true) {
     const adapter = adaptBodyForCompression(body);
     const pipeline = options?.config?.stackedPipeline;
-    const runStacked = (b: Record<string, unknown>, opts: StackOptions) =>
-      applyStackedCompressionAsync(b, pipeline, opts);
-
-    // Opt-in "process-once" path: per-session incremental caching. Byte-identical to the full
-    // run (equivalence property test); engines that aren't incremental-aware run normally.
-    // Gated on a STABLE pipeline: the memo keys each message by the hash of the original prefix,
-    // so a budget-driven (cacheSafe===false) engine — whose prefix output changes turn-to-turn
-    // for the same input — would let the memo return stale output and diverge. Fall back to the
-    // full path when any such engine is present.
-    if (options?.config?.incrementalCache === true && pipelineIsIncrementalSafe(pipeline)) {
+    if (pipelineIsIncrementalSafe(pipeline)) {
+      const runStacked = (b: Record<string, unknown>, opts: StackOptions) =>
+        applyStackedCompressionAsync(b, pipeline, opts);
       const { result } = await incrementalCompress({
         body: adapter.body,
         mode,
@@ -473,8 +506,49 @@ async function runCompressionAsync(
       });
       return adapter.adapted ? { ...result, body: adapter.restore(result.body) } : result;
     }
+  }
 
-    const result = await runStacked(adapter.body, options ?? {});
+  // ── Upstream worker offload ──
+  const workerOptions = options
+    ? {
+        model: options.model,
+        supportsVision: options.supportsVision,
+        providerTransport: options.providerTransport,
+        provider: options.provider,
+        imageTransportFidelity: options.imageTransportFidelity,
+        sourceFormat: options.sourceFormat,
+        targetFormat: options.targetFormat,
+        compressionStage: options.compressionStage,
+        config: options.config,
+      }
+    : undefined;
+  const { isCompressionWorkerEligible } = await import("./compressionWorkerProtocol.ts");
+  if (isCompressionWorkerEligible(body, mode, workerOptions)) {
+    try {
+      const { runCompressionInWorker } = await import("./compressionWorkerPool.ts");
+      return await runCompressionInWorker(body, mode, workerOptions, options?.onEngineStep);
+    } catch {
+      return { body, compressed: false, stats: null };
+    }
+  }
+  // NOTE: upstream's whole-body resultMemo is intentionally NOT wired here — the
+  // incremental cache above covers the caching concern (see note in runCompression).
+  if (mode === "omniglyph") return applyOmniglyphSingleMode(body, options);
+  if (mode === "stacked") {
+    // Post-translation format-sensitive engines (currently OmniGlyph) must see
+    // the native provider wire shape. The generic adapter would turn Responses
+    // `input[]` into Chat `messages[]` before the engine gets a chance to use its
+    // native Responses transformer. Pre-translation callers retain the legacy
+    // adapter path for the text engines.
+    const adapter =
+      options?.compressionStage === "post-translation"
+        ? { body, adapted: false, restore: (next: Record<string, unknown>) => next }
+        : adaptBodyForCompression(body, options?.config?.codexResponsesConfig?.preserveToolNames);
+    const result = await applyStackedCompressionAsync(
+      adapter.body,
+      options?.config?.stackedPipeline,
+      options
+    );
     return adapter.adapted ? { ...result, body: adapter.restore(result.body) } : result;
   }
   // Ultra's optional SLM (model) tier is async — route it here when a model is configured.
@@ -622,6 +696,14 @@ export interface StackedCompressionStep {
 interface StackOptions {
   model?: string;
   supportsVision?: boolean | null;
+  /** Direct-to-provider vs. aggregator transport (gates transport-sensitive engines like omniglyph). */
+  providerTransport?: "direct" | "aggregator";
+  /** Provider resolvido — a contabilidade do omniglyph depende dele. */
+  provider?: string;
+  imageTransportFidelity?: ImageTransportFidelity;
+  sourceFormat?: CompressionWireFormat;
+  targetFormat?: CompressionWireFormat;
+  compressionStage?: CompressionStage;
   config?: CompressionConfig;
   compressionComboId?: string | null;
   /** TV1 bail-out discipline (opt-in, default disabled). */
@@ -840,6 +922,24 @@ function mergeStackStep(acc: StackAccumulator, engineId: string, result: Compres
   });
 }
 
+/**
+ * Engines that were not authored for the provider-shaped post-translation body
+ * stay in the legacy pre-translation lane. Format-sensitive engines opt into
+ * both lanes explicitly and perform their own wire-format gate.
+ */
+function canRunAtCompressionStage(
+  engine: NonNullable<ReturnType<typeof getCompressionEngine>>,
+  stage: CompressionStage | undefined
+): boolean {
+  const effectiveStage = stage ?? "pre-translation";
+  // `assertValidEngine` não exige `metadata`, então uma engine registrada sem
+  // esse campo é legal — e sem a guarda derrubava o pipeline inteiro com
+  // TypeError em vez de falhar aberto. Metadata ausente é o mesmo caso de "não
+  // declarou estágio" e cai no mesmo fallback: só pre-translation.
+  const stages = engine.metadata?.executionStages;
+  return stages ? stages.includes(effectiveStage) : effectiveStage === "pre-translation";
+}
+
 function finalizeStackedResult(
   originalBody: Record<string, unknown>,
   currentBody: Record<string, unknown>,
@@ -918,7 +1018,16 @@ function runStackedCompression(
 
   for (const step of steps) {
     const engine = getCompressionEngine(step.engine);
-    if (!engine) continue;
+    if (!engine) {
+      acc.validationErrors.add(`Unknown compression engine: "${step.engine}"`);
+      continue;
+    }
+    if (!canRunAtCompressionStage(engine, options?.compressionStage)) {
+      acc.validationWarnings.add(
+        `${step.engine}: skipped (stage ${options?.compressionStage ?? "pre-translation"})`
+      );
+      continue;
+    }
     // Respect the registry enabled flag: a step naming a disabled engine is skipped, so an
     // operator can turn an engine off (setEngineEnabled) without editing every pipeline.
     if (getEngineEntry(step.engine)?.enabled === false) continue;
@@ -1022,7 +1131,16 @@ async function runStackedCompressionAsync(
 
   for (const step of steps) {
     const engine = getCompressionEngine(step.engine);
-    if (!engine) continue;
+    if (!engine) {
+      acc.validationErrors.add(`Unknown compression engine: "${step.engine}"`);
+      continue;
+    }
+    if (!canRunAtCompressionStage(engine, options?.compressionStage)) {
+      acc.validationWarnings.add(
+        `${step.engine}: skipped (stage ${options?.compressionStage ?? "pre-translation"})`
+      );
+      continue;
+    }
     // Respect the registry enabled flag (same as the sync loop) — keep both in lockstep.
     if (getEngineEntry(step.engine)?.enabled === false) continue;
     const stepOptions = buildStepOptions(step, options);

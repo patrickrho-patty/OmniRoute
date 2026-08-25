@@ -7,8 +7,7 @@ lastUpdated: 2026-07-01
 # Compression Language Packs
 
 Caveman compression can load language-specific rule packs in addition to the built-in English rules.
-This keeps the core engine stable while allowing Portuguese, Spanish, German, French, Japanese,
-Korean, and future language packs to evolve independently.
+This keeps the core engine stable while allowing Portuguese, Spanish, German, French, Italian, Japanese, Korean, Russian, Chinese, and future language packs to evolve independently.
 
 ## Location
 
@@ -26,12 +25,13 @@ Current shipped packs (verified against `rules/` directory contents):
 | Spanish             | `rules/es/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
 | Portuguese (Brazil) | `rules/pt-BR/` | `context`, `dedup`, `filler`, `structural`, `ultra` |
 | Indonesian          | `rules/id/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
+| Italian             | `rules/it/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
 | German              | `rules/de/`    | `context`, `filler`, `structural`                   |
 | French              | `rules/fr/`    | `context`, `filler`, `structural`                   |
 | Japanese            | `rules/ja/`    | `context`, `filler`, `structural`                   |
 | Korean              | `rules/ko/`    | `context`, `dedup`, `filler`, `structural`, `ultra` |
 
-> **Parity note:** `en`, `es`, `id`, `ko`, and `pt-BR` packs have the full 5 categories; `de`, `fr`, `ja` ship 3 categories. Languages with partial packs use their shipped rules only; missing `dedup` and `ultra` categories are not applied until those pack files exist. Contributions welcome to add `dedup.json` and `ultra.json` for the smaller packs.
+> **Parity note:** all packs except `zh` ship the full 5 categories; `zh` currently has `dedup`, `filler`, and `ultra`. Languages with partial packs use their shipped rules only — missing categories fall back to the English built-ins. Contributions welcome to complete the `zh` pack.
 >
 > The `pt-BR` pack is based on **[Troglodita](https://github.com/leninejunior/troglodita)** by Lenine Júnior — a compression system designed from scratch for Brazilian Portuguese grammar (pleonasm reduction, PT-BR filler removal, technical abbreviations for the dev BR community).
 >

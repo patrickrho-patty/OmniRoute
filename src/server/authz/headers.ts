@@ -74,6 +74,16 @@ export const PUBLIC_AUTH_ROUTE_HEADER = "x-public-auth-route";
 export const PUBLIC_AUTH_ROUTE_MARK = "1";
 
 /**
+ * The resolved real peer IP, stamped by the pipeline AFTER verifying the
+ * token-stamped PEER_IP_HEADER. This is the trusted, non-spoofable IP that
+ * route handlers (e.g. login rate-limit key) should use instead of re-deriving
+ * from X-Forwarded-For / X-Real-IP. Set only when the stamp token is configured
+ * and the HMAC signature validates; absent when the stamp is not in use.
+ * Stripped from incoming requests like all other trusted headers.
+ */
+export const AUTHZ_HEADER_TRUSTED_PEER_IP = "x-omniroute-trusted-peer-ip";
+
+/**
  * Headers the pipeline must NEVER trust on incoming requests. They are
  * stripped before route classification to prevent header-spoofing attacks.
  */
@@ -85,4 +95,5 @@ export const AUTHZ_TRUSTED_HEADERS: ReadonlyArray<string> = [
   AUTHZ_HEADER_AUTH_SCOPES,
   AUTHZ_HEADER_PEER_LOCALITY,
   PUBLIC_AUTH_ROUTE_HEADER,
+  AUTHZ_HEADER_TRUSTED_PEER_IP,
 ];

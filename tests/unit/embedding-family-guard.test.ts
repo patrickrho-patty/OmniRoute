@@ -8,18 +8,18 @@ import { join } from "node:path";
 // give it a throwaway DATA_DIR so it uses defaults instead of the real store.
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), "omniroute-embed-family-"));
 
-const { getEmbeddingDimension, detectEmbeddingDimensionConflict } = await import(
-  "../../open-sse/config/embeddingRegistry.ts"
-);
-const { findEmbeddingComboDimensionConflict } = await import(
-  "../../src/lib/embeddings/familyGuard.ts"
-);
+const { getEmbeddingDimension, detectEmbeddingDimensionConflict } =
+  await import("../../open-sse/config/embeddingRegistry.ts");
+const { findEmbeddingComboDimensionConflict } =
+  await import("../../src/lib/embeddings/familyGuard.ts");
 
 test("getEmbeddingDimension resolves known dimensions from the registry", () => {
   assert.equal(getEmbeddingDimension("openai/text-embedding-3-small"), 1536);
   assert.equal(getEmbeddingDimension("openai/text-embedding-3-large"), 3072);
   assert.equal(getEmbeddingDimension("nebius/Qwen/Qwen3-Embedding-8B"), 4096);
   assert.equal(getEmbeddingDimension("gemini/gemini-embedding-001"), 768);
+  assert.equal(getEmbeddingDimension("gemini/gemini-embedding-2"), 3072);
+  assert.equal(getEmbeddingDimension("google/gemini-embedding-2"), 3072);
   // OpenRouter re-exports OpenAI ids under its own prefix at the same dimension.
   assert.equal(getEmbeddingDimension("openrouter/openai/text-embedding-3-small"), 1536);
 });
@@ -58,10 +58,7 @@ test("detectEmbeddingDimensionConflict ignores unknown dimensions (no false posi
 
 test("detectEmbeddingDimensionConflict is a no-op for empty / all-unknown lists", () => {
   assert.equal(detectEmbeddingDimensionConflict([]).conflict, false);
-  assert.equal(
-    detectEmbeddingDimensionConflict(["localembed/a", "localembed/b"]).conflict,
-    false
-  );
+  assert.equal(detectEmbeddingDimensionConflict(["localembed/a", "localembed/b"]).conflict, false);
 });
 
 test("findEmbeddingComboDimensionConflict flags a mixed-dimension embedding combo", () => {

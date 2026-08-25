@@ -3,7 +3,7 @@
  * (free tier via Discord signup).
  *
  * Verifies the new provider is wired end-to-end the same way as the other
- * aggregator/gateway providers (hackclub, chutes, glhf, ...):
+ * aggregator/gateway providers (chutes, glhf, ...):
  *   - present in the executor REGISTRY with an OpenAI-compatible shape
  *   - resolvable through getExecutor() (falls through to DefaultExecutor,
  *     same as every other `executor: "default"` registry entry)
@@ -30,18 +30,24 @@ test("#6670 freetheai is registered in the executor registry with an OpenAI-comp
   assert.equal(entry.authType, "apikey");
   assert.equal(entry.authHeader, "bearer");
   assert.equal(entry.passthroughModels, true);
-  assert.ok(Array.isArray(entry.models) && entry.models.length > 0, "must seed a fallback model list");
+  assert.ok(
+    Array.isArray(entry.models) && entry.models.length > 0,
+    "must seed a fallback model list"
+  );
 });
 
 test("#6670 freetheai resolves through getExecutor() as a DefaultExecutor instance", () => {
   const executor = getExecutor("freetheai");
-  assert.ok(executor instanceof DefaultExecutor, "freetheai has no custom executor — must fall through to DefaultExecutor");
+  assert.ok(
+    executor instanceof DefaultExecutor,
+    "freetheai has no custom executor — must fall through to DefaultExecutor"
+  );
 });
 
 test("#6670 freetheai is classified as an aggregator/gateway provider", () => {
   assert.ok(
     AGGREGATOR_PROVIDER_IDS.has("freetheai"),
-    "freetheai must be listed in AGGREGATOR_PROVIDER_IDS alongside hackclub/chutes/etc"
+    "freetheai must be listed in AGGREGATOR_PROVIDER_IDS alongside chutes/etc"
   );
 });
 

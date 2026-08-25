@@ -14,6 +14,48 @@ All requests require a valid Bearer token or session cookie. Obtain a token via 
 
 ## Endpoints
 
+### POST /api/v1/session-leases
+
+Acquire, renew, or release an exclusive managed connection lease
+
+Requires an API key with `lease:exclusive` and an explicit non-empty
+`allowedConnections` policy. The opaque owner is bound to the authenticated API key;
+the lease owns an eligible connection, not a provider or model. Managed inference
+requests present the owner and exact generation headers. Temporary foreign occupancy
+returns 429 `WAITING_FOR_CAPACITY` with `Retry-After`.
+
+
+```bash
+curl -X POST https://localhost:20128/api/v1/session-leases \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### GET /api/v1/search
+
+List search providers
+
+Lists configured search providers and their supported search types.
+
+```bash
+curl https://localhost:20128/api/v1/search \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### POST /api/v1/search
+
+Run a unified search
+
+Searches the web, news, or X through a configured provider. Set `provider` to `xquik-search` to use Xquik for X search. The aliases `xquik` and `xquik_search` resolve to the same provider.
+
+```bash
+curl -X POST https://localhost:20128/api/v1/search \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 ### POST /api/v1/chat/completions
 
 Create chat completion
@@ -22,7 +64,7 @@ OpenAI-compatible chat completions endpoint. Routes to configured providers.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/chat/completions \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -46,7 +88,7 @@ Routes to a specific provider by name.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/providers/{provider}/chat/completions \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -59,7 +101,7 @@ Provides compatibility with Ollama's /api/chat format.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/api/chat \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -72,7 +114,7 @@ Anthropic Messages API endpoint. Routes to Claude providers.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/messages \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -83,7 +125,7 @@ Count tokens for a message
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/messages/count_tokens \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -96,7 +138,7 @@ OpenAI Responses API endpoint.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/responses \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -107,7 +149,29 @@ Create embeddings
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/embeddings \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### GET /api/v1/multimodal-embeddings
+
+List embedding models (Jina multimodal-embeddings alias)
+
+```bash
+curl https://localhost:20128/api/v1/multimodal-embeddings \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### POST /api/v1/multimodal-embeddings
+
+Create embeddings (Jina multimodal-embeddings alias)
+
+Same handler as `POST /api/v1/embeddings`. Provided so Jina-compatible clients that call `/v1/multimodal-embeddings` do not receive HTTP 404 `unknown_route`.
+
+```bash
+curl -X POST https://localhost:20128/api/v1/multimodal-embeddings \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -118,7 +182,7 @@ Create embeddings (provider-specific)
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/providers/{provider}/embeddings \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -129,7 +193,7 @@ Generate images
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/images/generations \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -140,7 +204,7 @@ Generate images (provider-specific)
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/providers/{provider}/images/generations \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -153,7 +217,7 @@ Text-to-speech endpoint. Routes to configured TTS providers.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/audio/speech \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -166,7 +230,7 @@ Audio-to-text transcription endpoint.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/audio/transcriptions \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -179,7 +243,7 @@ Content moderation endpoint. Routes to configured moderation providers.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/moderations \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -192,7 +256,7 @@ Document reranking endpoint.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/rerank \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -219,15 +283,96 @@ curl https://localhost:20128/api/v1/providers/{provider}/models \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN"
 ```
 
+### GET /api/v1/management/proxy-subscriptions
+
+List proxy subscriptions
+
+Lists all operator-supplied proxy subscription links. Also starts the background auto-refresh scheduler (idempotent) so enabled subscriptions stay in sync. Credentials embedded in `url` are redacted in the response.
+
+```bash
+curl https://localhost:20128/api/v1/management/proxy-subscriptions \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### POST /api/v1/management/proxy-subscriptions
+
+Create a proxy subscription
+
+Creates a subscription record. If `mode` is `rule`, at least one entry in `ruleProviders` is required. `updateIntervalMinutes` defaults to 60 and `enabled` defaults to `false` when omitted or not exactly `true`.
+
+```bash
+curl -X POST https://localhost:20128/api/v1/management/proxy-subscriptions \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### GET /api/v1/management/proxy-subscriptions/{id}
+
+Get a proxy subscription
+
+```bash
+curl https://localhost:20128/api/v1/management/proxy-subscriptions/{id} \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### PATCH /api/v1/management/proxy-subscriptions/{id}
+
+Update a proxy subscription
+
+Partial update — only fields present in the body are changed (name/url/mode/ruleProviders/localCoreEndpoint/updateIntervalMinutes/enabled).
+
+```bash
+curl -X PATCH https://localhost:20128/api/v1/management/proxy-subscriptions/{id} \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### DELETE /api/v1/management/proxy-subscriptions/{id}
+
+Delete a proxy subscription
+
+Removes the subscription record and unbinds/drops its synced proxy_registry rows.
+
+```bash
+curl -X DELETE https://localhost:20128/api/v1/management/proxy-subscriptions/{id} \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### GET /api/v1/management/proxy-subscriptions/{id}/nodes
+
+Get a subscription's last-parsed node summary
+
+Returns the last-parsed node list without re-fetching the (possibly slow) subscription URL.
+
+```bash
+curl https://localhost:20128/api/v1/management/proxy-subscriptions/{id}/nodes \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### POST /api/v1/management/proxy-subscriptions/{id}/refresh
+
+Refresh a proxy subscription
+
+Re-fetches and re-parses the subscription URL, syncs its nodes into `proxy_registry`, and (re)binds the pool.
+
+```bash
+curl -X POST https://localhost:20128/api/v1/management/proxy-subscriptions/{id}/refresh \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
 ### POST /api/v1/ocr
 
 Document OCR
 
-Mistral OCR–compatible document OCR endpoint. Accepts a JSON body referencing a document/image and returns extracted text. Success responses carry the `X-OmniRoute-*` cost-telemetry headers.
+Multi-provider document OCR endpoint (Mistral OCR–compatible request and response shape). Accepts a JSON body referencing a document/image and returns extracted text. `model` selects the provider via a `provider/model` prefix (e.g. `mistral/mistral-ocr-latest`, `azure-document-intelligence/prebuilt-read`, `vertex-deepseek-ocr/deepseek-ocr-maas`); a bare model id (e.g. `mistral-ocr-latest`) resolves to its registered provider, and an omitted `model` defaults to Mistral. Azure Document Intelligence is asynchronous upstream — the handler polls the returned operation until it succeeds or fails before responding, so this endpoint can take longer to return for that provider. Success responses carry the `X-OmniRoute-*` cost-telemetry headers.
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/ocr \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -240,7 +385,7 @@ OpenAI Whisper–compatible audio translation (multipart/form-data). Unlike `/ap
 
 ```bash
 curl -X POST https://localhost:20128/api/v1/audio/translations \
-  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
 ```

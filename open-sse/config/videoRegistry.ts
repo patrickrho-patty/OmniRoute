@@ -5,14 +5,17 @@
  * Supports local providers plus hosted task-based APIs such as Runway.
  */
 
-import { parseModelFromRegistry, getAllModelsFromRegistry } from "./registryUtils.ts";
+import { parseModelFromRegistry } from "./registryUtils.ts";
 import { RUNWAYML_SUPPORTED_VIDEO_MODELS } from "./runway.ts";
 import { SEGMIND_VIDEO_MODELS } from "./providers/registry/segmind/videoModels.ts";
+import { toRegistryVideoModels } from "../services/adobeFireflyModels.ts";
 
 interface VideoModel {
   id: string;
   name: string;
   isMarket?: boolean;
+  supportedSizes?: string[];
+  mediaCapabilities?: Record<string, unknown>;
 }
 
 interface VideoProvider {
@@ -24,9 +27,30 @@ interface VideoProvider {
   authHeader: string;
   format: string;
   models: VideoModel[];
+  // #10285 — set when a provider is registered (so parseVideoModel/getVideoProvider
+  // still resolve it for a clear diagnostic) but must NOT be advertised as a working
+  // model in /v1/models or getAllVideoModels(). Keep unsupportedReason short and
+  // stable — handlers may surface it verbatim in the fail-fast error message.
+  unsupported?: boolean;
+  unsupportedReason?: string;
 }
 
 export const VIDEO_PROVIDERS: Record<string, VideoProvider> = {
+  agnes: {
+    id: "agnes",
+    baseUrl: "https://apihub.agnes-ai.com",
+    statusUrl: "https://apihub.agnes-ai.com/agnesapi",
+    authType: "apikey",
+    authHeader: "bearer",
+    format: "agnes-video-job",
+    models: [
+      {
+        id: "agnes-video-v2.0",
+        name: "Agnes Video V2.0",
+      },
+    ],
+  },
+
   "qwen-cloud-token-plan": {
     id: "qwen-cloud-token-plan",
     alias: "qct",
@@ -70,6 +94,22 @@ export const VIDEO_PROVIDERS: Record<string, VideoProvider> = {
     ],
   },
 
+  "fal-ai": {
+    id: "fal-ai",
+    baseUrl: "https://queue.fal.run",
+    authType: "apikey",
+    authHeader: "key",
+    format: "fal-ai-video",
+    models: [
+      { id: "veo3.1/lite", name: "Veo 3.1 Lite" },
+      { id: "google/gemini-omni-flash", name: "Gemini Omni Flash" },
+      {
+        id: "xai/grok-imagine-video/text-to-video",
+        name: "Grok Imagine Video",
+      },
+    ],
+  },
+
   googleflow: {
     id: "googleflow",
     alias: "flow",
@@ -85,6 +125,18 @@ export const VIDEO_PROVIDERS: Record<string, VideoProvider> = {
       { id: "veo-3.1-fast-generate", name: "Veo 3.1 Fast (Google Flow)" },
       { id: "veo-3.0-generate", name: "Veo 3.0 (Google Flow)" },
     ],
+    // #10285 — live-validated: the submit/poll paths above (/v1:generateVideo,
+    // /v1:fetchOperation) are 404 on aisandbox-pa; the reporter's measured working
+    // path (POST /v1/video:batchAsyncGenerateVideoText) is undocumented and, even
+    // reached, rejects the stored Cloud Code OAuth bearer (401 UNAUTHENTICATED —
+    // the cclog/cloud-platform scopes do not grant aisandbox-pa). gflow-cli confirms
+    // only a headed-browser reCAPTCHA session works for mutation endpoints. De-listed
+    // until a viable server-side transport is confirmed live (see plan-file #10285).
+    unsupported: true,
+    unsupportedReason:
+      "Google Flow video generation requires a browser-session transport " +
+      "(Flow/Cloud Code session with reCAPTCHA) and is not supported over the stored " +
+      "OAuth bearer. Generate video via labs.google/flow directly for now.",
   },
 
   kie: {
@@ -326,8 +378,7 @@ export const VIDEO_PROVIDERS: Record<string, VideoProvider> = {
   },
 
   // Adobe Firefly (unofficial) — same IMS/cookie credential as the image entry.
-  // Async 3P video generate + poll (Sora 2, Veo 3.1, Kling …). Fallback list
-  // from models/discovery capture (adobe/get_models.txt).
+  // Exact async video models and capabilities from the verified discovery snapshot.
   "adobe-firefly": {
     id: "adobe-firefly",
     alias: "firefly",
@@ -335,18 +386,16 @@ export const VIDEO_PROVIDERS: Record<string, VideoProvider> = {
     authType: "apikey",
     authHeader: "bearer",
     format: "adobe-firefly-video",
-    models: [
-      { id: "sora-2", name: "Firefly Sora 2" },
-      { id: "sora-2-pro", name: "Firefly Sora 2 Pro" },
-      { id: "veo-3.1", name: "Firefly Veo 3.1" },
-      { id: "veo-3.1-fast", name: "Firefly Veo 3.1 Fast" },
-      { id: "veo-3.1-ref", name: "Firefly Veo 3.1 Reference" },
-      { id: "kling-3", name: "Firefly Kling v3 Standard I2V" },
-      { id: "kling-v3-t2v", name: "Firefly Kling v3 Standard T2V" },
-      { id: "kling-v3-pro-i2v", name: "Firefly Kling v3 Pro I2V" },
-      { id: "luma-ray3", name: "Firefly Ray3" },
-      { id: "runway-gen4-turbo", name: "Firefly Runway Gen-4 Video" },
-    ],
+    models: toRegistryVideoModels(),
+  },
+
+  nanogpt: {
+    id: "nanogpt",
+    baseUrl: "https://nano-gpt.com/api/v1/video/generations",
+    authType: "apikey",
+    authHeader: "bearer",
+    format: "openai",
+    models: [{ id: "default", name: "NanoGPT Video" }],
   },
 };
 
@@ -368,5 +417,19 @@ export function parseVideoModel(modelStr: string | null) {
  * Get all video models as a flat list
  */
 export function getAllVideoModels() {
-  return getAllModelsFromRegistry(VIDEO_PROVIDERS);
+  return Object.entries(VIDEO_PROVIDERS)
+    .filter(([, config]) => !config.unsupported)
+    .flatMap(([providerId, config]) =>
+      [providerId, config.alias]
+        .filter((prefix): prefix is string => Boolean(prefix))
+        .flatMap((prefix) =>
+          config.models.map((model) => ({
+            id: `${prefix}/${model.id}`,
+            name: model.name,
+            provider: providerId,
+            supportedSizes: model.supportedSizes || [],
+            mediaCapabilities: model.mediaCapabilities,
+          }))
+        )
+    );
 }

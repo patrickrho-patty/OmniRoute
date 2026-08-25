@@ -81,6 +81,7 @@ const KNOWN_SVGS = new Set([
   "cartesia",
   "cerebras",
   "charm-hyper",
+  "cheaperinference",
   "chipotle",
   "chutes",
   "clarifai",
@@ -114,6 +115,7 @@ const KNOWN_SVGS = new Set([
   "fal",
   "fireworks",
   "freeaiapikey",
+  "freebuff",
   "freemodel-dev",
   "friendli",
   "galadriel",
@@ -125,7 +127,6 @@ const KNOWN_SVGS = new Set([
   "google",
   "grok",
   "groq",
-  "hackclub",
   "haiper",
   "hcnsec",
   "heroku",
@@ -170,6 +171,7 @@ const KNOWN_SVGS = new Set([
   "openadapter",
   "openai",
   "openclaw",
+  "openference",
   "opencode",
   "openrouter",
   "orcarouter",
@@ -183,7 +185,6 @@ const KNOWN_SVGS = new Set([
   "pollinations",
   "poolside",
   "publicai",
-  "puter",
   "qianfan",
   "qiniu",
   "qwen",
@@ -201,6 +202,7 @@ const KNOWN_SVGS = new Set([
   "sensenova",
   "serper-search",
   "snowflake",
+  "soniox",
   "sparkdesk",
   "stepfun",
   "sumopod",
@@ -215,6 +217,7 @@ const KNOWN_SVGS = new Set([
   "trae",
   "udio",
   "uncloseai",
+  "unorouter",
   "upstage",
   "v0",
   "veoaifree-web",
@@ -224,7 +227,6 @@ const KNOWN_SVGS = new Set([
   "voyage",
   "wafer",
   "wandb",
-  "windsurf",
   "x5lab",
   "xai",
   "xinference",
@@ -238,6 +240,7 @@ const KNOWN_SVGS = new Set([
 ]);
 
 const LOCAL_SVG_ALIASES: Record<string, string> = {
+  "cursor-api": "cursor",
   "qwen-cloud": "qwencloud",
   "qwen-cloud-token-plan": "qwencloud",
 };
@@ -259,6 +262,7 @@ const KNOWN_PNGS = new Set([
   "linkup-search",
   "llamafile",
   "llamagate",
+  "logfare",
   "maritalk",
   "nanobot",
   "nanogpt",
@@ -397,34 +401,56 @@ const ProviderIcon = memo(function ProviderIcon({
         className={className}
         style={{ display: "inline-flex", alignItems: "center", ...style }}
       >
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element -- themed local SVG asset; see the Tier 2 comment for why these use a plain <img> */}
+        <img
           src={themedSrc}
           alt={providerId}
           width={size}
           height={size}
-          style={{ objectFit: "contain" }}
+          style={{
+            objectFit: "contain",
+            flex: "none",
+            width: "auto",
+            height: "auto",
+            maxWidth: size,
+            maxHeight: size,
+          }}
           onError={() => setFailedAssets((current) => ({ ...current, [themedKey]: true }))}
-          unoptimized
         />
       </span>
     );
   }
 
-  // Tier 2: Local SVG — fastest, cached separately from the JS bundle
+  // Tier 2: Local SVG — fastest, cached separately from the JS bundle.
+  // Rendered as a plain <img> (not next/image): provider SVGs carry their own
+  // intrinsic aspect ratio (e.g. opencode.svg is 234×42), and next/image's
+  // dev-mode check warns whenever the layout size differs from the square
+  // width/height attributes — a false positive for non-square logos rendered
+  // at fixed icon sizes. We keep `width/height` attributes for layout reserve
+  // but let the intrinsic ratio win on both axes (`width/height: "auto"`) so
+  // wide logos like opencode render at their true aspect ratio instead of
+  // being letterboxed into a 1:1 box.
   if (hasSvg && !svgFailed) {
     return (
       <span
         className={className}
         style={{ display: "inline-flex", alignItems: "center", ...style }}
       >
-        <Image
+        {/* eslint-disable-next-line @next/next/no-img-element -- local static SVG asset, see comment above */}
+        <img
           src={`/providers/${localSvgId}.svg`}
           alt={providerId}
           width={size}
           height={size}
-          style={{ objectFit: "contain" }}
+          style={{
+            objectFit: "contain",
+            flex: "none",
+            width: "auto",
+            height: "auto",
+            maxWidth: size,
+            maxHeight: size,
+          }}
           onError={() => setFailedAssets((current) => ({ ...current, [svgKey]: true }))}
-          unoptimized
         />
       </span>
     );

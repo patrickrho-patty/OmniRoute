@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { mapNvidiaGlm52ReasoningParams } from "./base/reasoningEffort.ts";
 import { PROVIDERS, OAUTH_ENDPOINTS } from "../config/constants.ts";
@@ -18,6 +20,7 @@ import {
 import { isOfficialAnthropicBaseUrl } from "../utils/anthropicHost.ts";
 import { applyProviderRequestDefaults } from "../services/providerRequestDefaults.ts";
 import { stripUnsupportedParams } from "../translator/paramSupport.ts";
+import { normalizeOpenAIToolNames } from "../translator/helpers/toolCallHelper.ts";
 import {
   injectReasoningContentForThinkingModel,
   shouldInjectReasoningContentPlaceholder,
@@ -28,6 +31,7 @@ import {
   getTargetFormat,
   isClaudeCodeCompatible,
 } from "../services/provider.ts";
+import { ensureToolMessageNames } from "./kimiToolNames.ts";
 import { getSapResourceGroup } from "../config/sap.ts";
 import {
   normalizeBailianMessagesUrl,
@@ -40,6 +44,10 @@ import {
   normalizeOpenAIChatUrl,
   getOpenRouterConnectionPreset,
 } from "./default/urlNormalizers.ts";
+import {
+  isPoeMessagesEligibleModel,
+  resolvePoeUpstreamUrl,
+} from "../config/providers/registry/poe/index.ts";
 import { buildMaritalkChatUrl } from "../config/maritalk.ts";
 import { LOCAL_PROVIDERS } from "@/shared/constants/providers";
 import { isForbiddenCustomHeaderName } from "@/shared/constants/upstreamHeaders";
@@ -53,10 +61,42 @@ import {
 } from "@/lib/providers/validation/urlHelpers";
 import { forwardOpencodeClientHeaders } from "../utils/opencodeHeaders.ts";
 import { resolveZaiUrl } from "./default/zaiFormatOverride.ts";
+import { normalizePoolConfig } from "./default/poolConfig.ts";
 import { acquireNvidiaConcurrencySlot } from "./default/nvidiaConcurrencyGate.ts";
 import { resolveAlibabaProviderBaseUrl } from "@/shared/constants/alibabaProviderRegions";
+import { usesCcWireImage } from "../services/ccWireImageBuiltins.ts";
 
-import type { PoolConfig } from "../services/sessionPool/types.ts";
+const NVIDIA_TOOL_CALL_ID_PATTERN = /^[A-Za-z0-9]{9}$/;
+
+function normalizeNvidiaToolCallId(id: unknown): unknown {
+  if (id === null || id === undefined) return id;
+  const value = String(id);
+  if (NVIDIA_TOOL_CALL_ID_PATTERN.test(value)) return value;
+  return createHash("sha256").update(value).digest("hex").slice(0, 9);
+}
+
+function normalizeNvidiaToolCallIds(body: unknown): void {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return;
+  const messages = (body as Record<string, unknown>).messages;
+  if (!Array.isArray(messages)) return;
+
+  for (const message of messages) {
+    if (!message || typeof message !== "object" || Array.isArray(message)) continue;
+    const record = message as Record<string, unknown>;
+    if (Array.isArray(record.tool_calls)) {
+      for (const toolCall of record.tool_calls) {
+        if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) continue;
+        const call = toolCall as Record<string, unknown>;
+        if (call.id !== null && call.id !== undefined) {
+          call.id = normalizeNvidiaToolCallId(call.id);
+        }
+      }
+    }
+    if (record.tool_call_id !== null && record.tool_call_id !== undefined) {
+      record.tool_call_id = normalizeNvidiaToolCallId(record.tool_call_id);
+    }
+  }
+}
 
 /**
  * Apply operator-configured per-provider custom headers onto an outgoing header
@@ -105,7 +145,7 @@ export class DefaultExecutor extends BaseExecutor {
     super(provider, PROVIDERS[provider] || PROVIDERS.openai);
     const registryEntry = getRegistryEntry(provider);
     if (registryEntry?.poolConfig) {
-      this.poolConfig = registryEntry.poolConfig as PoolConfig;
+      this.poolConfig = normalizePoolConfig(registryEntry.poolConfig) ?? undefined;
     }
   }
 
@@ -151,6 +191,9 @@ export class DefaultExecutor extends BaseExecutor {
         // Operator's manual override (#6147) keeps its own semantics and falls
         // through to the provider-specific handling below.
         const normalized = alternate.baseUrl.replace(/\/$/, "");
+        // A model-scoped alternate (the Gemini protocol: `{base}/{model}:generateContent`)
+        // builds its own URL — chatPath/urlSuffix are constants and cannot carry the model.
+        if (alternate.urlBuilder) return alternate.urlBuilder(normalized, model, stream);
         return `${normalized}${alternate.chatPath || ""}${alternate.urlSuffix || ""}`;
       }
     }
@@ -284,13 +327,45 @@ export class DefaultExecutor extends BaseExecutor {
       case "glm-coding-apikey":
         // #7364: format override extracted to zaiFormatOverride.ts (file-size ratchet).
         return resolveZaiUrl(credentials, (fallback) => this.resolveBaseUrl(credentials, fallback));
+      case "poe": {
+        // #8969: Poe API-key surfaces — Chat Completions, Responses, and
+        // Claude-only Messages. Prefer the responses marker from
+        // resolveExecutionCredentials (incoming /v1/responses), then the
+        // registry Claude targetFormat → messagesUrl, else chat/completions.
+        // GPT models must never hit /v1/messages (Poe rejects non-Claude there).
+        const psd = credentials?.providerSpecificData;
+        const manualBaseUrl =
+          typeof psd?.baseUrl === "string" && psd.baseUrl.trim() ? psd.baseUrl.trim() : null;
+        const forceResponses = psd?._omnirouteForceResponsesUpstream === true;
+        const modelTarget = getModelTargetFormat("poe", model);
+        const connectionTarget =
+          typeof psd?.targetFormat === "string" ? (psd.targetFormat as string) : null;
+        const effectiveTarget = modelTarget || connectionTarget;
+
+        let protocol: "chat" | "responses" | "messages" = "chat";
+        if (forceResponses || effectiveTarget === "openai-responses") {
+          protocol = "responses";
+        } else if (effectiveTarget === "claude" && isPoeMessagesEligibleModel(model)) {
+          protocol = "messages";
+        }
+
+        return resolvePoeUpstreamUrl({
+          protocol,
+          configuredBaseUrl: manualBaseUrl,
+          responsesBaseUrl: this.config.responsesBaseUrl,
+          messagesUrl: this.config.messagesUrl,
+          defaultChatUrl: this.config.baseUrl,
+        });
+      }
       case "claude":
       case "glm":
       case "glmt":
       case "kimi-coding":
-      case "minimax":
-      case "minimax-cn":
         return `${this.config.baseUrl}?beta=true`;
+      case "agentrouter":
+        return this.usesClaudeCodeProtocol(credentials)
+          ? `${this.config.baseUrl}?beta=true`
+          : this.config.baseUrl;
       case "gemini":
         return `${this.config.baseUrl}/${model}:${stream ? "streamGenerateContent?alt=sse" : "generateContent"}`;
       default: {
@@ -316,7 +391,12 @@ export class DefaultExecutor extends BaseExecutor {
     }
   }
 
-  buildHeaders(credentials, stream = true, clientHeaders?: Record<string, string> | null) {
+  buildHeaders(
+    credentials,
+    stream = true,
+    clientHeaders?: Record<string, string> | null,
+    model?: string | null
+  ) {
     const { headers, effectiveKey } = this.buildHeadersPreamble(credentials, stream);
 
     switch (this.provider) {
@@ -390,9 +470,26 @@ export class DefaultExecutor extends BaseExecutor {
       }
       case "claude":
       case "anthropic":
-        effectiveKey
-          ? (headers["x-api-key"] = effectiveKey)
-          : (headers["Authorization"] = `Bearer ${credentials.accessToken}`);
+        if (effectiveKey) {
+          headers["x-api-key"] = effectiveKey;
+          // Port of decolua/9router commit b977bf74:
+          // Third-party Anthropic-compatible gateways frequently require
+          // Authorization: Bearer ALONGSIDE x-api-key — without it they
+          // return 401 missing_api_key on every forward. Only emit the
+          // Bearer fallback for non-official upstreams; api.anthropic.com
+          // (and the empty/default baseUrl that targets it) must keep the
+          // x-api-key-only behavior to avoid regressing the official path.
+          const baseUrl = credentials?.providerSpecificData?.baseUrl || "";
+          const isOfficial = isOfficialAnthropicBaseUrl(baseUrl);
+          if (!isOfficial) {
+            headers["Authorization"] = `Bearer ${effectiveKey}`;
+          }
+        } else if (credentials.accessToken) {
+          headers["Authorization"] = `Bearer ${credentials.accessToken}`;
+        }
+        // If neither effectiveKey nor accessToken is available, emit no
+        // auth header — the handler will produce a clean "no credentials"
+        // 4xx instead of forwarding garbage auth headers to the upstream.
         break;
       case "glm":
       case "glmt":
@@ -413,7 +510,7 @@ export class DefaultExecutor extends BaseExecutor {
         applyClineAuthHeaders(headers, credentials, effectiveKey, clientHeaders, false);
         break;
       default:
-        if (isClaudeCodeCompatible(this.provider)) {
+        if (this.usesClaudeCodeProtocol(credentials)) {
           const ccRequestDefaults = getClaudeCodeCompatibleRequestDefaults(
             credentials?.providerSpecificData
           );
@@ -423,6 +520,10 @@ export class DefaultExecutor extends BaseExecutor {
             credentials?.providerSpecificData?.ccSessionId,
             { redactThinking: ccRequestDefaults.redactThinking === true }
           );
+          if (usesCcWireImage(this.provider)) {
+            delete ccHeaders["Authorization"];
+            ccHeaders["x-api-key"] = effectiveKey || credentials.accessToken || "";
+          }
           // CC nodes are also anthropic-compatible-*, so honor operator custom
           // headers here (the early return skips the shared block below).
           applyCustomHeaders(ccHeaders, credentials.providerSpecificData?.customHeaders);
@@ -501,7 +602,15 @@ export class DefaultExecutor extends BaseExecutor {
       const clientBeta = clientHeaders["anthropic-beta"] ?? clientHeaders["Anthropic-Beta"] ?? null;
       const betaKey = Object.keys(headers).find((key) => key.toLowerCase() === "anthropic-beta");
       if (betaKey && clientBeta) {
-        headers[betaKey] = mergeClientAnthropicBeta(headers[betaKey], clientBeta);
+        headers[betaKey] = mergeClientAnthropicBeta(
+          headers[betaKey],
+          clientBeta,
+          undefined,
+          // Gate the client-negotiated context-1m beta on the RESOLVED target model:
+          // combo/fallback can route a request negotiated for a [1m] sibling onto a
+          // model that does not qualify (e.g. Haiku), which Anthropic rejects (#10119).
+          model
+        );
       }
     }
 
@@ -512,24 +621,40 @@ export class DefaultExecutor extends BaseExecutor {
 
   /**
    * Downgrade `response_format: { type: "json_schema" }` to `json_object` for
-   * `openai-compatible-*` providers, injecting the JSON schema into the system
-   * prompt instead. DeepSeek / Ollama / local OpenAI-compatible models often
-   * lack native Structured Output and return empty or malformed content when a
-   * `json_schema` response_format is forwarded as-is. Gated on the
-   * `openai-compatible-` provider family so providers with native Structured
-   * Output support keep the native `json_schema` path.
+   * `openai-compatible-*` providers AND `kilocode`, injecting the JSON schema
+   * into the system prompt instead. DeepSeek / Ollama / local OpenAI-compatible
+   * models often lack native Structured Output and return empty or malformed
+   * content when a `json_schema` response_format is forwarded as-is (kilocode's
+   * DeepSeek V4 Flash rejects it with HTTP 400 `Invalid input: response_format`,
+   * verified live 2026-08-15 — same class as #9992's opencode fix). Gated so
+   * providers with native Structured Output support keep the native
+   * `json_schema` path.
    */
   applyJsonSchemaFallback<T>(body: T): T {
-    if (!this.provider?.startsWith?.("openai-compatible-")) return body;
+    const provider = this.provider ?? "";
+    const isOpenAiCompatible = provider.startsWith("openai-compatible-");
+    const isKiloCode = provider === "kilocode";
+    if (!isOpenAiCompatible && !isKiloCode) return body;
     if (!body || typeof body !== "object" || Array.isArray(body)) return body;
 
     const record = body as Record<string, unknown>;
     const rf = record.response_format as
       { type?: string; json_schema?: { schema?: unknown } } | undefined;
-    if (rf?.type !== "json_schema" || !rf.json_schema?.schema) return body;
+    if (!rf) return body;
 
-    const schemaJson = JSON.stringify(rf.json_schema.schema, null, 2);
-    const prompt = `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.`;
+    // openai-compatible-* providers accept json_object natively — only the
+    // json_schema form needs downgrading there. kilocode rejects BOTH forms,
+    // so it enters the strip path below regardless.
+    if (isOpenAiCompatible && rf.type === "json_object") return body;
+
+    const schema = rf.type === "json_schema" ? rf.json_schema?.schema : undefined;
+    if (rf.type === "json_schema" && !schema) return body;
+
+    const schemaJson = schema ? JSON.stringify(schema, null, 2) : null;
+    const prompt =
+      schemaJson !== null
+        ? `You must respond with valid JSON that strictly follows this JSON schema:\n\`\`\`json\n${schemaJson}\n\`\`\`\nRespond ONLY with the JSON object, no other text.`
+        : "You must respond with valid JSON only (a single JSON object), no other text.";
 
     const messages: Array<Record<string, unknown>> = Array.isArray(record.messages)
       ? (record.messages as Array<Record<string, unknown>>).map((m) => ({ ...m }))
@@ -545,6 +670,14 @@ export class DefaultExecutor extends BaseExecutor {
       messages.unshift({ role: "system", content: prompt });
     }
 
+    // kilocode's DeepSeek rejects ANY response_format (verified live 2026-08-15:
+    // both json_schema AND json_object 400 with `param: response_format`) — strip
+    // it entirely and rely on the schema prompt. openai-compatible-* providers
+    // accept json_object, so keep the downgrade there.
+    if (isKiloCode) {
+      const { response_format: _dropped, ...rest } = record;
+      return { ...rest, messages } as T;
+    }
     return { ...record, messages, response_format: { type: "json_object" } } as T;
   }
 
@@ -575,8 +708,26 @@ export class DefaultExecutor extends BaseExecutor {
   transformRequest(model, body, stream, credentials) {
     const cleanedBody = super.transformRequest(model, body, stream, credentials);
     let withDefaults = applyProviderRequestDefaults(cleanedBody, this.config.requestDefaults);
+
+    // ponytail: backfill missing tool message names for strict OpenAI-compatible providers.
+    // Kimi K3 and some BYOK endpoints reject tool messages whose `name` field was stripped
+    // during combo routing or format translation. Build a tool_call_id → function.name
+    // lookup from assistant messages and restore missing names before forwarding.
+    if (
+      withDefaults &&
+      typeof withDefaults === "object" &&
+      !Array.isArray(withDefaults) &&
+      Array.isArray((withDefaults as Record<string, unknown>).messages)
+    ) {
+      withDefaults = ensureToolMessageNames(withDefaults as Record<string, unknown>);
+    }
+
     withDefaults = this.applyJsonSchemaFallback(withDefaults);
     withDefaults = this.defaultResponsesTextFormat(withDefaults);
+
+    if (this.provider === "nvidia") {
+      normalizeNvidiaToolCallIds(withDefaults);
+    }
 
     // Port of decolua/9router commit d652300e:
     // Cerebras returns 400 (wrong_api_format), Mistral returns 422
@@ -760,6 +911,34 @@ export class DefaultExecutor extends BaseExecutor {
           : model;
       if (shouldInjectReasoningContentPlaceholder(this.provider, outboundModel)) {
         withDefaults = injectReasoningContentForThinkingModel(withDefaults);
+      }
+    }
+
+    const toolNameMaxLength = getRegistryEntry(this.provider)?.toolNameMaxLength;
+    if (
+      toolNameMaxLength &&
+      withDefaults &&
+      typeof withDefaults === "object" &&
+      !Array.isArray(withDefaults)
+    ) {
+      const toolNameMap = normalizeOpenAIToolNames(withDefaults, toolNameMaxLength);
+      if (toolNameMap.size > 0) {
+        const existingToolNameMap =
+          (withDefaults as Record<string, unknown>)._toolNameMap instanceof Map
+            ? ((withDefaults as Record<string, unknown>)._toolNameMap as Map<string, string>)
+            : null;
+        const responseToolNameMap = existingToolNameMap
+          ? new Map(existingToolNameMap)
+          : new Map<string, string>();
+        for (const [alias, original] of toolNameMap) {
+          responseToolNameMap.set(alias, original);
+        }
+        Object.defineProperty(withDefaults, "_toolNameMap", {
+          value: responseToolNameMap,
+          enumerable: false,
+          configurable: true,
+          writable: true,
+        });
       }
     }
 

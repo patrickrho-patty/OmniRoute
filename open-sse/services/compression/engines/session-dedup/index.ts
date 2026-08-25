@@ -293,6 +293,7 @@ function processMessages(
   // 100000 so string content (`i*100000`) and multipart text parts (`i*100000 + p + 1`)
   // never collide across adjacent string/multipart messages, while preserving message order
   // (earlier messages keep strictly smaller keys, which the dedup ordering relies on).
+
   const msgTexts: Array<{ msgIdx: number; text: string }> = [];
 
   for (let i = 0; i < messages.length; i++) {

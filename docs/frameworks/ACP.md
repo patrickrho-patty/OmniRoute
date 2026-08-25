@@ -38,7 +38,7 @@ ACP supports **13 built-in CLI agents** out of the box:
 | `aider`       | Aider              | `aider`       | stdio    |
 | `opencode`    | OpenCode           | `opencode`    | stdio    |
 | `cline`       | Cline              | `cline`       | stdio    |
-| `qwen`        | Qwen Code          | `qwen --acp` | stdio    |
+| `qwen`        | Qwen Code          | `qwen --acp`  | stdio    |
 | `forge`       | ForgeCode          | `forge`       | stdio    |
 | `amazon-q`    | Amazon Q Developer | `q`           | stdio    |
 | `interpreter` | Open Interpreter   | `interpreter` | stdio    |
@@ -543,7 +543,7 @@ const agents = detectInstalledAgents();
 ## What's Next?
 
 - **[API Reference](../reference/API_REFERENCE.md)** — REST API endpoints
-- **[Provider Reference](../reference/PROVIDER_REFERENCE.md)** — All 226 providers
+- **[Provider Reference](../reference/PROVIDER_REFERENCE.md)** — All 338 providers
 - **[MCP Server](./MCP-SERVER.md)** — Model Context Protocol integration
 - **[A2A Server](./A2A-SERVER.md)** — Agent-to-Agent protocol
 - **[Cloud Agent](./CLOUD_AGENT.md)** — Cloud-based agents

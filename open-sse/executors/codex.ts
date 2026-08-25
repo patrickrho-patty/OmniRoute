@@ -20,6 +20,7 @@ import {
 import { FETCH_BODY_TIMEOUT_MS, HTTP_STATUS, PROVIDERS } from "../config/constants.ts";
 import { readCodexPeekChunk, buildCodexTimeoutSafePassthroughBody } from "./codex/bodyTimeout.ts";
 import {
+  CODEX_CLI_RS_ORIGINATOR,
   getCodexClientVersion,
   getCodexUserAgent,
   normalizeCodexSessionId,
@@ -27,11 +28,13 @@ import {
 import {
   applyCodexClientIdentityHeaders,
   applyCodexClientMetadata,
-  createCodexClientIdentity,
+  applyCodexOriginalIdentityHeaders,
   type CodexClientIdentity,
+  withCodexFingerprintCredentials,
 } from "../config/codexIdentity.ts";
 import { getAccessToken } from "../services/tokenRefresh.ts";
 import { sanitizeResponsesInputItems } from "../services/responsesInputSanitizer.ts";
+import { applyReasoningInputPolicy } from "../services/reasoningInputPolicy.ts";
 import { normalizeCodexVerbosity } from "../services/codexVerbosity.ts";
 import { getThinkingBudgetConfig, ThinkingMode } from "../services/thinkingBudget.ts";
 import { CORS_HEADERS } from "../utils/cors.ts";
@@ -39,8 +42,8 @@ import { errorResponse } from "../utils/error.ts";
 import { normalizeCodexResponsesInput } from "../utils/responsesInputNormalization.ts";
 import * as prl from "../utils/providerRequestLogging.ts";
 import { createRequire } from "module";
-// Quota parsing/scheduling extracted to a pure leaf; re-exported for external
-// importers (handlers/chatCore/codexQuota.ts + tests).
+// Quota parsing/scheduling extracted to a pure leaf; re-exported for the
+// Codex account module and tests.
 export {
   type CodexQuotaSnapshot,
   parseCodexQuotaHeaders,
@@ -48,6 +51,15 @@ export {
   getCodexDualWindowCooldownMs,
 } from "./codex/quota.ts";
 import { isCodexFreePlan, normalizeCodexTools } from "./codex/tools.ts";
+import {
+  CODEX_EFFORT_ORDER as EFFORT_ORDER,
+  GPT_5_6_ULTRA_ALIAS_MODELS,
+  splitCodexReasoningSuffix,
+  type CodexEffortLevel as EffortLevel,
+} from "./codex/reasoningSuffix.ts";
+import { repairMissingCodexToolCallOutputs } from "./codex/toolCallRepair.ts";
+import { resolveAppServerConfig } from "./codex/appServerConfig.ts";
+import { CodexAppServerExecutor } from "./codex-app-server.ts";
 // Re-exported for external importers (tests + provider services).
 export { isCodexFreePlan, normalizeCodexTools } from "./codex/tools.ts";
 
@@ -92,6 +104,12 @@ export function __setCodexWebSocketTransportForTesting(
   _websocketOverride = websocket;
 }
 
+// Exposed for the app-server transport, which needs the same wreq-js websocket
+// factory (with the testing override honored) to open its JSON-RPC socket.
+export function getCodexAppServerWebsocketTransport(): WebsocketFn | null {
+  return getCodexWebSocketTransport();
+}
+
 function codexWebSocketUnavailableResponse(): Response {
   return new Response(
     JSON.stringify({
@@ -117,12 +135,6 @@ function codexWebSocketUnavailableResponse(): Response {
 // Ref: sub2api PR #1129 (feat(openai): split codex spark rate limiting from codex)
 export { getCodexModelScope, getCodexRateLimitKey, type CodexQuotaScope };
 
-// Ordered list of effort levels from lowest to highest
-const EFFORT_ORDER = ["none", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
-type EffortLevel = (typeof EFFORT_ORDER)[number];
-const STANDARD_EFFORT_SUFFIXES = ["none", "low", "medium", "high", "xhigh"] as const;
-const GPT_5_6_MAX_ALIAS_MODELS = new Set(["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]);
-const GPT_5_6_ULTRA_ALIAS_MODELS = new Set(["gpt-5.6-sol", "gpt-5.6-terra"]);
 const CODEX_FAST_WIRE_VALUE = "priority";
 const CODEX_RESPONSES_WS_URL = "wss://chatgpt.com/backend-api/codex/responses";
 const CODEX_RESPONSES_LITE_HEADER = "x-openai-internal-codex-responses-lite";
@@ -185,32 +197,6 @@ function enforceCodexResponsesLiteParallelToolCalls(
   return { ...body, parallel_tool_calls: false };
 }
 
-function splitCodexReasoningSuffix(model: unknown): {
-  baseModel: string;
-  effort: EffortLevel | null;
-} {
-  const modelId = typeof model === "string" ? model : "";
-  const gpt56AliasMatch = /^(gpt-5\.6-(?:sol|terra|luna))-(max|ultra)$/.exec(modelId);
-  if (gpt56AliasMatch) {
-    const [, baseModel, alias] = gpt56AliasMatch;
-    const supportedModels =
-      alias === "ultra" ? GPT_5_6_ULTRA_ALIAS_MODELS : GPT_5_6_MAX_ALIAS_MODELS;
-    if (supportedModels.has(baseModel)) {
-      return { baseModel, effort: alias as EffortLevel };
-    }
-  }
-
-  for (const level of STANDARD_EFFORT_SUFFIXES) {
-    if (modelId.endsWith(`-${level}`)) {
-      return {
-        baseModel: modelId.slice(0, -`-${level}`.length),
-        effort: level,
-      };
-    }
-  }
-  return { baseModel: modelId, effort: null };
-}
-
 export function getCodexUpstreamModel(model: unknown): string {
   return splitCodexReasoningSuffix(model).baseModel;
 }
@@ -248,127 +234,55 @@ function convertSystemToDeveloperRole(body: Record<string, unknown>): void {
   }
 }
 
-/**
- * Strip server-generated item IDs from the input array.
- *
- * The Codex /codex/responses endpoint does not persist response items even when
- * store=true is sent. When proxy clients (e.g. OpenClaw) include response items
- * from previous turns in the input array, those items carry server-assigned IDs
- * (prefixed with "rs_", "fc_", "resp_", "msg_"). The Codex backend tries to
- * validate these IDs against its persistence store and returns 404 when the items
- * are not found (because store was effectively false).
- *
- * This function:
- *   1. Removes bare string references ("rs_abc123") from the input array
- *   2. Removes object items with type "item_reference" (explicit stored-item refs)
- *   3. Strips the "id" field from any object in input whose id matches a
- *      server-generated prefix (rs_, fc_, resp_, msg_) — so the content is
- *      preserved but the backend won't try to look it up
- */
-export function stripStoredItemReferences(body: Record<string, unknown>): void {
-  if (Array.isArray(body.input) && body.input.length === 0) {
-    body.input = [
-      {
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text: "continue" }],
-      },
-    ];
-  }
-
+function stripOrphanedCodexFunctionCallOutputs(body: Record<string, unknown>): void {
   if (!Array.isArray(body.input)) return;
+  const input = body.input;
+  // A previous_response_id delegates history resolution to the upstream
+  // Responses service, so a matching function_call may legitimately live in
+  // that remote response rather than in the local input array.
+  if (typeof body.previous_response_id === "string" && body.previous_response_id.trim()) return;
 
-  const SERVER_ID_PATTERN = /^(rs|fc|resp|msg)_/;
-  let strippedCount = 0;
+  const callIds = new Set<string>();
+  let outputCount = 0;
 
-  body.input = body.input.filter((item) => {
-    // Bare string references: "rs_abc123", "resp_abc123"
-    if (typeof item === "string" && SERVER_ID_PATTERN.test(item)) {
-      strippedCount++;
-      return false;
+  for (const item of input) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+
+    if (record.type === "function_call" && typeof record.call_id === "string") {
+      callIds.add(record.call_id);
     }
 
-    // Object references: { type: "item_reference", id: "rs_..." }
-    if (
-      item &&
-      typeof item === "object" &&
-      !Array.isArray(item) &&
-      (item as Record<string, unknown>).type === "item_reference"
-    ) {
-      strippedCount++;
-      return false;
-    }
-
-    // Reasoning blobs (encrypted_content) are unusable with store=false since
-    // previous_response_id is deleted — strip them to avoid wasting context
-    // tokens (O(n^2) growth across agentic turns).
-    if (
-      item &&
-      typeof item === "object" &&
-      !Array.isArray(item) &&
-      (item as Record<string, unknown>).type === "reasoning"
-    ) {
-      strippedCount++;
-      return false;
-    }
-
-    // Object items with server-generated IDs: strip the id field but keep the item.
-    // e.g. { id: "rs_...", type: "reasoning", summary: [...] } → keep content, remove id
-    // e.g. { id: "fc_...", type: "function_call", ... } → keep content, remove id
-    if (item && typeof item === "object" && !Array.isArray(item)) {
-      const record = item as Record<string, unknown>;
-      if (typeof record.id === "string" && SERVER_ID_PATTERN.test(record.id)) {
-        delete record.id;
-        strippedCount++;
+    if (Array.isArray(record.tool_calls)) {
+      for (const toolCall of record.tool_calls) {
+        if (!toolCall || typeof toolCall !== "object" || Array.isArray(toolCall)) continue;
+        const toolCallId = (toolCall as Record<string, unknown>).id;
+        if (typeof toolCallId === "string") {
+          callIds.add(toolCallId);
+        }
       }
     }
 
-    return true;
-  });
-
-  if (strippedCount > 0) {
-    console.debug(
-      `[Codex] stripStoredItemReferences: sanitized ${strippedCount} server-generated ID(s) from input`
-    );
-  }
-}
-
-function repairMissingCodexFunctionCallOutputs(body: Record<string, unknown>): void {
-  if (!Array.isArray(body.input)) return;
-
-  const existingOutputIds = new Set<string>();
-  for (const item of body.input) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-    const record = item as Record<string, unknown>;
-    if (record.type !== "function_call_output") continue;
-    if (typeof record.call_id === "string" && record.call_id.trim()) {
-      existingOutputIds.add(record.call_id.trim());
+    if (record.type === "function_call_output") {
+      outputCount++;
     }
   }
 
-  const repaired: unknown[] = [];
-  let insertedCount = 0;
-  for (const item of body.input) {
-    repaired.push(item);
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+  if (outputCount === 0) return;
+  const filteredInput = input.filter((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return true;
     const record = item as Record<string, unknown>;
-    if (record.type !== "function_call") continue;
-    const callId = typeof record.call_id === "string" ? record.call_id.trim() : "";
-    if (!callId || existingOutputIds.has(callId)) continue;
+    if (record.type === "function_call_output" && typeof record.call_id === "string") {
+      return callIds.has(record.call_id);
+    }
+    return true;
+  });
 
-    repaired.push({
-      type: "function_call_output",
-      call_id: callId,
-      output: "",
-    });
-    existingOutputIds.add(callId);
-    insertedCount++;
-  }
-
-  if (insertedCount > 0) {
-    body.input = repaired;
+  const removedCount = input.length - filteredInput.length;
+  body.input = filteredInput;
+  if (removedCount > 0) {
     console.debug(
-      `[Codex] repairMissingCodexFunctionCallOutputs: inserted ${insertedCount} empty function_call_output item(s)`
+      `[Codex] stripOrphanedCodexFunctionCallOutputs: removed ${removedCount} orphaned function_call_output item(s)`
     );
   }
 }
@@ -489,6 +403,34 @@ function isCodexWsGloballyEnabled(): boolean {
   }
 }
 
+/**
+ * Global Codex app-server kill-switch (feature flag OMNIROUTE_CODEX_APP_SERVER_ENABLED,
+ * default ON). Fail-open, mirroring isCodexWsGloballyEnabled.
+ */
+function isCodexAppServerGloballyEnabled(): boolean {
+  try {
+    return isFeatureFlagEnabled("OMNIROUTE_CODEX_APP_SERVER_ENABLED");
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * True when the connection opted into the app-server transport
+ * (providerSpecificData.codexTransport === "app-server") AND the app-server is
+ * configured (URL + token resolvable) AND the global flag is on. Selected BEFORE
+ * the websocket check so it wins when configured.
+ */
+export function isCodexAppServerRequired(credentials: unknown): boolean {
+  if (!isCodexAppServerGloballyEnabled()) return false;
+  const providerSpecificData =
+    credentials && typeof credentials === "object"
+      ? (credentials as { providerSpecificData?: Record<string, unknown> }).providerSpecificData
+      : null;
+  if (providerSpecificData?.codexTransport !== "app-server") return false;
+  return !!resolveAppServerConfig(providerSpecificData);
+}
+
 export function isCodexResponsesWebSocketRequired(_model: string, credentials: unknown): boolean {
   // Global kill-switch (default ON). When disabled, Codex never uses the WS
   // transport — even per-connection codexTransport=websocket falls back to the
@@ -575,15 +517,18 @@ function toCodexResponseFailedEvent(parsed: Record<string, unknown>): Record<str
   };
 }
 
-// Env-gated kill-switch: drop ALL non-standard `codex.*` SSE events (notably
-// `codex.rate_limits`) from the Responses stream. These events are NOT part of
-// the OpenAI Responses API — strict clients (e.g. the OpenAI SDK's
-// `responses.stream()`) choke on the unknown event type / empty data field and
-// tear the stream down, surfacing as "Invalid state: Controller is already
-// closed". Opt-in so the default still forwards them for clients that want them.
-function codexDropNonstandardEvents(): boolean {
+// Drop non-standard `codex.*` SSE events (notably `codex.rate_limits`) from
+// the Responses stream. These events are NOT part of the OpenAI Responses API
+// — strict clients (e.g. the OpenAI SDK's `responses.stream()`) choke on the
+// unknown event type / empty data field and tear the stream down, surfacing as
+// 502 "Unknown error" / "Invalid state: Controller is already closed".
+// Default ON (#11014). Opt out with 0/false/no/off if a client consumes them.
+export function codexDropNonstandardEvents(): boolean {
   const v = process.env.OMNIROUTE_CODEX_DROP_NONSTANDARD_EVENTS;
-  return v === "true" || v === "1" || v === "yes";
+  if (v === undefined || v.trim() === "") return true;
+  const n = v.trim().toLowerCase();
+  if (n === "0" || n === "false" || n === "no" || n === "off") return false;
+  return true;
 }
 
 // SSE block filter for the HTTP Responses path (super.execute). The HTTP
@@ -592,7 +537,7 @@ function codexDropNonstandardEvents(): boolean {
 // encodeResponseSseEvent never runs for it. When the kill-switch is on, strip
 // every `codex.*` event block from the byte stream before it reaches the client.
 // Exported for unit testing (#4715). Strips `codex.*` SSE event blocks from a
-// streaming Response when the OMNIROUTE_CODEX_DROP_NONSTANDARD_EVENTS kill-switch is on.
+// streaming Response when `codexDropNonstandardEvents()` is on (default, #11014).
 export function filterNonstandardCodexSse(response: Response): Response {
   const contentType = response.headers.get("content-type") || "";
   if (!response.body || !contentType.includes("text/event-stream")) {
@@ -608,10 +553,12 @@ export function filterNonstandardCodexSse(response: Response): Response {
   const transform = new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       buffer += decoder.decode(chunk, { stream: true });
-      let sep: number;
-      while ((sep = buffer.indexOf("\n\n")) !== -1) {
-        const block = buffer.slice(0, sep + 2);
-        buffer = buffer.slice(sep + 2);
+      while (true) {
+        const separator = /\r?\n\r?\n/.exec(buffer);
+        if (!separator) break;
+        const blockEnd = separator.index + separator[0].length;
+        const block = buffer.slice(0, blockEnd);
+        buffer = buffer.slice(blockEnd);
         if (!dropBlock(block)) controller.enqueue(encoder.encode(block));
       }
     },
@@ -795,8 +742,8 @@ export function encodeResponseSseEvent(raw: string): { sse: string; terminal: bo
   // "Invalid state: Controller is already closed". The earlier empty-payload
   // check below never caught codex.rate_limits — over WS the frame carries a
   // non-empty JSON payload (`{"type":"codex.rate_limits", ...}`), so
-  // `!payload.trim()` is false. Match by event type instead. Opt-in via
-  // OMNIROUTE_CODEX_DROP_NONSTANDARD_EVENTS (the HTTP transport is handled
+  // `!payload.trim()` is false. Match by event type instead. Default ON via
+  // OMNIROUTE_CODEX_DROP_NONSTANDARD_EVENTS (#11014); the HTTP transport is handled
   // separately by filterNonstandardCodexSse, since super.execute forwards the
   // upstream stream verbatim and never runs this function).
   if (eventType.startsWith("codex.") && codexDropNonstandardEvents()) {
@@ -849,6 +796,8 @@ function normalizeCodexWsHeaders(headers: Record<string, string>): Record<string
  * IMPORTANT: Includes chatgpt-account-id header for workspace binding.
  */
 export class CodexExecutor extends BaseExecutor {
+  private appServer: CodexAppServerExecutor | null = null;
+
   constructor() {
     super("codex", PROVIDERS.codex);
   }
@@ -860,24 +809,21 @@ export class CodexExecutor extends BaseExecutor {
       input.model
     );
     const requestInput = requestBody === input.body ? input : { ...input, body: requestBody };
-    const sessionId = this.getPromptCacheSessionId(
+    const credentials = withCodexFingerprintCredentials(
       requestInput.credentials,
-      requestInput.body as Record<string, unknown> | null
+      requestInput.clientHeaders,
+      requestInput.body
     );
-    const identity = createCodexClientIdentity(
-      sessionId,
-      requestInput.credentials?.providerSpecificData ?? null
-    );
-    const credentials = identity
-      ? {
-          ...requestInput.credentials,
-          providerSpecificData: {
-            ...(requestInput.credentials?.providerSpecificData || {}),
-            codexClientIdentity: identity,
-          },
-        }
-      : requestInput.credentials;
     const nextInput = { ...requestInput, credentials };
+
+    if (isCodexAppServerRequired(nextInput.credentials)) {
+      if (!this.appServer) {
+        this.appServer = new CodexAppServerExecutor({
+          websocketFn: getCodexAppServerWebsocketTransport(),
+        });
+      }
+      return this.appServer.execute(nextInput);
+    }
 
     if (!isCodexResponsesWebSocketRequired(nextInput.model, nextInput.credentials)) {
       const httpResult = await super.execute(nextInput);
@@ -1149,10 +1095,13 @@ export class CodexExecutor extends BaseExecutor {
     }
     const clientIdentity = credentials?.providerSpecificData?.codexClientIdentity as
       CodexClientIdentity | null | undefined;
+    const originalIdentityHeaders = credentials?.providerSpecificData
+      ?.codexOriginalIdentityHeaders as Record<string, string> | null | undefined;
+    const turnStateEcho = credentials?.providerSpecificData?.codexTurnStateEcho;
 
     // Originator header — identifies the client type to the Codex backend.
     // Ref: openai/codex login/src/auth/default_client.rs DEFAULT_ORIGINATOR = "codex_cli_rs"
-    headers["originator"] = "codex_cli_rs";
+    headers["originator"] = CODEX_CLI_RS_ORIGINATOR;
 
     // session_id header — enables prompt cache affinity on the Codex backend.
     // The official Codex client sets this to conversation_id (a stable UUID per session).
@@ -1161,7 +1110,15 @@ export class CodexExecutor extends BaseExecutor {
     if (cacheSessionId) {
       headers["session_id"] = cacheSessionId;
     }
+    applyCodexOriginalIdentityHeaders(headers, originalIdentityHeaders);
     applyCodexClientIdentityHeaders(headers, clientIdentity);
+
+    // x-codex-turn-state: forward the client's echo when the provenance guard
+    // (in withCodexFingerprintCredentials) cleared it as same-account. The
+    // blob is account-bound; a stripped (absent) value must stay absent.
+    if (typeof turnStateEcho === "string" && turnStateEcho) {
+      headers["x-codex-turn-state"] = turnStateEcho;
+    }
 
     return headers;
   }
@@ -1269,7 +1226,7 @@ export class CodexExecutor extends BaseExecutor {
     }
 
     // Issue #1832 & #1853: Map messages to input for clients like Cursor 5.5 that use responses/compact but send messages instead of input.
-    // This MUST run before convertSystemToDeveloperRole and stripStoredItemReferences.
+    // This MUST run before convertSystemToDeveloperRole.
     if (!body.input && Array.isArray(body.messages)) {
       body.input = body.messages.map((msg: ResponsesMessageInput) => ({
         type: "message",
@@ -1319,7 +1276,8 @@ export class CodexExecutor extends BaseExecutor {
         dropInternalAssistantMessages: !nativeCodexPassthrough,
       });
     }
-    repairMissingCodexFunctionCallOutputs(body);
+    stripOrphanedCodexFunctionCallOutputs(body);
+    repairMissingCodexToolCallOutputs(body);
 
     // ── Cache-aware system prompt handling (both paths) ──
     //
@@ -1389,12 +1347,8 @@ export class CodexExecutor extends BaseExecutor {
       dropImageGeneration:
         isCodexFreePlan(credentials?.providerSpecificData) || getCodexModelScope(model) === "spark",
       preserveCustomTools: nativeCodexPassthrough,
+      defaultFunctionStrict: nativeCodexPassthrough ? undefined : false,
     });
-
-    // Strip stored response item references (rs_, resp_, msg_ IDs) from input.
-    // The /codex/responses endpoint does not persist responses even with store=true,
-    // so any references to previous response items would cause 404 errors.
-    stripStoredItemReferences(body);
 
     // Issue #806: Even for native passthrough, some clients (purist completions) might indiscriminately inject
     // a `messages` or `prompt` array which the strict Codex Responses schema rejects.
@@ -1486,6 +1440,12 @@ export class CodexExecutor extends BaseExecutor {
     // but the upstream Codex API strictly rejects them as unsupported parameters.
     delete body.session_id;
     delete body.conversation_id;
+
+    applyReasoningInputPolicy(body, "responses", {
+      provider: "codex",
+      preserveEncryptedReasoning:
+        credentials?.providerSpecificData?.preserveEncryptedReasoning === true,
+    });
 
     if (nativeCodexPassthrough) {
       return body;

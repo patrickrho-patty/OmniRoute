@@ -96,6 +96,7 @@ interface FreeBudgetLabels {
   credit: (tokens: string) => string;
   freeTypes: Record<string, string>;
   tosTitles: Record<string, string>;
+  noApiKey: string;
 }
 
 const DEFAULT_LABELS: FreeBudgetLabels = {
@@ -117,6 +118,7 @@ const DEFAULT_LABELS: FreeBudgetLabels = {
   type: "Type",
   tokensMonth: "Tokens/mo",
   credit: (tokens) => `${tokens} credit`,
+  noApiKey: "No API key required",
   freeTypes: {
     "recurring-daily": "daily",
     "recurring-monthly": "monthly",
@@ -247,7 +249,10 @@ function filterRows(
   if (providerFilter !== "all") out = out.filter((m) => m.provider === providerFilter);
   if (search.trim()) {
     out = out.filter(
-      (m) => matchesSearch(m.displayName, search) || matchesSearch(m.modelId, search) || matchesSearch(m.provider, search)
+      (m) =>
+        matchesSearch(m.displayName, search) ||
+        matchesSearch(m.modelId, search) ||
+        matchesSearch(m.provider, search)
     );
   }
   return out;
@@ -348,7 +353,7 @@ export function FreeBudgetView({
   // "No API key required" — derived from routing behaviour, NOT from
   // freeType: "keyless". That field means "free access not quantifiable in
   // tokens"; probing the endpoints showed several of those rows (blackbox,
-  // puter, iflytek, sparkdesk, friendliai, muse-spark-web) answering 401/403
+  // iflytek, sparkdesk, friendliai, muse-spark-web) answering 401/403
   // with no credential. Listing them here would invite users to call providers
   // that reject them.
   const keylessModels = perModel.filter((m) => noCredentialProviders.includes(m.provider));
@@ -421,11 +426,12 @@ export function FreeBudgetView({
           className="mx-3 mt-2 rounded-md border border-emerald-500/30 bg-emerald-500/5 px-3 py-2"
         >
           <div className="flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-[14px] text-emerald-500">lock_open</span>
-            <span className="text-[11px] font-semibold text-emerald-500">No API key required</span>
+            <span className="material-symbols-outlined text-[14px] text-emerald-500">
+              lock_open
+            </span>
+            <span className="text-[11px] font-semibold text-emerald-500">{labels.noApiKey}</span>
             <span className="text-[10.5px] text-text-muted">
-              ({keylessModels.length} model{keylessModels.length !== 1 ? "s" : ""} · {keylessProviders.length}{" "}
-              provider{keylessProviders.length !== 1 ? "s" : ""})
+              ({keylessModels.length}个模型 · {keylessProviders.length}个提供者)
             </span>
           </div>
           <div className="mt-1 flex flex-wrap gap-1">
@@ -606,7 +612,7 @@ export default function FreeBudgetCard() {
           data-testid="budget-provider-select"
           className="rounded border border-border bg-surface px-1.5 py-1 text-[11px] text-text-main"
         >
-          <option value="all">All providers</option>
+          <option value="all">{t("allProviders")}</option>
           {providers.map((p) => (
             <option key={p} value={p}>
               {p}
@@ -667,6 +673,7 @@ export default function FreeBudgetCard() {
           type: t("type"),
           tokensMonth: t("tokensMonth"),
           credit: (tokens) => t("credit", { tokens }),
+          noApiKey: t("noApiKeyRequired"),
           freeTypes: {
             "recurring-daily": t("freeType.daily"),
             "recurring-monthly": t("freeType.monthly"),

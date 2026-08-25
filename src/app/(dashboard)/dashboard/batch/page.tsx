@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import BatchListTab from "./BatchListTab";
-import { FileRecord } from "@/lib/db/files";
-import { BatchRecord } from "@/lib/db/batches";
+import type { FileRecord } from "@/lib/db/files";
+import type { BatchRecord } from "@/lib/db/batches";
 import { mapBatchApiToRecord, mapFileApiToRecord } from "./batch-utils";
 import BatchConceptCard from "./components/BatchConceptCard";
 import NewBatchWizard from "./components/NewBatchWizard";
@@ -35,7 +35,7 @@ export default function BatchPage() {
   const [showWizard, setShowWizard] = useState(false);
   const [createdBanner, setCreatedBanner] = useState<string | null>(null);
   const [providers, setProviders] = useState<Array<{ id: string; name: string; models: string[] }>>(
-    [],
+    []
   );
 
   // Auto-dismiss "batch created" banner after 5s (A-6)
@@ -83,7 +83,7 @@ export default function BatchPage() {
                 batchMap.set(m.id, m);
               }
               return Array.from(batchMap.values()).sort(
-                (a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id), // teknik sıralama: ASCII kasıtlı
+                (a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id) // teknik sıralama: ASCII kasıtlı
               );
             });
           } else {
@@ -104,7 +104,7 @@ export default function BatchPage() {
                 fileMap.set(m.id, m);
               }
               return Array.from(fileMap.values()).sort(
-                (a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id), // teknik sıralama: ASCII kasıtlı
+                (a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id) // teknik sıralama: ASCII kasıtlı
               );
             });
           } else {
@@ -119,7 +119,7 @@ export default function BatchPage() {
         if (opts.appendBatches) setLoadingMore(false);
       }
     },
-    [batchesLastId],
+    [batchesLastId]
   );
 
   // Keep fetchData ref in sync
@@ -147,7 +147,7 @@ export default function BatchPage() {
           const connected = new Set(
             (data.connections ?? [])
               .filter((c) => BATCH_SUPPORTED.includes(c.provider))
-              .map((c) => c.provider),
+              .map((c) => c.provider)
           );
           if (connected.size > 0) {
             setProviders(
@@ -155,7 +155,7 @@ export default function BatchPage() {
                 id,
                 name: PROVIDER_NAMES[id] ?? id,
                 models: MODEL_DEFAULTS[id] ?? [],
-              })),
+              }))
             );
             return;
           }
@@ -169,7 +169,7 @@ export default function BatchPage() {
           id,
           name: PROVIDER_NAMES[id] ?? id,
           models: MODEL_DEFAULTS[id] ?? [],
-        })),
+        }))
       );
     };
     void load();
@@ -232,7 +232,7 @@ export default function BatchPage() {
           fetchDataRef.current?.(true, { appendBatches: true });
         }
       },
-      { threshold: 0.1 },
+      { threshold: 0.1 }
     );
 
     if (bottomRefBatches.current) {
@@ -246,7 +246,60 @@ export default function BatchPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Concept card (F3) */}
+      {/* Stable outcome-oriented header (replaces the collapsible card as primary orientation) */}
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold text-[var(--color-text-main)]">
+            {t("batchConceptTitle")}
+          </h1>
+          <p className="text-sm text-[var(--color-text-muted)]">{t("batchHeaderSubtitle")}</p>
+        </div>
+
+        {/* Three-step strip */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
+            <span className="font-medium text-sm text-[var(--color-text-main)]">
+              {t("batchStep1")}
+            </span>
+            <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
+              {t("batchStep1Desc")}
+            </span>
+          </div>
+          <span className="material-symbols-outlined text-[var(--color-text-muted)]">
+            chevron_right
+          </span>
+          <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
+            <span className="font-medium text-sm text-[var(--color-text-main)]">
+              {t("batchStep2")}
+            </span>
+            <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
+              {t("batchStep2Desc")}
+            </span>
+          </div>
+          <span className="material-symbols-outlined text-[var(--color-text-muted)]">
+            chevron_right
+          </span>
+          <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
+            <span className="font-medium text-sm text-[var(--color-text-main)]">
+              {t("batchStep3")}
+            </span>
+            <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
+              {t("batchStep3Desc")}
+            </span>
+          </div>
+        </div>
+
+        {/* Primary CTA */}
+        <button
+          onClick={() => setShowWizard(true)}
+          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-all duration-200 w-fit"
+        >
+          <span className="material-symbols-outlined text-[16px]">add</span>
+          {t("batchListNewButton")}
+        </button>
+      </div>
+
+      {/* Deeper explanation (optional, collapsible) */}
       <BatchConceptCard />
 
       {/* "Batch created" success banner (A-6) — auto-dismiss 5s */}
@@ -272,7 +325,11 @@ export default function BatchPage() {
       {/* Toolbar: auto-refresh indicator + Refresh + New batch */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
-          <span className={`material-symbols-outlined text-[14px] ${loading ? "animate-spin" : "animate-pulse"}`}>sync</span>
+          <span
+            className={`material-symbols-outlined text-[14px] ${loading ? "animate-spin" : "animate-pulse"}`}
+          >
+            sync
+          </span>
           {t("batchListAutoRefresh")}
         </span>
         <div className="flex gap-2">

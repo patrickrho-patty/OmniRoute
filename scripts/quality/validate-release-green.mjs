@@ -90,14 +90,29 @@ export function baselineValue(metric, root = ROOT) {
   }
 }
 
+// A line that is unambiguously a PASS. Test reporters print the file name on BOTH the
+// pass and the fail line, so a green line for a file whose NAME contains "fail"
+// (fail-fast-*.test.ts, failover-*.test.ts) must never be offered as a failure cause.
+const GREEN_LINE_RE = /^[✓✔√]/;
+
+// Markers that are only meaningful at the START of a line: "FAIL" also occurs inside test
+// FILE NAMES and inside summary prose ("Test Files 1 failed"), so matching it anywhere —
+// and case-insensitively — reports a PASSING file as the cause of the red.
+const LINE_START_FAILURE_RE = /^(?:[✖✗×]|FAIL\b|not ok\b|REGRESS)/;
+
+// Markers that are unambiguous ANYWHERE in the line: tsc and Node emit them mid-line
+// ("src/x.ts(10,5): error TS2322: ..."), so these stay unanchored. They are matched
+// case-SENSITIVELY because that is how the emitting tools actually spell them.
+const INLINE_FAILURE_RE = /\berror TS\d+\b|\bAssertionError\b|\bError:|\bREGRESS/;
+
 /** Best-effort "first meaningful failure line" from captured command output. */
 export function firstFailureLine(out) {
   const lines = String(out || "")
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  const hit = lines.find((l) =>
-    /✖|✗|not ok|AssertionError|error TS|FAIL|Error:|REGRESS/i.test(l)
+  const hit = lines.find(
+    (l) => !GREEN_LINE_RE.test(l) && (LINE_START_FAILURE_RE.test(l) || INLINE_FAILURE_RE.test(l))
   );
   return (hit || lines[lines.length - 1] || "failed").slice(0, 200);
 }
@@ -223,6 +238,47 @@ export const FULL_CI_SKIP = new Set(["check:pr-evidence", "check:codeql-ratchet"
 // Gates that need a specific env to behave like CI (else they compare against the wrong base).
 export const FULL_CI_ENV = { "check:test-masking": { GITHUB_BASE_REF: "main" } };
 
+const FULL_CI_DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const FULL_CI_TIMEOUT_OVERRIDES_MS = {
+  // Measured at 19m38s on the loaded release-v3.8.50 devbox. The former generic
+  // 10m ceiling killed a green scan before it could report its result.
+  "check:test-masking": 30 * 60 * 1000,
+};
+
+export function fullCiTimeoutFor(gateId) {
+  return FULL_CI_TIMEOUT_OVERRIDES_MS[gateId] ?? FULL_CI_DEFAULT_TIMEOUT_MS;
+}
+
+// ci.yml gate scripts whose result the CURATED pass already records under a DIFFERENT id.
+// Without this map the --full-ci pass re-records them unconditionally as kind:"hard" while
+// the curated pass recorded them as kind:"drift", and the SAME gate is printed in BOTH
+// verdict buckets of one report (file-size / compression-budget appeared as a hard failure
+// and as drift simultaneously in the #9985 verdict).
+export const FULL_CI_CURATED_ALIASES = {
+  lint: "lint-errors",
+  "check:workflows": "workflow-lint",
+  "check:complexity-ratchets": "complexity",
+};
+
+/** Curated-pass id equivalent to a ci.yml gate script id ("check:file-size" -> "file-size"). */
+export function curatedEquivalentId(scriptId) {
+  const id = String(scriptId || "");
+  if (Object.hasOwn(FULL_CI_CURATED_ALIASES, id)) return FULL_CI_CURATED_ALIASES[id];
+  return id.startsWith("check:") ? id.slice("check:".length) : id;
+}
+
+/**
+ * Bucket a --full-ci gate must be reported under: the classification the curated pass already
+ * gave the equivalent gate, else "hard" (the --full-ci default for gates the curated list does
+ * not cover). This only changes WHICH BUCKET a result is printed in — it never changes whether
+ * a gate runs, nor whether it passed.
+ */
+export function fullCiKindFor(scriptId, results) {
+  const equivalent = curatedEquivalentId(scriptId);
+  const curated = (results || []).find((r) => r.id === scriptId || r.id === equivalent);
+  return curated?.kind ?? "hard";
+}
+
 /**
  * Parse a ci.yml text and return the ordered, de-duplicated list of gate commands to run.
  * Each entry: { id, job, args:["run", <script>, ...("--" + args)], env }.
@@ -274,7 +330,8 @@ export function extractCiGates(
  * never an infinite block that the release captain mistakes for a hang and kills the pre-flight.
  */
 export function classifyRunError(err, timeoutMs) {
-  if (err && err.killed && timeoutMs) {
+  const timedOut = err?.killed === true || err?.code === "ETIMEDOUT";
+  if (timedOut && timeoutMs) {
     return {
       code: 124,
       out: `gate exceeded its ${Math.round(timeoutMs / 1000)}s ceiling and was killed — treat as a hung/failed gate (e.g. an unreleased DB handle in the unit suite); does NOT pass`,
@@ -570,10 +627,21 @@ async function main() {
     // release — that is why it is a HARD pre-flight gate.
     const slow = [
       {
+        // Raised 45→100min 2026-08-05: a hermetic-env run on the loaded devbox
+        // (load 7-26) was still inside invocation 1 of 3 at 76min when killed;
+        // contention factor 2-3× was measured against idle windows, and no idle
+        // measurement exists yet. The pre-flight's REAL condition is exactly
+        // this contended one (unit runs in Promise.all with integration+vitest
+        // plus whatever else the devbox carries), and there 45min provably
+        // killed a healthy suite and fabricated a false base-red. The ceiling's
+        // purpose — turning a genuine hang (stuck SQLite handle = zero progress
+        // forever) into a visible failure — survives at 100min.
+        // Measured on idle .113: unavailable (checkout not found). Tightened to 80min from 100min as a conservative step. TODO: re-measure on idle .113 and tighten to ~1.8× measured.
         id: "unit",
-        label: "Unit tests (full suite, CI concurrency — runs ~20-35min silently)",
+        label:
+          "Unit tests (full suite, CI concurrency — ~30-50min idle, up to ~80min under load (awaiting idle .113 measurement, #9532))",
         args: ["run", "test:unit:ci"],
-        timeout: 45 * 60 * 1000,
+        timeout: 80 * 60 * 1000,
       },
       {
         id: "vitest",
@@ -582,10 +650,16 @@ async function main() {
         timeout: 15 * 60 * 1000,
       },
       {
+        // Measured 2026-08-05 on an idle 16-core box: 22m08s hermetic (935 tests,
+        // 112 files at --test-concurrency=1, i.e. strictly serial because ~16 of
+        // them bind a port or share a DB). The old "~3-10min" estimate was stale by
+        // ~3x and the 20min ceiling killed a healthy run. 40min keeps the ceiling's
+        // real purpose — turning a genuine hang (unreleased DB handle) into a
+        // visible failure — without punishing a long-but-healthy suite.
         id: "integration",
-        label: "Integration tests (~3-10min)",
+        label: "Integration tests (~20-25min)",
         args: ["run", "test:integration"],
-        timeout: 20 * 60 * 1000,
+        timeout: 40 * 60 * 1000,
       },
     ];
     if (WITH_BUILD) {
@@ -594,14 +668,6 @@ async function main() {
         label: "Package artifact (npm pack policy)",
         args: ["run", "check:pack-artifact"],
         timeout: 20 * 60 * 1000,
-      });
-      // WS1.2 (#7065 class): boot the REAL packed tarball from a clean install —
-      // the runtime gate structure checks cannot provide. Reuses the same dist/ build.
-      slow.push({
-        id: "pack-boot",
-        label: "Tarball boot-smoke (installed CLI serves /health)",
-        args: ["run", "check:pack-boot"],
-        timeout: 15 * 60 * 1000,
       });
     }
     slow.forEach((g) => announce(`${g.label} [parallel]`));
@@ -619,6 +685,41 @@ async function main() {
         detail: code === 0 ? "pass" : firstFailureLine(out),
       });
     });
+
+    if (WITH_BUILD) {
+      // WS1.2 (#7065 class): boot the REAL packed tarball from a clean install.
+      // check:pack-artifact is the builder for dist/ when staging is absent, so the
+      // boot smoke MUST run after it completes. Running both in the parallel wave
+      // races check:pack-boot against dist/server.js creation on clean worktrees.
+      const packArtifactIndex = slow.findIndex((g) => g.id === "pack-artifact");
+      const packArtifactResult = slowResults[packArtifactIndex];
+      const bootLabel = "Tarball boot-smoke (installed CLI serves /health)";
+
+      if (!packArtifactResult || packArtifactResult.code !== 0) {
+        const out = "skipped because package-artifact did not produce a valid dist/ build";
+        saveGateLog("pack-boot", out);
+        record({
+          id: "pack-boot",
+          label: bootLabel,
+          kind: "hard",
+          ok: false,
+          detail: out,
+        });
+      } else {
+        announce(bootLabel);
+        const { code, out } = await runAsync(npmCmd, ["run", "check:pack-boot"], {
+          timeout: 15 * 60 * 1000,
+        });
+        saveGateLog("pack-boot", out);
+        record({
+          id: "pack-boot",
+          label: bootLabel,
+          kind: "hard",
+          ok: code === 0,
+          detail: code === 0 ? "pass" : firstFailureLine(out),
+        });
+      }
+    }
   } else if (WITH_BUILD) {
     // --with-build without the suites (--quick): still verify the package artifact.
     const { code, out } = await runAsync(npmCmd, ["run", "check:pack-artifact"], {
@@ -655,12 +756,18 @@ async function main() {
     for (const g of gates) {
       // Skip a gate the curated pass already ran with the same id (avoid double-running lint).
       if (already.has(g.id)) continue;
-      const { code, out } = run(npmCmd, g.args, { env: g.env, timeout: 10 * 60 * 1000 });
+      const { code, out } = run(npmCmd, g.args, {
+        env: g.env,
+        timeout: fullCiTimeoutFor(g.id),
+      });
       saveGateLog(`fullci-${g.id.replace(/[^a-z0-9]+/gi, "-")}`, out);
       record({
         id: g.id,
         label: `ci.yml:${g.job} → npm ${g.args.join(" ")}`,
-        kind: "hard",
+        // Respect the curated classification when the curated pass already ran an equivalent
+        // gate under a different id — otherwise the same ratchet is reported as a HARD failure
+        // here AND as drift above, in one self-contradicting verdict.
+        kind: fullCiKindFor(g.id, results),
         ok: code === 0,
         detail: code === 0 ? "pass" : firstFailureLine(out),
       });

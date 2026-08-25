@@ -88,7 +88,15 @@ describe("ccr protocol instruction (#8033)", () => {
     const body = makeBody([{ role: "user", content: LARGE_TEXT }]);
     const result = ccrEngine.apply(body);
 
-    assert.equal(result.compressed, true, "large block should still compress");
+    // #7746 follow-up: a caller whose tools[] does not advertise
+    // omniroute_ccr_retrieve can never resolve a content-addressed marker, so
+    // replacing its text would strand it behind an unresolvable hash. The engine
+    // therefore now SKIPS entirely for such callers (callerSupportsCcrRetrieve →
+    // false ⇒ compressed:false), which is a strictly safer outcome than the old
+    // "compress the block but withhold the instruction" behavior. Either way the
+    // guarantee this test pins holds: no CCR marker/instruction reaches a caller
+    // that cannot use it.
+    assert.equal(result.compressed, false, "no-retrieve-tool caller must not be compressed");
     const messages = result.body["messages"] as Array<{ role: string; content: unknown }>;
 
     assert.equal(messages.length, 1, "no system message should be injected");
@@ -150,19 +158,23 @@ describe("ccr protocol instruction (#8033)", () => {
       instruction.includes("[CCR retrieve hash=<24hex> chars=N]"),
       "must show the marker shape"
     );
-    assert.match(
-      instruction,
-      /verbatim|exact/i,
-      "must stress verbatim/exact copying of the hash"
-    );
+    assert.match(instruction, /verbatim|exact/i, "must stress verbatim/exact copying of the hash");
     assert.match(instruction, /24/, "must mention the 24-character length of the hash");
     assert.ok(instruction.includes("dedup:ref"), "must mention the dedup:ref contract");
   });
 
   it("recognizes all three tools[] shapes: OpenAI nested, flat, Claude", () => {
-    assert.equal(callerSupportsCcrRetrieve({ tools: [RETRIEVE_TOOL_OPENAI] }), true, "OpenAI nested shape");
+    assert.equal(
+      callerSupportsCcrRetrieve({ tools: [RETRIEVE_TOOL_OPENAI] }),
+      true,
+      "OpenAI nested shape"
+    );
     assert.equal(callerSupportsCcrRetrieve({ tools: [RETRIEVE_TOOL_FLAT] }), true, "flat shape");
-    assert.equal(callerSupportsCcrRetrieve({ tools: [RETRIEVE_TOOL_CLAUDE] }), true, "Claude shape");
+    assert.equal(
+      callerSupportsCcrRetrieve({ tools: [RETRIEVE_TOOL_CLAUDE] }),
+      true,
+      "Claude shape"
+    );
     assert.equal(callerSupportsCcrRetrieve({ tools: [] }), false, "empty tools array");
     assert.equal(callerSupportsCcrRetrieve({}), false, "absent tools field");
     assert.equal(

@@ -61,7 +61,13 @@ const FINAL_UPDATE = {
   arguments: [
     {
       messages: [
-        { text: "pong", author: "bot", sourceAttributions: [], references: {}, contentOrigin: "DeepLeo" },
+        {
+          text: "pong",
+          author: "bot",
+          sourceAttributions: [],
+          references: {},
+          contentOrigin: "DeepLeo",
+        },
       ],
       isLastUpdate: true,
       requestId: "trace-id",
@@ -116,6 +122,8 @@ test("buildChatInvocation produces a type:4 chat invocation carrying the user te
     text: "protocol capture test. Reply with one word: pong.",
     traceId: "trace-id",
     sessionId: "session-id",
+    requestId: "request-id",
+    conversationId: "conversation-id",
     isStartOfSession: true,
   });
   assert.equal(frame.type, 4);
@@ -127,20 +135,45 @@ test("buildChatInvocation produces a type:4 chat invocation carrying the user te
   assert.equal(arg.traceId, "trace-id");
   assert.equal(arg.clientCorrelationId, "trace-id");
   assert.equal(arg.sessionId, "session-id");
+  assert.equal(arg.conversationId, "conversation-id");
+  assert.equal(arg.productThreadType, "Office");
+  // 2026-08-21 capture (#11069): clientInfo gained 8 keys (clientEntrypoint,
+  // clientSessionId, ProductCategory, clientAppType, productEntryPoint,
+  // deviceOS, deviceType, clientPlatformVersion). The #10718 base shape only
+  // carried clientAppName + clientPlatform.
+  assert.deepEqual(arg.clientInfo, {
+    clientAppName: "Office",
+    clientPlatform: "mcmcopilot-web",
+    clientEntrypoint: "mcmcopilot-officeweb",
+    clientSessionId: "session-id",
+    ProductCategory: "Chat",
+    clientAppType: "Web",
+    productEntryPoint: "ChatPanel",
+    deviceOS: "Windows",
+    deviceType: "Desktop",
+    clientPlatformVersion: "10",
+  });
   assert.equal(arg.isStartOfSession, true);
   assert.ok(Array.isArray(arg.optionsSets));
-  assert.ok((arg.optionsSets as string[]).includes("rich_responses"));
+  assert.ok((arg.optionsSets as string[]).includes("enable_gg_gpt"));
   assert.ok(Array.isArray(arg.allowedMessageTypes));
   assert.ok((arg.allowedMessageTypes as string[]).includes("Chat"));
   const message = arg.message as Record<string, unknown>;
   assert.equal(message.author, "user");
   assert.equal(message.inputMethod, "Keyboard");
   assert.equal(message.messageType, "Chat");
+  assert.equal(message.requestId, "request-id");
   assert.equal(message.text, "protocol capture test. Reply with one word: pong.");
 });
 
 test("buildChatInvocation serializes/round-trips through the framing", () => {
-  const frame = buildChatInvocation({ text: "hi", traceId: "t", sessionId: "s" });
+  const frame = buildChatInvocation({
+    text: "hi",
+    traceId: "t",
+    sessionId: "s",
+    requestId: "r",
+    conversationId: "c",
+  });
   const wire = encodeFrame(frame);
   assert.ok(wire.endsWith(RECORD_SEPARATOR));
   const { frames } = splitFrames(wire);

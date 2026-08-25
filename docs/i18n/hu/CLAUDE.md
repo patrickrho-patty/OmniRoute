@@ -39,22 +39,22 @@ A teljes tesztmátrixért lásd a `CONTRIBUTING.md` → "Tesztek futtatása" ré
 
 ## Projekt áttekintése
 
-**OmniRoute** — egységes AI proxy/router. Egy végpont, 160+ LLM szolgáltató, automatikus visszaesés.
+**OmniRoute** — egységes AI proxy/router. Egy végpont, 329 LLM szolgáltató, automatikus visszaesés.
 
-| Réteg          | Helyszín                | Cél                                                                   |
-| -------------- | ----------------------- | --------------------------------------------------------------------- |
-| API Útvonalak  | `src/app/api/v1/`       | Next.js App Router — belépési pontok                                  |
-| Kezelők        | `open-sse/handlers/`    | Kérés feldolgozás (chat, beágyazások, stb.)                           |
-| Végrehajtók    | `open-sse/executors/`   | Szolgáltató-specifikus HTTP küldés                                    |
-| Fordítók       | `open-sse/translator/`  | Formátum átalakítás (OpenAI↔Claude↔Gemini)                            |
-| Átalakító      | `open-sse/transformer/` | Válaszok API ↔ Chat Befejezések                                       |
-| Szolgáltatások | `open-sse/services/`    | Kombinált útvonalak, sebességkorlátok, gyorsítótárazás, stb.          |
-| Adatbázis      | `src/lib/db/`           | SQLite domain modulok (45+ fájl, 55 migráció)                         |
-| Domain/Szabály | `src/domain/`           | Szabálymotor, költségszabályok, visszaesési logika                    |
-| MCP Szerver    | `open-sse/mcp-server/`  | 37 eszköz (30 alap + 3 memória + 4 készség), 3 szállítás, ~13 hatókör |
-| A2A Szerver    | `src/lib/a2a/`          | JSON-RPC 2.0 ügynök protokoll                                         |
-| Készségek      | `src/lib/skills/`       | Kiterjeszthető készségkeretrendszer                                   |
-| Memória        | `src/lib/memory/`       | Tartós beszélgetési memória                                           |
+| Réteg          | Helyszín                | Cél                                                                       |
+| -------------- | ----------------------- | ------------------------------------------------------------------------- |
+| API Útvonalak  | `src/app/api/v1/`       | Next.js App Router — belépési pontok                                      |
+| Kezelők        | `open-sse/handlers/`    | Kérés feldolgozás (chat, beágyazások, stb.)                               |
+| Végrehajtók    | `open-sse/executors/`   | Szolgáltató-specifikus HTTP küldés                                        |
+| Fordítók       | `open-sse/translator/`  | Formátum átalakítás (OpenAI↔Claude↔Gemini)                                |
+| Átalakító      | `open-sse/transformer/` | Válaszok API ↔ Chat Befejezések                                           |
+| Szolgáltatások | `open-sse/services/`    | Kombinált útvonalak, sebességkorlátok, gyorsítótárazás, stb.              |
+| Adatbázis      | `src/lib/db/`           | 110 top-level SQLite domain modules, 130 migrations                       |
+| Domain/Szabály | `src/domain/`           | Szabálymotor, költségszabályok, visszaesési logika                        |
+| MCP Szerver    | `open-sse/mcp-server/`  | 107 unique tools, 3 transports (stdio / SSE / Streamable HTTP), 32 scopes |
+| A2A Szerver    | `src/lib/a2a/`          | JSON-RPC 2.0 ügynök protokoll                                             |
+| Készségek      | `src/lib/skills/`       | Kiterjeszthető készségkeretrendszer                                       |
+| Memória        | `src/lib/memory/`       | Tartós beszélgetési memória                                               |
 
 Monorepo: `src/` (Next.js 16 alkalmazás), `open-sse/` (streaming engine munkaterület), `electron/` (asztali alkalmazás), `tests/`, `bin/` (CLI belépési pont).
 
@@ -74,7 +74,7 @@ Client → /v1/chat/completions (Next.js útvonal)
 
 Az API útvonalak következetes mintát követnek: `Útvonal → CORS előzetes ellenőrzés → Zod testtartalom validáció → Opcionális auth (extractApiKey/isValidApiKey) → API kulcs irányelv érvényesítése → Handler delegálás (open-sse)`. Nincs globális Next.js middleware — az elfogás útvonal-specifikus.
 
-**Combo routing** (`open-sse/services/combo.ts`): 14 stratégia (prioritás, súlyozott, fill-first, round-robin, P2C, véletlenszerű, legkevésbé használt, költségoptimalizált, reset-tudatos, szigorú-véletlenszerű, automatikus, lkgp, kontextus-optimalizált, kontextus-relais). Minden cél hívja a `handleSingleModel()`-t, amely a `handleChatCore()`-t körülveszi célonkénti hibakezeléssel és áramkör megszakító ellenőrzésekkel. Lásd a `docs/routing/AUTO-COMBO.md`-t a 9-faktoros Auto-Combo pontozásért és a `docs/architecture/RESILIENCE_GUIDE.md`-t a 3 ellenállási rétegért.
+**Combo routing** (`open-sse/services/combo.ts`): 19 public strategies (priority, weighted, fill-first, round-robin, p2c, random, least-used, cost-optimized, reset-aware, reset-window, headroom, strict-random, auto, lkgp, context-optimized, cache-optimized, context-relay, fusion, pipeline). Each target calls `handleSingleModel()`, which wraps `handleChatCore()` with per-target error handling and circuit-breaker checks. See `docs/routing/AUTO-COMBO.md` for the 13-factor Auto-Combo scoring and `docs/architecture/RESILIENCE_GUIDE.md` for the 3 resilience layers.
 
 ---
 
@@ -310,31 +310,31 @@ kapcsolat továbbra is kiszolgálja a többi modellt.
 
 Bármilyen nem triviális változtatás előtt olvasd el a megfelelő mélyreható anyagot:
 
-| Terület                                        | Dokumentum                                                        |
-| ---------------------------------------------- | ----------------------------------------------------------------- |
-| Repo navigáció                                 | `docs/architecture/REPOSITORY_MAP.md`                             |
-| Architektúra                                   | `docs/architecture/ARCHITECTURE.md`                               |
-| Mérnöki referencia                             | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
-| Auto-Combo (9-faktoros pontozás, 14 stratégia) | `docs/routing/AUTO-COMBO.md`                                      |
-| Ellenállás (3 mechanizmus)                     | `docs/architecture/RESILIENCE_GUIDE.md`                           |
-| Érvelés újrajátszása                           | `docs/routing/REASONING_REPLAY.md`                                |
-| Készségek keretrendszere                       | `docs/frameworks/SKILLS.md`                                       |
-| Memória rendszer (FTS5 + Qdrant)               | `docs/frameworks/MEMORY.md`                                       |
-| Felhő ügynökök                                 | `docs/frameworks/CLOUD_AGENT.md`                                  |
-| Védőkorlátok (PII / injekció / látás)          | `docs/security/GUARDRAILS.md`                                     |
-| Nyilvános upstream hitelesítések (Gemini/stb.) | `docs/security/PUBLIC_CREDS.md`                                   |
-| Hibaüzenetek tisztítása                        | `docs/security/ERROR_SANITIZATION.md`                             |
-| Értékelések                                    | `docs/frameworks/EVALS.md`                                        |
-| Megfelelőség / audit                           | `docs/security/COMPLIANCE.md`                                     |
-| Webhookok                                      | `docs/frameworks/WEBHOOKS.md`                                     |
-| Engedélyezési folyamat                         | `docs/architecture/AUTHZ_GUIDE.md`                                |
-| Rejtőzködés (TLS / ujjlenyomat)                | `docs/security/STEALTH_GUIDE.md`                                  |
-| Ügynök protokollok (A2A / ACP / Felhő)         | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
-| MCP szerver                                    | `docs/frameworks/MCP-SERVER.md`                                   |
-| A2A szerver                                    | `docs/frameworks/A2A-SERVER.md`                                   |
-| API referencia + OpenAPI                       | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
-| Szolgáltató katalógus (automatikusan generált) | `docs/reference/PROVIDER_REFERENCE.md`                            |
-| Kiadási folyamat                               | `docs/ops/RELEASE_CHECKLIST.md`                                   |
+| Terület                                              | Dokumentum                                                        |
+| ---------------------------------------------------- | ----------------------------------------------------------------- |
+| Repo navigáció                                       | `docs/architecture/REPOSITORY_MAP.md`                             |
+| Architektúra                                         | `docs/architecture/ARCHITECTURE.md`                               |
+| Mérnöki referencia                                   | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
+| Auto-Combo (13-factor scoring, 19 public strategies) | `docs/routing/AUTO-COMBO.md`                                      |
+| Ellenállás (3 mechanizmus)                           | `docs/architecture/RESILIENCE_GUIDE.md`                           |
+| Érvelés újrajátszása                                 | `docs/routing/REASONING_REPLAY.md`                                |
+| Készségek keretrendszere                             | `docs/frameworks/SKILLS.md`                                       |
+| Memória rendszer (FTS5 + Qdrant)                     | `docs/frameworks/MEMORY.md`                                       |
+| Felhő ügynökök                                       | `docs/frameworks/CLOUD_AGENT.md`                                  |
+| Védőkorlátok (PII / injekció / látás)                | `docs/security/GUARDRAILS.md`                                     |
+| Nyilvános upstream hitelesítések (Gemini/stb.)       | `docs/security/PUBLIC_CREDS.md`                                   |
+| Hibaüzenetek tisztítása                              | `docs/security/ERROR_SANITIZATION.md`                             |
+| Értékelések                                          | `docs/frameworks/EVALS.md`                                        |
+| Megfelelőség / audit                                 | `docs/security/COMPLIANCE.md`                                     |
+| Webhookok                                            | `docs/frameworks/WEBHOOKS.md`                                     |
+| Engedélyezési folyamat                               | `docs/architecture/AUTHZ_GUIDE.md`                                |
+| Rejtőzködés (TLS / ujjlenyomat)                      | `docs/security/STEALTH_GUIDE.md`                                  |
+| Ügynök protokollok (A2A / ACP / Felhő)               | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
+| MCP szerver                                          | `docs/frameworks/MCP-SERVER.md`                                   |
+| A2A szerver                                          | `docs/frameworks/A2A-SERVER.md`                                   |
+| API referencia + OpenAPI                             | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
+| Szolgáltató katalógus (automatikusan generált)       | `docs/reference/PROVIDER_REFERENCE.md`                            |
+| Kiadási folyamat                                     | `docs/ops/RELEASE_CHECKLIST.md`                                   |
 
 ## Tesztelés
 
@@ -379,7 +379,9 @@ git push -u origin feat/your-feature
 
 ## Környezet
 
-- **Futtatás**: Node.js ≥20.20.2 <21 || ≥22.22.2 <23 || ≥24 <25, ES Modules
+- **Futtatás**: Node.js ≥20.20.2 <21 |
+  | ≥22.22.2 <23 |
+  | ≥24 <25, ES Modules
 - **TypeScript**: 5.9+, cél ES2022, modul esnext, felbontás bundler
 - **Útvonal aliasok**: `@/*` → `src/`, `@omniroute/open-sse` → `open-sse/`, `@omniroute/open-sse/*` → `open-sse/*`
 - **Alapértelmezett port**: 20128 (API + dashboard ugyanazon a porton)

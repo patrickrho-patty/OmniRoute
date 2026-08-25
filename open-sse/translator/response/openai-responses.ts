@@ -7,10 +7,12 @@ import { FORMATS } from "../formats.ts";
 import { appendToolCallArgumentDelta } from "../../utils/toolCallArguments.ts";
 import { fallbackToolCallId } from "../helpers/toolCallHelper.ts";
 import { shouldParseTextualReasoningTags } from "../../handlers/responseSanitizer.ts";
+import { getReadableReasoningValue } from "../../utils/reasoningFields.ts";
 import {
   isInternalReasoningPlaceholder,
   stripInternalReasoningPlaceholder,
 } from "../../utils/reasoningPlaceholder.ts";
+import { extractReplayableResponsesReasoningText } from "../../services/reasoningInputPolicy.ts";
 import {
   normalizeToolName,
   stripEmptyOptionalToolArgs,
@@ -30,6 +32,19 @@ import {
 // normalizeUpstreamFailure is re-exported for external importers (tests).
 export { normalizeUpstreamFailure } from "./openai-responses/pureHelpers.ts";
 
+/** Carries escapeJsonStringValues's scan state (whether we're inside a JSON
+ * string, and whether the fragment ended mid-escape-sequence) across calls
+ * for the SAME tool call — see escapeJsonStringValues's own doc comment for
+ * why this must persist across chunks rather than reset per call. */
+interface JsonStringEscapeState {
+  inString: boolean;
+  pendingEscape: boolean;
+}
+
+function createJsonStringEscapeState(): JsonStringEscapeState {
+  return { inString: false, pendingEscape: false };
+}
+
 /**
  * Escape control characters (newlines, tabs, carriage returns) that appear
  * inside JSON string values, ensuring the resulting string is valid JSON.
@@ -37,18 +52,42 @@ export { normalizeUpstreamFailure } from "./openai-responses/pureHelpers.ts";
  * newlines (0x0A) instead of \n escapes inside tool call argument JSON.
  * Only escapes characters inside string contexts to avoid double-escaping
  * already-proper JSON or corrupting structural newlines.
+ *
+ * `arguments` deltas arrive as arbitrary fragments of one continuous JSON
+ * string (OpenAI's Chat Completions streaming contract only guarantees each
+ * `tool_calls[].function.arguments` delta is the next slice, not that it
+ * starts/ends on a quote or escape boundary) — a large multi-line argument
+ * value routinely gets split mid-string. `escapeState` must therefore be the
+ * SAME object passed in on every call for a given tool call index, not a
+ * fresh `{inString: false}` each time: resetting per call made the
+ * in-string/out-of-string decision (and therefore whether a raw newline
+ * gets escaped) depend on where a chunk boundary happened to fall, which
+ * produced a real, reported bug — a single reassembled arguments string
+ * with a mix of real newlines and literal two-character `\n` sequences,
+ * breaking generated code (e.g. Python) that embeds multi-line content.
  */
-function escapeJsonStringValues(json: string): string {
+function escapeJsonStringValues(json: string, escapeState: JsonStringEscapeState): string {
   let result = "";
-  let inString = false;
+  let { inString, pendingEscape } = escapeState;
 
   for (let i = 0; i < json.length; i++) {
     const ch = json[i];
 
-    // Inside a string, skip over escape sequences
+    // This char is the one immediately following a backslash from a
+    // previous iteration (possibly in a prior fragment) — it's already
+    // "consumed" by that escape sequence, pass it through untouched.
+    if (pendingEscape) {
+      result += ch;
+      pendingEscape = false;
+      continue;
+    }
+
+    // Inside a string, an unescaped backslash starts an escape sequence —
+    // the char AFTER it (next iteration, possibly in the next fragment)
+    // must not be reinterpreted as a quote/control-char in its own right.
     if (inString && ch === "\\") {
-      result += ch + (json[i + 1] ?? "");
-      i++;
+      result += ch;
+      pendingEscape = true;
       continue;
     }
 
@@ -68,6 +107,8 @@ function escapeJsonStringValues(json: string): string {
     result += ch;
   }
 
+  escapeState.inString = inString;
+  escapeState.pendingEscape = pendingEscape;
   return result;
 }
 
@@ -80,9 +121,7 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     return flushEvents(state);
   }
 
-  // Capture usage from all chunks that carry it (usage-only chunks OR final chunks with finish_reason)
-  // Normalize Chat Completions format (prompt_tokens/completion_tokens) to Responses API format
-  // (input_tokens/output_tokens) so response.completed always has the fields Codex expects.
+  // Normalize usage from any chunk so response.completed has Responses token fields.
   if (chunk.usage) {
     const u = chunk.usage;
     const input_tokens = u.input_tokens ?? u.prompt_tokens ?? 0;
@@ -193,9 +232,10 @@ export function openaiToOpenAIResponsesResponse(chunk, state) {
     });
   }
 
-  if (delta.reasoning_content && !isInternalReasoningPlaceholder(delta.reasoning_content)) {
+  const reasoning = getReadableReasoningValue(delta);
+  if (reasoning && !isInternalReasoningPlaceholder(reasoning)) {
     startReasoning(state, emit, idx);
-    emitReasoningDelta(state, emit, delta.reasoning_content);
+    emitReasoningDelta(state, emit, reasoning);
   }
   // Strip the internal reasoning placeholder if the model echoed it
   // through ordinary content (#8081). Only the text-content emission is
@@ -451,11 +491,22 @@ function closeMessage(state, emit, idx) {
   }
 }
 
+// Tool calls sit after reasoning (if any) AND after a text message (if one was
+// actually emitted this turn) — a model commonly emits a short preamble before
+// calling a tool (e.g. "Kör nu, på riktigt — apply_patch..."), and that message
+// claims the same reasoningIndex+1 slot the old per-call math (`reasoningIndex
+// + 1 + tcIdx`) assumed was free for tcIdx=0. Not accounting for the message
+// item collided the tool call's added/delta/done events onto the same
+// output_index as the just-closed message, which a client keying per-item
+// state by output_index can silently drop (live incident 2026-08-08).
+function toolCallOutputIndexBase(state) {
+  const msgIdx = state.reasoningId ? normalizeOutputIndex(state.reasoningIndex) + 1 : 0;
+  return state.msgItemAdded[msgIdx] ? msgIdx + 1 : msgIdx;
+}
+
 function emitToolCall(state, emit, tc) {
   const tcIdx = tc.index ?? 0;
-  const outputIndex = state.reasoningId
-    ? normalizeOutputIndex(state.reasoningIndex) + 1 + normalizeOutputIndex(tcIdx)
-    : normalizeOutputIndex(tcIdx);
+  const outputIndex = toolCallOutputIndexBase(state) + normalizeOutputIndex(tcIdx);
   const newCallId = tc.id;
   const funcName = tc.function?.name;
 
@@ -471,15 +522,30 @@ function emitToolCall(state, emit, tc) {
     delete state.funcArgsDone[tcIdx];
     delete state.funcItemAdded[tcIdx];
     delete state.funcItemDone[tcIdx];
+    delete state.funcArgsEscapeState?.[tcIdx];
   }
 
   if (funcName) state.funcNames[tcIdx] = funcName;
 
   // Custom tools are surfaced as custom_tool_call items and stream raw input instead of the
   // function_call_arguments.* events used for regular function tools. (#1007)
+  //
+  // apply_patch defaults to custom (native Codex CLI convention: the model emits it
+  // without the client ever declaring it as a tool) UNLESS the client's own request
+  // explicitly declared it with a `parameters` JSON schema — i.e. as a plain
+  // `type:"function"` tool (state.toolSchemas, populated from body.tools by
+  // extractToolSchemaMap()). Live incident: a client that registers apply_patch as a
+  // function tool and only implements function_call dispatch never recognized the
+  // custom_tool_call item this produced, so the tool call was silently never executed
+  // and no follow-up request ever carried a result back. PR #7905 already intended this
+  // precedence ("...while preserving explicit function-tool precedence") but its
+  // unconditional `toolName === "apply_patch"` OR never actually implemented the carve-out.
   const toolName = state.funcNames[tcIdx] || funcName || "";
+  const lowerName = toolName.toLowerCase();
   const isCustomTool =
-    toolName === "apply_patch" || state.customToolNames?.has?.(toolName) === true;
+    ((lowerName === "apply_patch" || lowerName === "applypatch") &&
+      !state.toolSchemas?.has?.(toolName)) ||
+    state.customToolNames?.has?.(toolName) === true;
 
   if (!state.funcCallIds[tcIdx] && newCallId) state.funcCallIds[tcIdx] = newCallId;
   const callId = state.funcCallIds[tcIdx];
@@ -517,7 +583,14 @@ function emitToolCall(state, emit, tc) {
   if (tc.function?.arguments) {
     const refCallId = state.funcCallIds[tcIdx] || newCallId;
     const existingArgs = state.funcArgsBuf[tcIdx] || "";
-    const sanitized = escapeJsonStringValues(tc.function.arguments);
+    if (!state.funcArgsEscapeState) state.funcArgsEscapeState = {};
+    if (!state.funcArgsEscapeState[tcIdx]) {
+      state.funcArgsEscapeState[tcIdx] = createJsonStringEscapeState();
+    }
+    const sanitized = escapeJsonStringValues(
+      tc.function.arguments,
+      state.funcArgsEscapeState[tcIdx]
+    );
     const nextArgs = appendToolCallArgumentDelta(existingArgs, sanitized);
     const emittedDelta = nextArgs.slice(existingArgs.length);
     state.funcArgsBuf[tcIdx] = nextArgs;
@@ -536,13 +609,16 @@ function emitToolCall(state, emit, tc) {
 function closeToolCall(state, emit, idx, recordAsCompleted = true) {
   const callId = state.funcCallIds[idx];
   if (callId && !state.funcItemDone[idx]) {
-    const normalizedIndex = state.reasoningId
-      ? normalizeOutputIndex(state.reasoningIndex) + 1 + normalizeOutputIndex(idx)
-      : normalizeOutputIndex(idx);
+    const normalizedIndex = toolCallOutputIndexBase(state) + normalizeOutputIndex(idx);
     const args = state.funcArgsBuf[idx] || "{}";
     const toolName = state.funcNames[idx] || "";
+    // See emitToolCall()'s isCustomTool comment — must stay in sync (both compute the
+    // same classification independently for their respective add/close call sites).
+    const lowerName = toolName.toLowerCase();
     const isCustomTool =
-      toolName === "apply_patch" || state.customToolNames?.has?.(toolName) === true;
+      ((lowerName === "apply_patch" || lowerName === "applypatch") &&
+        !state.toolSchemas?.has?.(toolName)) ||
+      state.customToolNames?.has?.(toolName) === true;
 
     let funcItem;
     if (isCustomTool) {
@@ -726,6 +802,37 @@ function markResponsesReasoningDeltaEmitted(state, itemId) {
   state.reasoningItemsWithDelta.add(id);
 }
 
+// #9500 — streaming separator helper. When summary_index increments mid-stream
+// for a given item_id, a new reasoning segment begins; prefix "\n\n" so segments
+// don't arrive back-to-back. Only prefixes when a delta was already emitted for
+// the item AND the index advanced — never on the first segment. Lives here (not
+// in pureHelpers.ts) because it reads and mutates stream state, which the pure
+// leaf must not hold.
+function buildResponsesReasoningSummaryDelta(state, data, reasoningDelta) {
+  const itemId = data.item_id != null ? String(data.item_id) : "";
+  const summaryIndex = typeof data.summary_index === "number" ? data.summary_index : null;
+  if (!(state.reasoningSummaryIndex instanceof Map)) {
+    state.reasoningSummaryIndex = new Map();
+  }
+  const lastIndex = itemId ? state.reasoningSummaryIndex.get(itemId) : undefined;
+  const alreadyEmittedForItem = itemId
+    ? state.reasoningItemsWithDelta instanceof Set && state.reasoningItemsWithDelta.has(itemId)
+    : Boolean(state.reasoningDeltaEmitted);
+  let deltaText = reasoningDelta;
+  if (
+    summaryIndex !== null &&
+    lastIndex !== undefined &&
+    summaryIndex > lastIndex &&
+    alreadyEmittedForItem
+  ) {
+    deltaText = `\n\n${reasoningDelta}`;
+  }
+  if (itemId && (lastIndex === undefined || summaryIndex > lastIndex)) {
+    state.reasoningSummaryIndex.set(itemId, summaryIndex);
+  }
+  return deltaText;
+}
+
 // #5786 — build a Chat-format reasoning delta chunk in the shape the client renders in
 // its thinking panel (`reasoning_content`, or `reasoning_text` for Copilot-compatible
 // clients). Mirrors the `response.reasoning_summary_text.delta` branch.
@@ -759,6 +866,49 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
 function openaiResponsesToOpenAIResponseStream(chunk, state) {
   if (!chunk) {
+    // Iterate every still-open call with a buffered argument payload — argument
+    // deltas are buffered for every tool, so an incomplete stream must flush every
+    // buffered call, not only the historical uppercase Agent path.
+    const pendingNormalized: Array<{ index: number; argsStr: string }> = [];
+    if (state.toolCallByCallId instanceof Map) {
+      for (const entry of state.toolCallByCallId.values()) {
+        if (entry.argsBuffer) {
+          const toolSchema = state.toolSchemas?.get(entry.name);
+          const argsToEmit = stripEmptyOptionalToolArgs(entry.argsBuffer, entry.name, toolSchema);
+          pendingNormalized.push({
+            index: entry.index,
+            argsStr: typeof argsToEmit === "string" ? argsToEmit : JSON.stringify(argsToEmit ?? {}),
+          });
+          entry.argsBuffer = "";
+          entry.needsNormalization = false;
+        }
+      }
+    }
+    if (pendingNormalized.length > 0) {
+      state.finishReasonSent = true;
+      state.finishReason = "tool_calls";
+      const common = {
+        id: state.chatId,
+        object: "chat.completion.chunk",
+        created: state.created,
+        model: state.model || "gpt-4",
+      };
+      const chunks: Record<string, unknown>[] = pendingNormalized.map(({ index, argsStr }) => ({
+        ...common,
+        choices: [
+          {
+            index: 0,
+            delta: { tool_calls: [{ index, function: { arguments: argsStr } }] },
+            finish_reason: null,
+          },
+        ],
+      }));
+      chunks.push({
+        ...common,
+        choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+      });
+      return chunks;
+    }
     // Flush: send final chunk with finish_reason
     if (!state.finishReasonSent && state.started) {
       state.finishReasonSent = true;
@@ -803,7 +953,23 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
     state.chatId = `chatcmpl-${Date.now()}`;
     state.created = Math.floor(Date.now() / 1000);
     state.toolCallIndex = 0;
+    // Kept for computeFinishReason (synthesizeCompletedToolCalls.ts) compatibility —
+    // that snapshot path mutates it directly and expects it to exist. In a turn with
+    // multiple parallel calls this only ever reflects the LAST one opened/closed, so
+    // it must never be used to identify a specific call — only as the "is at least
+    // one tool call in flight this turn" signal computeFinishReason needs, which
+    // toolCallIndex > 0 already covers on its own once any call has been added.
     state.currentToolCallId = null;
+    // Per-call state keyed by call_id (replaces the old singular
+    // currentToolCallId/ArgsBuffer/Name/NeedsNormalization/Deferred fields, which
+    // assumed only one function_call could ever be in flight at a time).
+    state.toolCallByCallId = new Map();
+    // response.function_call_arguments.delta carries `item_id`/`output_index`, not
+    // `call_id` — resolve either one back to the call_id key used by
+    // toolCallByCallId (two independent reverse maps, since some upstreams omit
+    // item_id on delta events but still send output_index).
+    state.toolCallItemToCallId = new Map();
+    state.toolCallOutputIndexToCallId = new Map();
   }
 
   // Text content delta
@@ -834,19 +1000,48 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
   // Function call started
   if (eventType === "response.output_item.added" && data.item?.type === "function_call") {
     const item = data.item;
-    state.currentToolCallId = item.call_id || fallbackToolCallId();
-    state.currentToolCallArgsBuffer = ""; // reset per-call arg buffer
-    state.currentToolCallDeferred = false;
+    const callId = item.call_id || fallbackToolCallId();
+    // Kept for computeFinishReason (synthesizeCompletedToolCalls.ts) compatibility.
+    state.currentToolCallId = callId;
+
+    const toolName = normalizeToolName(item.name);
+    // Assign this call's index NOW, at .added, not at .done — two calls opened before
+    // either closes (a genuine parallel dispatch) must never share an index. Deferred
+    // (still-nameless) calls are the one exception: they don't claim an index until
+    // .done resolves a real name, so a call that never gets one never burns a slot
+    // another call could have used.
+    let index: number | null = null;
+    if (toolName) {
+      index = state.toolCallIndex ?? 0;
+      state.toolCallIndex = index + 1;
+    }
+
+    if (!(state.toolCallByCallId instanceof Map)) state.toolCallByCallId = new Map();
+    state.toolCallByCallId.set(callId, {
+      index,
+      name: toolName,
+      argsBuffer: "",
+      deferred: !toolName,
+      needsNormalization: toolName === "Agent",
+    });
+    if (!(state.toolCallItemToCallId instanceof Map)) state.toolCallItemToCallId = new Map();
+    if (item.id) state.toolCallItemToCallId.set(item.id, callId);
+    // `output_index` is a top-level field on every Responses API streamed event
+    // (response.output_item.added/.done AND function_call_arguments.delta alike) —
+    // an identifier independent of item_id, for upstreams that omit item_id on delta
+    // events.
+    if (!(state.toolCallOutputIndexToCallId instanceof Map)) {
+      state.toolCallOutputIndexToCallId = new Map();
+    }
+    if (data.output_index != null) state.toolCallOutputIndexToCallId.set(data.output_index, callId);
 
     // Track this call_id so response.completed doesn't synthesize a duplicate
     if (!state.toolCallIdsSeen) state.toolCallIdsSeen = new Set();
-    if (state.currentToolCallId) state.toolCallIdsSeen.add(state.currentToolCallId);
+    state.toolCallIdsSeen.add(callId);
 
-    const toolName = normalizeToolName(item.name);
     if (!toolName) {
       // Some Responses providers briefly emit placeholder/empty tool names.
       // Defer emission until output_item.done in case the final name is populated there.
-      state.currentToolCallDeferred = true;
       return null;
     }
 
@@ -861,8 +1056,8 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
           delta: {
             tool_calls: [
               {
-                index: state.toolCallIndex,
-                id: state.currentToolCallId,
+                index,
+                id: callId,
                 type: "function",
                 function: {
                   name: toolName,
@@ -885,29 +1080,38 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
     const argsDelta = data.delta || "";
     if (!argsDelta) return null;
 
-    state.currentToolCallArgsBuffer = (state.currentToolCallArgsBuffer || "") + argsDelta;
-    if (state.currentToolCallDeferred) return null;
+    // Resolve which in-flight call this delta belongs to. Try item_id first (the
+    // field the Responses API documents for this event), then output_index (also a
+    // top-level field on this event, and independent of item_id — covers upstreams
+    // that omit item_id on delta events but still send output_index). Only once both
+    // identifying fields are absent/unresolved do we fall back to guessing (the
+    // single open call, or the most recently opened one as a last resort).
+    const map = state.toolCallByCallId instanceof Map ? state.toolCallByCallId : null;
+    let callId = data.item_id ? state.toolCallItemToCallId?.get(data.item_id) : undefined;
+    if (!callId && data.output_index != null) {
+      callId = state.toolCallOutputIndexToCallId?.get(data.output_index);
+    }
+    if (!callId && map) {
+      callId = map.size === 1 ? [...map.keys()][0] : state.currentToolCallId;
+    }
+    const entry = callId ? map?.get(callId) : undefined;
+    if (!entry) return null;
 
-    return {
-      id: state.chatId,
-      object: "chat.completion.chunk",
-      created: state.created,
-      model: state.model || "gpt-4",
-      choices: [
-        {
-          index: 0,
-          delta: {
-            tool_calls: [
-              {
-                index: state.toolCallIndex,
-                function: { arguments: argsDelta },
-              },
-            ],
-          },
-          finish_reason: null,
-        },
-      ],
-    };
+    // #9168: buffer arguments until output_item.done for schema-aware null normalization
+    // Previously emitted raw null values for optional enum fields (e.g. isolation: null).
+    entry.argsBuffer = (entry.argsBuffer || "") + argsDelta;
+    return null;
+  }
+
+  if (eventType === "response.output_item.done" && data.item?.type === "reasoning") {
+    const replayableReasoning = extractReplayableResponsesReasoningText(data.item);
+    if (replayableReasoning) {
+      const accumulated =
+        typeof state.accumulatedReasoning === "string" ? state.accumulatedReasoning : "";
+      state.accumulatedReasoning = accumulated
+        ? `${accumulated}\n\n${replayableReasoning}`
+        : replayableReasoning;
+    }
   }
 
   // Function call done — emit args chunk from item.arguments when no deltas were received,
@@ -915,28 +1119,83 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
   // carry the complete arguments only in output_item.done (no preceding delta events).
   if (eventType === "response.output_item.done" && data.item?.type === "function_call") {
     const item = data.item;
-    const buffered = state.currentToolCallArgsBuffer || "";
-    const currentIndex = state.toolCallIndex; // capture before increment
-    const callId = item.call_id || state.currentToolCallId || fallbackToolCallId();
+    const map = state.toolCallByCallId instanceof Map ? state.toolCallByCallId : null;
+    let callId = item.call_id;
+    if (!callId && item.id) callId = state.toolCallItemToCallId?.get(item.id);
+    if (!callId) callId = state.currentToolCallId || fallbackToolCallId();
+    const trackedEntry = callId ? map?.get(callId) : undefined;
+    // Some upstreams (e.g. Codex) send the complete payload only in output_item.done,
+    // with no preceding output_item.added at all — there is no tracked entry to read an
+    // index from.
+    const entry = trackedEntry || { index: null, argsBuffer: "", deferred: false };
+
+    const buffered = entry.argsBuffer || "";
     const toolName = normalizeToolName(item.name);
+
+    // Claim (and advance) this call's index now if it wasn't assigned at .added — either
+    // a deferred call whose name has just now resolved, or a Codex-style done-only
+    // payload that never had an .added at all. A deferred call whose name is STILL empty
+    // never claims an index (nothing was ever emitted for it either way).
+    if (entry.index == null && toolName) {
+      entry.index = state.toolCallIndex ?? 0;
+      state.toolCallIndex = entry.index + 1;
+    }
+    const currentIndex = entry.index;
     const toolSchema = state.toolSchemas?.get(toolName);
+    const shouldNormalizeArguments = toolName === "Agent";
+
+    if (toolName && state.toolCalls instanceof Map) {
+      const completedArguments =
+        typeof item.arguments === "string" && item.arguments.length > 0 ? item.arguments : buffered;
+      const normalizedArguments = stripEmptyOptionalToolArgs(
+        completedArguments,
+        toolName,
+        toolSchema
+      );
+      // Keyed by index, not insertion order — readers that need call order for
+      // parallel calls closed out of order should sort by this key rather than
+      // relying on Map iteration order.
+      // Responses→Claude uses this same shared map for Claude block lifecycle
+      // state. Preserve those fields when adding the completed-call summary;
+      // replacing the entry makes the arguments chunk look like a new unnamed
+      // tool and emits a duplicate empty content_block_start.
+      state.toolCalls.set(currentIndex, {
+        ...state.toolCalls.get(currentIndex),
+        id: callId,
+        index: currentIndex,
+        type: "function",
+        function: {
+          name: toolName,
+          arguments:
+            typeof normalizedArguments === "string"
+              ? normalizedArguments
+              : JSON.stringify(normalizedArguments ?? {}),
+        },
+      });
+    }
 
     // Track this call_id so response.completed doesn't synthesize a duplicate
     if (!state.toolCallIdsSeen) state.toolCallIdsSeen = new Set();
     if (callId) state.toolCallIdsSeen.add(callId);
 
-    if (state.currentToolCallDeferred) {
-      state.currentToolCallDeferred = false;
-      state.currentToolCallArgsBuffer = "";
-      state.currentToolCallId = null;
+    // This call is fully closed — remove it from the in-flight map (bounds the map
+    // to genuinely in-flight calls, and keeps the single-open-call fallback in the
+    // function_call_arguments.delta handler correct for whichever call opens next).
+    if (map && callId) map.delete(callId);
+    if (state.currentToolCallId === callId) state.currentToolCallId = null;
 
+    if (entry.deferred) {
       if (!toolName) {
         return null;
       }
 
-      state.toolCallIndex++;
-
-      const argsToEmit = stripEmptyOptionalToolArgs(item.arguments, toolName, toolSchema);
+      const terminalArguments =
+        typeof item.arguments === "string"
+          ? item.arguments.length > 0
+            ? item.arguments
+            : buffered
+          : (item.arguments ?? buffered);
+      const argsToEmit = stripEmptyOptionalToolArgs(terminalArguments, toolName, toolSchema);
 
       const argsStr =
         argsToEmit != null
@@ -972,13 +1231,47 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
       };
     }
 
-    state.toolCallIndex++;
-    state.currentToolCallArgsBuffer = ""; // reset for next tool call
-    state.currentToolCallId = null;
+    const needsNormalization = shouldNormalizeArguments;
 
-    // Only emit if arguments exist in the done event AND they weren't already streamed via deltas
-    if (item.arguments != null && !buffered) {
-      const argsToEmit = stripEmptyOptionalToolArgs(item.arguments, toolName, toolSchema);
+    // Nullable omission sentinels must be normalized before any argument bytes reach the client.
+    // Other tool calls retain immediate argument streaming.
+    if ((needsNormalization || !buffered) && (item.arguments != null || buffered)) {
+      const terminalArguments =
+        typeof item.arguments === "string"
+          ? item.arguments.length > 0
+            ? item.arguments
+            : buffered
+          : (item.arguments ?? buffered);
+      const argsToEmit = stripEmptyOptionalToolArgs(terminalArguments, toolName, toolSchema);
+
+      const argsStr = typeof argsToEmit === "string" ? argsToEmit : JSON.stringify(argsToEmit);
+      if (argsStr) {
+        return {
+          id: state.chatId,
+          object: "chat.completion.chunk",
+          created: state.created,
+          model: state.model || "gpt-4",
+          choices: [
+            {
+              index: 0,
+              delta: {
+                tool_calls: [
+                  {
+                    index: currentIndex,
+                    function: { arguments: argsStr },
+                  },
+                ],
+              },
+              finish_reason: null,
+            },
+          ],
+        };
+      }
+    } else if (buffered) {
+      // #9168: deltas were buffered — normalize against the original client schema
+      // and emit the cleaned arguments once, stripping optional null values that
+      // would otherwise reach the client raw.
+      const argsToEmit = stripEmptyOptionalToolArgs(buffered, toolName, toolSchema);
 
       const argsStr = typeof argsToEmit === "string" ? argsToEmit : JSON.stringify(argsToEmit);
       if (argsStr) {
@@ -1027,8 +1320,9 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
         responseUsage.reasoning_tokens ||
         0;
 
-      // prompt_tokens = input_tokens + cache_read + cache_creation (all prompt-side tokens)
-      const promptTokens = inputTokens + cacheReadTokens + cacheCreationTokens;
+      const promptTokens =
+        inputTokens +
+        ("cache_read_input_tokens" in responseUsage ? cacheReadTokens + cacheCreationTokens : 0);
 
       state.usage = {
         prompt_tokens: promptTokens,
@@ -1122,25 +1416,20 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
     };
   }
 
-  // Handle true reasoning summary ("Thought for 15s").
-  // Emit as `delta.reasoning_content` — matches the shape used by the
-  // `reasoning_content_text.delta` branch above and is what Chat clients
-  // (OpenCode, Claude Code, Cursor, etc.) actually render in their thinking
-  // panel. A nested `delta.reasoning.summary` object is swallowed by most
-  // stream mergers and never reaches the user.
+  // Handle true reasoning summary ("Thought for 15s"). Emit as `delta.reasoning_content`
+  // — matches the `reasoning_content_text.delta` branch above and is what Chat clients
+  // (OpenCode, Claude Code, Cursor, etc.) render in their thinking panel. A nested
+  // `delta.reasoning.summary` object is swallowed by most stream mergers.
   if (eventType === "response.reasoning_summary_text.delta") {
     const reasoningDelta = data.delta || "";
     if (!reasoningDelta) return null;
     markResponsesReasoningDeltaEmitted(state, data.item_id);
-    return buildResponsesReasoningDeltaChunk(state, reasoningDelta);
+    const deltaText = buildResponsesReasoningSummaryDelta(state, data, reasoningDelta);
+    return buildResponsesReasoningDeltaChunk(state, deltaText);
   }
 
-  // #5786 — reasoning summary exposed ONLY as a terminal snapshot on
-  // `response.output_item.done` (no preceding reasoning_summary_text.delta events — e.g.
-  // Codex reasoning models that surface the summary once at item close). Without this the
-  // reasoning channel is silently dropped and never reaches the client's thinking panel.
-  // Only synthesize when NO reasoning delta was already streamed for this item, so normal
-  // delta streams are never duplicated.
+  // Some providers expose completed reasoning only on `response.output_item.done`.
+  // Synthesize one Chat reasoning delta only when no delta was already emitted.
   if (eventType === "response.output_item.done" && data.item?.type === "reasoning") {
     const item = data.item;
     const itemId = item.id != null ? String(item.id) : "";
@@ -1155,10 +1444,13 @@ function openaiResponsesToOpenAIResponseStream(chunk, state) {
       !(state.reasoningItemsWithDelta instanceof Set && state.reasoningItemsWithDelta.size > 0);
     if (emittedForItem || emittedWithoutItemId) return null;
 
-    // #7095/#7176 reconciliation: computed WITHOUT mutating `item`, so an
-    // encrypted-only reasoning item (and its `encrypted_content`) is never
-    // rewritten with a fabricated `summary` — the placeholder only feeds this
-    // synthetic client-facing delta chunk.
+    const replayableReasoning = extractReplayableResponsesReasoningText(item);
+    if (replayableReasoning) {
+      return buildResponsesReasoningDeltaChunk(state, replayableReasoning);
+    }
+
+    // #7176/#7243: only synthesize from real upstream plaintext — never mutate
+    // `item` and never fabricate placeholder text for encrypted-only reasoning.
     const summaryText = getVisibleResponsesReasoningSummaryText(item);
     if (!summaryText) return null;
     return buildResponsesReasoningDeltaChunk(state, summaryText);

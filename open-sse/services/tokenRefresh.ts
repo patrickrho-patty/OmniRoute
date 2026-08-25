@@ -7,11 +7,12 @@
 // cross-provider plumbing. The provider-module split was originally proposed
 // by KooshaPari in PR #7338, whose base was too old to merge as-is; this is an
 // independent implementation of the same idea against the current tip, not a
-// reuse of that diff. All previously-public exports are re-exported below so existing
+// reuse of that diff. Supported provider refresh exports are re-exported below so
 // importers (open-sse/index.ts, executors, src/sse/services/tokenRefresh.ts,
-// tests) are unaffected.
+// tests) keep a stable surface.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { PROVIDERS } from "../config/constants.ts";
+import { getCodexAuthIdentityHeaders } from "../config/codexClient.ts";
 import { runWithProxyContext } from "../utils/proxyFetch.ts";
 import { serializeRefresh } from "./refreshSerializer.ts";
 import {
@@ -38,7 +39,6 @@ import {
   getCircuitBreakerStatus,
   refreshWithRetry,
 } from "./tokenRefresh/circuitBreaker.ts";
-import { refreshWindsurfToken } from "./tokenRefresh/providers/windsurf.ts";
 import { refreshCodebuddyCnToken } from "./tokenRefresh/providers/codebuddyCn.ts";
 import { refreshClineToken } from "./tokenRefresh/providers/cline.ts";
 import { refreshKimiCodingToken } from "./tokenRefresh/providers/kimiCoding.ts";
@@ -48,13 +48,14 @@ import { refreshGoogleToken } from "./tokenRefresh/providers/google.ts";
 import { ensureAntigravityProjectAssigned } from "./antigravityProjectBootstrap.ts";
 import { persistDiscoveredAntigravityProjectId } from "./antigravityProjectPersist.ts";
 import { refreshCodexToken } from "./tokenRefresh/providers/codex.ts";
+import { refreshCursorToken } from "./tokenRefresh/providers/cursor.ts";
+import { refreshOpenferenceToken } from "./tokenRefresh/providers/openference.ts";
 import { refreshKiroToken } from "./tokenRefresh/providers/kiro.ts";
 import { refreshQoderToken } from "./tokenRefresh/providers/qoder.ts";
 import { refreshGitHubToken } from "./tokenRefresh/providers/github.ts";
 import { refreshCopilotToken } from "./tokenRefresh/providers/copilot.ts";
 
 export {
-  refreshWindsurfToken,
   refreshCodebuddyCnToken,
   refreshClineToken,
   refreshKimiCodingToken,
@@ -62,6 +63,8 @@ export {
   refreshClaudeOAuthToken,
   refreshGoogleToken,
   refreshCodexToken,
+  refreshCursorToken,
+  refreshOpenferenceToken,
   refreshKiroToken,
   refreshQoderToken,
   refreshGitHubToken,
@@ -109,14 +112,49 @@ export const REFRESH_LEAD_MS: Record<string, number> = {
   "gitlab-duo": 5 * 60 * 1000, // GitLab token family revocation on misuse
   kiro: 5 * 60 * 1000, // AWS SSO OIDC issues one-time-use refresh tokens
   "kimi-coding": 5 * 60 * 1000, // Moonshot rotates per-refresh
-  // Non-rotating providers — longer lead is safe.
-  iflow: 24 * 60 * 60 * 1000, // 24 hours
   // Google OAuth refresh_tokens are permanent (non-rotating) — longer lead
   // is safe and reduces unnecessary upstream chatter.
   antigravity: 15 * 60 * 1000,
   agy: 15 * 60 * 1000, // same Google backend as antigravity (non-rotating refresh tokens)
-  "gemini-cli": 15 * 60 * 1000, // legacy stored connections; provider is no longer public
 };
+
+/**
+ * Upstream providers that stored connections may still name, but that this build no
+ * longer serves. They are NOT routable — absent from PROVIDERS, from the chat REGISTRY,
+ * and without an executor — so keeping their token fresh maintains a credential that can
+ * never answer a request.
+ *
+ * Deprecation, not deletion: a connection here becomes terminal with a reason that names
+ * where to go instead, rather than silently sitting at `active` doing nothing. The
+ * migration target must be routable — `tests/unit/gemini-cli-deprecation.test.ts` asserts
+ * that, so the notice can never point somewhere useless.
+ */
+export const DEPRECATED_PROVIDERS: Readonly<
+  Record<string, { readonly migrateTo: string; readonly reason: string }>
+> = {
+  "gemini-cli": {
+    migrateTo: "gemini",
+    // The legacy path redeemed the token with PROVIDERS.gemini's client — the very same
+    // public Gemini CLI / Code Assist OAuth client — which is why re-adding the account
+    // under `gemini` is a real migration and not a suggestion to start over.
+    reason:
+      "The gemini-cli provider was discontinued and is not routable. Re-add this account " +
+      "under the `gemini` provider — it uses the same Google OAuth client, so the same " +
+      "login works and the account becomes usable again.",
+  },
+};
+
+/** Whether `provider` is a deprecated upstream that must not be refreshed. */
+export function isDeprecatedProvider(provider: string): boolean {
+  return Boolean(provider) && Object.prototype.hasOwnProperty.call(DEPRECATED_PROVIDERS, provider);
+}
+
+/** The migration notice for a deprecated provider, or null when it is not deprecated. */
+export function getDeprecationNotice(
+  provider: string
+): { migrateTo: string; reason: string } | null {
+  return isDeprecatedProvider(provider) ? DEPRECATED_PROVIDERS[provider] : null;
+}
 
 /**
  * Get the proactive refresh lead time (ms) for a given provider.
@@ -219,6 +257,12 @@ export async function refreshAccessToken(
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
+          // Credential face (auth.openai.com): the real Codex client sends only
+          // originator + User-Agent here — no version header (that gate exists
+          // only on the /backend-api/codex inference face). Refreshing with a
+          // bare/anonymous identity is a half-identity no real client emits.
+          // Mirrors sub2api v0.1.178 ApplyCodexCanonicalAuthIdentity.
+          ...(provider === "codex" ? getCodexAuthIdentityHeaders() : null),
         },
         body: params,
       })
@@ -263,17 +307,27 @@ export async function refreshAccessToken(
  */
 async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: unknown = null) {
   switch (provider) {
-    case "gemini-cli":
-      // Legacy DB rows can retain this discontinued provider id. Refresh them
-      // with the same public OAuth client used by Gemini CLI without restoring
-      // gemini-cli to the routable provider or OAuth UI registries.
-      return await refreshGoogleToken(
-        credentials.refreshToken,
-        PROVIDERS.gemini.clientId,
-        PROVIDERS.gemini.clientSecret,
-        log,
-        proxyConfig
+    case "gemini-cli": {
+      // Deprecated (see DEPRECATED_PROVIDERS). This used to refresh successfully against
+      // PROVIDERS.gemini's client, but the provider is not routable, so the fresh token
+      // had nowhere to go — periodic upstream calls maintaining an unusable credential.
+      //
+      // Return the ESTABLISHED unrecoverable contract, so every existing caller
+      // (isUnrecoverableRefreshError, the manual-refresh route) already stops retrying —
+      // but with a code that says WHY and a target to migrate to. A bare `null` here would
+      // read as a transient failure and be retried forever.
+      const notice = DEPRECATED_PROVIDERS[provider];
+      log?.warn?.(
+        "TOKEN_REFRESH",
+        `${provider} is deprecated — not refreshing; migrate this account to ${notice.migrateTo}`
       );
+      return {
+        error: "unrecoverable_refresh_error",
+        code: "provider_deprecated",
+        migrateTo: notice.migrateTo,
+        reason: notice.reason,
+      };
+    }
 
     case "gemini":
     case "antigravity":
@@ -291,13 +345,11 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
       if (
         result?.accessToken &&
         (provider === "antigravity" || provider === "agy") &&
+        !credentials.providerSpecificData?.isProjectIdManual &&
         !(credentials.projectId || credentials.providerSpecificData?.projectId)
       ) {
         try {
-          const discovered = await ensureAntigravityProjectAssigned(
-            result.accessToken,
-            fetch
-          );
+          const discovered = await ensureAntigravityProjectAssigned(result.accessToken, fetch);
           if (discovered) {
             result.projectId = discovered;
             result.providerSpecificData = {
@@ -317,7 +369,8 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
             });
           }
         } catch (discoveryError) {
-          const msg = discoveryError instanceof Error ? discoveryError.message : String(discoveryError);
+          const msg =
+            discoveryError instanceof Error ? discoveryError.message : String(discoveryError);
           log?.warn?.("TOKEN", `Antigravity projectId discovery failed: ${msg}`);
         }
       }
@@ -330,6 +383,15 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
 
     case "codex":
       return await refreshCodexToken(credentials.refreshToken, log, proxyConfig);
+
+    case "cursor":
+      if (!credentials.refreshToken) {
+        return { error: "unrecoverable_refresh_error", code: "no_refresh_token" };
+      }
+      return await refreshCursorToken(credentials.refreshToken, log, proxyConfig);
+
+    case "openference":
+      return await refreshOpenferenceToken(credentials.refreshToken, log, proxyConfig);
 
     case "qoder":
       return await refreshQoderToken(credentials.refreshToken, log, proxyConfig);
@@ -366,15 +428,6 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
         proxyConfig
       );
 
-    case "windsurf":
-    case "devin-cli":
-      return await refreshWindsurfToken(
-        credentials.refreshToken,
-        credentials.providerSpecificData,
-        log,
-        proxyConfig
-      );
-
     case "codebuddy-cn":
       return await refreshCodebuddyCnToken(credentials.refreshToken, log, proxyConfig);
 
@@ -390,25 +443,25 @@ async function _getAccessTokenInternal(provider, credentials, log, proxyConfig: 
 export function supportsTokenRefresh(provider) {
   const explicitlySupported = new Set([
     "gemini",
-    "gemini-cli", // legacy refresh compatibility only; not a routable provider
     "antigravity",
     "agy",
     "claude",
     "codex",
+    "openference",
     "qoder",
     "github",
     "kiro",
     "amazon-q",
     "cline",
     "kimi-coding",
-    "windsurf",
-    // #8407: do NOT list "devin-cli" here. It is import-token / local-CLI owned
-    // (`devin auth login`); connections never carry a refresh token. Leaving it
-    // in this set made tokenHealthCheck treat it as refresh-capable and force
-    // testStatus="expired" / errorCode="no_refresh_token". Keep it out of the
-    // explicit set (same idea as not listing non-refresh local-CLI providers).
+    // Devin auth is not refreshable here: devin-desktop accepts an imported API
+    // key (#8228), while devin-cli is local-CLI owned via `devin auth login`
+    // (#8407). Neither connection carries a refresh token, so listing either
+    // provider would make tokenHealthCheck force a healthy connection to
+    // testStatus="expired" / errorCode="no_refresh_token".
     "gitlab-duo",
     "codebuddy-cn",
+    "cursor",
   ]);
   if (explicitlySupported.has(provider)) return true;
   const config = PROVIDERS[provider];

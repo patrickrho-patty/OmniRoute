@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { normalizeCodexImportRecord, flattenCodexImportPayload } from "@/lib/oauth/services/codexImport";
+import {
+  normalizeCodexImportRecord,
+  flattenCodexImportPayload,
+} from "@/lib/oauth/services/codexImport";
 import { createProviderConnection } from "@/models";
-import { isAuthRequired, isAuthenticated } from "@/shared/utils/apiAuth";
+import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
-import { refreshCodexToken, isUnrecoverableRefreshError } from "@omniroute/open-sse/services/tokenRefresh.ts";
+import {
+  refreshCodexToken,
+  isUnrecoverableRefreshError,
+} from "@omniroute/open-sse/services/tokenRefresh.ts";
 
 /**
  * Message returned when the imported record's refresh_token is already dead
@@ -29,9 +35,10 @@ const EXPIRED_SESSION_MESSAGE =
  * error string when the refresh_token is confirmed dead and the import
  * should be rejected.
  */
-async function validateCodexRefreshToken(
-  payload: { accessToken: string; refreshToken: string },
-): Promise<string | null> {
+async function validateCodexRefreshToken(payload: {
+  accessToken: string;
+  refreshToken: string;
+}): Promise<string | null> {
   let refreshResult: unknown;
   try {
     refreshResult = await refreshCodexToken(payload.refreshToken, undefined, null);
@@ -82,10 +89,10 @@ const bodySchema = z.object({
   }),
 });
 
-async function requireAuth(request: Request): Promise<NextResponse | null> {
-  if (!(await isAuthRequired(request))) return null;
-  if (await isAuthenticated(request)) return null;
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+async function requireAuth(request: Request): Promise<Response | null> {
+  // GHSA-mg76: importing a provider connection is a state-mutating admin action;
+  // require management scope (or a dashboard session), not any valid client key.
+  return requireManagementAuth(request, { invalidApiKeyStatus: 401 });
 }
 
 export async function POST(request: Request) {
@@ -96,17 +103,14 @@ export async function POST(request: Request) {
   try {
     rawBody = await request.json();
   } catch {
-    return NextResponse.json(
-      { error: "Invalid or empty JSON body" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid or empty JSON body" }, { status: 400 });
   }
 
   const parsed = bodySchema.safeParse(rawBody);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.errors[0]?.message ?? "Invalid request body" },
-      { status: 400 },
+      { status: 400 }
     );
   }
 
@@ -115,10 +119,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: flat.error }, { status: 400 });
   }
   if (flat.records.length === 0) {
-    return NextResponse.json(
-      { error: "No accounts found in payload" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "No accounts found in payload" }, { status: 400 });
   }
 
   const results: Array<

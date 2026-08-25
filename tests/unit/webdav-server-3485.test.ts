@@ -1,3 +1,13 @@
+// ENVIRONMENT NOTE (sandbox better-sqlite3 / glibc limitation, not a code defect):
+// This test constructs or exercises a real better-sqlite3-backed SQLite database.
+// better-sqlite3 is a native addon; production and CI load it normally, but some
+// sandboxes/dev boxes ship a system glibc older than the prebuilt binary requires
+// ("GLIBC_2.29 not found"), so the native module fails to dlopen and any test that
+// reaches better-sqlite3 directly (or asserts stdout that the load-failure warning
+// would pollute) fails HERE while passing in CI. This is a known environment
+// limitation, not a defect in the code under test: the OmniRoute runtime itself
+// cascades to node:sqlite/sql.js when better-sqlite3 is unavailable. See
+// tests/unit/_helpers/betterSqlite3Availability.ts for a guard helper.
 /**
  * TDD tests for the WebDAV server (PR2, issue #3485).
  *
@@ -243,10 +253,7 @@ test("verifyBasicAuth: empty header returns false", async () => {
 
 test("verifyBasicAuth: non-Basic scheme returns false", async () => {
   const { verifyBasicAuth } = await importHandler();
-  assert.equal(
-    verifyBasicAuth("Bearer some-token", "alice", "s3cr3t"),
-    false
-  );
+  assert.equal(verifyBasicAuth("Bearer some-token", "alice", "s3cr3t"), false);
 });
 
 test("verifyBasicAuth: malformed base64 returns false", async () => {
@@ -362,7 +369,15 @@ test("buildPropfindXml: escapes XML special chars in names", async () => {
 test("buildPropfindXml: file entry has no D:collection resourcetype", async () => {
   const { buildPropfindXml } = await importHandler();
   const xml = buildPropfindXml(
-    [{ name: "note.md", href: "/api/v1/webdav/note.md", isDir: false, size: 99, mtime: new Date() }],
+    [
+      {
+        name: "note.md",
+        href: "/api/v1/webdav/note.md",
+        isDir: false,
+        size: 99,
+        mtime: new Date(),
+      },
+    ],
     "/api/v1/webdav/"
   );
   // File should have empty resourcetype, not a collection

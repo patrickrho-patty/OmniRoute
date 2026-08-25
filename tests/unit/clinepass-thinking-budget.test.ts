@@ -80,14 +80,14 @@ test("no-op for an unknown model without reasoning metadata", () => {
 test("bumps undersized max_tokens for a non-clinepass reasoning provider (gate removed, #6912)", () => {
   // Issue #6912: ensureThinkingBudget was gated to clinepass only.
   // Now it applies to all providers. Use nvidia (non-clinepass) which has
-  // deepseek-ai/deepseek-v4-pro with supportsReasoning in the registry.
+  // Nemotron Nano with supportsReasoning in the NVIDIA registry.
   const executor = new DefaultExecutor("nvidia");
   const body = {
-    model: "deepseek-ai/deepseek-v4-pro",
+    model: "nvidia/nvidia-nemotron-nano-9b-v2",
     reasoning_effort: "high",
     max_tokens: 100,
   } as Record<string, unknown>;
 
-  executor.ensureThinkingBudget(body, "deepseek-ai/deepseek-v4-pro");
+  executor.ensureThinkingBudget(body, "nvidia/nvidia-nemotron-nano-9b-v2");
   assert.equal(body.max_tokens, 4096);
 });

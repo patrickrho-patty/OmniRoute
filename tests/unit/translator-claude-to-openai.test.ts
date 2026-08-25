@@ -56,8 +56,6 @@ test("Claude -> OpenAI maps system blocks, parameters, tool declarations and too
   });
 });
 
-
-
 test("Claude -> OpenAI maps Claude server WebSearch to native Responses web_search", () => {
   const result = claudeToOpenAIRequest(
     "gpt-5.5",
@@ -353,7 +351,9 @@ test("Claude -> OpenAI -> Claude preserves tool_result followed by user text in 
       { role: "user", content: [{ type: "text", text: "inspect package scripts" }] },
       {
         role: "assistant",
-        content: [{ type: "tool_use", id: "tu_read", name: "read", input: { path: "package.json" } }],
+        content: [
+          { type: "tool_use", id: "tu_read", name: "read", input: { path: "package.json" } },
+        ],
       },
       {
         role: "user",
@@ -473,7 +473,7 @@ test("Claude -> OpenAI maps thinking.budget_tokens to reasoning_effort buckets",
   }
 });
 
-test("Claude -> OpenAI normalizes output_config.effort=max to xhigh", () => {
+test("Claude -> OpenAI passes output_config.effort=max through verbatim", () => {
   const result = claudeToOpenAIRequest(
     "gpt-5",
     {
@@ -483,7 +483,7 @@ test("Claude -> OpenAI normalizes output_config.effort=max to xhigh", () => {
     false
   );
 
-  assert.equal(result.reasoning_effort, "xhigh");
+  assert.equal(result.reasoning_effort, "max");
 });
 
 test("Claude -> OpenAI ignores disabled thinking and leaves reasoning_effort unset", () => {

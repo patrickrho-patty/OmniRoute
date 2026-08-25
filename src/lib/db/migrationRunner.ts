@@ -29,6 +29,15 @@ import {
   OPTIONAL_FTS5_MIGRATION_VERSIONS,
 } from "./migrationRunner/constants";
 import { getExtraMigrationFiles } from "./migrationRunner/extraDirs";
+// Retention primitives live in their own `core`-free module: `core.ts` imports this file,
+// so importing `backup.ts` (which imports `core.ts`) here would close a dependency cycle.
+import {
+  MAX_DB_BACKUPS,
+  DEFAULT_DB_BACKUP_RETENTION_DAYS,
+  parsePositiveInt,
+  parseNonNegativeInt,
+  pruneBackupDirectory,
+} from "./backupRetention";
 
 const isNodeTestRunnerChild = typeof process.env.NODE_TEST_CONTEXT === "string";
 
@@ -465,6 +474,48 @@ function isSchemaAlreadyApplied(
       // exists the rebuild ran — skip re-executing the rename/copy/drop, which
       // would fail on the missing proxy_assignments_pre117 table.
       return hasColumn(db, "proxy_assignments", "position");
+    // Retroactive guard for the 135/136 renumber (#8523 landed onto slots already taken
+    // by #8908/#9515): a DB that ran these under the old numbers already has the column,
+    // and a bare ALTER TABLE ADD COLUMN would throw on the re-run under the new number.
+    case "137":
+      return hasColumn(db, "version_manager", "auto_restart_adopted");
+    case "138":
+      return hasColumn(db, "upstream_proxy_config", "fallback_backend");
+    case "139":
+      // Retroactive guard for the 134 → 139 renumber: ccr_blocks landed on the 134
+      // slot already taken by proxy_logs_egress_ip. A DB that already applied
+      // ccr_blocks under the old 134 number has the table — skip the re-run.
+      return hasTable(db, "ccr_blocks");
+    case "140":
+      // Retroactive guard for the connection_runtime_state migration renumbered
+      // 135 -> 140 (#9449 landed onto the slot already taken by #8908's
+      // 135_migrate_model_capability_max_token.sql — the same recurring
+      // numbering-race class as the 135/136 -> 137/138 renumber above). A DB
+      // that already ran this under the old 135 number has the table, and a
+      // bare CREATE TABLE re-run would otherwise just no-op (IF NOT EXISTS)
+      // but still burn a version-tracking slot mismatch — guard it the same
+      // way as the other renumbers for consistency.
+      return hasTable(db, "connection_runtime_state");
+    case "143":
+      // A cumulative Radar checkout could have occupied version 143 before the
+      // canonical API-key cache migration landed. Once that legacy row is
+      // reconciled to 153, apply 143 only when its column is genuinely absent.
+      return hasColumn(db, "api_keys", "cache_default_mode");
+    case "153":
+      // Retroactive guard for 143_radar_local_model_state -> 153. A database
+      // that already created the table must not execute or track it twice.
+      return hasTable(db, "radar_local_model_state");
+    case "159":
+      // Renumbered from 158 (collided with 158_call_logs_error_type on
+      // release/v3.8.50). Idempotent freepik->magnific slug rewrite: skip
+      // when provider_connections has no remaining freepik rows (already
+      // applied under 158, or a DB that never stored Freepik).
+      if (migration.name !== "rename_freepik_to_magnific") return false;
+      if (!hasTable(db, "provider_connections")) return false;
+      return (
+        db.prepare("SELECT 1 FROM provider_connections WHERE provider = 'freepik' LIMIT 1").get() ==
+        null
+      );
     default:
       return false;
   }
@@ -784,6 +835,56 @@ function rehomeLegacyVersionSlotMigrations(
 }
 
 /**
+ * Read a persisted `dbBackup` retention setting through the adapter that is ALREADY open
+ * for this migration run.
+ *
+ * `backup.ts`'s equivalent goes through `getDbInstance()`, which is unsafe here: this
+ * code runs from inside database initialization, so asking for the singleton would
+ * re-enter it. Reading off `db` keeps the same stored values without that risk. A DB too
+ * old to have `key_value` yet simply falls back to the default.
+ */
+function readStoredBackupSetting(db: SqliteAdapter, key: string, min: number): number | undefined {
+  try {
+    const row = db
+      .prepare("SELECT value FROM key_value WHERE namespace = ? AND key = ?")
+      .get("dbBackup", key) as { value?: string } | undefined;
+    if (!row?.value) return undefined;
+    const parsed = JSON.parse(row.value);
+    return Number.isInteger(parsed) && parsed >= min ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Enforce the backup retention budget after a pre-migration snapshot (#10421).
+ *
+ * Precedence matches `backup.ts`: env override → persisted operator setting → default.
+ * Never throws: a migration must not fail because housekeeping did.
+ */
+function pruneMigrationBackups(db: SqliteAdapter, backupDir: string): void {
+  try {
+    const maxFiles = process.env.DB_BACKUP_MAX_FILES
+      ? parsePositiveInt(process.env.DB_BACKUP_MAX_FILES, MAX_DB_BACKUPS)
+      : (readStoredBackupSetting(db, "maxFiles", 1) ?? MAX_DB_BACKUPS);
+    const retentionDays = process.env.DB_BACKUP_RETENTION_DAYS
+      ? parseNonNegativeInt(process.env.DB_BACKUP_RETENTION_DAYS, DEFAULT_DB_BACKUP_RETENTION_DAYS)
+      : (readStoredBackupSetting(db, "retentionDays", 0) ?? DEFAULT_DB_BACKUP_RETENTION_DAYS);
+
+    const result = pruneBackupDirectory({ backupDir, maxFiles, retentionDays });
+    if (result.deletedFiles > 0) {
+      console.log(
+        `[Migration] Pruned ${result.deletedFiles} old backup file(s) ` +
+          `(${result.keptBackupFamilies} kept, maxFiles=${maxFiles}, retentionDays=${retentionDays}).`
+      );
+    }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[Migration] Failed to prune old backups: ${message}`);
+  }
+}
+
+/**
  * Create a pre-migration backup of the SQLite database using VACUUM INTO.
  * Returns the backup path on success, null on failure.
  */
@@ -803,6 +904,12 @@ function createPreMigrationBackup(db: SqliteAdapter): string | null {
 
     db.exec(`VACUUM INTO '${escapedBackupPath}'`);
     console.log(`[Migration] Pre-migration backup created: ${backupPath}`);
+
+    // #10421: apply the operator's retention budget right here. Without this the
+    // migration path was the one backup producer that never pruned, so every process
+    // start with a pending migration added ~5 MB forever (observed: 49k files / 204 GB).
+    pruneMigrationBackups(db, backupDir);
+
     return backupPath;
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -900,9 +1007,26 @@ export function runMigrations(db: SqliteAdapter, options?: { isNewDb?: boolean }
   // interpolates this resolved value, so it auto-reflects any override.
   const maxPendingMigrations = resolveMaxPendingMigrations();
 
+  // #9934: `omniroute setup`'s openOmniRouteDb writes a partial skeleton file
+  // (provider_connections + key_value) that has never had migrations run. When
+  // the first `serve` opens it and auto-seeds only the 001 marker, the applied
+  // set is exactly {001} — which would otherwise look like a wiped existing DB
+  // and trip this abort on a brand-new install. This is distinct from a real
+  // wiped/backup-restored database: that case has a non-trivial physical schema
+  // (baseline inference is non-null) and full data tables, so it still aborts.
+  // The 001-marker-only state on a provider_connections skeleton is the fresh
+  // auto-seed — let it through. A genuinely empty table is already exempt via
+  // `applied.size > 0`, and an upgraded DB has a non-trivial applied set.
+  const isFreshSeedOnly =
+    applied.size === 1 &&
+    applied.has("001") &&
+    inferPhysicalSchemaBaseline(db) === null &&
+    hasTable(db, "provider_connections");
+
   if (
     !isTestEnvironment &&
     !isNewDb &&
+    !isFreshSeedOnly &&
     process.env.DISABLE_SQLITE_AUTO_BACKUP !== "true" &&
     maxPendingMigrations > 0 &&
     applied.size > 0 &&

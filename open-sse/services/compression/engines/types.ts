@@ -3,6 +3,14 @@ import type { IncrementalContext } from "../incremental/types.ts";
 
 export type CompressionEngineTarget = "messages" | "tool_results" | "code_blocks";
 
+/** Protocol shape and pipeline stage used by format-sensitive engines. */
+export type CompressionWireFormat = "claude" | "openai" | "openai-responses" | string;
+
+export type CompressionStage = "pre-translation" | "post-translation";
+
+/** Whether an upstream route preserves OmniGlyph PNG bytes and dimensions. */
+export type ImageTransportFidelity = "byte-preserving" | "resizes" | "unknown";
+
 export interface EngineConfigField {
   key: string;
   type: "boolean" | "number" | "string" | "select" | "multiselect";
@@ -55,6 +63,8 @@ export interface CompressionEngineMetadata {
    * proper long-term fix is to make it tail-aware (compress only past the cache boundary).
    */
   overflowCritical?: boolean;
+  /** Stages at which this engine can receive a request body. Omitted means pre-translation. */
+  executionStages?: CompressionStage[];
 }
 
 export interface CompressionEngineApplyOptions {
@@ -63,8 +73,17 @@ export interface CompressionEngineApplyOptions {
   /** Como o request chega ao provider: rota direta oficial ('direct') vs
    *  agregador que pode reprocessar imagens ('aggregator'). O engine omniglyph
    *  exige 'direct' — medição 2026-07-06: agregadores redimensionam as páginas
-   *  e destroem a legibilidade. undefined = desconhecido = skip (fail-closed). */
+   *  e destroem a legibilidade. A política de produção também informa
+   *  imageTransportFidelity; chamadas legadas sem esse campo mantêm o gate direct. */
   providerTransport?: "direct" | "aggregator";
+  /** Independent image-fidelity gate; direct HTTP does not imply byte preservation. */
+  imageTransportFidelity?: ImageTransportFidelity;
+  /** Protocol shape before the current compression stage. */
+  sourceFormat?: CompressionWireFormat;
+  /** Protocol shape expected by the upstream provider. */
+  targetFormat?: CompressionWireFormat;
+  /** Whether the body is still client-shaped or already provider-shaped. */
+  compressionStage?: CompressionStage;
   config?: CompressionConfig;
   compressionComboId?: string | null;
   stepConfig?: Record<string, unknown>;
@@ -78,6 +97,10 @@ export interface CompressionEngineApplyOptions {
    * the equivalence property test). Engines that ignore it run normally and stay correct.
    */
   incremental?: IncrementalContext;
+  /** Provider resolvido do alvo. A contabilidade do omniglyph depende dele:
+   *  Anthropic reporta input/cache em buckets disjuntos, OpenAI/xAI reportam
+   *  cached como subconjunto do input. Ausente => `unknown` (falha fechado). */
+  provider?: string;
 }
 
 export interface CompressionEngine {

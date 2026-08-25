@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
 import { getProviderById } from "@/shared/constants/providers";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { getApiKeys } from "@/lib/db/apiKeys";
@@ -21,7 +22,7 @@ import {
   getWeeklyPatternRows,
   getPresetCostModelRows,
 } from "@/lib/db/usageAnalytics";
-import { getFallbackStats } from "@/lib/db/callLogStats";
+import { getFallbackStats, getErrorTypeBreakdown } from "@/lib/db/callLogStats";
 import { buildByProviderRows } from "@/lib/usage/providerDisplayNames";
 import { toNumber } from "@/shared/utils/numeric";
 
@@ -216,7 +217,12 @@ function resolveModelPricing(
     }
   }
 
-  // Last resort fallback for historical usage (e.g. "gpt-4" missing, matches "gpt-4.1" or first available)
+  // Short-circuit :free models to $0 (they have no pricing entry → should not fall back to arbitrary rates)
+  if (!pricing && model.endsWith(":free")) {
+    return null;
+  }
+
+  // Last resort fallback for historical usage (e.g. "gpt-4" missing, matches "gpt-4.1")
   if (!pricing && providerPricing && typeof providerPricing === "object") {
     for (const [key, val] of Object.entries(providerPricing as Record<string, unknown>)) {
       const lm = model.toLowerCase();
@@ -224,10 +230,6 @@ function resolveModelPricing(
         pricing = val;
         break;
       }
-    }
-    if (!pricing) {
-      const keys = Object.keys(providerPricing as Record<string, unknown>);
-      if (keys.length > 0) pricing = (providerPricing as Record<string, unknown>)[keys[0]];
     }
   }
 
@@ -480,6 +482,7 @@ export async function GET(request: Request) {
     const weeklyRows = getWeeklyPatternRows(unifiedSource, unifiedParams) as UsageRows;
 
     const fallbackRow = getFallbackStats(whereClause, params) as Record<string, unknown>;
+    const errorBreakdown = getErrorTypeBreakdown(whereClause, params);
 
     const summary = {
       totalRequests: Number(summaryRow?.totalRequests || 0),
@@ -868,6 +871,7 @@ export async function GET(request: Request) {
       weeklyCounts,
       dailyByModel,
       modelNames,
+      errorBreakdown,
       range,
     } as any;
 

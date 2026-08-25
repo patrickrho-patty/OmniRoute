@@ -132,7 +132,9 @@ export function clearCliproxyapiUrlCache() {
     if (typeof settings.cliproxyapi_url === "string" && settings.cliproxyapi_url.trim()) {
       _cachedSettingsUrl = { url: settings.cliproxyapi_url.trim(), ts: Date.now() };
     }
-  } catch { /* env vars will be used as fallback */ }
+  } catch {
+    /* env vars will be used as fallback */
+  }
 })();
 
 /**
@@ -155,7 +157,9 @@ async function resolveCliproxyapiBaseUrl(): Promise<string> {
       _cachedSettingsUrl = { url, ts: Date.now() };
       return url;
     }
-  } catch { /* fall through to env vars */ }
+  } catch {
+    /* fall through to env vars */
+  }
 
   const host = process.env.CLIPROXYAPI_HOST || DEFAULT_HOST;
   const port = parseInt(process.env.CLIPROXYAPI_PORT || String(DEFAULT_PORT), 10);
@@ -408,12 +412,13 @@ export class CliproxyapiExecutor extends BaseExecutor {
 
     input.log?.info?.("CPA", `CLIProxyAPI → ${url} (model: ${input.model}, shape: ${shape})`);
 
-    // _toolNameMap is an in-memory channel to chatCore for response-side
-    // tool name restoration; never send it over the wire.
+    // _toolNameMap and _namespaceToolIdentityMap are in-memory channels to
+    // chatCore for response-side tool name restoration; never send them over
+    // the wire.
     const wireBody =
       transformedBody && typeof transformedBody === "object"
         ? JSON.stringify(transformedBody, (key, value) =>
-            key === "_toolNameMap" ? undefined : value
+            key === "_toolNameMap" || key === "_namespaceToolIdentityMap" ? undefined : value
           )
         : JSON.stringify(transformedBody);
 

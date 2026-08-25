@@ -1,4 +1,5 @@
 import { getPendingById } from "@/lib/usage/usageHistory";
+import { getChatLogMaxDepth } from "@/lib/logEnv";
 import { sanitizeErrorMessage } from "./error.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -71,12 +72,29 @@ function maskSensitiveHeaders(headers: HeaderInput): Record<string, unknown> {
       : { ...(headers as Record<string, unknown>) };
 
   const masked = { ...headerEntries };
-  const sensitiveKeys = ["authorization", "x-api-key", "cookie", "token"];
+  const sensitiveKeys = [
+    "authorization",
+    "x-api-key",
+    "api-key",
+    "proxy-authorization",
+    "x-patty-original-authorization",
+    "cookie",
+    "token",
+    "runtimekey",
+    "storage-state",
+    "storagestate",
+    "capability",
+    "x-omniroute-lease-owner",
+  ];
 
   for (const key of Object.keys(masked)) {
     const lowerKey = key.toLowerCase();
     // Whitelist x-ratelimit- headers from redaction
     if (lowerKey.startsWith("x-ratelimit-")) {
+      continue;
+    }
+    if (lowerKey === "x-omniroute-lease-owner") {
+      masked[key] = "[REDACTED]";
       continue;
     }
     if (!sensitiveKeys.some((candidate) => lowerKey.includes(candidate))) {
@@ -148,7 +166,7 @@ export function cloneBoundedForLog(value: unknown, depth = 0, key: string | null
   if (ArrayBuffer.isView(value)) {
     return `[binary ${(value as ArrayBufferView).byteLength} bytes]`;
   }
-  if (depth >= 6) return "[MaxDepth]";
+  if (depth >= getChatLogMaxDepth()) return "[MaxDepth]";
 
   if (Array.isArray(value)) {
     // Idempotence (#7847): an already-bounded array is [marker, ...tail] — MAX_LOG_ARRAY_ITEMS + 1

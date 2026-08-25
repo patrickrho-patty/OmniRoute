@@ -6,6 +6,10 @@ import {
 import { SUPPORTED_BATCH_ENDPOINTS } from "@/shared/constants/batchEndpoints";
 import { MAX_REQUEST_BODY_LIMIT_MB, MIN_REQUEST_BODY_LIMIT_MB } from "@/shared/constants/bodySize";
 import { COMBO_CONFIG_MODES } from "@/shared/constants/comboConfigMode";
+import {
+  MODEL_SUPPORTED_ENDPOINT_VALUES,
+  normalizeModelSupportedEndpoints,
+} from "@/shared/constants/modelSupportedEndpoints";
 import { providerAllowsOptionalApiKey } from "@/shared/constants/providers";
 import { HIDEABLE_SIDEBAR_ITEM_IDS } from "@/shared/constants/sidebarVisibility";
 import {
@@ -14,6 +18,10 @@ import {
 } from "@/shared/constants/upstreamHeaders";
 import { MAX_TIMER_TIMEOUT_MS } from "@/shared/utils/runtimeTimeouts";
 import { validateProviderSpecificData } from "@/shared/validation/providerSpecificData";
+import {
+  isReservedProviderPrefix,
+  reservedProviderPrefixMessage,
+} from "@/shared/constants/reservedProviderPrefixes";
 
 import {
   upstreamHeadersRecordSchema,
@@ -23,21 +31,19 @@ import {
 
 export { validateProviderSpecificData };
 
+import { isValidProviderIconUrl } from "@/shared/validation/iconUrl";
+
 // ──── Provider Schemas ────
 
-// #2166: shared optional remote icon URL for compatible provider nodes. Empty string
-// is accepted as "no custom icon" (clears any previously stored value). Restricted to
-// http(s) — `.url()` alone also accepts syntactically-valid-but-unsafe schemes like
-// `javascript:`/`data:`, which we never want persisted as an <img src>.
+// #2166 + data-URL support: shared optional remote icon URL for compatible provider
+// nodes. Empty string is accepted as "no custom icon". Accepts http(s) URLs AND
+// valid `data:image/*;base64,...` data URLs; rejects malformed/unsafe schemes. The
+// validator lives in src/shared/validation/iconUrl.ts so UI and API never diverge.
 const providerNodeIconUrlSchema = z
   .string()
   .trim()
-  .max(2000)
-  .refine((value) => value === "" || z.string().url().safeParse(value).success, {
-    message: "Icon URL must be a valid URL",
-  })
-  .refine((value) => value === "" || /^https?:\/\//i.test(value), {
-    message: "Icon URL must be a valid http:// or https:// URL",
+  .refine((value) => isValidProviderIconUrl(value), {
+    message: "Icon URL must be a valid http(s) or data:image/*;base64 URL",
   })
   .optional();
 
@@ -236,21 +242,12 @@ export const providerModelMutationSchema = z.object({
       "audio-transcriptions",
       "audio-speech",
       "images-generations",
+      "video",
     ])
     .default("chat-completions"),
   supportedEndpoints: z
-    .array(
-      z.enum([
-        "chat",
-        "embeddings",
-        "rerank",
-        "images",
-        "audio",
-        "audio-transcriptions",
-        "audio-speech",
-        "images-generations",
-      ])
-    )
+    .array(z.enum(MODEL_SUPPORTED_ENDPOINT_VALUES))
+    .transform(normalizeModelSupportedEndpoints)
     .default(["chat"]),
   // #2905: optional per-model wire format override for custom models (e.g. a
   // custom opencode-go model that must use the Anthropic Messages shape).
@@ -280,6 +277,17 @@ export const providerModelMutationSchema = z.object({
   /** Zod 4: `z.record(z.enum([...]), …)` requires every enum key; use `partialRecord` for sparse patches. */
   compatByProtocol: z
     .partialRecord(z.enum(["openai", "openai-responses", "claude"]), modelCompatPerProtocolSchema)
+    .optional(),
+  // #9820: optional async video-generation job preset for a custom
+  // OpenAI-compatible provider whose /videos surface is a submit→poll API
+  // (agnes-video-job, muapi-video-job, sora-job). Persisted on the custom model
+  // row; the /v1/videos/generations handler branches on it between the
+  // synchronous OpenAI-compatible path and the job/poll path. `"openai-video"`
+  // is a legacy no-op value that keeps the sync handler selected.
+  generationConfig: z
+    .object({
+      preset: z.enum(["agnes-video-job", "muapi-video-job", "sora-job", "openai-video"]),
+    })
     .optional(),
 });
 
@@ -324,8 +332,8 @@ export const createProviderNodeSchema = z
     modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
     // #2166: optional operator-supplied remote icon URL for the provider node. Empty
     // string is accepted so callers can explicitly submit "no custom icon" (falls back
-    // to the built-in @lobehub/static resolution). Restricted to http(s) — `.url()` alone
-    // also accepts syntactically-valid-but-unsafe schemes like `javascript:`/`data:`.
+    // to the built-in @lobehub/static resolution). Length/scheme limits live in
+    // isValidProviderIconUrl (2000 chars for http(s), 256 KiB for data:image).
     iconUrl: providerNodeIconUrlSchema,
     customHeaders: customHeadersSchema,
   })
@@ -357,6 +365,17 @@ export const createProviderNodeSchema = z
         message: "Prefix is required",
         path: ["prefix"],
       });
+    } else if (isReservedProviderPrefix(value.prefix.trim())) {
+      // Reserved-prefix guard (tokenrouter bug): the runtime model resolver skips
+      // compatible-node lookup for built-in registry ids/aliases, so a node
+      // created with such a prefix could never be reached by it and silently
+      // routed requests to the built-in provider instead. Reject at the write
+      // path. Case-sensitive to match the runtime guard exactly.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: reservedProviderPrefixMessage(value.prefix.trim()),
+        path: ["prefix"],
+      });
     }
     if (nodeType === "openai-compatible" && !value.apiType) {
       ctx.addIssue({
@@ -367,37 +386,77 @@ export const createProviderNodeSchema = z
     }
   });
 
-export const updateProviderNodeSchema = z.object({
-  name: z.string().trim().min(1, "Name is required"),
-  prefix: z.string().trim().min(1, "Prefix is required"),
-  apiType: z
-    .enum([
-      "chat",
-      "responses",
-      "embeddings",
-      "audio-transcriptions",
-      "audio-speech",
-      "images-generations",
-    ])
-    .optional(),
-  baseUrl: z.string().trim().min(1, "Base URL is required"),
-  chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
-  modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
-  // #2166: same optional remote icon URL as createProviderNodeSchema — empty string
-  // clears a previously stored custom icon.
-  iconUrl: providerNodeIconUrlSchema,
-  customHeaders: customHeadersSchema,
-});
+export const updateProviderNodeSchema = z
+  .object({
+    name: z.string().trim().min(1, "Name is required"),
+    prefix: z.string().trim().min(1, "Prefix is required"),
+    apiType: z
+      .enum([
+        "chat",
+        "responses",
+        "embeddings",
+        "audio-transcriptions",
+        "audio-speech",
+        "images-generations",
+      ])
+      .optional(),
+    baseUrl: z.string().trim().min(1, "Base URL is required"),
+    chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
+    modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
+    // #2166: same optional remote icon URL as createProviderNodeSchema — empty string
+    // clears a previously stored custom icon.
+    iconUrl: providerNodeIconUrlSchema,
+    customHeaders: customHeadersSchema,
+  })
+  .superRefine((value, ctx) => {
+    // Reserved-prefix guard (tokenrouter bug) — same rationale as the guard in
+    // createProviderNodeSchema: renaming a node's prefix onto a built-in
+    // registry id/alias would make it unreachable via that prefix.
+    if (isReservedProviderPrefix(value.prefix)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: reservedProviderPrefixMessage(value.prefix),
+        path: ["prefix"],
+      });
+    }
+  });
 
 export const providerNodeValidateSchema = z.object({
   baseUrl: z.string().trim().min(1, "Base URL and API key required"),
   apiKey: z.string().trim().optional(),
   type: z.enum(["openai-compatible", "anthropic-compatible"]).optional(),
   compatMode: z.enum(["cc"]).optional(),
+  apiType: z
+    .enum([
+      "chat",
+      "responses",
+      "embeddings",
+      "rerank",
+      "audio-transcriptions",
+      "audio-speech",
+      "images-generations",
+    ])
+    .optional(),
   chatPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
   modelsPath: z.string().trim().startsWith("/").max(500).optional().or(z.literal("")),
   modelId: z.string().trim().max(200).optional().or(z.literal("")),
 });
+
+// rate-limit override numeric fields must reject operator intent loss.
+// `z.coerce.number()` silently turns "" into 0 and "60abc" into NaN, which
+// would drop or distort the value instead of rejecting it. Preprocess first so
+// an empty/non-numeric string fails validation (surfaced as a 400), while still
+// coercing legit numeric strings like "60".
+function rateLimitOverrideNumber(max: number) {
+  return z.preprocess((raw) => {
+    if (typeof raw === "string") {
+      if (raw.trim() === "") return NaN;
+      const parsed = Number(raw);
+      return Number.isNaN(parsed) ? raw : parsed;
+    }
+    return raw;
+  }, z.coerce.number().int().min(0).max(max));
+}
 
 export const updateProviderConnectionSchema = z
   .object({
@@ -447,17 +506,25 @@ export const updateProviderConnectionSchema = z
     projectId: z.union([z.string(), z.null()]).optional(),
     // Per-connection rate limit overrides — overrides the global RequestQueueSettings
     // for this connection. Set to null to clear all overrides.
+    // Per-connection rate limit overrides — overrides the global
+    // RequestQueueSettings for this connection. Set to null to clear all
+    // overrides. `.strict()` rejects unknown keys (e.g. a typo'd `tmp`) with a
+    // 400 instead of silently stripping them: the operator's intent is
+    // never dropped without an error. `.nullable()` (rather than a
+    // `z.union([z.null(), …])`) keeps the `unrecognized_keys` issue at the top
+    // level so the rejected key name survives into the 400 response.
     rateLimitOverrides: z
-      .union([
-        z.null(),
-        z.object({
-          rpm: z.coerce.number().int().min(0).max(1_000_000).optional(),
-          tpm: z.coerce.number().int().min(0).max(100_000_000).optional(),
-          tpd: z.coerce.number().int().min(0).max(10_000_000_000).optional(),
-          minTime: z.coerce.number().int().min(0).max(60_000).optional(),
-          maxConcurrent: z.coerce.number().int().min(0).max(10_000).optional(),
-        }),
-      ])
+      .object({
+        rpm: rateLimitOverrideNumber(1_000_000).optional(),
+        tpm: rateLimitOverrideNumber(100_000_000).optional(),
+        tpd: rateLimitOverrideNumber(10_000_000_000).optional(),
+        minTime: rateLimitOverrideNumber(60_000).optional(),
+        maxConcurrent: rateLimitOverrideNumber(10_000).optional(),
+        maxWaitMs: rateLimitOverrideNumber(120_000).optional(),
+      })
+      .partial()
+      .strict()
+      .nullable()
       .optional(),
     proxyEnabled: z.boolean().optional(),
     perKeyProxyEnabled: z.boolean().optional(),
@@ -588,7 +655,12 @@ export const validateProviderApiKeySchema = z
     customUserAgent: z.string().trim().max(500).optional(),
     baseUrl: z.string().trim().url().optional(),
     region: z.string().trim().max(64).optional(),
+    accessKeyId: z.string().trim().max(500).optional(),
+    sessionToken: z.string().trim().max(5000).optional(),
     cx: z.string().trim().max(500).optional(),
+    runtimeKey: z.string().trim().max(65_536).optional(),
+    tunnelId: z.string().trim().max(128).optional(),
+    connectorName: z.string().trim().max(200).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.provider === "google-pse-search" && !data.cx) {

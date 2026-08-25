@@ -9,8 +9,7 @@ import { parseNonStreamingResponseBody } from "@omniroute/open-sse/handlers/chat
 function makeResponse(body: string, contentType: string): Response {
   return {
     headers: {
-      get: (name: string) =>
-        name.toLowerCase() === "content-type" ? contentType : null,
+      get: (name: string) => (name.toLowerCase() === "content-type" ? contentType : null),
     },
     text: async () => body,
     body: null,
@@ -60,6 +59,18 @@ test("invalid JSON → invalid_json with short message + detailed error", async 
   assert.match(res.detailedError, /^Invalid JSON response from provider \(error: /);
   assert.match(res.detailedError, /\{not json/);
   assert.equal(res.looksLikeSSE, false);
+});
+
+test("valid JSON with a non-object root → invalid_json", async () => {
+  for (const body of ["null", '"text"', "[]"]) {
+    const res = await parseNonStreamingResponseBody({
+      ...baseOpts,
+      providerResponse: makeResponse(body, "application/json"),
+    });
+    assert.equal(res.kind, "invalid_json");
+    if (res.kind !== "invalid_json") continue;
+    assert.match(res.detailedError, /expected an object payload/);
+  }
 });
 
 test("valid SSE payload (by content-type) → ok with SSE-derived format", async () => {

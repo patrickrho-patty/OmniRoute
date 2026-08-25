@@ -2,6 +2,11 @@ import { getSettings } from "../db/settings";
 import dns from "node:dns/promises";
 import { isPrivateHost } from "@/shared/network/outboundUrlGuard";
 import { safeOutboundFetch } from "@/shared/network/safeOutboundFetch";
+import { pluginManager } from "./manager";
+import { createHash } from "node:crypto";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 /**
  * Plugin Marketplace — browse, search, install plugins from a registry.
  *
@@ -69,6 +74,7 @@ export interface MarketplaceEntry {
   author: string;
   license: string;
   downloadUrl: string;
+  checksum?: string; // SHA-256 hex (optional — verified when present)
   repository?: string;
   tags: string[];
   downloads: number;
@@ -142,7 +148,8 @@ const SEED_REGISTRY: MarketplaceEntry[] = [
 export async function listMarketplacePlugins(): Promise<MarketplaceEntry[]> {
   try {
     const settings = await getSettings();
-    const url = typeof settings.pluginMarketplaceUrl === "string" ? settings.pluginMarketplaceUrl : null;
+    const url =
+      typeof settings.pluginMarketplaceUrl === "string" ? settings.pluginMarketplaceUrl : null;
     if (url) {
       if (!(await isSafeMarketplaceUrl(url))) {
         console.warn("Custom marketplace URL rejected (SSRF guard):", url);
@@ -155,13 +162,23 @@ export async function listMarketplacePlugins(): Promise<MarketplaceEntry[]> {
       }
       const data = await res.json();
       if (Array.isArray(data)) {
-        return data.filter((entry: unknown) =>
-          entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).name === "string"
+        return data.filter(
+          (entry: unknown) =>
+            entry &&
+            typeof entry === "object" &&
+            typeof (entry as Record<string, unknown>).name === "string"
         ) as MarketplaceEntry[];
       }
-      if (data && typeof data === "object" && Array.isArray((data as Record<string, unknown>).plugins)) {
-        return ((data as Record<string, unknown>).plugins as unknown[]).filter((entry: unknown) =>
-          entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).name === "string"
+      if (
+        data &&
+        typeof data === "object" &&
+        Array.isArray((data as Record<string, unknown>).plugins)
+      ) {
+        return ((data as Record<string, unknown>).plugins as unknown[]).filter(
+          (entry: unknown) =>
+            entry &&
+            typeof entry === "object" &&
+            typeof (entry as Record<string, unknown>).name === "string"
         ) as MarketplaceEntry[];
       }
       console.warn("Custom marketplace returned unrecognized format");
@@ -199,4 +216,51 @@ export async function getMarketplaceEntry(name: string): Promise<MarketplaceEntr
  */
 export function isMarketplaceAvailable(): boolean {
   return true; // Always available (falls back to seed)
+}
+
+/**
+ * Install a plugin from the marketplace by name.
+ * Downloads the plugin archive, verifies checksum if present, and installs via PluginManager.
+ */
+export async function installMarketplacePlugin(
+  name: string
+): Promise<{ name: string; version: string }> {
+  const plugins = await listMarketplacePlugins();
+  const entry = plugins.find((p) => p.name === name);
+  if (!entry) {
+    throw new Error(`Plugin '${name}' not found in marketplace`);
+  }
+
+  // Create temp dir for download
+  const tmpDir = await mkdtemp(join(tmpdir(), "plugin-mp-"));
+  const tmpFile = join(tmpDir, "plugin.tar.gz");
+
+  try {
+    // Download the plugin archive
+    const response = await safeOutboundFetch(entry.downloadUrl, { guard: "public-only" });
+    if (!response.ok) {
+      throw new Error(`Failed to download plugin '${name}': ${response.status}`);
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Verify SHA-256 checksum if provided
+    if (entry.checksum) {
+      const actual = createHash("sha256").update(buffer).digest("hex");
+      if (actual !== entry.checksum) {
+        throw new Error(
+          `Checksum mismatch for plugin '${name}': expected ${entry.checksum}, got ${actual}`
+        );
+      }
+    }
+
+    // Write to temp file
+    await writeFile(tmpFile, buffer);
+
+    // Delegate to pluginManager.install
+    const result = await pluginManager.install(tmpDir);
+    return { name: result.name, version: result.version };
+  } finally {
+    // Cleanup temp dir
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
 }

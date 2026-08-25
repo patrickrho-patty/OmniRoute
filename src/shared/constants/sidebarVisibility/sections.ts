@@ -244,6 +244,15 @@ const TOOLS_GROUP: SidebarItemGroup = {
       icon: "cloud",
     },
     {
+      id: "conductor",
+      href: "/dashboard/conductor",
+      i18nKey: "conductor",
+      subtitleKey: "conductorSubtitle",
+      icon: "account_tree",
+      labelFallback: "Conductor",
+      subtitleFallback: "CLI-agent fleet",
+    },
+    {
       id: "agent-bridge",
       href: "/dashboard/tools/agent-bridge",
       i18nKey: "agentBridge",
@@ -401,6 +410,13 @@ const LOGS_GROUP: SidebarItemGroup = {
       subtitleKey: "logsTimelineSubtitle",
       icon: "view_timeline",
     },
+    {
+      id: "conversations",
+      href: "/dashboard/conversations",
+      i18nKey: "conversations",
+      subtitleKey: "conversationsSubtitle",
+      icon: "forum",
+    },
   ],
 };
 
@@ -423,6 +439,13 @@ const SYSTEM_GROUP: SidebarItemGroup = {
       i18nKey: "runtime",
       subtitleKey: "runtimeSubtitle",
       icon: "bolt",
+    },
+    {
+      id: "resilience-connections",
+      href: "/dashboard/resilience/connections",
+      i18nKey: "resilienceConnections",
+      subtitleKey: "resilienceConnectionsSubtitle",
+      icon: "shield",
     },
   ],
 };
@@ -462,6 +485,14 @@ const COSTS_ITEMS: readonly SidebarItemDefinition[] = [
     i18nKey: "freeProviderRankings",
     subtitleKey: "freeProviderRankingsSubtitle",
     icon: "leaderboard",
+  },
+  {
+    id: "radar",
+    href: "/dashboard/radar",
+    i18nKey: "radar",
+    subtitleKey: "radarSubtitle",
+    icon: "radar",
+    featureFlagKey: "RADAR_ENABLED",
   },
 ];
 
@@ -659,6 +690,13 @@ const CONFIGURATION_ITEMS: readonly SidebarItemDefinition[] = [
     i18nKey: "settingsAi",
     subtitleKey: "settingsAiSubtitle",
     icon: "auto_awesome",
+  },
+  {
+    id: "settings-modality-bridge",
+    href: "/dashboard/settings/modality-bridge",
+    i18nKey: "settingsModalityBridge",
+    subtitleKey: "settingsModalityBridgeSubtitle",
+    icon: "image_search",
   },
   {
     id: "settings-routing",

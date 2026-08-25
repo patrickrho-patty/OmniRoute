@@ -2,7 +2,17 @@
 // Extracted verbatim from base.ts. Deps are config/services only (no host import → no cycle).
 import { PROVIDER_CLAUDE } from "../../services/systemTransforms.ts";
 import { isClaudeCodeCompatible } from "../../services/provider.ts";
-import { supportsClaudeMaxEffort, supportsXHighEffort } from "../../config/providerModels.ts";
+import {
+  supportsClaudeMaxEffort,
+  supportsXHighEffort,
+  getProviderModel,
+  getProviderModels,
+} from "../../config/providerModels.ts";
+import {
+  getLearnedReasoningEffort,
+  clampToLearned,
+  REASONING_EFFORT_ORDER,
+} from "../../services/learnedReasoningEffortCaps.ts";
 
 /**
  * Sanitize reasoning_effort for providers that don't accept all values.
@@ -139,22 +149,28 @@ export function mapNvidiaGlm52ReasoningParams(
 }
 
 export function supportsMaxEffortForProvider(provider: string, model: string): boolean {
+  const resolvedModelId = getProviderModel(provider, model)?.id || model;
+
   const isClaude =
     (provider === PROVIDER_CLAUDE || isClaudeCodeCompatible(provider)) &&
-    supportsClaudeMaxEffort(model);
+    supportsClaudeMaxEffort(resolvedModelId);
   // opencode-go proxies DeepSeek with the native DeepSeek API contract, which
   // accepts {high, max} literally. Without this opt-in, max would be
   // normalized to xhigh (the OmniRoute-internal top tier) and rejected by the
   // upstream. Scoped to opencode-go deliberately: OpenRouter's DeepSeek path
   // (pi#4055) is the documented inverse and expects xhigh, not max.
   // Ollama Cloud also accepts literal max (for example GLM 5.2 supports
-  // low|medium|high|max|none) and rejects xhigh.
+  // low|medium|high|max|none) and rejects xhigh; xhigh is mapped to max by the
+  // provider guard in sanitizeReasoningEffortForProvider.
   const isOpencodeGoDeepSeek =
-    provider === "opencode-go" && model.toLowerCase().includes("deepseek");
+    (provider === "opencode-go" || provider === "opencode-zen") &&
+    resolvedModelId.toLowerCase().includes("deepseek");
   const isOllamaCloud = provider === "ollama-cloud";
-  const isMoonshotK3 =
-    (provider === "moonshot" || provider === "kimi") && /^kimi-k3(?:$|-)/i.test(model);
-  return isClaude || isOpencodeGoDeepSeek || isOllamaCloud || isMoonshotK3;
+  const isMoonshotK3 = /^kimi-k3(?:$|-)/i.test(resolvedModelId);
+  // Command Code's upstream API accepts the literal DeepSeek/OpenAI effort value
+  // `max`; do not rewrite it to OmniRoute's internal `xhigh` spelling.
+  const isCommandCode = provider === "command-code";
+  return isClaude || isOpencodeGoDeepSeek || isOllamaCloud || isMoonshotK3 || isCommandCode;
 }
 
 // ── Effort carrier helpers (#7044) ──────────────────────────────────────────
@@ -216,10 +232,7 @@ function writeEffortValue(
 }
 
 /** Strip the effort field from every carrier that was present. */
-function stripEffortValue(
-  b: Record<string, unknown>,
-  c: EffortCarriers
-): Record<string, unknown> {
+function stripEffortValue(b: Record<string, unknown>, c: EffortCarriers): Record<string, unknown> {
   const next: Record<string, unknown> = { ...b };
   if (c.hasTopLevelReasoningEffort) delete next.reasoning_effort;
   if (c.hasReasoningEffort && c.reasoning) {
@@ -267,17 +280,57 @@ export function sanitizeReasoningEffortForProvider(
     return stripEffortValue(b, c);
   }
 
-  // Native DeepSeek (api.deepseek.com) — V4 thinking mode accepts reasoning_effort
-  // ONLY as {high, max} (its own top tier is literally "max"). OmniRoute's internal
-  // scale is low|medium|high|xhigh where xhigh is the top, so map onto DeepSeek's
-  // vocabulary: xhigh → max (top→top), low|medium → high (below the enum floor).
-  // high/max pass through unchanged. Without this, the claude→openai translator's
-  // xhigh (and max-normalized-to-xhigh below) reaches DeepSeek as an unknown value,
-  // silently dropping the client's requested effort. This is the INVERSE of the
-  // OpenRouter-DeepSeek path, whose normalized API expects xhigh, not max (pi#4055).
+  // `minimal` is a sub-`low` reasoning tier some catalogs advertise (e.g.
+  // Muse Spark via models.dev) and the Codex provider accepts natively — but
+  // Command Code rejects it outright:
+  //   Validation error: Invalid option: expected one of
+  //   "low"|"medium"|"high"|"xhigh"|"max" at "params.reasoning_effort"
+  // Map it to the closest supported value (`low`) for command-code only;
+  // other providers (codex etc.) keep their native `minimal` handling.
+  if (provider === "command-code" && effortStr === "minimal") {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: mapped reasoning_effort minimal → low`
+    );
+    return writeEffortValue(b, "low", c);
+  }
+
+  // Command Code accepts the literal top-tier value `max`, while the shared
+  // standardization stage may have already represented the client's `max` as
+  // OmniRoute's internal `xhigh`. Convert it back before the upstream request.
+  if (provider === "command-code" && effortStr === "xhigh") {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: normalized reasoning_effort xhigh → max`
+    );
+    return writeEffortValue(b, "max", c);
+  }
+
+  // Ollama Cloud accepts low|medium|high|max|none and rejects xhigh. Map
+  // xhigh → max (its literal top tier) before the generic xhigh handling so
+  // passthrough (unregistered) models are covered too — the registry opt-out
+  // only covers known models.
+  if (provider === "ollama-cloud" && effortStr === "xhigh") {
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: mapped reasoning_effort xhigh → max`
+    );
+    return writeEffortValue(b, "max", c);
+  }
+
+  // Native DeepSeek (api.deepseek.com) — V4 Pro and Flash use the native
+  // {low, high, max} vocabulary, while other model ids retain the {high, max}
+  // floor. OmniRoute's internal top tier xhigh maps to DeepSeek's literal max,
+  // while compatibility-only medium maps to high. `none` is already the OpenAI
+  // no-thinking carrier and passes through unchanged.
   if (provider === "deepseek") {
+    const isV4 = modelStr.toLowerCase().startsWith("deepseek-v4-");
     const mapped =
-      effortStr === "xhigh" ? "max" : effortStr === "low" || effortStr === "medium" ? "high" : null;
+      effortStr === "xhigh"
+        ? "max"
+        : effortStr === "medium" || (effortStr === "low" && !isV4)
+          ? "high"
+          : null;
     if (mapped && mapped !== effortStr) {
       log?.info?.(
         "REASONING_SANITIZE",
@@ -288,27 +341,125 @@ export function sanitizeReasoningEffortForProvider(
     return body;
   }
 
-  const supportsXHigh = supportsXHighEffort(provider, modelStr);
-  const shouldDowngradeXHigh = effortStr === "xhigh" && !supportsXHigh;
-  const supportsXHighForMax = supportsXHigh;
-  const supportsMax = supportsMaxEffortForProvider(provider, modelStr);
-  const shouldNormalizeMaxToXHigh = effortStr === "max" && !supportsMax && supportsXHighForMax;
-  const shouldDowngradeMax = effortStr === "max" && !supportsMax && !supportsXHighForMax;
-
-  if (shouldNormalizeMaxToXHigh) {
-    log?.info?.(
-      "REASONING_SANITIZE",
-      `${provider}/${modelStr}: normalized reasoning_effort max → xhigh`
-    );
-    return writeEffortValue(b, "xhigh", c);
+  // Generic learned clamp (downgrade-only: greatest accepted <= demand).
+  // Sits AFTER the per-provider early returns by design: deepseek/command-code/
+  // ollama-cloud have deliberate static translations that take precedence; the
+  // learned set governs every other provider and all effort values, before the
+  // xhigh/max static fallbacks below.
+  const learnedSet = getLearnedReasoningEffort(provider, modelStr);
+  if (learnedSet && learnedSet.size > 0 && !learnedSet.has(effortStr)) {
+    const clamped = clampToLearned(effortStr, learnedSet);
+    if (clamped && clamped !== effortStr) {
+      log?.info?.(
+        "REASONING_SANITIZE",
+        `${provider}/${modelStr}: clamped reasoning_effort ${effortStr} → ${clamped} (learned)`
+      );
+      return writeEffortValue(b, clamped, c);
+    }
   }
 
-  if (shouldDowngradeXHigh || shouldDowngradeMax) {
+  // ── explicit per-model capability clamp ──────────────────────────────────
+  // When the registry declares supportedThinkingEfforts for this exact model
+  // and the requested effort falls outside that vocabulary, remap to the
+  // nearest declared tier: the smallest ranked value ≥ the request, else the
+  // highest declared (a request above the ceiling lands on the ceiling).
+  // Live case: opencode-go/ox-alpha-free (Console Go) only accepts
+  // {low, high, max} — a client's reasoning_effort:"medium" reached the
+  // upstream verbatim and 400'd every turn ("[1210] This model always engages
+  // in thinking and cannot be disabled; please use low, high, or max"). The
+  // learned-caps path can't help here (it only clamps down from xhigh/max,
+  // and this error text isn't a parseable enum), so the declaration is the
+  // only source of truth. Models without an explicit declaration keep
+  // #8057's trust-the-upstream pass-through.
+  const providerModelIdForClamp = modelStr.startsWith(`${provider}/`)
+    ? modelStr.slice(provider.length + 1)
+    : modelStr;
+  const declaredEfforts = getProviderModels(provider).find(
+    (entry) =>
+      entry.id === providerModelIdForClamp || entry.aliases?.includes(providerModelIdForClamp)
+  )?.supportedThinkingEfforts;
+  const declaredRanked = (Array.isArray(declaredEfforts) ? declaredEfforts : [])
+    .map((tier) => ({ tier, rank: REASONING_EFFORT_ORDER.indexOf(tier) }))
+    .filter((x) => x.rank >= 0)
+    .sort((a, b) => a.rank - b.rank);
+  if (declaredRanked.length > 0 && !declaredEfforts!.includes(effortStr)) {
+    const requestedRank = REASONING_EFFORT_ORDER.indexOf(effortStr);
+    const nearest =
+      declaredRanked.find((x) => x.rank >= requestedRank) ??
+      declaredRanked[declaredRanked.length - 1];
     log?.info?.(
       "REASONING_SANITIZE",
-      `${provider}/${modelStr}: downgraded reasoning_effort ${effortStr} → high`
+      `${provider}/${modelStr}: mapped reasoning_effort ${effortStr} → ${nearest.tier} (model accepts ${declaredEfforts!.join("/")})`
+    );
+    return writeEffortValue(b, nearest.tier, c);
+  }
+
+  const supportsXHigh = supportsXHighEffort(provider, modelStr);
+  const supportsMax = supportsMaxEffortForProvider(provider, modelStr);
+
+  // ── xhigh handling ──────────────────────────────────────────────────────
+  // xhigh is OmniRoute-internal. Map it to the best effort the model accepts.
+  if (effortStr === "xhigh") {
+    if (supportsXHigh) return body; // model accepts xhigh natively
+    if (supportsMax) {
+      log?.info?.(
+        "REASONING_SANITIZE",
+        `${provider}/${modelStr}: mapped reasoning_effort xhigh → max`
+      );
+      return writeEffortValue(b, "max", c);
+    }
+    // Model explicitly rejects xhigh — gracefully degrade to high (its highest standard tier)
+    log?.info?.(
+      "REASONING_SANITIZE",
+      `${provider}/${modelStr}: downgraded reasoning_effort xhigh → high`
     );
     return writeEffortValue(b, "high", c);
+  }
+
+  // ── max handling ────────────────────────────────────────────────────────
+  // NEW DEFAULT: pass max through unchanged. Most reasoning-capable APIs
+  // accept max natively. Only degrade when we KNOW the model rejects it
+  // (registry has supportsXHighEffort explicitly set to false AND it's not
+  // in the supportsMax whitelist). Unknown models pass through — trust the
+  // upstream, and if it 400s the user gets a clear signal. This prevents
+  // new models from being unusable for weeks until they're whitelisted (#8057).
+  if (effortStr === "max") {
+    if (supportsMax) return body; // explicitly known to accept max
+
+    // A model that explicitly advertises its accepted tiers is safe to normalize.
+    // Keep the default pass-through for absent metadata: an unlisted model might
+    // support literal `max`, and #8057 deliberately avoids blocking such models.
+    const providerModelId = modelStr.startsWith(`${provider}/`)
+      ? modelStr.slice(provider.length + 1)
+      : modelStr;
+    // Do not fall back to a globally registered model here. Identical ids can
+    // have different upstream contracts across providers (for example, OpenCode
+    // and SenseNova both expose deepseek-v4-flash with different max support).
+    const explicitEfforts = getProviderModels(provider).find(
+      (entry) => entry.id === providerModelId || entry.aliases?.includes(providerModelId)
+    )?.supportedThinkingEfforts;
+    const maxFallback =
+      Array.isArray(explicitEfforts) && !explicitEfforts.includes("max")
+        ? ["ultra", "xhigh", "high", "medium", "low"].find((tier) => explicitEfforts.includes(tier))
+        : undefined;
+    if (maxFallback) {
+      log?.info?.(
+        "REASONING_SANITIZE",
+        `${provider}/${modelStr}: downgraded reasoning_effort max → ${maxFallback} (explicit model capability)`
+      );
+      return writeEffortValue(b, maxFallback, c);
+    }
+
+    if (!supportsXHigh) {
+      // Model is explicitly flagged as rejecting xhigh (and not in supportsMax) —
+      // it likely only accepts standard tiers. Degrade to its highest: high.
+      log?.info?.(
+        "REASONING_SANITIZE",
+        `${provider}/${modelStr}: downgraded reasoning_effort max → high (model rejects max/xhigh)`
+      );
+      return writeEffortValue(b, "high", c);
+    }
+    return body;
   }
 
   return body;

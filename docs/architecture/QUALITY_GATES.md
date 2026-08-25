@@ -9,7 +9,9 @@ It describes each gate, what it validates, which CI job it runs in, whether it u
 a ratchet baseline or a pass/fail policy, and whether it blocks the build or is advisory.
 
 For a short summary and the allowlist policy, see the "Quality Gates & Ratchets" section
-in `CLAUDE.md`.
+in `CLAUDE.md`. For the critical assessment, maturity classification, and tool-agnostic
+replication plan of the same system, see the
+[Quality Gate Playbook](../ops/QUALITY_GATE_PLAYBOOK.md).
 
 ---
 
@@ -29,10 +31,27 @@ changes:
 | `Build (advisory)`                               | Non-draft code PRs and Mergify queue branches; Node 24, `npm-ci-retry`, `check:node-runtime`, `npm run build` with `OMNIROUTE_USE_TURBOPACK=1`; no artifact upload because no downstream quality job consumes it | **Advisory** (`continue-on-error: true`; remove after one week of stable release-PR runs) |
 | `Docs Gates (fast-path)`                         | Docs/code PRs; API docs refs and docs-all                                                                                                                                                                        | Yes                                                                                       |
 | `Fast Quality Gates`                             | Code PRs; static checks, typecheck, dashboard typecheck, impacted unit tests                                                                                                                                     | Yes                                                                                       |
+| `Forgotten sibling tests`                        | Code PRs; changed modules traced to static consumers and candidate sibling tests; barrel and dynamic-import paths are reported as advisory diagnostics, with referenced allowlist exceptions                     | **Advisory**                                                                              |
 | `Vitest (fast-path)`                             | Code PRs; fast vitest suite                                                                                                                                                                                      | Yes                                                                                       |
 | `Unit Tests fast-path`                           | Code PRs; 4-shard unit suite                                                                                                                                                                                     | Yes                                                                                       |
 | `No new ESLint warnings`                         | Code PRs; suppressions-aware lint guard                                                                                                                                                                          | Yes for own-origin, advisory for forks                                                    |
 | `Merge integrity (changelog + generated skills)` | Non-draft PRs; changelog and generated skill sync                                                                                                                                                                | Yes for own-origin, advisory for forks                                                    |
+
+#### Forgotten sibling tests report
+
+`npm run check:forgotten-sibling-tests` reuses the import resolver behind the test-impact map.
+For every changed production module, it reports deterministic
+`changed module/symbol -> static consumer -> candidate sibling test` chains when the candidate
+test is absent from the pull-request diff. The Markdown summary and JSON result are retained as
+the `forgotten-sibling-tests` workflow artifact for calibration before any blocking rollout.
+
+Barrel re-exports and dynamic imports are resolution diagnostics only; they never create a
+blocking finding. Reviewed exceptions live in
+`config/quality/forgotten-sibling-allowlist.json`. Each entry must name the consumer and candidate
+test, give a specific rationale, and link a GitHub issue or pull request. Malformed entries fail
+closed. Exceptions cannot suppress a deleted candidate test or a diff that adds `.skip`/`.todo`;
+assertion weakening and other masking remain owned by the independently blocking
+`check:test-masking` gate.
 
 ### Job: `lint`
 
@@ -186,10 +205,10 @@ Runs on pull requests only.
 
 Runs after `build`. Blocks merge on failure.
 
-| Suite            | Validates                                               | Blocking                                                                   |
-| ---------------- | ------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `test:vitest`    | MCP server (94 tools), autoCombo, cache — vitest runner | Yes                                                                        |
-| `test:vitest:ui` | UI component tests — vitest runner                      | **Advisory** (`continue-on-error: true`) — failing until Fase 6A UI triage |
+| Suite            | Validates                                                | Blocking                                                                                                      |
+| ---------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `test:vitest`    | MCP server (109 tools), autoCombo, cache — vitest runner | Yes                                                                                                           |
+| `test:vitest:ui` | UI component tests — vitest runner                       | **Blocking** — pre-existing failures are explicitly excluded in `vitest.config.ts`; new failures fail the job |
 
 ### Nightly workflows (scheduled, advisory)
 
@@ -401,7 +420,7 @@ several "obvious" merges turned out to hide debt and are **not** clean drop-ins.
 
 - `check:openapi-security-tiers` (advisory) — ❌ **NOT cleanly flippable.** It exits 0 but warns that several `traffic-inspector` routes under `LOCAL_ONLY_API_PREFIXES` lack the `x-loopback-only: true` annotation. Enforcing it requires adding those annotations to `openapi.yaml` first.
 - `typecheck:noimplicit:core` (advisory) — largely subsumed by the blocking `check:type-coverage` ratchet. Flip to a ratchet or drop the redundant second `tsc` pass.
-- `test:vitest:ui` (advisory, 14 parked fails) — fix-and-block or delete; don't leave rotting.
+- `test:vitest:ui` (now **blocking**) — pre-existing failures are explicitly excluded in `vitest.config.ts` with `// #8618` tracking comments; new failures fail the job.
 - `check:secrets` (gitleaks, blocking ratchet frozen at 3 documented false-positives) — allowlist the 3 to reach 0, or demote to advisory. Overlaps GitHub native secret-scanning + `check:public-creds`.
 - `check:pr-evidence` (blocking, greps PR-body prose) — high false-positive risk; weakens Hard Rule #18 enforcement if dropped, so this is a genuine policy call.
 - `semgrep` (advisory standalone) — overlaps CodeQL for the OWASP families; wire its baseline to a ratchet or drop.

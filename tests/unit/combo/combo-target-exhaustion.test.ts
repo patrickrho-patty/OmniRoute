@@ -383,6 +383,46 @@ test("gemini 524 DOES exhaust connection (cloudflare timeout)", () => {
   assert.equal(s.exhaustedConnections.has("gemini:gemini-key-abc"), true);
 });
 
+test("generic upstream 504 without combo_target_timeout still exhausts the connection", () => {
+  const s = sets();
+  applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    result: { status: 504, headers: null },
+    fallbackResult: {},
+    errorText: "Gateway Timeout",
+    structuredError: { code: "gateway_timeout", type: "server_error" },
+    sets: s,
+  });
+  assert.ok(
+    s.exhaustedConnections.has("test-dedup-provider:conn-1"),
+    "genuine upstream 504 must retain connection-level exhaustion"
+  );
+  assert.equal(s.exhaustedProviders.size, 0);
+});
+
+test("OmniRoute combo_target_timeout 504 does NOT exhaust connection or provider", () => {
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    result: { status: 504, headers: null },
+    fallbackResult: {},
+    errorText: "Model slow-model timed out",
+    structuredError: { code: "combo_target_timeout", type: "combo_target_timeout" },
+    sets: s,
+  });
+  assert.equal(exhausted, false);
+  assert.equal(
+    s.exhaustedConnections.size,
+    0,
+    "local per-target timeout must not poison exhaustedConnections"
+  );
+  assert.equal(
+    s.exhaustedProviders.size,
+    0,
+    "local per-target timeout must not poison exhaustedProviders"
+  );
+});
+
 // #8133/#8137: auth-level failures (401/403) mean THAT connection's credentials are bad.
 // When the target carries a connectionId, only that connection is marked exhausted — sibling
 // connections on the same provider must stay eligible (#8137: whole-provider exhaustion wrongly
@@ -476,6 +516,144 @@ test("401 on per-model-quota provider marks only the failing connection (auth is
   );
 });
 
+test("Cloudflare 1010 (403 fingerprint rejection) does NOT mark auth-level exhaustion", () => {
+  // #1010 incident: urllib's Python-urllib UA is refused by Cloudflare in front of
+  // opencode.ai/zen/v1 with error_code 1010 while curl on the SAME key/body succeeds.
+  // Treating it as auth-level marks every connection exhausted and, after two such
+  // calls, flips the pool to ALL_ACCOUNTS_INACTIVE. It must fall through to the
+  // transient path (no exhaustion marking) so remaining targets still get tried.
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    errorText:
+      '[openai/deepseek-v4-flash-free] [403]: {"type":"https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/","title":"Error 1010: Access denied","status":403,"detail":"The site owner has blocked access based on your browser\'s signature.","instance":"a283cb68eb52bda8","error_code":1010,"error_name":"browser_signature_banned"}',
+    result: { status: 403 },
+    fallbackResult: { creditsExhausted: false },
+    sets: s,
+  });
+  assert.equal(exhausted, false, "a fingerprint rejection must not exhaust the connection");
+  assert.equal(
+    s.exhaustedConnections.size,
+    0,
+    "a Cloudflare 1010 must not mark the connection exhausted for remaining targets"
+  );
+  assert.equal(
+    s.exhaustedProviders.size,
+    0,
+    "a Cloudflare 1010 must not exhaust the whole provider"
+  );
+});
+
+test("plain 403 still marks auth-level exhaustion (1010 detection is specific)", () => {
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    errorText: "you do not have permission to access this model",
+    result: { status: 403 },
+    fallbackResult: { creditsExhausted: false },
+    sets: s,
+  });
+  assert.equal(exhausted, true);
+  assert.ok(s.exhaustedConnections.has("test-dedup-provider:conn-1"));
+});
+
+test("Cloudflare 1010 arriving via structuredError (not raw errorText) still avoids auth exhaustion", () => {
+  // The 1010 signal may surface in structuredError.message (nested JSON) while errorText
+  // stays generic. The auth-level guard must inspect both, or the #1010 failure recurs.
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    errorText: "[403] forbidden",
+    structuredError: { code: "browser_signature_banned" },
+    result: { status: 403 },
+    fallbackResult: { creditsExhausted: false },
+    sets: s,
+  });
+  assert.equal(exhausted, false, "structuredError 1010 must not mark auth-level exhaustion");
+  assert.equal(s.exhaustedConnections.size, 0);
+});
+
+test("Cloudflare 1010 in structuredError.code survives a generic structuredError.message (no || short-circuit)", () => {
+  // Review finding: structuredError.message being a generic value (e.g. "Forbidden") must
+  // NOT mask a 1010/browser_signature_banned signal carried in .code. The guard must check
+  // every candidate string, not short-circuit on the first truthy one.
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    errorText: "You do not have permission",
+    structuredError: { message: "Forbidden", code: "browser_signature_banned" },
+    result: { status: 403 },
+    fallbackResult: { creditsExhausted: false },
+    sets: s,
+  });
+  assert.equal(exhausted, false, "a code-carried 1010 must not be masked by a generic message");
+  assert.equal(s.exhaustedConnections.size, 0);
+});
+
+test("Cloudflare 1010 via structuredError.type still avoids auth exhaustion", () => {
+  // Round 6 finding: the guard promised a normalized structuredError.type of "1010" is
+  // matched directly, but only code/type named browser_signature_banned were checked. A 403
+  // whose only fingerprint signal is type === "1010" fell through to auth-level exhaustion.
+  // combo.ts coerces upstream numeric codes via String() before building structuredError, so
+  // the string form is the runtime contract this path must honor.
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    errorText: "Forbidden",
+    structuredError: { message: "generic", type: "1010" },
+    result: { status: 403 },
+    fallbackResult: { creditsExhausted: false },
+    sets: s,
+  });
+  assert.equal(exhausted, false, 'a 403 with structuredError.type "1010" must not mark auth-level');
+  assert.equal(s.exhaustedConnections.size, 0);
+});
+
+test("structuredError code/type fingerprint match is case-insensitive like the text matcher", () => {
+  // Round 6 finding: fingerprintCode compared code/type case-sensitively while
+  // isCloudflareFingerprintRejection lowercases text — a 403 carrying
+  // "BROWSER_SIGNATURE_BANNED" (all-caps from a normalizing gateway) was treated as
+  // auth-level. Normalize code/type before comparing, mirroring the text matcher.
+  for (const structuredError of [
+    { code: "BROWSER_SIGNATURE_BANNED" },
+    { type: "Browser_Signature_Banned" },
+    { code: "Fingerprint_Rejection" },
+  ] as const) {
+    const s = sets();
+    const exhausted = applyComboTargetExhaustion(target(), {
+      ...baseOpts,
+      errorText: "Forbidden",
+      structuredError,
+      result: { status: 403 },
+      fallbackResult: { creditsExhausted: false },
+      sets: s,
+    });
+    assert.equal(exhausted, false, "a mixed-case fingerprint token must not mark auth-level");
+    assert.equal(s.exhaustedConnections.size, 0);
+  }
+});
+
+test("Cloudflare 1010 inside a non-normalized structuredError.code still avoids auth exhaustion", () => {
+  // Round 7 finding: a gateway can stuff the raw Cloudflare body ("error_code: 1010") into
+  // the code field verbatim, so the exact token allowlist misses it and the shared text
+  // matcher never saw code/type. Feed every candidate string to the text matcher.
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    errorText: "Forbidden",
+    structuredError: { message: "generic", code: "error_code: 1010" },
+    result: { status: 403 },
+    fallbackResult: { creditsExhausted: false },
+    sets: s,
+  });
+  assert.equal(
+    exhausted,
+    false,
+    "a 403 whose structuredError.code embeds error_code: 1010 must not mark auth-level"
+  );
+  assert.equal(s.exhaustedConnections.size, 0);
+});
+
 // #8137 regression: a SIBLING connection on the SAME provider must NOT be skipped when a
 // DIFFERENT connection on that provider returned 401/403 — proves the fix at the call-site
 // level (getExhaustedTargetSkipReason-style check), not just the raw Set contents above.
@@ -503,4 +681,21 @@ test("sibling connection on the same provider is NOT skipped after a different c
   );
   // The failing connection itself IS marked.
   assert.ok(s.exhaustedConnections.has(`${failingTarget.provider}:${failingTarget.connectionId}`));
+});
+
+test("401 carrying a real fingerprint signal still marks auth-level (exemption is 403-only)", () => {
+  // Round 4 finding: Cloudflare 1010 is a 403-only CDN signal. A 401 invalid-credential
+  // whose errorText carries a genuinely Cloudflare-keyed 1010 (error_code: 1010) must still
+  // mark auth-level exhaustion on the 401 — only a 403 earns the fingerprint exemption.
+  // Otherwise a 401 echoing an upstream 1010 would leave a bad credential retryable.
+  const s = sets();
+  const exhausted = applyComboTargetExhaustion(target(), {
+    ...baseOpts,
+    errorText: "error_code: 1010, token expired",
+    result: { status: 401 },
+    fallbackResult: { creditsExhausted: false },
+    sets: s,
+  });
+  assert.equal(exhausted, true, "a 401 with a fingerprint-looking body must still mark auth-level");
+  assert.ok(s.exhaustedConnections.has("test-dedup-provider:conn-1"));
 });

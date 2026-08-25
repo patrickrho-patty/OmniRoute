@@ -13,6 +13,7 @@
 
 import { FORMATS } from "../translator/formats.ts";
 import { hasAnyReasoningSignal } from "./reasoningFields.ts";
+import { getRegistryEntry } from "../config/providerRegistry.ts";
 
 type SSEPayloadOptions = {
   eventType?: string;
@@ -212,9 +213,17 @@ export function createSSEDataLineNormalizer(): SSEDataLineNormalizer {
   };
 }
 
-export function createSSEEventPrefixBuffer(): SSEEventPrefixBuffer {
+export function createSSEEventPrefixBuffer(options?: {
+  forwardEvent?: boolean;
+}): SSEEventPrefixBuffer {
   let lines: string[] = [];
   let emitted = false;
+  // The `event:` line is only part of the SSE framing for protocols that define
+  // it (OpenAI Responses API, Claude Messages API). For a plain OpenAI
+  // Chat-Completions-format client there is no `event:` field at all, so it must
+  // not be forwarded. Defaults to true to preserve prior behavior for client
+  // formats that declare no explicit preference (#10017).
+  const forwardEvent = options?.forwardEvent !== false;
   const hasUnemitted = () => lines.length > 0 && !emitted;
   const prefix = (output: string) => {
     if (!hasUnemitted()) return output;
@@ -240,6 +249,14 @@ export function createSSEEventPrefixBuffer(): SSEEventPrefixBuffer {
       return line.startsWith("data:") ? prefix(output) : output;
     },
     remember(line) {
+      const trimmed = line.trim();
+      // `id:`/`retry:` and bare `:` comment lines are not part of any of the
+      // OpenAI Chat-Completions, OpenAI Responses, or Claude Messages SSE
+      // protocols — never buffer (and thus never re-forward) them (#10017).
+      if (/^(?::|id:|retry:)/i.test(trimmed)) return;
+      // `event:` framing is only forwarded for protocols that define it; drop it
+      // for plain OpenAI Chat-Completions-format clients.
+      if (/^event:/i.test(trimmed) && !forwardEvent) return;
       lines.push(line);
       emitted = false;
     },
@@ -522,4 +539,25 @@ export function hasActiveDeltaValue(value: unknown): boolean {
     return Object.values(value).some((entry) => hasActiveDeltaValue(entry));
   }
   return value !== null && value !== undefined;
+}
+
+// Claude SSE content_block_start normalization for providers (e.g. MiniMax) whose thinking
+// blocks omit `signature` on the opening event. Strict Anthropic Messages clients deserialize
+// this field before a later signature_delta arrives — inject only the empty envelope
+// placeholder, never synthesize/replace a provider-supplied signature.
+export function injectThinkingSignature(
+  parsed: { type?: string; content_block?: { type?: string; signature?: string } },
+  provider: string | null
+): boolean {
+  if (
+    provider !== null &&
+    getRegistryEntry(provider)?.ensureThinkingSignature === true &&
+    parsed.type === "content_block_start" &&
+    parsed.content_block?.type === "thinking" &&
+    parsed.content_block.signature === undefined
+  ) {
+    parsed.content_block.signature = "";
+    return true;
+  }
+  return false;
 }

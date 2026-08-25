@@ -8,6 +8,869 @@
 
 ---
 
+## [3.8.51] — TBD
+
+_Living section — cycle opened at the v3.8.50 freeze (parallel-cycle model). Bullets are aggregated from `changelog.d/` fragments at each `/generate-release` phase._
+
+### ✨ New Features
+
+### 🐛 Bug Fixes
+
+### 📝 Maintenance
+
+---
+
+
+## [3.8.50] — TBD
+
+_Living section — regenerated 2026-08-12 from all cycle commits (cycle open `ed2db6cb19` → tip). Bullets carry the merged PR and its author; direct pushes listed separately._
+
+### ✨ New Features
+- **feat(core):** add Layer A capability filter at router (#5696)
+- **feat(providers):** add DeepAI as paid API-key image provider ([#6671](https://github.com/diegosouzapw/OmniRoute/issues/6671))
+- **feat(providers):** add Naga.ac and ChatAnywhere aggregator gateway providers (#6674 — thanks @chirag127)
+- **feat(api):** add response content encoding verification — confirms Next.js compress:true and documents stripStaleForwardingHeaders behavior ([#6736](https://github.com/diegosouzapw/OmniRoute/issues/6736))
+- **feat(api):** add plugins marketplace install endpoint with checksum verification ([#6752](https://github.com/diegosouzapw/OmniRoute/issues/6752))
+- **feat(chatgpt-web):** harden prompt-emulated tool contract for thinking models (#7679 — thanks @horacecar)
+- **docs:** add management authentication terminology guide ([#7786](https://github.com/diegosouzapw/OmniRoute/issues/7786))
+- feat(a2a): Conductor bridge — long-lived SSE consumer that mirrors OmniConductor hub tasks into the A2A TaskManager (explicit `canceled→cancelled` mapping with tests, persisted `last_event_id` cursor in the `key_value` table, exponential-backoff reconnection; opt-in via `CONDUCTOR_HUB_URL`/`CONDUCTOR_HUB_TOKEN`) ([#8080](https://github.com/diegosouzapw/OmniRoute/pull/8080))
+- feat(a2a): the Agent Card (`/.well-known/agent.json`) now announces skills derived from the OmniConductor fleet (`GET /v1/runners` OASF capabilities — one skill per online CLI profile + declared fleet skills), cached ~60s and fail-open when the hub is unset/offline ([#8119](https://github.com/diegosouzapw/OmniRoute/pull/8119))
+- feat(dashboard): "Conductor" panel — OmniConductor fleet (runners + task queue) live via server-side proxy routes (`/api/conductor/*`, management auth, hub token never reaches the browser), task detail with manifest/council and cancel-with-confirmation; sidebar entry under Tools ([#8221](https://github.com/diegosouzapw/OmniRoute/pull/8221))
+- feat(dashboard): Faro chat with voice on the Conductor panel — text via `/api/conductor/ask` (server-side proxy to the spokesperson; hub credential never reaches the browser; `pending` → Sim/Não confirmation buttons) and a guaranteed push-to-talk voice cycle (MediaRecorder → `/api/v1/audio/transcriptions` → ask → `/api/v1/audio/speech` playback), with operator-configurable STT/TTS models ([#8222](https://github.com/diegosouzapw/OmniRoute/pull/8222))
+- feat(a2a): inbound delegation to the OmniConductor fleet — `POST /api/a2a/tasks` translates an external A2A task into the hub's `POST /v1/tasks` (fleet skills only, repo required, `CONDUCTOR_ORCHESTRATOR_TOKEN` with hub-token fallback); states flow back through the SSE→A2A mirror ([#8223](https://github.com/diegosouzapw/OmniRoute/pull/8223))
+- **docs:** add low-memory/small VPS optimization guide ([#8237](https://github.com/diegosouzapw/OmniRoute/issues/8237))
+- **feat(providers):** add connection-level custom upstream headers via `provider_specific_data.customHeaders` — applied to every request through that connection, with model-level headers overriding on the same case-insensitive name. (#8369 — thanks @Benson-mk)
+- feat(copilot): add approval gate for runOmniRouteCli commands (#8461)
+- feat(ci): add windows-latest leg to test-bun-sqlite job (#8468)
+- **feat(electron):** Desktop app can now attach to an already-running OmniRoute server (e.g. a Docker/OrbStack container) instead of always spawning its own bundled server — configurable via the tray's "Remote Server → Connect to Remote Server…" or the `OMNIROUTE_REMOTE_URL` env var ([#8799](https://github.com/diegosouzapw/OmniRoute/pull/8799)) — thanks @soulhakr
+- **Database**: The `node:sqlite` fallback now uses SQLite's native backup API and real immediate write transactions, improving backup consistency and concurrent-write behavior when `better-sqlite3` is unavailable ([#8870](https://github.com/diegosouzapw/OmniRoute/pull/8870)) — thanks @artickc
+- **feat(models):** add exact per-model `context_length`, `max_input_tokens`, and `max_output_tokens` overrides across model discovery and runtime enforcement, with automatic migration from the retired output-only `max_token` key ([#8908](https://github.com/diegosouzapw/OmniRoute/pull/8908)) — thanks @xz-dev
+- **Providers**: expands the Novita AI catalog from a single Llama 3.1 8B entry to 19 curated serving models (DeepSeek V4, Kimi K3, GLM 5.2, MiniMax M3, Qwen3.7 Max, Qwen3 Coder 480B, MiMo V2.5 Pro, gpt-oss-120b, Gemma 4 31B and more), each carrying its real context window, output cap and reasoning flag from the live `/openai/v1/models` listing, and each vision flag confirmed by an actual image request rather than the listing's self-reported modalities ([#8913](https://github.com/diegosouzapw/OmniRoute/pull/8913)) — thanks @jax-novita
+- **feat(providers):** native xAI Agent Tools passthrough on `/v1/responses` for `xai` / `xai-oauth` (`xao`) — forward `web_search` + `x_search` to `api.x.ai` instead of rewriting or rejecting them ([#8964](https://github.com/diegosouzapw/OmniRoute/issues/8964))
+- **feat(providers): add UnoRouter provider** — UnoRouter is an OpenAI-compatible routing gateway supporting hundreds of models. It is now registered as an API-key provider. ([#8978](https://github.com/diegosouzapw/OmniRoute/issues/8978))
+- **feat(sse):** deprecated the legacy `gemini-cli` **upstream provider**. It was not routable (no registry entry, no executor), yet the scheduler kept refreshing its token against Google — maintaining a credential that could never serve a request. A stored connection now becomes terminal with a legible reason and a working migration path: re-add the account under `gemini`, which uses the same Google OAuth client. The `gemini-cli` **client identity** (requests arriving *from* the Gemini CLI, issue #7034) is untouched ([#8980](https://github.com/diegosouzapw/OmniRoute/pull/8980))
+- Add a default-off connection setting for Codex, OpenAI, and OpenAI-compatible Responses API providers that preserves client-supplied `reasoning.encrypted_content` items for replay, including per-target combo routing.
+- Omit opaque encrypted reasoning values from persisted call logs while retaining compact diagnostic markers. (#9000)
+- **feat(providers):** add Regolo AI OpenAI-compatible provider ([#9031](https://github.com/diegosouzapw/OmniRoute/issues/9031))
+- **feat(db):** add provider-scoped model aliases that survive rediscovery ([#9068](https://github.com/diegosouzapw/OmniRoute/issues/9068))
+- feat(cursor): surface a dismissible dashboard banner suggesting `cursor-agent` installation when it isn't available, so Cursor connections needing periodic manual reconnection aren't a silent surprise (#9173)
+- feat(cursor): proactively renew Cursor sessions before their ~24h token expires via the token health-check sweep, nudging `cursor-agent` and re-scraping IDE/agent credential sources so connections stop silently expiring (#9173)
+- **feat(codex):** accept parenthesized GPT-5.6 reasoning overrides. (thanks @seakleangnhak) ([#9208](https://github.com/diegosouzapw/OmniRoute/pull/9208))
+- **feat(usage):** surface Claude thinking token counts to clients. (thanks @luoyide) ([#9214](https://github.com/diegosouzapw/OmniRoute/pull/9214))
+- **feat(ollama):** add Ollama Local embedding support via /v1/embeddings. (thanks @HaoNgo232) ([#9225](https://github.com/diegosouzapw/OmniRoute/pull/9225))
+- feat(images): execute full combo strategy + fallback in /v1/images/generations (#9239)
+
+  Adds open-sse/services/imageCombo.ts that expands combo targets, filters to images-capable, executes the priority strategy with handleImageGeneration per target, and returns the first success or last failure. Route patches detect combo names before model resolution and divert to the new execution path.
+- feat: make forwarded upstream response-header budget configurable via env var (#9243)
+- **feat(providers):** filter provider detail connections server-side while preserving full-page search and pagination. (thanks @RobertsXML) ([#9247](https://github.com/diegosouzapw/OmniRoute/pull/9247))
+- **feat(providers):** make video_url passthrough configurable per provider/model via compat override ([#9248](https://github.com/diegosouzapw/OmniRoute/issues/9248)) — thanks @HellFiveOsborn
+- **feat(gemini):** recursive type:object injection in schema normalizer + empty choices interceptor for streaming (#9268)
+- **feat(dashboard):** render a conditional "Get API key" link on the provider detail page, surfaced from the existing `notice.apiKeyUrl` / `notice.signupUrl` catalog metadata (e.g. `pioneer`, `jina`, `together`). The link opens in a new tab and is hidden when neither URL is present, so existing providers are unaffected. Tracks the notice field in `ProviderCatalogMetadata` ([#9270](https://github.com/diegosouzapw/OmniRoute/pull/9270))
+- **feat(providers):** accept JSON cookie objects in normalizeSessionCookieHeader (#9284 — thanks @AIB1TAL0S)
+- **feat(providers):** support max reasoning effort for opencode-zen DeepSeek models (#9318)
+- **feat(providers):** expanded the NanoGPT (`nano-gpt.com`) upstream provider from chat-only to the full OpenAI-compatible endpoint surface: audio transcriptions (`/api/v1/audio/transcriptions`), audio speech (`/api/v1/audio/speech`), video generation (`/api/v1/video/generations`), embeddings (`/v1/embeddings`), and the Responses API (`responsesBaseUrl` → `/api/v1/responses`) ([#9322](https://github.com/diegosouzapw/OmniRoute/issues/9322))
+- **feat(sse):** combo `system_message` supports server-side `{{MODEL_ID}}`, `{{PROVIDER_ID}}`, `{{ACCOUNT}}` and `{{FINGERPRINT}}` template expansion from the actually-routed target ([#5501](https://github.com/diegosouzapw/OmniRoute/issues/5501))
+- **feat(sse):** template expansion covers the standard dispatch loop, round-robin and pinned context-cache sessions; fusion, chaos, pipeline and nested-execute strategies do not expand yet ([#5501](https://github.com/diegosouzapw/OmniRoute/issues/5501)) ([#9414](https://github.com/diegosouzapw/OmniRoute/pull/9414)) — thanks @maxmad64bis
+- **feat(sse):** New-API/One-API/Sub2API aggregator balance detection for compatible provider nodes — when the "Aggregator Gateway" toggle is enabled, OmniRoute queries the aggregator's `/api/user/self` endpoint to detect the account balance; the dashboard shows a balance badge and quota-preflight routing skips exhausted accounts. Gated by the `NEWAPI_AGGREGATOR_BALANCE` feature flag (default: off), with a custom `quotaPerUnit` override for aggregators that use a different rate than the default 500000 units/$1 ([#9415](https://github.com/diegosouzapw/OmniRoute/issues/9415))
+- **feat(catalog):** added opt-in settings `hideAutoCombos` and `hideNoThinkVariants` (default off) to filter built-in `auto/*` virtual combos and `no-think/*` gateway variants from the `/v1/models` catalog — user-defined combos and original provider models stay listed; routing is unaffected ([#9418](https://github.com/diegosouzapw/OmniRoute/issues/9418))
+- **feat(opencode-plugin):** added `features.visibleModels` (allowlist) and `features.hiddenModels` (blocklist) to `@omniroute/opencode-plugin` — curate the OpenCode TUI/CLI model picker from 600+ catalog entries down to an operator-defined ID list that persists in `opencode.json` across config resets ([#9473](https://github.com/diegosouzapw/OmniRoute/issues/9473))
+- **feat(providers):** add native DeepSeek V4 Flash and Pro thinking-effort aliases for their documented per-model tiers, including Combo Builder exposure ([#9485](https://github.com/diegosouzapw/OmniRoute/pull/9485)).
+- feat(opencode-plugin): warm catalog startup from disk snapshot + parallel refresh (#9490)
+
+  The config-shim hook now reads the last disk snapshot before fetching, so the provider registers immediately with the last-known-good catalog (~1-2s vs ~30s on a warm gateway). All six fetchers run concurrently via Promise.allSettled instead of sequentially. A failed refresh keeps the snapshot (no overwrite). An in-flight guard prevents concurrent refreshes for the same cache key. The features.diskCache: false opt-out disables the warm read entirely.
+- **feat(models):** Test All's "Auto-hide failed models" no longer hides quota errors — daily-quota-exhausted and credits-exhausted responses are now classified via the routing path's existing quota detectors, so an evening Test All on a free-tier provider no longer silently wipes the catalog. Quota results stay visible with a distinct amber badge ([#9511](https://github.com/diegosouzapw/OmniRoute/issues/9511))
+- Add an advisory forgotten-sibling-tests report to pull-request quality checks. The report traces changed modules through their static consumers to candidate sibling tests, while keeping barrel and dynamic-import cases non-blocking and requiring reviewed, referenced exceptions. (#9530)
+- feat(providers): add Muse Code CLI provider preset (#9544)
+- feat(plugins): expose client request headers in plugin onRequest/onResponse context (#9570)
+- **feat(plugins):** add onStreamComplete built-in event exposing streaming usage and timing (#9571)
+
+  Adds a new `onStreamComplete` plugin event that fires after an SSE stream is fully
+  consumed, carrying usage token counts and timing metrics (latency, TTFT). Built-in
+  events now include `onStreamComplete` as a fire-and-forget lifecycle hook.
+
+  Payload: `status`, `usage` (prompt_tokens, completion_tokens, reasoning_tokens,
+  cache_read_input_tokens, cache_creation_input_tokens), `timing` (latencyMs, ttft),
+  `model`, `provider`, `errorCode`.
+
+  Non-breaking — existing `onResponse` hooks with `{ streamed: true }` remain unchanged.
+- **feat(audio):** Soniox STT + TTS provider (`sx`) — async speech-to-text (`stt-async-v5`, `stt-async-v4`) and real-time text-to-speech (`tts-rt-v1`) ([#9579](https://github.com/diegosouzapw/OmniRoute/pull/9579))
+- Show cache-read and cache-write token counts in request log rows and details when providers
+  report them. (#9620)
+- feat(memory): support custom OpenAI-compatible endpoints for Memory embeddings (#9622)
+- feat(resilience): add an opt-in watchdog for persistently slow upstream streams (#9709)
+- **Onboarding:** add an explicit, reviewable one-click setup for eligible no-auth LLM providers,
+  with per-provider caution links, selectable confirmation, idempotent creation, and safe partial
+  retries. Existing provider connections are never changed and setup completion never enables
+  providers silently. ([#9752](https://github.com/diegosouzapw/OmniRoute/issues/9752))
+- **feat(settings):** add a dedicated Modality Bridge settings page with Vision controls, runtime stats, and URL-addressable Audio and Video tabs ([#9782](https://github.com/diegosouzapw/OmniRoute/pull/9782))
+- **feat(modality bridge):** Transcribe chat audio for text-only models through the existing speech-to-text providers, with configurable limits, caching, runtime stats, and a dashboard self-test ([#9807](https://github.com/diegosouzapw/OmniRoute/pull/9807))
+- **feat(memory):** `PROVIDERS_SYSTEM_MUST_BE_FIRST` (the #6135/#7293 fix for backends that reject any non-leading `system` message) was hardcoded to `xiaomi-mimo`/`mimo`. Added `OMNIROUTE_STRICT_SYSTEM_PROVIDERS` (comma-separated provider ids) so self-hosted deployments can flag additional strict backends — e.g. a custom OpenAI-compatible connection in front of a self-hosted Qwen3.5+/3.6 model — without forking and rebuilding the image ([#9924](https://github.com/diegosouzapw/OmniRoute/pull/9924))
+- **feat(api):** API keys can disable prompt compression from the dashboard, including for clients that cannot send custom headers ([#10001](https://github.com/diegosouzapw/OmniRoute/pull/10001)) — thanks @shixi-li
+- **Add cliproxy provider exposure controls and manifest injection** (#7329) — thanks @KooshaPari
+- **feat(infra): add a systemd autostart unit for Linux** (#8635)
+- **feat(db): add node sqlite adapter parity** ([#8871](https://github.com/diegosouzapw/OmniRoute/pull/8871)) — thanks @epsilonode
+- **feat(alibaba): free-tier routing with live quota sync** ([#8893](https://github.com/diegosouzapw/OmniRoute/pull/8893)) — thanks @AndrianBalanescu
+- **feat(oauth): add Raycast Pro provider with local auto-import** ([#8895](https://github.com/diegosouzapw/OmniRoute/pull/8895)) — thanks @AndrianBalanescu
+- **feat(executors): add isolated Claude Code bridge over Devin ACP** ([#8914](https://github.com/diegosouzapw/OmniRoute/pull/8914)) — thanks @McLuck
+- **feat: improve provider quota layouts** ([#8916](https://github.com/diegosouzapw/OmniRoute/pull/8916)) — thanks @apoapostolov
+- **feat(mcp): add omniroute_create_combo tool** ([#8925](https://github.com/diegosouzapw/OmniRoute/pull/8925)) — thanks @lucasmellos
+- **feat(ci): gate the publish on clean-install AND upgrade-over-previous** ([#8953](https://github.com/diegosouzapw/OmniRoute/pull/8953))
+- **feat(providers): add Conol (conol.ai) web session provider** ([#8974](https://github.com/diegosouzapw/OmniRoute/pull/8974)) — thanks @artickc
+- **Feat/combo provider wise model test** ([#9011](https://github.com/diegosouzapw/OmniRoute/pull/9011)) — thanks @JoshimOfficial
+- **feat(model-alias): add runtime Model Alias Resolver middleware** ([#9020](https://github.com/diegosouzapw/OmniRoute/pull/9020)) — thanks @Egorich-print
+- **feat(i18n): complete zh-CN localization for compression engines and dashboard UI** ([#9038](https://github.com/diegosouzapw/OmniRoute/pull/9038)) — thanks @qianze0628
+- **feat: Cheaper Inference provider (chat + native Responses + images, sponsor rail 2nd)** ([#9043](https://github.com/diegosouzapw/OmniRoute/pull/9043))
+- **feat(providers): add comprehensive support for self-hosted Firecrawl via FIRECRAWL_BASE_URL and custom base URLs** ([#9052](https://github.com/diegosouzapw/OmniRoute/pull/9052)) — thanks @mad-gooze
+- **feat(dahl): add manual API key option alongside auto-generated token** ([#9077](https://github.com/diegosouzapw/OmniRoute/pull/9077)) — thanks @pizzav-xyz
+- **feat(ci): G0 — reforça o trilho PR→release/**** ([#9108](https://github.com/diegosouzapw/OmniRoute/pull/9108))
+- **feat(providers): native xAI Agent Tools passthrough for /v1/responses** ([#9111](https://github.com/diegosouzapw/OmniRoute/pull/9111)) — thanks @VXNCXNX
+- **feat(.50): completa itens restantes — G13, G14, gap34, docs, R0.2** ([#9126](https://github.com/diegosouzapw/OmniRoute/pull/9126))
+- **feat(g1): rewrite combo-strategy check to runtime-import approach** ([#9131](https://github.com/diegosouzapw/OmniRoute/pull/9131))
+- **feat(test:scoped): TIA-based local test runner (#8084 D1)** ([#9143](https://github.com/diegosouzapw/OmniRoute/pull/9143))
+- **feat(docker): publish next from active release branches** ([#9181](https://github.com/diegosouzapw/OmniRoute/pull/9181)) — thanks @Zartharas
+- **feat(usage): show Grok Build billing limits** ([#9205](https://github.com/diegosouzapw/OmniRoute/pull/9205)) — thanks @xz-dev
+- **feat(models): functional gateway mirrors + fix synced-substitution** ([#9217](https://github.com/diegosouzapw/OmniRoute/pull/9217))
+- **feat(admission): add adaptive overload protection for LLM routes** ([#9262](https://github.com/diegosouzapw/OmniRoute/pull/9262)) — thanks @xz-dev
+- **feat(i18n): update italian translations** ([#9280](https://github.com/diegosouzapw/OmniRoute/pull/9280)) — thanks @Gecky2102
+- **feat(dashboard): persist provider screen filters to URL for bookmarking** ([#9307](https://github.com/diegosouzapw/OmniRoute/pull/9307)) — thanks @swingtempo
+- **feat(api-manager): add provider-level model permissions** ([#9313](https://github.com/diegosouzapw/OmniRoute/pull/9313)) — thanks @xz-dev
+- **feat(warmup): proactive Claude warmup scheduler (#8848)** ([#9449](https://github.com/diegosouzapw/OmniRoute/pull/9449)) — thanks @HouMinXi
+- **feat(infra): add systemd autostart unit for Linux (#8635)** ([#9466](https://github.com/diegosouzapw/OmniRoute/pull/9466))
+- **feat(lib): make MODELS_DEV_SYNC_ENABLED actually control the sync** ([#9483](https://github.com/diegosouzapw/OmniRoute/pull/9483)) — thanks @HouMinXi
+- **feat(radar): flag-gated signed free-model catalog overlay** ([#9515](https://github.com/diegosouzapw/OmniRoute/pull/9515))
+- **feat(compression): add Russian language pack** ([#9581](https://github.com/diegosouzapw/OmniRoute/pull/9581)) — thanks @vinogradovnet
+- **feat(providers): integrate wave4 free-tier gateways** ([#9584](https://github.com/diegosouzapw/OmniRoute/pull/9584))
+- **feat(providers): add Zylo UnoRouter and Poolside registries** ([#9585](https://github.com/diegosouzapw/OmniRoute/pull/9585))
+- **feat(providers): add FastRouter AnyAPI and ElectronHub registries** ([#9586](https://github.com/diegosouzapw/OmniRoute/pull/9586))
+- **feat(providers): add LLMGateway and LLM Kiwi registries** ([#9587](https://github.com/diegosouzapw/OmniRoute/pull/9587))
+- **feat(providers): add FreeInference registry** ([#9594](https://github.com/diegosouzapw/OmniRoute/pull/9594))
+- **feat(radar): contributor + supporter claim buttons on the activation screen (F4/T7)** ([#9710](https://github.com/diegosouzapw/OmniRoute/pull/9710))
+- **feat(radar): paste-key input on the activation screen (F4)** ([#9758](https://github.com/diegosouzapw/OmniRoute/pull/9758))
+- **feat(guardrails): modality bridge core — vision mode/task-aware/cache/input_image + modalityBridge settings** ([#9759](https://github.com/diegosouzapw/OmniRoute/pull/9759))
+- **feat(radar): referrals from standalone /v1/referrals feed (no 30-day delay)** ([#9762](https://github.com/diegosouzapw/OmniRoute/pull/9762))
+- **feat: generic OpenAI-compatible video custom provider** ([#9844](https://github.com/diegosouzapw/OmniRoute/pull/9844), original [#9818](https://github.com/diegosouzapw/OmniRoute/pull/9818)) — thanks @oyi77
+- **feat(logging): make the chat-log truncation limit configurable, bumped default 128x** ([#9863](https://github.com/diegosouzapw/OmniRoute/pull/9863), original [#9738](https://github.com/diegosouzapw/OmniRoute/pull/9738)) — thanks @hartmark
+- **feat(logging): bump CHAT_LOG_ARRAY_TAIL_ITEMS default 24 -> 128** ([#9864](https://github.com/diegosouzapw/OmniRoute/pull/9864), original [#9735](https://github.com/diegosouzapw/OmniRoute/pull/9735)) — thanks @hartmark
+- **feat(oauth): add Openference OAuth and API key provider integration** ([#9869](https://github.com/diegosouzapw/OmniRoute/pull/9869), original [#9722](https://github.com/diegosouzapw/OmniRoute/pull/9722)) — thanks @AnhLead
+- **feat(src): proxy-pool-toolbar-minor-improvements** ([#9870](https://github.com/diegosouzapw/OmniRoute/pull/9870), original [#9718](https://github.com/diegosouzapw/OmniRoute/pull/9718)) — thanks @AgnesRiber
+- **feat(resilience): expose providerQuotaOverrides via /api/resilience** ([#9871](https://github.com/diegosouzapw/OmniRoute/pull/9871), original [#9714](https://github.com/diegosouzapw/OmniRoute/pull/9714)) — thanks @herjarsa
+- **feat(responses): add encrypted reasoning replay opt-in** ([#9876](https://github.com/diegosouzapw/OmniRoute/pull/9876), original [#9601](https://github.com/diegosouzapw/OmniRoute/pull/9601)) — thanks @jackjinke
+- **feat(resilience): add per-account resilience connections view (API + dashboard)** ([#9880](https://github.com/diegosouzapw/OmniRoute/pull/9880), original [#9510](https://github.com/diegosouzapw/OmniRoute/pull/9510)) — thanks @HouMinXi
+- **feat(db): add a job registry for scheduled background work** ([#9886](https://github.com/diegosouzapw/OmniRoute/pull/9886), original [#9631](https://github.com/diegosouzapw/OmniRoute/pull/9631)) — thanks @HouMinXi
+- **feat(telegram): Mini App chat bridge — initData auth, update webhook, chat proxy** ([#9907](https://github.com/diegosouzapw/OmniRoute/pull/9907), original [#9812](https://github.com/diegosouzapw/OmniRoute/pull/9812)) — thanks @benzntech
+- **feat(cursor): exclusive live listing + verbatim AgentRun model ids** ([#9911](https://github.com/diegosouzapw/OmniRoute/pull/9911)) — thanks @yansigit
+- **feat(usage): add Command Code quota tracking** ([#9921](https://github.com/diegosouzapw/OmniRoute/pull/9921)) — thanks @yansigit
+- **feat(combo): add quota-only priority fallback** ([#9983](https://github.com/diegosouzapw/OmniRoute/pull/9983)) — thanks @xz-dev
+- **feat(onboarding): add one-click free provider setup** ([#10014](https://github.com/diegosouzapw/OmniRoute/pull/10014))
+- **feat(admission) — direct pushes:** adaptive overload/pressure controls with shared admission wired across the LLM routes, plus mutation-test registration for the capability-filter suite
+- **feat(agentrouter) — direct pushes:** support Claude and Codex protocols — infer the protocol from the client endpoint and honor the alternate protocol through the chat pipeline
+- **feat(providers) — direct pushes:** ChatGPT Web session credential guide with a Cookie Editor fast-path (canonical chromewebstore install link) and web-session fast-path test coverage
+
+### 🐛 Bug Fixes
+
+- **executors**: fix internal timeout misclassified as client disconnect (499) for 7 niche executors — pass TimeoutError reason to controller.abort() (#8197 side-finding)
+- test(combo): guard auto/best-free never leaks the combo name as a model (#7754)
+- fix(vision-bridge): describe-model no longer returns unreachable "openai/gpt-4o-mini" when every vision-capable provider is unreachable on the instance — returns null instead and surfaces a clear error (#8430)
+- fix(vision-bridge): validate fixedModel against usable credentials before short-circuiting in getBestVisionModel, so the default "openai/gpt-4o-mini" is not unconditionally selected when no OpenAI connection exists (#8430)
+- fix(vision-bridge): in the combo describe path, replace raw images with an error text stub when all describe attempts fail, instead of forwarding images to a confirmed non-vision backend that would reject them with an opaque serde error (#8430)
+- fix(quality): add base-relative file-size check so inherited drift does not red innocent PRs (#8522)
+- fix(ci): aggregate all fast-gates into non-fail-fast loop so one red gate no longer masks later gates (#8542)
+- fix(tests): make machineId tests macOS-compatible by stubbing ioreg in test helper (#8577)
+- fix(scripts): replace bash 4+ readarray with compatible while-read loop in restore-policies.sh (#8577)
+- fix(cli): enable systray2 on Windows for Norton-friendly tray (#8609)
+- fix(executor): guard claude/anthropic buildHeaders against empty credentials and extend dual-Bearer parity for third-party baseUrls (#8653)
+- fix(providers): gate premium opencode-zen/opencode-go models behind an API key (#8681)
+- **fix(api):** make `/v1/models` stale refresh response-safe and generation-safe, with narrow synced-model invalidation ([#8728](https://github.com/diegosouzapw/OmniRoute/pull/8728)). Related to #8697.
+- fix(yuanbao-web): accept `content` field in SSE text events (upstream format change) (#8739)
+- fix(build): remove misleading open-sse/package.json facade and add workspace typecheck gate (#8781)
+- fix(errorClassifier): classify ChatGPT Web SENTINEL_BLOCKED 403 as terminal FORBIDDEN, enabling proper combo fallback (#8813)
+- fix(cli): fall back to node:sqlite when better-sqlite3 constructor throws at runtime (#8826)
+- fix(opencode): prefix provider id with "opencode-" for auth login command (#8830)
+- fix(opencode-zen): add current free-tier models to registry to enable combo context pre-filtering (#8841)
+- **fix(api):** Let image and video providers enforce their own request-size limits instead of rejecting media payloads at OmniRoute's 10 MB global default ([#8843](https://github.com/diegosouzapw/OmniRoute/pull/8843)) — thanks @artickc
+- fix(build): include better-sqlite3 prebuilds in standalone bun bundle (#8847)
+- fix(proxy-health): include credentials in proxy health check URLs (#8853)
+- **fix(build):** `prepublish` no longer spawns the Windows `.cmd` shims for npm/npx, which Node >= 20 refuses to launch without a shell (`EINVAL`). On Node 24 that silently skipped the MITM utilities, the MCP server bundle, the LLMLingua ONNX worker and `@omniroute/opencode-plugin` while `build:cli` still exited 0 and reported success. Build tools are now resolved to their own JS entry point and run with the current Node binary — no shim, no shell, no unescaped arguments. (thanks @maisdesign) ([#8858](https://github.com/diegosouzapw/OmniRoute/pull/8858)) — thanks @maisdesign
+- **fix(opencode):** generate schema-complete model limits so OpenCode accepts catalog entries without an explicit output cap ([#8869](https://github.com/diegosouzapw/OmniRoute/pull/8869)) — thanks @xiaoyaner0201
+- **fix(cli):** default omitted Codex CLI wire API settings to Responses and clear stale Chat state after reset ([#8876](https://github.com/diegosouzapw/OmniRoute/pull/8876)) — thanks @xiaoyaner0201
+- **fix(proxy):** isolate new proxy credential fields from browser and password-manager autofill after form reset ([#8883](https://github.com/diegosouzapw/OmniRoute/pull/8883)) — thanks @xiaoyaner0201
+- fix(db): invalidate stale LKGP pins when provider connections are deleted (#8887)
+- fix(tests): update stale nightly compat fixtures and goldens to match current source constants (#8901)
+- **fix(quota):** Deleting a quota pool now removes its scoped managed combos without racing in-flight pool mutations ([#8906](https://github.com/diegosouzapw/OmniRoute/pull/8906)) — thanks @xiaoyaner0201
+- **fix(executors):** Vertex AI now routes Claude models through the native Anthropic `rawPredict` endpoint instead of the generic OpenAI-compatible partner endpoint, and synthesizes a real streaming response so Claude-via-Vertex works with `stream: true` ([#8909](https://github.com/diegosouzapw/OmniRoute/pull/8909)) — thanks @wgordon17
+- **fix(providers):** expose both OAuth Connect and manual API-key actions for dual-auth providers such as CodeBuddy CN ([#8921](https://github.com/diegosouzapw/OmniRoute/pull/8921)) — thanks @Llliao1113
+- fix(compression): drop orphan custom_tool_call/local_shell_call/apply_patch_call on compaction restore (#8946)
+- fix(auth): setting first dashboard login password no longer fails with HTTP 400 PASSWORD_REQUIRED (#8950)
+- fix(github): add targetFormat to GPT-5.6 Sol/Terra/Luna models (#8951)
+- fix(auto-update): skip synthetic Next.js standalone package.json without `name` field in resolveProjectRoot (#8956)
+- fix(opencode): propagate vision capability from live catalog into opencode.json (#8960)
+- fix(providers): switch Antigravity quota RPCs to iterate ANTIGRAVITY_RUNTIME_BASE_URLS (#8965)
+- **fix(oauth):** GHE Copilot OAuth lifecycle — connecting an account and refreshing its token both failed. Adding a connection died with `gheUrl is required for GHE Copilot OAuth` because the poll handler's `ghe-copilot` branch was unreachable dead code: the provider is listed in `NO_PKCE_DEVICE_CODE_PROVIDERS`, and that set-based check ran first, calling `pollForToken()` without the `extraData` carrying `gheUrl`. Separately, every manual `Refresh` click surfaced `Token refresh failed — provider returned no new token`, and the proactive pre-request refresh never fired for GHE connections — the manual route, the health-check sweep and `checkAndRefreshToken()` all still special-cased plain `github`, while GHE Copilot's device-code flow never yields a `refresh_token` (only a GitHub access token plus a short-lived Copilot sub-token). `refreshCopilotToken()` now takes an optional `baseUrl` so it can target a GHE host's `<gheUrl>/api/v3` Copilot token endpoint, and `ghe-copilot` is wired in alongside `github` at all four sites.
+- **fix(health-check):** the access-token-only branch of the token health-check sweep no longer logs an unconditional `has no refresh token but has a GitHub access token` line on every tick. That path runs once per 60 s sweep for every `github` / `ghe-copilot` connection, so it emitted ~1440 identical entries per day per connection reporting that nothing had changed. It now logs only when the sweep actually attempted a Copilot sub-token refresh, and says whether that refresh succeeded or failed — so a genuine failure still surfaces instead of being buried in steady-state noise. ([#8970](https://github.com/diegosouzapw/OmniRoute/pull/8970)) — thanks @hppsc1215
+- fix(providers): copilot-m365-web enterprise turns send disconnectBehavior=continue (#8971)
+- **fix(ci):** the reconciliation helper no longer bounds its scan with `git describe --tags` — releases squash-merge, so that range re-listed 1361 commits instead of the cycle's real 22, which is how ~200 PRs once slipped through without a changelog bullet. The base is now resolved from the commit that opened the cycle, and a new `sweep:stale-fragments` gate removes `changelog.d/` fragments that a back-merge from `main` resurrected after they had already been folded in ([#8985](https://github.com/diegosouzapw/OmniRoute/pull/8985))
+- **fix(ci):** fixed a live auto-update defect where **Intel Macs downloaded the ARM dmg** — the two macOS jobs each emitted their own `latest-mac.yml` and `merge-multiple` let one silently overwrite the other by arrival order, leaving `electron-updater`'s arch fallback pointing at the wrong build. The manifests are now merged deliberately, un-suffixed entry first. Also: test jobs pinned to hosted runners (`setup-node` measured 20m06s self-hosted vs 16s hosted), the npm publish no longer discards a valid build artifact because an unrelated shard was flaky, the agent-skills gate now runs on pushes to `main` instead of PRs only, and the CI summary names every job that ended cancelled ([#8988](https://github.com/diegosouzapw/OmniRoute/pull/8988))
+- **fix(sse):** `stripResponsesLifecycleEcho` no longer strips `tools` from the `response.completed` snapshot — that terminal event is what Codex CLI rebuilds its tool list from, so stripping it left the client with zero tools. `tools` is still stripped from `response.created`/`response.in_progress`, and `instructions` (the >100KB size lever) is still stripped from all three ([#8990](https://github.com/diegosouzapw/OmniRoute/pull/8990))
+- fix(vertex): route Claude models to native rawPredict endpoint and respect custom targetFormat overrides (#8994)
+- fix(proxies): resolveProxyForConnection now returns the proxy name, so the dashboard badge shows the name instead of the hostname (#8995)
+- **fix(translator):** the Responses-to-Chat promotion path called `normalizeResponsesReasoningEffort` without the model argument, so GPT-5.6 Sol/Terra/Luna requests with `reasoning.effort: "max""` were downgraded to `"xhigh"`. The model is now threaded through, preserving `max` for GPT-5.6 while keeping the legacy downgrade for older models ([#8997](https://github.com/diegosouzapw/OmniRoute/pull/8997))
+- **fix(sse):** Claude reasoning-effort suffix ids (`-high`/`-low`/`-medium`/`-xhigh`) now strip
+  correctly on any provider serving a real Claude model, not just the direct Anthropic provider
+  ([#9006](https://github.com/diegosouzapw/OmniRoute/pull/9006))
+- **fix(sse):** the no-thinking (`no-think/`) catalog variant's provider-qualification bug — which
+  made it unusable outside the direct provider, both in the discovery catalog and the dashboard
+  playground — is fixed ([#9006](https://github.com/diegosouzapw/OmniRoute/pull/9006))
+- **fix(sse):** a single unrecognized model id on a Vertex connection no longer cools down every
+  other model on that connection for 2 minutes — Vertex 404s are now scoped to a per-model
+  lockout via `passthroughModels` instead of a connection-wide cooldown
+  ([#9006](https://github.com/diegosouzapw/OmniRoute/pull/9006))
+- **fix(sse):** Vertex `PERMISSION_DENIED` 403s are now disambiguated using Google's own
+  documented error format — a genuinely connection-wide cause (API disabled, project-level IAM
+  denial) still cools the whole connection, while a model-specific denial locks out only that
+  model ([#9006](https://github.com/diegosouzapw/OmniRoute/pull/9006))
+- **fix(sse):** error-only streams now preserve sanitized executor diagnostics for operators without changing stream-readiness fallback classification ([#9022](https://github.com/diegosouzapw/OmniRoute/pull/9022)) — thanks @shixi-li
+- fix(cursor): preserve tool context across multi-turn conversations when client lacks conversation_id (#9029)
+- fix(sse): move Antigravity client system content to first user message to avoid upstream 429 RESOURCE_EXHAUSTED on oversized systemInstruction (#9030)
+- fix(auth): IP blacklist now blocks on direct connections via trusted peer stamp and re-reads config without restart (#9033)
+- fix(api): use configured prefix instead of raw node UUID for alias-backed model id in /v1/models (#9034)
+- **fix(resilience):** Detect and reset idle-capacity rate-limit queue wedges on an eligible watchdog scan so routing can fall back promptly ([#9041](https://github.com/diegosouzapw/OmniRoute/pull/9041))
+- fix(db): stream DB backup export instead of buffering entire file into memory (#9045)
+- fix(ui): normalize Free Pool API response payload to read from data.proxies (#9046)
+- **fix(translator):** pass `output_config.effort="max"` through verbatim instead of unconditionally rewriting it to `xhigh`, so Anthropic → OpenAI-shape upstream calls reach `sanitizeReasoningEffortForProvider` with the carrier intact and providers that accept `max` literally (Ollama Cloud, opencode-go DeepSeek, Moonshot K3, native Claude) no longer 400 on `invalid reasoning value: 'xhigh'`. Regression guard: end-to-end test in `tests/unit/base-executor-sanitize-effort.test.ts`. ([#9053](https://github.com/diegosouzapw/OmniRoute/pull/9053)) — thanks @ikelvingo
+- fix(api/analytics): stop charging :free models at arbitrary fallback price (#9054)
+- fix(api): auto/* routing aliases bypass API-key allowedConnections/disableNonPublicModels (#9057)
+- fix(providers): anthropic strips code-execution/skills beta flag, causing container rejection (#9064)
+- **fix(batches):** `GET /v1/batches` now validates the `limit` query param instead of passing `Number.parseInt(limit)` straight to the SQLite `LIMIT` bind. Previously `?limit=abc` threw an unhandled `datatype mismatch` (→ HTTP 500), `?limit=-1`/`0` returned an incoherent `has_more:true` empty page with `last_id:null`, and a large `?limit` read the entire `batches` table into memory. It now returns a `400` for any non-integer or out-of-range value (1–100, default 20), matching the `POST` handler's Zod validation and the OpenAI Batches contract ([#9073](https://github.com/diegosouzapw/OmniRoute/pull/9073))
+- **fix(a2a):** the A2A JSON-RPC router now compares the bearer token against `OMNIROUTE_API_KEY` in constant time (`crypto.timingSafeEqual`) instead of `===`, closing a token-length timing side-channel, and no longer logs the request URL to server logs on every call ([#9083](https://github.com/diegosouzapw/OmniRoute/pull/9083))
+- **fix(api/skills):** the `/api/skills/**` routes now run caught error messages through `sanitizeErrorMessage` before returning them, so a filesystem failure no longer leaks an absolute path (e.g. `/home/<user>/.omniroute/skills/...`) to the client; the `{ error: string }` response shape is preserved for the dashboard ([#9088](https://github.com/diegosouzapw/OmniRoute/pull/9088))
+- fix(providers): admit audio-speech/audio-transcriptions apiType in audio route provider-node filters (#9096)
+- fix(providers): modal.com validation returns clear error when Base URL is missing, instead of leaking "Invalid outbound URL" (#9102)
+- **fix(providers):** GitHub Copilot no longer re-imports or routes cached Gemini 2.5 Pro and Gemini 3 Flash model IDs after their retirement ([#9103](https://github.com/diegosouzapw/OmniRoute/pull/9103))
+- fix(providers): resolve combo names in audio transcriptions route so /v1/models stays honest (#9134)
+- fix(vscode): allow built-in auto-routing models in VS Code model filter (#9140)
+- fix(background): detect Anthropic top-level system prompts for background task detection (#9142)
+- **fix(dashboard):** the provider "Auto Sync" toggle now applies to every active connection and each connection gets its own Auto Sync toggle — previously only the lowest-priority connection was updated. ([#9149](https://github.com/diegosouzapw/OmniRoute/pull/9149))
+- fix(cli): use process.execPath for macOS launchd autostart (#9156)
+- fix(management): authorize mcp:connect-only keys on loopback/LAN when requireLogin is enabled (#9159)
+- fix(model-discovery): ingest capabilities.effort_tiers for synced models (#9160)
+- **fix(translator):** Honor configured Chat targets for Responses-shaped clients while preserving native Responses providers and outbound token fields ([#9161](https://github.com/diegosouzapw/OmniRoute/pull/9161)) — thanks @Zartharas
+- fix(translator): buffer and normalize upstream tool-call argument deltas so optional null values are stripped before reaching the client (#9168)
+- fix(cursor): the manual "Refresh" button on Cursor connections now calls the dedicated Cursor renewal route instead of silently returning a 502 every time (#9173)
+- fix(translator): avoid double-normalizing tool names in Gemini-to-Claude response path (#9177)
+- **fix(dashboard):** the "Default Model" of an OpenAI-compatible connection is now visible and editable after creation (was set once, then invisible), and it is no longer required when creating a connection — matching the API which always treated it as optional. ([#9179](https://github.com/diegosouzapw/OmniRoute/pull/9179))
+- **fix(db):** honor the `ENABLE_REQUEST_LOGS` environment override for detailed request persistence. (thanks @RobertsXML) ([#9187](https://github.com/diegosouzapw/OmniRoute/pull/9187))
+- **fix(model):** normalize client context-window suffixes for combo routing. (thanks @b1nhm1nh) ([#9193](https://github.com/diegosouzapw/OmniRoute/pull/9193))
+- fix(catalog): repair dead guard and synced-first ordering for custom model Vision capable override (#9195)
+- fix(routing): consult customModels supportsVision flag in Combo vision filter (#9195)
+- **fix(models):** Preserve published model catalogs during session-affinity bookkeeping so routine affinity updates do not force unnecessary cold rebuilds ([#9199](https://github.com/diegosouzapw/OmniRoute/pull/9199)) — thanks @xz-dev
+- **fix(models):** Reuse one build-local virtual-auto candidate snapshot across built-in catalog entries and cooperatively yield during cold catalog generation, while detaching invalidated in-flight generations so policy changes cannot publish stale results ([#9199](https://github.com/diegosouzapw/OmniRoute/pull/9199)) — thanks @xz-dev
+- **fix(models):** Resolve token limits and model capabilities once per unique candidate in that build-local snapshot, eliminating repeated SQLite lookups across the 38 built-in auto entries while preserving fresh runtime preparation and hard invalidation ([#9199](https://github.com/diegosouzapw/OmniRoute/pull/9199)) — thanks @xz-dev
+- **fix(models):** Read and parse models.dev pricing once per cold catalog build, then yield before final enrichment so queued health checks are not starved while every model in that build shares one coherent pricing snapshot ([#9199](https://github.com/diegosouzapw/OmniRoute/pull/9199)) — thanks @xz-dev
+- **fix(compression):** honor the global compression-off setting for proactive and last-resort context compaction, preventing disabled compression from rewriting tool-call histories ([#9200](https://github.com/diegosouzapw/OmniRoute/pull/9200)) — thanks @joachimBrindeau
+- fix(web-search): bind each search provider attempt to its connection proxy (#9201)
+- fix(auth): make antigravity and agy equivalent in credential selection (#9204)
+- **fix(cli):** prefer IPv4 DNS for spawned Node servers. (thanks @dsitmilis) ([#9209](https://github.com/diegosouzapw/OmniRoute/pull/9209))
+- **fix(pricing):** stop billing reasoning tokens twice. (thanks @yidecode) ([#9212](https://github.com/diegosouzapw/OmniRoute/pull/9212))
+- **fix(models):** `/v1/models` now publishes one contiguous provider-grouped block per provider instead of interleaved fragments. The catalog is assembled by many independent push loops (auto-combos, named combos, static registry, codex-native, synced, OpenRouter, specialty, custom, alias-backed, connection-fallback), so one provider's models previously landed in several separated blocks. A single stable, provider-grouped sort is applied at serialization, keyed by `owned_by` (canonical owner identity) rather than the model-id prefix — so a single routable public prefix that differs from its owner (e.g. no-auth OpenCode publishing `oc/<model>` while keeping `owned_by: "opencode"`) stays contiguous. Combos are pinned first (preserving #4164); then providers in registry precedence (OAuth → NoAuth → API-key); then unknown providers in locale-independent code-unit order. The sort is stable and pure (reorders rows only, no mutation, no DB/IO), preserving combo `sort_order`, connection priority, custom append-order, and equal-id audio twins ([#9215](https://github.com/diegosouzapw/OmniRoute/pull/9215)) — thanks @nguyenha935
+- **fix(combo):** the Combo "Add model" picker now respects hidden-model visibility for every model source — system catalog, fallback, passthrough/node aliases, custom rows and auto-fetched models — instead of drowning the list in 500+ unavailable entries ([#9218](https://github.com/diegosouzapw/OmniRoute/pull/9218)) — thanks @szzhoujiarui
+- **fix(codex):** normalize additional_tools passthrough items. (thanks @SalyyS1) ([#9219](https://github.com/diegosouzapw/OmniRoute/pull/9219))
+- **fix(codex):** preserve quota window duration in usage shape. (thanks @HectorBernstorff) ([#9222](https://github.com/diegosouzapw/OmniRoute/pull/9222))
+- **fix(azure):** normalize GPT-5 chat completion parameters. (thanks @royanrosyad85) ([#9223](https://github.com/diegosouzapw/OmniRoute/pull/9223))
+- **fix(codex):** strip orphaned tool outputs from compacted conversations. (thanks @raflyazf) ([#9228](https://github.com/diegosouzapw/OmniRoute/pull/9228))
+- **fix(i18n):** completed the French UI catalog by adding all missing keys and replacing every placeholder translation ([#9235](https://github.com/diegosouzapw/OmniRoute/pull/9235)) — thanks @alex-jordan547
+- **fix(nvidia):** normalize tool names and call ids for NVIDIA compatibility. (thanks @minhnhat166) ([#9236](https://github.com/diegosouzapw/OmniRoute/pull/9236))
+- fix(lmarena): emit Uint8Array SSE chunks instead of strings to satisfy shared pipeline contract (#9237)
+- **fix(db):** `validateRegisteredKey` no longer rejects the first request of a fresh budget window when the previous window's usage already met the daily/hourly budget — the reset `UPDATE` zeroed the counters in the DB but the budget check still read the stale pre-reset snapshot, so the reset is now mirrored into the row before checking ([#9241](https://github.com/diegosouzapw/OmniRoute/pull/9241))
+- **fix(i18n):** localized hardcoded web UI copy across public pages, dashboard views, and shared components, with complete French and Vietnamese coverage ([#9245](https://github.com/diegosouzapw/OmniRoute/pull/9245)) — thanks @alex-jordan547
+- **fix(db):** deleting a provider connection (single, batch, or provider-scoped) now purges its account-scoped `proxy_assignments` rows inside an atomic transaction — no more orphan assignments pointing at deleted connections ([#9246](https://github.com/diegosouzapw/OmniRoute/pull/9246)) — thanks @maxmad64bis
+- **fix(cli-tools):** keep Apply enabled for active OpenAI-compatible and Anthropic-compatible providers without static catalog entries. (thanks @lazysaltyfish) ([#9250](https://github.com/diegosouzapw/OmniRoute/pull/9250))
+- **fix(translator):** harden Claude format detection for relative message endpoints and kebab-case version metadata. (thanks @ervareza) ([#9253](https://github.com/diegosouzapw/OmniRoute/pull/9253))
+- **fix(minimax):** add the required empty signature placeholder to unsigned thinking block starts. (thanks @rixzkiye) ([#9256](https://github.com/diegosouzapw/OmniRoute/pull/9256))
+- **fix(resilience):** Enforce RPM limits with rolling leases and atomic global/provider/account admission ([#9259](https://github.com/diegosouzapw/OmniRoute/pull/9259)). The configured global RPM budget is shared across all enabled provider connections within one process; provider/account overrides add narrower scopes.
+- **fix(classify429):** add missing `have exhausted their quota` pattern so the synthetic 429 from auth.ts is recognized as quota exhaustion, preventing the combo loop from burning retries against the same provider instead of falling back to a healthy one ([#9269](https://github.com/diegosouzapw/OmniRoute/issues/9269))
+- fix(claude): remove unconditional "always" return in claudeClassifierCompat so normal chat requests are not swallowed (#9276)
+- fix(qoder): include actionable CLI_QODER_BIN hint in connection test when qodercli is not found (#9277)
+- **fix(providers):** the web search fallback detector in `webSearchFallback.ts` used an exact `Set` (`web_search`, `web_search_preview`) that missed Anthropic's date-suffixed server-tool variant `web_search_20250305` (sent by Claude Code 2.1.220+). Changed to prefix regex `/^web_search/`, matching the two other detectors in the codebase, so the fallback intercepts versioned web search tools for OpenAI-compatible upstreams ([#9279](https://github.com/diegosouzapw/OmniRoute/pull/9279))
+- **fix(docker):** the bundled Redis sidecar no longer publishes on `0.0.0.0`. `docker-compose.yml`, `omniroute redis up` and the dashboard's 1-click launcher all built an unqualified `-p <port>:6379` spec, which the container runtime expands to every interface — and none of them sets `requirepass`, so any host on the LAN could reach the rate-limiter/cache store. All three now default to `127.0.0.1`, with exposure opt-in via `REDIS_BIND_HOST` (compose), `--bind` (CLI) and `OMNIROUTE_REDIS_BIND_HOST` (launcher); the CLI warns when a non-loopback bind is requested without `--password` ([#9286](https://github.com/diegosouzapw/OmniRoute/pull/9286))
+- fix(credential-health): scheduler never retries failed connections due to static interval comparison (#9289)
+- **fix(db):** persist the account egress IP into `proxy_logs.egress_ip` (migration 134 + schema reconciler) so real traffic stays attributable to the actual node/IP even after restart — the egress IP was previously computed and logged but silently dropped from persistence ([#9291](https://github.com/diegosouzapw/OmniRoute/pull/9291)) — thanks @maxmad64bis
+- fix(api): specialty model catalog ignores hidden OpenRouter model flags (#9293)
+- fix(mcp): break circular import between googApiKeyAuth.ts and auth.ts to fix esbuild SyntaxError in MCP server bundle (#9297)
+- fix(catalog): cache getModelsDevPricing() to prevent OOM at startup (#9300)
+- fix(providers): bump qwen-web SPA version header from 0.2.66 to 0.2.81 (#9304)
+- fix(sse): broaden OMNIROUTE_SSE_COMMENTS to accept 'false','0','no' and gate metadata comment emission (#9305)
+- fix(lmarena): encode SSE stream chunks as Uint8Array to prevent TextDecoder TypeError (#9306)
+- **fix(claude):** reconcile compacted tool results against the preceding tool use. (thanks @ryanngit) ([#9308](https://github.com/diegosouzapw/OmniRoute/pull/9308))
+- **fix(kiro):** validate completed nested tool-call payloads before forwarding them. (thanks @SemonCat) ([#9314](https://github.com/diegosouzapw/OmniRoute/pull/9314))
+- fix(backend): use accumulated responseBody for provider payload in dashboard log viewer to avoid stale data from truncated SSE events (#9315)
+- fix(qoder): surface qodercli stderr in error message instead of generic 502 (#9319)
+- fix(security): require auth for /v1/models when management auth is configured (#9320)
+- **fix(claude):** normalize nested Claude server tool model ids (`cc/` and `claude/` prefixes) on native passthrough, covering non-versioned server tools (Task/subagent). (thanks @AlanSyue) ([#9332](https://github.com/diegosouzapw/OmniRoute/pull/9332))
+- fix(providers): map kimi-web/K3 to K2D5 scenario instead of OK Computer premium mode to fix resource_exhausted on non-subscriber accounts (#9338)
+- fix(security): require explicit tool envelope to prevent bare JSON from being promoted to real tool_calls (#9343)
+- fix(api): consult LiteLLM pricing_synced layer in resolveCatalogPricing so deployed models absent from models.dev and defaults get pricing in /v1/models (#9364)
+- fix(providers): treat claude-web 429 as unhealthy and forward upstream Retry-After header (#9406)
+- fix(providers): treat muse-spark-web 429 as unhealthy (#9406)
+- fix(providers): detect expired gemini-web sessions via ServiceLogin redirect and add testConnection override (#9407)
+- fix(providers): add tool_use block handling to claude-web stream parser for OpenAI tool_calls projection (#9408)
+- fix(api): fall back to slugified provider name when prefix is empty to prevent UUID leak in /v1/models (#9416)
+- **fix(providers):** Codex GPT-5.6 model metadata reports the 1M context window and 922K input limit ([#9431](https://github.com/diegosouzapw/OmniRoute/issues/9431)).
+- fix(oauth): Kiro import token endpoint no longer overwrites existing connection when using shared cached OIDC clientId (#9435)
+- **fix(sse):** hoisting a mid-conversation `system`/`developer` message into the top-level `system` field no longer carries its `cache_control` marker along, which left the conversation history without a cache breakpoint and forced a full re-read plus a rebuild on the next turn. The boundary is moved to the nearest preceding block that can carry one, and now survives the rewrites that turn `tool_result` and inlined file/document blocks into plain text; if the target block is already marked, both markers are kept unless Anthropic's TTL ordering forbids it. Both hoisting paths are fixed — `extractSystemRoleMessages` and `extractSystemMessagesToBody`. Regression guard: `tests/unit/claude-system-role-cache-boundary.test.ts`. ([#9436](https://github.com/diegosouzapw/OmniRoute/issues/9436))
+- fix(backend): force system MITM CA cert to 0644 on Linux regardless of umask and repair on re-install (#9442)
+- **fix(routing):** a Codex-native bare model id (`gpt-5.5`, the `gpt-5.6-sol`/`terra`/`luna` tiers) no longer routes to `codex` when no codex connection is active — an OpenAI-only install was getting `no active credentials for provider: codex` for a model OpenAI serves, and an install whose codex connection was merely inactive failed the same way. With codex active the Codex preference still wins over OpenAI, and ids only codex catalogs (`codex-auto-review`) still resolve to codex with no connection at all ([#9447](https://github.com/diegosouzapw/OmniRoute/pull/9447))
+- fix(docker): ship MITM `_internal/` shims and `selfsigned` package in standalone bundle (#9451)
+- fix(cli): probe PATH for claude.exe/codex.exe on Windows before falling back to the .cmd shim (#9454)
+- fix(cli): stop the supervisor before the child so omniroute stop no longer reports success while the supervisor respawns the server (#9455)
+- fix(cli): route claude-code OAuth to the Anthropic `claude` browser-PKCE flow instead of the unrelated command-code provider (#9474)
+- fix(cli): re-verify running binary version after `omniroute update` install and warn instead of lying about success when a local install shadows the global one (#9475)
+- fix(providers): classify 400 out of extra usage as quota_exhausted for Anthropic OAuth (#9486)
+- **fix(auth):** redirect active sessions from /login by checking the session cookie before showing the login form. (thanks @DaDecky) ([#9491](https://github.com/diegosouzapw/OmniRoute/pull/9491))
+- fix(api): make the 800-message chat history cap opt-in so long conversations reach compression instead of a terminal 413 (#9494)
+- fix(translator): preserve authentic K3 Responses reasoning by model across providers, keep it on the matching assistant turn, and make Kimi Coding prefer client reasoning then cached replay before its empty-marker fallback (#9496)
+- fix(translator): join reasoning summary segments with newline separators (#9500)
+- fix(muse-spark-web): document the ecto1: WS auth token requirement in the credential hint, spec, and error message (#9502)
+- fix(sse): stop force-injecting advanced-tool-use beta via the effort-2025-11-24 gate; forward client-negotiated effort through the allowlist (#9505)
+- fix(sse): stop the reasoning-token buffer from enlarging a client's explicit max_tokens upward (x1.5) (#9507)
+- fix(ci): include combo-matrix tests in test-integration job (#9531)
+- **fix(ci):** tighten unit suite ceiling from 100min to 80min as a conservative step (#9532)
+- **fix(ratelimit):** added queue-wait timeout tests and updateFromResponseBody sequencing tests for the existing RATE_LIMIT_QUEUE_TIMEOUT feature in withRateLimit (#9533)
+- fix(test): prevent flaky modelsDevSync timer assertions by serializing test execution within the file (#9534)
+- fix(backend): map cache tokens in OpenAI-to-Claude non-streaming usage translation (#9536)
+- fix(db): add transient-error retry to corruption probe to prevent data loss under concurrent load (#9541)
+- fix(search): mark searxng-search as fallbackOnly to prevent auto-select without instance (#9543)
+- fix(providers): strip provider prefix in getModelTargetFormat to route GPT-5.6 models to /v1/responses (#9545)
+- fix(model): add "aq" alias for amazon-q provider so parseModel resolves it instead of falling back to OpenAI (#9550)
+- fix(proxy): NO_PROXY now bypasses context-level proxy in resolveProxyForRequest (#9551)
+- **fix(build):** `npm run build:cli` (prepublish) no longer fails on POSIX with "npm-cli.js not found next to the running Node binary". The #8858 shim-free npm resolver only knew the Windows layout (`<dir(node.exe)>\node_modules\npm`); on GitHub hosted runners, nvm and system installs npm lives at `<prefix>/lib/node_modules/npm` while node is `<prefix>/bin/node`, so every fresh CI checkout died installing `@omniroute/opencode-plugin` deps (Fast Production Build + dast-smoke red on all PRs). The resolver, extracted to `scripts/build/resolveNpmEntry.ts`, now tries `npm_execpath` (exported by `npm run` itself) first, then the Windows layout, then the POSIX layout — covered by `tests/unit/build/resolve-npm-entry.test.ts` including a live POSIX regression guard. ([#9553](https://github.com/diegosouzapw/OmniRoute/pull/9553))
+- **fix(quality):** reconcile the accumulated file-size drift on `release/v3.8.50` — 13 files sat above their frozen LOC on the clean tip (measured by the gate itself), turning the absolute-mode check (nightly / local) permanently red while the PR-mode base-relative check (#8522) let every innocent PR pass. The per-PR rebaselines were lost across successive conflict resolutions of this hot file during the 08-05/06 merge batch. Frozen values updated to the measured tip for the 11 grown files (each annotated with its owning merged PR: #9024 #9324 #9329 #9193 #9332 #9228 #9260 #8934 #9196 #9163) and `open-sse/executors/default.ts` / `kiro.ts` (above the 1000 cap with no entry) added to the frozen set. ([#9554](https://github.com/diegosouzapw/OmniRoute/pull/9554))
+- fix(build): exec native esbuild binary directly in prepublish — esbuild ≥0.25 ships an ELF at bin/esbuild and running it through node crashed every build:cli (dast-smoke red on all PRs) ([#9558](https://github.com/diegosouzapw/OmniRoute/pull/9558))
+- **fix(mcp):** the 3 `audit.test.ts` shutdown/fallback tests fail deterministically since #8959 switched the audit DB loader to `createRequire("better-sqlite3")` — `vi.doMock` only patches Vitest's ESM module graph, so the old better-sqlite3 mock never engaged and the tests hit a real empty sqlite file ("no such table: mcp_tool_audit"), redding the `Vitest (fast-path)` job on every PR (long misdiagnosed as a flake). Shutdown tests now inject the mock through the audit connection cache (`globalThis.__omnirouteMcpAuditDb`), and the node:sqlite fallback test drives a new test-only loader seam (`__setBetterSqliteLoaderForTests`) — the production `createRequire` path is unchanged. 3/3 red → 3/3 green; full `open-sse/mcp-server` vitest suite 88/88. ([#9559](https://github.com/diegosouzapw/OmniRoute/pull/9559))
+- fix(build): lazy-resolve module-level fs paths to avoid Turbopack NFT whole-source trace (#9560)
+- fix(sse): replace timer-based waits with polling to fix flaky chatCore/SSE tests under CI load (#9567)
+- **fix(translator):** restore original tool name casing in Gemini/Antigravity response translators ([#9568](https://github.com/diegosouzapw/OmniRoute/issues/9568))
+- fix(translator): add case-insensitive fallback for upstream tool call name lookups (#9575)
+- **fix(standalone):** multipart uploads (`POST /v1/audio/transcriptions`) no longer hang — the WebDAV wrapper hands non-WebDAV requests to Next synchronously instead of losing the start of a streaming body ([#9580](https://github.com/diegosouzapw/OmniRoute/pull/9580))
+- **fix(docker):** standalone co-location now completes packages Next's file tracing materialized partially (package.json without its `main` payload) — unblocks the Docker Hub publish that failed on every v3.8.50 push with `Cannot find module '@atjsh/llmlingua-2/dist/index.js'` ([#9615](https://github.com/diegosouzapw/OmniRoute/pull/9615))
+- fix(resilience): failed connection test now sets a short cooldown so connections recover after transient outages (#9623)
+- fix(db): wire telemetry cleanup scheduler in Next.js startup path (#9624)
+- fix(db): align domain_cost_history cleanup cutoff with millisecond column (#9625)
+- fix(playground): surface provider model loading errors and offer retry (#9626)
+- fix(combo): distinguish pre-dispatch skips from genuine failures to prevent false 503 ALL_ACCOUNTS_INACTIVE (#9630)
+- fix(build): add build-next-isolated.mjs sibling imports to package.json files array (#9633)
+- **fix(providers):** new per-provider `noAuthFallbackDisabledProviders` setting lets operators disable the synthetic anonymous (no-auth) credential fallback for API-key providers whose static definition declares `anonymousFallback: true` (e.g. `opencode-go`, `opencode-zen`) — upstream endpoints now reject anonymous requests with `401 Missing API key`, so the fallback added latency and caused UI health/reconnect churn. Real keyed connections keep working and recover automatically once quota state clears; true no-auth providers (`opencode`, `mimocode`, …) are unaffected, with `blockedProviders` remaining their disable mechanism. Default behavior is unchanged ([#9675](https://github.com/diegosouzapw/OmniRoute/pull/9675))
+- **fix(docker):** `--build-arg OMNIROUTE_USE_TURBOPACK=0` now reaches the builder stage — a bare `ENV` was shadowing the `ARG`, so the documented webpack escape hatch was silently ignored and memory-constrained hosts were OOM-killed with no error output ([#9695](https://github.com/diegosouzapw/OmniRoute/pull/9695))
+- **fix(translator):** restore TitleCase tool names on the Claude → Gemini/Antigravity request path so Claude Code no longer fails with `No such tool available: read` ([#9713](https://github.com/diegosouzapw/OmniRoute/issues/9713))
+- fix(db): clear stale combo connection pins when provider connections are deleted (#9719)
+- fix(compression): persist `enableRenderers` through `normalizeRtkConfig` so RTK renderer settings survive a DB round-trip ([#9730](https://github.com/diegosouzapw/OmniRoute/pull/9730))
+- Fixed `GET`/`PUT`/`DELETE /api/memory/[id]` always failing with a 500 (`Primary backend "sqlite" not registered`) when the route was reached before any other memory endpoint in the same process. (#9737)
+- Replaced hand-rolled body type checks with Zod validation in the plugins marketplace install route and the three Dario admin routes, restoring the `t06:route-validation` gate (Hard Rule #7). (#9737)
+- Restore Vietnamese locale parity after the entity-normalization sync dropped Radar, provider, and mini-playground messages. (#9737)
+- **fix(radar):** refresh signed catalog/referral caches when supporter entitlement changes, preserve the one-time live-to-community downgrade, and test real provider connection IDs from the setup tour ([#9776](https://github.com/diegosouzapw/OmniRoute/pull/9776))
+- **Translator**: keep the Responses namespace identity map across the hub-and-spoke pivot — namespace sub-tool calls routed to non-OpenAI targets (Kiro, Cursor) no longer come back flattened (`unsupported call: functions__exec` in Codex CLI) (#9783 — thanks @VXNCXNX)
+- **fix(api):** Model catalogs no longer expose functional gateway mirrors unless the API key permits the mirror's final public model ID ([#9788](https://github.com/diegosouzapw/OmniRoute/pull/9788)) — thanks @xz-dev
+- **fix(executors):** preserve Command Code usage in `/v1/responses` streams so Codex clients receive real input, output, cache, and reasoning token counts ([#9826](https://github.com/diegosouzapw/OmniRoute/pull/9826)) — thanks @MrShitFox
+- **fix(executors):** prevent intermittent Codex `upstream_empty_response` errors for tool schemas that combine `oneOf` const branches with a matching sibling `enum` by removing only the semantically redundant `oneOf`; bare, narrowing, non-matching, and type-discriminated `oneOf` schemas remain unchanged. ([#9828](https://github.com/diegosouzapw/OmniRoute/pull/9828))
+- **fix(cursor):** SelectedImage uses `blobIdWithData` + session blobStore, with JPEG soft-cap prep via sharp ([#9834](https://github.com/diegosouzapw/OmniRoute/pull/9834)) — thanks @yansigit
+- **fix(test):** reconcile test expectations that drifted from the code they guard on `release/v3.8.50` — auth/vision/provider schema snapshots, and three context-aware combo compatibility assertions that contradicted the same file's own stated contract (catalog-too-small targets stay available as runtime fallback rather than being dropped). The combo assertions were masked by an unresolved import that stopped `combo.ts` from loading at all, so they only become reachable once that import is repaired. ([#9874](https://github.com/diegosouzapw/OmniRoute/pull/9874))
+- fix(search): nest Exa contents options (text/highlights) for /search API (#9914)
+- fix(i18n): re-escape CC discovery-alias `claude/<provider>/<model>` to HTML entities so next-intl stops logging INVALID_MESSAGE: UNCLOSED_TAG on provider detail pages (#8747 regression) ([#9917](https://github.com/diegosouzapw/OmniRoute/pull/9917)) — thanks @yansigit
+- fix(encryption): name failing credential + recovery path in decrypt errors, dedupe per connection (#9927)
+- **fix(executors):** preserve non-strict function-tool semantics when translating Chat Completions requests to Codex Responses, avoiding intermittent streamed failures without rewriting tool schemas or dropping branch-level descriptions and annotations. ([#9931](https://github.com/diegosouzapw/OmniRoute/pull/9931))
+- fix(migrations): don't abort on fresh install with only the 001 seed (#9934)
+- **fix(admission):** per-connection virtual admission lanes with idle TTL eviction — guards `expireEntry` null deref, adds `deleteLane()` for safe LRU eviction, and passes `sessionId` to byte-level admission (fixes #9654) ([#9940](https://github.com/diegosouzapw/OmniRoute/pull/9940)) — thanks @branben
+- Repair release-sweep regressions in locale and environment contracts, package metadata, scripts, dependency, size and dead-code ratchets, OpenAPI coverage, Telegram error sanitization, Openference public-credential handling, DB-module classification, resilience UI test assertions, strict CodeBuddy CN tests, Lite compression typing, and the job-registry migration number. ([#9945](https://github.com/diegosouzapw/OmniRoute/pull/9945))
+- Let the release-green validator finish the test-masking gate on loaded runners while preserving the existing timeout for every other full-CI gate, and report Node.js `ETIMEDOUT` errors as explicit timeout failures. ([#9964](https://github.com/diegosouzapw/OmniRoute/pull/9964))
+- fix(chat): don't misclassify content-less thinking/redacted Claude bodies as empty_choices (#9971)
+- fix(images): normalize terminal upstream errors via OpenAI-standard type/code (#9981)
+- fix(quality): green release/v3.8.50 base-reds — sync 4 env vars into .env.example/ENVIRONMENT.md and freeze the new proxied-TLS proxyFetch helper in the file-size baseline (#9985)
+- **fix(sse): replay Gemini `thought_signature` on the direct Claude→Gemini path** — with the #3440 assertion coverage preserved under signature replay (#2504, #3440) — thanks @csoftware-arigpt
+- **fix(security): bump adm-zip >=0.6.0 + exact host matching in the mitm DNS test** (#7733)
+- **fix(i18n): polish zh-CN/zh-TW translations and fix over-translation of proper nouns** ([#8872](https://github.com/diegosouzapw/OmniRoute/pull/8872)) — thanks @ikelvingo
+- **fix(build): support npm v11 allowScripts for optional native deps** ([#8877](https://github.com/diegosouzapw/OmniRoute/pull/8877)) — thanks @configurowebmax
+- **fix(combo): exclude hidden leaves from catalog and dispatch** ([#8878](https://github.com/diegosouzapw/OmniRoute/pull/8878)) — thanks @ahmet-cetinkaya
+- **fix(antigravity): add onboardUser fallback for accounts missing Cloud Code project** ([#8886](https://github.com/diegosouzapw/OmniRoute/pull/8886)) — thanks @HouMinXi
+- **fix(sse): brand-neutral keepalive frames** ([#8888](https://github.com/diegosouzapw/OmniRoute/pull/8888)) — thanks @AndrianBalanescu
+- **fix(deepseek-web): enable toolCalling on all models** ([#8889](https://github.com/diegosouzapw/OmniRoute/pull/8889)) — thanks @AndrianBalanescu
+- **fix(combo): fail-fast concurrency gate and execute-mode overflow** ([#8890](https://github.com/diegosouzapw/OmniRoute/pull/8890)) — thanks @AndrianBalanescu
+- **fix(antigravity): quota-aware account selection and projectId persistence** ([#8891](https://github.com/diegosouzapw/OmniRoute/pull/8891)) — thanks @AndrianBalanescu
+- **fix(usage): aggregate provider window costs in SQL** ([#8892](https://github.com/diegosouzapw/OmniRoute/pull/8892)) — thanks @AndrianBalanescu
+- **fix(combo): least-used quota strategy and wildcard UI preservation** ([#8894](https://github.com/diegosouzapw/OmniRoute/pull/8894)) — thanks @AndrianBalanescu
+- **fix(test): stop autostart tests from disabling the developer's real systemd service** ([#8900](https://github.com/diegosouzapw/OmniRoute/pull/8900)) — thanks @nosolosoft
+- **fix(combos): include id column in getCombos query** ([#8905](https://github.com/diegosouzapw/OmniRoute/pull/8905)) — thanks @HouMinXi
+- **fix: prevent false 'Failed to save connection' error when adding providers** ([#8912](https://github.com/diegosouzapw/OmniRoute/pull/8912)) — thanks @ziuus
+- **fix: add Termux/Android support for playwright-core and better-sqlite3** ([#8922](https://github.com/diegosouzapw/OmniRoute/pull/8922)) — thanks @Kaedo17
+- **fix(i18n): localize SubscriptionTab UI strings instead of hardcoded Chinese** ([#8930](https://github.com/diegosouzapw/OmniRoute/pull/8930)) — thanks @Hdiaktoros
+- **fix(kiro): keep interleaved tool results grouped without dropping assistant text (#8903)** ([#8931](https://github.com/diegosouzapw/OmniRoute/pull/8931)) — thanks @xiaoyaner0201
+- **Fix custom tool output pairing during context compression** ([#8933](https://github.com/diegosouzapw/OmniRoute/pull/8933)) — thanks @JxnLexn
+- **fix(routing): account for active OAuth sessions** ([#8940](https://github.com/diegosouzapw/OmniRoute/pull/8940)) — thanks @JxnLexn
+- **fix(vision): prevent bridge streaming and normalize OMP effort** ([#8945](https://github.com/diegosouzapw/OmniRoute/pull/8945)) — thanks @rinseaid
+- **fix(ci): stop one failing platform from taking the whole desktop channel down** ([#8957](https://github.com/diegosouzapw/OmniRoute/pull/8957))
+- **fix(api): alias-backed models leak raw node UUID prefix in /v1/models (#8958)** ([#8961](https://github.com/diegosouzapw/OmniRoute/pull/8961)) — thanks @Rahulsharma0810
+- **fix(sse): default OpenAI Chat Completions to non-stream when stream omitted** ([#8976](https://github.com/diegosouzapw/OmniRoute/pull/8976)) — thanks @HouMinXi
+- **fix(cache): add latency marker + per-key bypass for semantic cache** ([#8984](https://github.com/diegosouzapw/OmniRoute/pull/8984)) — thanks @HouMinXi
+- **fix(perplexity-web): update catalog to use 'copilot' mode and fix model IDs** (#8989)
+- **fix(docker): move entrypoint script to /app to avoid tmpfs masking** ([#8999](https://github.com/diegosouzapw/OmniRoute/pull/8999)) — thanks @yutuknown
+- **fix(executors): backfill missing tool message names for Kimi K3 and strict BYOK providers** ([#9005](https://github.com/diegosouzapw/OmniRoute/pull/9005)) — thanks @Zenlyte
+- **fix(command-code): enable vision flags for CC models and fix vision-bridge reroute** ([#9007](https://github.com/diegosouzapw/OmniRoute/pull/9007)) — thanks @Stazyu
+- **fix(sse): route Poe API-key traffic through DefaultExecutor (#8969)** ([#9014](https://github.com/diegosouzapw/OmniRoute/pull/9014)) — thanks @Prudhvivuda
+- **fix(sse): preserve Gemini thought_signature on Claude Desktop tool turns** ([#9015](https://github.com/diegosouzapw/OmniRoute/pull/9015)) — thanks @Prudhvivuda
+- **fix(sse): preserve Claude Code tool-name casing via Gemini/Antigravity** ([#9016](https://github.com/diegosouzapw/OmniRoute/pull/9016)) — thanks @Prudhvivuda
+- **fix(dashboard): make quota providers expandable** ([#9025](https://github.com/diegosouzapw/OmniRoute/pull/9025)) — thanks @jktan0504
+- **fix(chat): resolve stored combo names before image-model validation (#8986)** ([#9027](https://github.com/diegosouzapw/OmniRoute/pull/9027)) — thanks @xiaoyaner0201
+- **fix(kiro): read usage from the frames Kiro actually sends** ([#9035](https://github.com/diegosouzapw/OmniRoute/pull/9035)) — thanks @ddarkr
+- **fix(kiro): keep relocated tool documentation on multi-turn requests** ([#9036](https://github.com/diegosouzapw/OmniRoute/pull/9036)) — thanks @ddarkr
+- **fix(vision): preserve images for text-only routes** ([#9037](https://github.com/diegosouzapw/OmniRoute/pull/9037)) — thanks @rinseaid
+- **fix(db): bundle and verify the sql.js fallback** ([#9044](https://github.com/diegosouzapw/OmniRoute/pull/9044)) — thanks @nguyenha935
+- **fix(open-sse): route GitHub Copilot gpt-5.6 sol/terra/luna to /responses** ([#9050](https://github.com/diegosouzapw/OmniRoute/pull/9050)) — thanks @marchlhw
+- **fix: skills & memory — tool-name encoding, schema normalization, warm-cache, combo id, Ponytail catalog** ([#9058](https://github.com/diegosouzapw/OmniRoute/pull/9058)) — thanks @Egorich-print
+- **fix(classify): recognize Modal 'usage limit reached' as quota exhausted** ([#9079](https://github.com/diegosouzapw/OmniRoute/pull/9079)) — thanks @HouMinXi
+- **Fix/issue #8656** ([#9095](https://github.com/diegosouzapw/OmniRoute/pull/9095)) — thanks @infinit-X
+- **fix(adobe-firefly): open browser sign-in and resolve provider slug in /login** ([#9097](https://github.com/diegosouzapw/OmniRoute/pull/9097)) — thanks @artickc
+- **fix(providers): make model Check/Test honor the node apiType, and show upstream model names** ([#9099](https://github.com/diegosouzapw/OmniRoute/pull/9099)) — thanks @zhiru
+- **fix(audio): let the audio routes use audio-typed provider nodes, and gate remote ones behind a default-off flag** ([#9101](https://github.com/diegosouzapw/OmniRoute/pull/9101)) — thanks @zhiru
+- **fix(antigravity): alias gemini-3.1-pro-high to gemini-pro-agent** ([#9106](https://github.com/diegosouzapw/OmniRoute/pull/9106)) — thanks @HouMinXi
+- **fix(api): flatten single-row embedding vectors to OpenAI shape** ([#9148](https://github.com/diegosouzapw/OmniRoute/pull/9148)) — thanks @aniketshukla1
+- **fix(proxy): restore connection pooling on proxy/relay paths (#9100)** ([#9158](https://github.com/diegosouzapw/OmniRoute/pull/9158)) — thanks @oyi77
+- **fix(rate-limit): separate queue wait from execution timeout** ([#9164](https://github.com/diegosouzapw/OmniRoute/pull/9164)) — thanks @Zartharas
+- **fix(translator): translate Codex agent messages for Chat** ([#9171](https://github.com/diegosouzapw/OmniRoute/pull/9171)) — thanks @Gioxaa
+- **fix(settings): allow hidePaidModels updates** ([#9182](https://github.com/diegosouzapw/OmniRoute/pull/9182)) — thanks @Zartharas
+- **fix(routing): evict affinity after terminal stream EOF** ([#9184](https://github.com/diegosouzapw/OmniRoute/pull/9184)) — thanks @Zartharas
+- **fix(docker): bundle LLMLingua optional dependencies** ([#9185](https://github.com/diegosouzapw/OmniRoute/pull/9185)) — thanks @Zartharas
+- **fix(health): skip disabled provider connections** ([#9186](https://github.com/diegosouzapw/OmniRoute/pull/9186)) — thanks @Zartharas
+- **fix(claude): preserve standalone whitespace deltas** ([#9189](https://github.com/diegosouzapw/OmniRoute/pull/9189)) — thanks @Zartharas
+- **fix(sse): evict a principal's own CCR blocks before another principal's (#9146)** ([#9191](https://github.com/diegosouzapw/OmniRoute/pull/9191)) — thanks @fajarhide
+- **fix(responses): normalize terminal usage for Codex** ([#9192](https://github.com/diegosouzapw/OmniRoute/pull/9192))
+- **fix(sse): back the CCR block store with a durable tier (#9061)** ([#9198](https://github.com/diegosouzapw/OmniRoute/pull/9198)) — thanks @fajarhide
+- **fix(combo): recover provider circuit breaker from HALF_OPEN on success** ([#9207](https://github.com/diegosouzapw/OmniRoute/pull/9207)) — thanks @HouMinXi
+- **fix(vision-bridge): improve compatibility with Anthropic image blocks and self-loop describe requests** ([#9226](https://github.com/diegosouzapw/OmniRoute/pull/9226)) — thanks @Stazyu
+- **fix(images): refresh OAuth credentials and rotate accounts after 401** ([#9231](https://github.com/diegosouzapw/OmniRoute/pull/9231)) — thanks @Bl0ck154
+- **fix(ci): merge-queue tolerance for Build (advisory), drops paid-tier batching** ([#9233](https://github.com/diegosouzapw/OmniRoute/pull/9233)) — thanks @wgordon17
+- **fix(token-refresh): exempt transient errors from exponential backoff** ([#9242](https://github.com/diegosouzapw/OmniRoute/pull/9242)) — thanks @HouMinXi
+- **fix(resilience): count STREAM_EARLY_EOF as a provider failure in combo routing** ([#9251](https://github.com/diegosouzapw/OmniRoute/pull/9251)) — thanks @TechNickAI
+- **fix(command-code): preserve literal max effort for command-code provider** ([#9257](https://github.com/diegosouzapw/OmniRoute/pull/9257)) — thanks @Chewji9875
+- **fix(dashboard): open webhook wizard in edit mode** ([#9272](https://github.com/diegosouzapw/OmniRoute/pull/9272)) — thanks @khoazero123
+- **fix(mcp): remove non-standard x-provider field from omniroute_test_combo body** ([#9274](https://github.com/diegosouzapw/OmniRoute/pull/9274)) — thanks @Sam280903
+- **fix(routing): bare model ids route to codex first; validate synced candidates** ([#9275](https://github.com/diegosouzapw/OmniRoute/pull/9275))
+- **fix(mcp): stop DB init logging from corrupting the stdio JSON-RPC stream** ([#9281](https://github.com/diegosouzapw/OmniRoute/pull/9281)) — thanks @Sam280903
+- **fix(reasoning): forward Ollama Cloud thinking** ([#9290](https://github.com/diegosouzapw/OmniRoute/pull/9290)) — thanks @xz-dev
+- **fix(models): reconcile active live model catalogs** ([#9294](https://github.com/diegosouzapw/OmniRoute/pull/9294)) — thanks @Zartharas
+- **fix: update Baichuan website URL to baichuan-ai.com** ([#9312](https://github.com/diegosouzapw/OmniRoute/pull/9312)) — thanks @zabrodschiipavel-sketch
+- **fix(agentrouter): retry on 400 content-blocked + burst guard** ([#9323](https://github.com/diegosouzapw/OmniRoute/pull/9323))
+- **fix:nanogpt model discovery** ([#9326](https://github.com/diegosouzapw/OmniRoute/pull/9326)) — thanks @TheFrenchGhosty
+- **fix(rate-limit): patch Bottleneck doExpire capacity leak** ([#9328](https://github.com/diegosouzapw/OmniRoute/pull/9328)) — thanks @HouMinXi
+- **fix(auth): let an agy request find the connection it authorized** ([#9340](https://github.com/diegosouzapw/OmniRoute/pull/9340)) — thanks @HouMinXi
+- **fix(combo): network errors must not trip provider circuit breaker** ([#9342](https://github.com/diegosouzapw/OmniRoute/pull/9342)) — thanks @HouMinXi
+- **fix(antigravity): propagate switchAuth signal from 429 engine to retry guard** ([#9351](https://github.com/diegosouzapw/OmniRoute/pull/9351)) — thanks @HouMinXi
+- **fix(routing): correct reset-window strategy prioritization (#9330)** ([#9353](https://github.com/diegosouzapw/OmniRoute/pull/9353)) — thanks @Iammilansoni
+- **fix(sse): drop the localDb barrel imports from chat and auth** ([#9380](https://github.com/diegosouzapw/OmniRoute/pull/9380)) — thanks @HouMinXi
+- **fix(providers): enforce gemini-web reasoning and tool constraints (#9356)** ([#9397](https://github.com/diegosouzapw/OmniRoute/pull/9397)) — thanks @Iammilansoni
+- **fix(combo): complete #8400 — preserve full fallback order + per-model account affinity for deterministic combos** ([#9420](https://github.com/diegosouzapw/OmniRoute/pull/9420)) — thanks @Chewji9875
+- **fix(translator): normalize streamed optional tool arguments** ([#9423](https://github.com/diegosouzapw/OmniRoute/pull/9423)) — thanks @KittisakT
+- **fix(providers): correct Codex GPT-5.6 context limits** ([#9432](https://github.com/diegosouzapw/OmniRoute/pull/9432)) — thanks @PixmaNts
+- **fix(usage): stop double-counting cache-read tokens in Command Code executor** ([#9438](https://github.com/diegosouzapw/OmniRoute/pull/9438)) — thanks @Stazyu
+- **fix(deps): bumps transitive deps for 8 CVEs surfaced by vuln-ratchet** ([#9441](https://github.com/diegosouzapw/OmniRoute/pull/9441)) — thanks @wgordon17
+- **fix(ui): preserve request log position** ([#9452](https://github.com/diegosouzapw/OmniRoute/pull/9452)) — thanks @xiaoyaner0201
+- **fix(sse): preserve client cache boundaries when hoisting system roles** ([#9457](https://github.com/diegosouzapw/OmniRoute/pull/9457)) — thanks @LeonG606
+- **fix(providers): switch minimax from claude to openai format so images work** ([#9463](https://github.com/diegosouzapw/OmniRoute/pull/9463))
+- **fix(sse): take the Antigravity output ceiling from the model, not a constant** ([#9482](https://github.com/diegosouzapw/OmniRoute/pull/9482)) — thanks @HouMinXi
+- **fix(docs): add required MDX frontmatter to AGENTROUTER_WAF.md** ([#9503](https://github.com/diegosouzapw/OmniRoute/pull/9503))
+- **fix(quality): prune a stale entry from the ESLint suppressions baseline** ([#9509](https://github.com/diegosouzapw/OmniRoute/pull/9509)) — thanks @HouMinXi
+- **fix(classify): honor upstream retry windows on Gemini free-tier 429s** ([#9513](https://github.com/diegosouzapw/OmniRoute/pull/9513)) — thanks @shixi-li
+- **fix(quality): 2 production bugs + 24 unit base-reds + measured gate ceilings** ([#9529](https://github.com/diegosouzapw/OmniRoute/pull/9529))
+- **fix(providers): support data URL icons** ([#9555](https://github.com/diegosouzapw/OmniRoute/pull/9555)) — thanks @xz-dev
+- **fix(sse): shrink chat.ts back under the frozen file-size cap (base-red drain)** ([#9598](https://github.com/diegosouzapw/OmniRoute/pull/9598))
+- **fix(ci): clear base-reds on release/v3.8.50 (migration collision + 4 masked gates)** ([#9600](https://github.com/diegosouzapw/OmniRoute/pull/9600))
+- **fix(resilience): enforce RPM with rolling leases** ([#9604](https://github.com/diegosouzapw/OmniRoute/pull/9604))
+- **fix(backend): stop reasoning replay placeholder from self-poisoning** ([#9610](https://github.com/diegosouzapw/OmniRoute/pull/9610)) — thanks @stanleytejakusuma
+- **fix(providers): mint a Zed LLM token for zed-hosted model discovery** ([#9628](https://github.com/diegosouzapw/OmniRoute/pull/9628)) — thanks @ARC345
+- **fix(test): reconcile base-drifted test expectations on release/v3.8.50** ([#9634](https://github.com/diegosouzapw/OmniRoute/pull/9634)) — thanks @HouMinXi
+- **fix(openrouter): scope model failures per-model instead of poisoning the whole connection** ([#9635](https://github.com/diegosouzapw/OmniRoute/pull/9635)) — thanks @hartmark
+- **fix(radar): close the audit gaps — auth, merged feed fields, opt-in state, sidebar gate, size cap + daily scheduler** ([#9686](https://github.com/diegosouzapw/OmniRoute/pull/9686))
+- **fix(ci): clear the NEW base-reds from the 08-06 merge batch (migration collision #2 + broken import)** ([#9688](https://github.com/diegosouzapw/OmniRoute/pull/9688))
+- **fix(codebuddy-cn): replace agent system prompts to bypass Tencent content filter** ([#9723](https://github.com/diegosouzapw/OmniRoute/pull/9723)) — thanks @zuckdorsey
+- **fix(db): resolve migration version 135 numbering collision** ([#9745](https://github.com/diegosouzapw/OmniRoute/pull/9745)) — thanks @hartmark
+- **fix(ci): clear the 08-08 base-red layers — dead-code, prod crash in chat.ts, Responses payload regression, born-red stdio test, gate drifts** ([#9757](https://github.com/diegosouzapw/OmniRoute/pull/9757))
+- **fix(bun): make server child and outbound fetch Bun-safe** ([#9761](https://github.com/diegosouzapw/OmniRoute/pull/9761)) — thanks @Arul-
+- **fix(sse): preserve original body for semantic cache signature — fixes 0% hit rate** ([#9775](https://github.com/diegosouzapw/OmniRoute/pull/9775))
+- **fix(api): validate request bodies with Zod in 4 routes — restores the t06 gate (#9737)** ([#9779](https://github.com/diegosouzapw/OmniRoute/pull/9779))
+- **fix(ci): restore current release test integrity** ([#9819](https://github.com/diegosouzapw/OmniRoute/pull/9819))
+- **fix(ci): close remaining release-green gaps** ([#9835](https://github.com/diegosouzapw/OmniRoute/pull/9835))
+- **fix(proxy): isolate wreq TLS sessions by account** ([#9837](https://github.com/diegosouzapw/OmniRoute/pull/9837)) — thanks @agisota
+- **fix(cursor): SelectedImage blobIdWithData + JPEG soft-cap prep** ([#9840](https://github.com/diegosouzapw/OmniRoute/pull/9840), original [#9834](https://github.com/diegosouzapw/OmniRoute/pull/9834)) — thanks @yansigit
+- **fix(executors): strip redundant oneOf matching sibling enum** ([#9841](https://github.com/diegosouzapw/OmniRoute/pull/9841), original [#9828](https://github.com/diegosouzapw/OmniRoute/pull/9828)) — thanks @larin-vas
+- **fix(executors): preserve Command Code usage in Responses streams** ([#9842](https://github.com/diegosouzapw/OmniRoute/pull/9842), original [#9826](https://github.com/diegosouzapw/OmniRoute/pull/9826)) — thanks @MrShitFox
+- **fix(responses-api): tool call after a text message collided on the same output_index** ([#9843](https://github.com/diegosouzapw/OmniRoute/pull/9843), original [#9822](https://github.com/diegosouzapw/OmniRoute/pull/9822)) — thanks @hartmark
+- **fix(admission): queue heavyweight chat requests before 503 busy** ([#9845](https://github.com/diegosouzapw/OmniRoute/pull/9845), original [#9816](https://github.com/diegosouzapw/OmniRoute/pull/9816)) — thanks @herjarsa
+- **[TS7] fix(types): accept synced catalog model rows** ([#9846](https://github.com/diegosouzapw/OmniRoute/pull/9846), original [#9798](https://github.com/diegosouzapw/OmniRoute/pull/9798)) — thanks @backryun
+- **[TS7] fix(types): normalize DuckDuckGo request messages** ([#9847](https://github.com/diegosouzapw/OmniRoute/pull/9847), original [#9797](https://github.com/diegosouzapw/OmniRoute/pull/9797)) — thanks @backryun
+- **[TS7] fix(types): expose SQLite transaction state** ([#9848](https://github.com/diegosouzapw/OmniRoute/pull/9848), original [#9796](https://github.com/diegosouzapw/OmniRoute/pull/9796)) — thanks @backryun
+- **[TS7] fix(types): validate default executor pool config** ([#9849](https://github.com/diegosouzapw/OmniRoute/pull/9849), original [#9795](https://github.com/diegosouzapw/OmniRoute/pull/9795)) — thanks @backryun
+- **[TS7] fix(types): preserve The Old LLM proxy contracts** ([#9850](https://github.com/diegosouzapw/OmniRoute/pull/9850), original [#9793](https://github.com/diegosouzapw/OmniRoute/pull/9793)) — thanks @backryun
+- **[TS7] fix(types): normalize Gemini Business credentials** ([#9851](https://github.com/diegosouzapw/OmniRoute/pull/9851), original [#9792](https://github.com/diegosouzapw/OmniRoute/pull/9792)) — thanks @backryun
+- **[TS7] fix(types): preserve Claude thinking body contracts** ([#9852](https://github.com/diegosouzapw/OmniRoute/pull/9852), original [#9791](https://github.com/diegosouzapw/OmniRoute/pull/9791)) — thanks @backryun
+- **fix(response): strip internal reasoning placeholder from all reasoning fields** ([#9853](https://github.com/diegosouzapw/OmniRoute/pull/9853), original [#9790](https://github.com/diegosouzapw/OmniRoute/pull/9790)) — thanks @adevwithpurpose
+- **fix(api): enforce model permissions on gateway mirrors** ([#9854](https://github.com/diegosouzapw/OmniRoute/pull/9854), original [#9788](https://github.com/diegosouzapw/OmniRoute/pull/9788)) — thanks @xz-dev
+- **fix(sse): apply Azure param rules on azure-ai and clamp gpt-4o-mini output tokens** ([#9855](https://github.com/diegosouzapw/OmniRoute/pull/9855), original [#9787](https://github.com/diegosouzapw/OmniRoute/pull/9787)) — thanks @Michael-Rocco-Goldmann
+- **fix(sse): route claude discovery aliases for catalog-only providers** ([#9856](https://github.com/diegosouzapw/OmniRoute/pull/9856), original [#9777](https://github.com/diegosouzapw/OmniRoute/pull/9777)) — thanks @Michael-Rocco-Goldmann
+- **fix(i18n): translate validation model keys in 34 locales** ([#9857](https://github.com/diegosouzapw/OmniRoute/pull/9857), original [#9773](https://github.com/diegosouzapw/OmniRoute/pull/9773)) — thanks @Michael-Rocco-Goldmann
+- **[TS7] fix(skills): normalize web fetch credentials** ([#9859](https://github.com/diegosouzapw/OmniRoute/pull/9859), original [#9755](https://github.com/diegosouzapw/OmniRoute/pull/9755)) — thanks @backryun
+- **[TS7] fix(types): narrow DeepSeek tool calls** ([#9860](https://github.com/diegosouzapw/OmniRoute/pull/9860), original [#9751](https://github.com/diegosouzapw/OmniRoute/pull/9751)) — thanks @backryun
+- **fix(pricing): memoize getSyncedPricing() across catalog cache versions** ([#9861](https://github.com/diegosouzapw/OmniRoute/pull/9861), original [#9746](https://github.com/diegosouzapw/OmniRoute/pull/9746)) — thanks @chloeassistant
+- **fix(logging): use configurable max-depth when bounding logged tool_calls** ([#9865](https://github.com/diegosouzapw/OmniRoute/pull/9865), original [#9734](https://github.com/diegosouzapw/OmniRoute/pull/9734)) — thanks @hartmark
+- **fix(executors): repair DuckDuckGo AI Chat challenge solver (418 ERR_CHALLENGE)** ([#9866](https://github.com/diegosouzapw/OmniRoute/pull/9866), original [#9733](https://github.com/diegosouzapw/OmniRoute/pull/9733)) — thanks @Mynacol
+- **fix(compression): persist RTK renderer configuration** ([#9867](https://github.com/diegosouzapw/OmniRoute/pull/9867), original [#9730](https://github.com/diegosouzapw/OmniRoute/pull/9730)) — thanks @isaaclb98
+- **fix(dashboard): unregister leftover service workers in dev mode** ([#9868](https://github.com/diegosouzapw/OmniRoute/pull/9868), original [#9727](https://github.com/diegosouzapw/OmniRoute/pull/9727)) — thanks @hartmark
+- **fix(docker): make the webpack build-arg escape hatch actually work** ([#9872](https://github.com/diegosouzapw/OmniRoute/pull/9872), original [#9695](https://github.com/diegosouzapw/OmniRoute/pull/9695)) — thanks @HouMinXi
+- **fix(providers): per-provider opt-out for anonymous no-auth fallback (opencode-go/zen 401s)** ([#9873](https://github.com/diegosouzapw/OmniRoute/pull/9873), original [#9675](https://github.com/diegosouzapw/OmniRoute/pull/9675)) — thanks @chloeassistant
+- **fix(providers): reject the dashboard password as a connection API key** ([#9877](https://github.com/diegosouzapw/OmniRoute/pull/9877), original [#9572](https://github.com/diegosouzapw/OmniRoute/pull/9572)) — thanks @HouMinXi
+- **fix(settings): use provider prefixes in model overrides** ([#9878](https://github.com/diegosouzapw/OmniRoute/pull/9878), original [#9569](https://github.com/diegosouzapw/OmniRoute/pull/9569)) — thanks @xz-dev
+- **fix(translator): preserve Kimi K3 Responses reasoning** ([#9879](https://github.com/diegosouzapw/OmniRoute/pull/9879), original [#9556](https://github.com/diegosouzapw/OmniRoute/pull/9556)) — thanks @jackjinke
+- **fix(adobe-firefly): harden CDP warm, risk session, and browser sign-in** ([#9881](https://github.com/diegosouzapw/OmniRoute/pull/9881), original [#9549](https://github.com/diegosouzapw/OmniRoute/pull/9549)) — thanks @artickc
+- **fix: pass max reasoning effort through by default, add global model registry fallback** ([#9883](https://github.com/diegosouzapw/OmniRoute/pull/9883), original [#9612](https://github.com/diegosouzapw/OmniRoute/pull/9612)) — thanks @Momen4444
+- **fix(db): resolve CCR migration version collision** ([#9884](https://github.com/diegosouzapw/OmniRoute/pull/9884), original [#9618](https://github.com/diegosouzapw/OmniRoute/pull/9618)) — thanks @fenix007
+- **fix(compression): add Lite tool truncation toggle** ([#9885](https://github.com/diegosouzapw/OmniRoute/pull/9885), original [#9629](https://github.com/diegosouzapw/OmniRoute/pull/9629)) — thanks @xz-dev
+- **fix(web-tools): anchor tool contract at prompt tail + user-turn reminder for large prompts** ([#9887](https://github.com/diegosouzapw/OmniRoute/pull/9887), original [#9693](https://github.com/diegosouzapw/OmniRoute/pull/9693)) — thanks @ryan-brosas
+- **fix(sse): persist per-tool-call JSON escape state across SSE delta chunks** ([#9889](https://github.com/diegosouzapw/OmniRoute/pull/9889), original [#9704](https://github.com/diegosouzapw/OmniRoute/pull/9704)) — thanks @hartmark
+- **fix(db,combo): renumber ccr_blocks 134→139 + restore antigravity pool filter** ([#9890](https://github.com/diegosouzapw/OmniRoute/pull/9890), original [#9707](https://github.com/diegosouzapw/OmniRoute/pull/9707)) — thanks @matiasbaglieri
+- **fix(sse): grace period before finalizing a client disconnect as 499** ([#9891](https://github.com/diegosouzapw/OmniRoute/pull/9891), original [#9711](https://github.com/diegosouzapw/OmniRoute/pull/9711)) — thanks @hartmark
+- **fix(build): standalone bundle misses LLMLingua dist + onnxruntime native binaries** ([#9892](https://github.com/diegosouzapw/OmniRoute/pull/9892), original [#9712](https://github.com/diegosouzapw/OmniRoute/pull/9712)) — thanks @hartmark
+- **fix(responses-api): sync reasoning-cache write index with the fixed read side** ([#9895](https://github.com/diegosouzapw/OmniRoute/pull/9895), original [#9741](https://github.com/diegosouzapw/OmniRoute/pull/9741)) — thanks @hartmark
+- **fix(ci): repair release lint test regressions** ([#9896](https://github.com/diegosouzapw/OmniRoute/pull/9896), original [#9813](https://github.com/diegosouzapw/OmniRoute/pull/9813)) — thanks @alex-jordan547
+- **fix(command-code): include tool call arguments** ([#9897](https://github.com/diegosouzapw/OmniRoute/pull/9897), original [#9821](https://github.com/diegosouzapw/OmniRoute/pull/9821)) — thanks @Chewji9875
+- **fix(providers): remove retired NVIDIA NIM catalog entries** ([#9898](https://github.com/diegosouzapw/OmniRoute/pull/9898), original [#9825](https://github.com/diegosouzapw/OmniRoute/pull/9825)) — thanks @Zartharas
+- **fix(nvidia): keep 410 failures model-scoped** ([#9899](https://github.com/diegosouzapw/OmniRoute/pull/9899), original [#9833](https://github.com/diegosouzapw/OmniRoute/pull/9833)) — thanks @Zartharas
+- **fix: retry CodeBuddy large-tool requests in compact form** ([#9900](https://github.com/diegosouzapw/OmniRoute/pull/9900), original [#9542](https://github.com/diegosouzapw/OmniRoute/pull/9542)) — thanks @mvanhorn
+- **fix(quality): clears two release/v3.8.50 base-red gates** ([#9901](https://github.com/diegosouzapw/OmniRoute/pull/9901), original [#9619](https://github.com/diegosouzapw/OmniRoute/pull/9619)) — thanks @wgordon17
+- **fix: resolve hollow external package directory crashes and implement …** ([#9913](https://github.com/diegosouzapw/OmniRoute/pull/9913)) — thanks @SupremeNexas
+- **fix(i18n): restore Vietnamese locale parity** ([#9925](https://github.com/diegosouzapw/OmniRoute/pull/9925))
+- **fix(combo): classify Cloudflare 1010 fingerprint rejection as non-auth** ([#9929](https://github.com/diegosouzapw/OmniRoute/pull/9929)) — thanks @HouMinXi
+- **fix(image): return Fal images as base64 by default** ([#9932](https://github.com/diegosouzapw/OmniRoute/pull/9932)) — thanks @rinseaid
+- **fix(image): support Fal reference-image edits** ([#9933](https://github.com/diegosouzapw/OmniRoute/pull/9933)) — thanks @rinseaid
+- **fix(db): invalidate LKGP pins on provider connection delete** ([#9936](https://github.com/diegosouzapw/OmniRoute/pull/9936)) — thanks @Zartharas
+- **fix(services): stop embedded-service supervisor retry loop when binary cannot spawn** ([#9937](https://github.com/diegosouzapw/OmniRoute/pull/9937)) — thanks @herjarsa
+- **fix(backend): retain streaming usage for providers with choices:[{delta:{}}] final chunk** ([#9938](https://github.com/diegosouzapw/OmniRoute/pull/9938)) — thanks @sadSanta-07
+- **fix(antigravity): ban-safety hardening — bounded onboarding retries, gate thought-signature bypass sentinel** ([#9939](https://github.com/diegosouzapw/OmniRoute/pull/9939)) — thanks @benzntech
+- **fix(guardrails): vision bridge reroute/pool/self-loop fixes (auto/best-vision, claude-wire base64)** ([#9946](https://github.com/diegosouzapw/OmniRoute/pull/9946)) — thanks @herjarsa
+- **fix(mcp): stop omniroute_get_health silently discarding real data** ([#9959](https://github.com/diegosouzapw/OmniRoute/pull/9959)) — thanks @tald26
+- **fix(build): bump @huggingface/transformers to 4.2.0 + onnxruntime-node 1.24.3** ([#9962](https://github.com/diegosouzapw/OmniRoute/pull/9962)) — thanks @witt3rd
+- **fix(cleanup): prune mcp_tool_audit/a2a_task_events by created_at column** ([#9963](https://github.com/diegosouzapw/OmniRoute/pull/9963)) — thanks @witt3rd
+- **fix(db): avoid skipping pending job registry migration 146** ([#9965](https://github.com/diegosouzapw/OmniRoute/pull/9965)) — thanks @Zartharas
+- **fix(video): support Fal-hosted Grok Imagine Video** ([#9969](https://github.com/diegosouzapw/OmniRoute/pull/9969)) — thanks @rinseaid
+- **fix(i18n): escape angle brackets in denoRelayOrgDomainHint across all 43 locales** ([#9976](https://github.com/diegosouzapw/OmniRoute/pull/9976)) — thanks @AgnesRiber
+- **fix(media): support Gemini Omni Flash video** ([#9982](https://github.com/diegosouzapw/OmniRoute/pull/9982)) — thanks @rinseaid
+- **fix(copilot-web): restore browser authentication** ([#9984](https://github.com/diegosouzapw/OmniRoute/pull/9984)) — thanks @backryun
+- **fix(opencode): fallback unsupported DeepSeek json schema output** ([#9992](https://github.com/diegosouzapw/OmniRoute/pull/9992)) — thanks @Zartharas
+- **fix(translator): restore TitleCase tool names on the Claude to Gemini path** ([#9993](https://github.com/diegosouzapw/OmniRoute/pull/9993)) — thanks @engmarcosjr
+- **fix(providers): scope model-level targetFormat to declaring provider catalog** ([#9994](https://github.com/diegosouzapw/OmniRoute/pull/9994)) — thanks @Chewji9875
+- **fix(kimi): apply K3 effort policy to aliases** ([#10005](https://github.com/diegosouzapw/OmniRoute/pull/10005)) — thanks @jackjinke
+- **fix(adobe-firefly) — direct pushes:** harden credential parsing and login hostname comparison (parse-and-compare instead of substring match), sync models/media capabilities, and retain the Topaz catalog models
+- **fix(combo/sse) — direct pushes:** ignore benign empty error fields in streaming-quality validation, classify local target timeouts as gateway timeouts, avoid the usage-normalization short-circuit in Responses, and type empty-choice collector events
+- **fix(logging) — direct pushes:** make stream-chunk capture and request-shape logging opt-in diagnostics
+- **fix(i18n) — direct pushes:** restore/unescape HTML entities in UI strings, translate capability-filter messages, complete web-session guide translations and Vietnamese parity
+- **fix(providers) — direct pushes:** repair the DeepAI registry import + executor
+- **fix(deps) — direct pushes:** CVE-driven bumps (nanoid, dompurify, mermaid, js-yaml + transitive deps for 26 Dependabot alerts) and retained isolated-build runtime dependencies in the pack
+
+### 📝 Maintenance
+
+- **fix(types):** preserve the client response format contract while estimating usage for non-streaming responses (#8484)
+- Preserve the Responses API transform options contract under TypeScript 7.
+- **fix(types):** preserved the known first-failure record while reading Anthropic thinking-signature recovery details so TypeScript 7 keeps the retry result union narrow ([#8484](https://github.com/diegosouzapw/OmniRoute/issues/8484))
+- **fix(types):** reuse the validation failure predicate when building malformed-body responses so the existing error envelope remains type-safe and unchanged. (#8484)
+- **fix(types):** preserve the literal `capabilities.vision: true` contract for catalog vision fields so custom-model capability composition remains type-safe under TypeScript 7 ([#9121](https://github.com/diegosouzapw/OmniRoute/pull/9121)) (#8484)
+- chore(quality): add an RTL layout ratchet — counts physical directional Tailwind classes (ml/mr/pl/pr/left/right/text-left/border-l/rounded-l) that do not mirror under `dir=rtl`, seeded at 1011 so the backlog behind `tests/unit/ui/rtl-logical-classes.test.tsx` ("#3541, partial, core layout") cannot grow while it is worked through ([#8828](https://github.com/diegosouzapw/OmniRoute/pull/8828)) — thanks @lukiod
+- **chore(sse):** dropped the leftover `iflow` entry from the token-refresh TTL map — the provider was removed from the product but its 24-hour refresh lead outlived it, and the identifier had exactly two occurrences left repo-wide ([#8966](https://github.com/diegosouzapw/OmniRoute/pull/8966))
+- **chore(ci):** removed two fork-owned image-publish workflows that had ridden into the repo as unrelated extra files in on-topic PRs — `build-fork.yml` (`ghcr.io/kang-heewon`, job-level guard, so it instantiated a skipped run on every push to main and every tag) and `build-rinseaid-image.yml` (`ghcr.io/rinseaid`, no guard, never fired). Neither could authenticate against this repository's token; a new policy guard now fails CI on any workflow targeting a foreign registry namespace ([#8967](https://github.com/diegosouzapw/OmniRoute/pull/8967))
+- **test(ci):** fixed the intermittent `spawnSync bash EPIPE` failure in the `:latest` promotion guard — the script exits on a pre-release version before reading stdin, so the harness's pipe-backed `input:` raced that exit; stdin is now file-backed, which makes the race structurally impossible ([#8977](https://github.com/diegosouzapw/OmniRoute/pull/8977))
+- **refactor(providers):** removed the retired GitHub Models provider and its catalog, discovery, embedding, free-tier, UI, and documentation surfaces; upgrades now run a durable, idempotent purge of its stored credentials, usage state, structured configuration, and call-log artifacts while preserving GitHub Copilot and live members of mixed configurations ([#9023](https://github.com/diegosouzapw/OmniRoute/pull/9023))
+- **test(sse):** added the first test suite for `open-sse/services/specificityRules.ts` — the
+  module was hotspot #7 in the coverage plan at 11.28% lines with no dedicated test; the 14 pure
+  detectors are now pinned edge-to-edge (token ladders, per-domain max-not-sum scoring, and the
+  min/max clamps), taking the file to ~100% line coverage. The suite also documents two quirks
+  left unchanged: `detectReasoningDepth` scores above 0 on marker-free input via its
+  always-applied message-depth bonus, and `detectErrorContext` returns non-integer scores because
+  it never rounds ([#9063](https://github.com/diegosouzapw/OmniRoute/pull/9063))
+- **fix(types):** preserved the Veo polling delay promise result as `void` for TypeScript 7 compatibility without changing runtime polling behavior ([#9104](https://github.com/diegosouzapw/OmniRoute/pull/9104))
+- **fix(types):** imported compression analytics statistics from their defining module so TypeScript 7 resolves the existing interface correctly ([#9105](https://github.com/diegosouzapw/OmniRoute/pull/9105))
+- **chore(types):** align semantic cache signature inputs with the numeric request contract so both cache-write paths remain runtime-equivalent while TypeScript 7 checks them safely ([#9117](https://github.com/diegosouzapw/OmniRoute/pull/9117))
+- **fix(types):** narrowed non-streaming chat response metadata inputs to the shared header contract without changing emitted metadata headers ([#9118](https://github.com/diegosouzapw/OmniRoute/pull/9118))
+- **docs(readme):** replace Roo Code branding with Zoo Code. (thanks @taltas) ([#9229](https://github.com/diegosouzapw/OmniRoute/pull/9229))
+- **chore(ci):** stopped dependabot from grouping `ioredis` majors with routine production bumps — the package is resolved through a dynamic import in the distributed quota store, so a breaking major passes build, typecheck and both test suites and only surfaces at runtime for operators running Redis-backed quota ([#9425](https://github.com/diegosouzapw/OmniRoute/pull/9425))
+- **chore(tests):** cleared two base-reds sitting on `release/v3.8.50` itself, both of which turned every open PR red the moment it merged the release. `tests/snapshots/provider/translate-path.json` was stale: #9064 added the `code-execution-2025-08-25` and `skills-2025-10-02` beta flags to the Anthropic header without regenerating the golden, so `provider-translate-path-golden` failed on the bare release tip (2 pass / 1 fail with zero PRs boarded). And `tests/unit/v1-models-auth-leak-9320.test.ts:83` shipped a `(k: any)` in a file new enough that `config/quality/eslint-suppressions.json` does not cover it — with `@typescript-eslint/no-explicit-any` set to `error` under `tests/`, that single cast failed the `No new ESLint warnings` gate repo-wide. Same class in `tests/unit/issue-9407-gemini-web-validation-false-positive.test.ts:50` (`(executor as any).testConnection`), which entered at `f1ea77fd04` — `testConnection` is a declared public method on `GeminiWebExecutor`, so that cast was redundant too. Regenerating the snapshot and dropping both casts restores the gates. ([#9488](https://github.com/diegosouzapw/OmniRoute/pull/9488))
+- **test(cli):** OpenCode plugin suite realigned to the bare-key static-catalog contract from #9178/#9175 (21 tests were red on every opencode-plugin CI run; 287/287 after) ([#9614](https://github.com/diegosouzapw/OmniRoute/pull/9614))
+- Removed the unused `RadarReferrals` type export left by the radar referral-links feature (#9697), returning the dead-code ratchet to its 227 baseline. (#9738)
+- Reconcile the final v3.8.50 bundle-size and file-size ratchets against the measured release tip, preserving exact direction-down ceilings and their source attribution. ([#9839](https://github.com/diegosouzapw/OmniRoute/pull/9839))
+- **chore(quality):** expand all file-size baselines by +30% ahead of v3.8.51 (authorized DRIFT rebaseline) to unblock the pre-release queue; no functionality changes. (#9950)
+- fix(quality): tighten eslintWarnings baseline 5000->0 to match the gate's suppressions-applied measurement (unblocks require-tighten on every code PR)
+- **[v3.8.50] feat: add RTL layout compatibility CSS (fixes #7680)** ([#7987](https://github.com/diegosouzapw/OmniRoute/pull/7987)) — thanks @Dingding-leo
+- **[v3.8.50] feat(devin-desktop): replace public Windsurf provider** ([#8228](https://github.com/diegosouzapw/OmniRoute/pull/8228)) — thanks @backryun
+- **[v3.8.50] feat(ci): extend i18n glossary-consistency gate to ko** ([#8244](https://github.com/diegosouzapw/OmniRoute/pull/8244)) — thanks @MichaelYcJo
+- **[v3.8.50] test(tail): realign 3 stale base-red guards + note 2 env-only false positives (slice 6)** ([#8263](https://github.com/diegosouzapw/OmniRoute/pull/8263))
+- **[v3.8.50] feat(ui): add global model search to Combo builder** ([#8285](https://github.com/diegosouzapw/OmniRoute/pull/8285)) — thanks @corefusiion
+- **[v3.8.50] feat: extract CloakBrowser/browser-pool into optional plugin package** ([#8299](https://github.com/diegosouzapw/OmniRoute/pull/8299)) — thanks @oyi77
+- **[v3.8.50] fix(i18n): clean up and naturalize Spanish translations** ([#8339](https://github.com/diegosouzapw/OmniRoute/pull/8339)) — thanks @Dragost
+- **[v3.8.50] fix(compression): bound session-dedup suffix-block scan to prevent OOM** ([#8438](https://github.com/diegosouzapw/OmniRoute/pull/8438)) — thanks @adrianojiu
+- **[v3.8.50] Fix Z.ai web browser transport and model capabilities** ([#8451](https://github.com/diegosouzapw/OmniRoute/pull/8451)) — thanks @backryun
+- **[v3.8.50] feat(services): add Dario as a 5th embedded service (Claude Code toggle/failover)** ([#8523](https://github.com/diegosouzapw/OmniRoute/pull/8523)) — thanks @seanford
+- **[v3.8.50] fix(adobe-firefly): live x-arp-session-id / Arkose wire (stop HTTP 408)** ([#8571](https://github.com/diegosouzapw/OmniRoute/pull/8571)) — thanks @artickc
+- **[v3.8.50] fix(adobe-firefly): durable session, Chrome recovery, browser sign-in** ([#8578](https://github.com/diegosouzapw/OmniRoute/pull/8578)) — thanks @artickc
+- **[v3.8.50] fix: passthrough non-standard cache token fields for DeepSeek / MiniMax / Bedrock across streaming, non-streaming, and Dashboard paths** ([#8591](https://github.com/diegosouzapw/OmniRoute/pull/8591)) — thanks @ikelvingo
+- **[v3.8.50] fix: treat zero-reset Antigravity 429s as transient** ([#8626](https://github.com/diegosouzapw/OmniRoute/pull/8626)) — thanks @costaeder
+- **[v3.8.50] fix: enforce OpenAI model lifecycle without silent reroutes** ([#8627](https://github.com/diegosouzapw/OmniRoute/pull/8627)) — thanks @backryun
+- **[v3.8.50] fix(claude): preserve signed thinking turns during obfuscation** ([#8629](https://github.com/diegosouzapw/OmniRoute/pull/8629)) — thanks @costaeder
+- **[v3.8.50] fix(antigravity): lock full quota per exact model** ([#8630](https://github.com/diegosouzapw/OmniRoute/pull/8630)) — thanks @costaeder
+- **[v3.8.50] fix(errorConfig): add status 499 metadata mapping (fixes #8535)** ([#8640](https://github.com/diegosouzapw/OmniRoute/pull/8640)) — thanks @Dingding-leo
+- **[v3.8.50] fix(auth): accept x-api-key without anthropic-version for claude-code user-agent (fixes #8655)** ([#8678](https://github.com/diegosouzapw/OmniRoute/pull/8678)) — thanks @Dingding-leo
+- **[v3.8.50] fix(open-sse): add 'has been exhausted' to CREDITS_EXHAUSTED_SIGNALS (fixes #8631)** ([#8704](https://github.com/diegosouzapw/OmniRoute/pull/8704)) — thanks @Dingding-leo
+- **[v3.8.50] fix(github): honor per-model targetFormat override for Copilot custom models** ([#8713](https://github.com/diegosouzapw/OmniRoute/pull/8713)) — thanks @Witroch4
+- **[v3.8.50] fix(test): revive orphaned vitest tests and fix CI routing** ([#8718](https://github.com/diegosouzapw/OmniRoute/pull/8718)) — thanks @MohitRawat017
+- **[v3.8.50] feat(providers): add support for TinyCMS Web** ([#8736](https://github.com/diegosouzapw/OmniRoute/pull/8736)) — thanks @jhordanjw123
+- **[v3.8.50] feat(memory): MemoryBackend provider pattern with generic HTTP connector** ([#8752](https://github.com/diegosouzapw/OmniRoute/pull/8752)) — thanks @oyi77
+- **[v3.8.50] refactor(db): add combo repository boundary** ([#8757](https://github.com/diegosouzapw/OmniRoute/pull/8757)) — thanks @xiaoyaner0201
+- **[v3.8.50] fix(test): revive orphaned open-sse vitest tests** ([#8772](https://github.com/diegosouzapw/OmniRoute/pull/8772)) — thanks @MohitRawat017
+- **[v3.8.50] fix(open-sse): filter non-numeric values in comboTargetLimits before min calculation** ([#8774](https://github.com/diegosouzapw/OmniRoute/pull/8774)) — thanks @Dingding-leo
+- **[v3.8.50] feat(compression): add Italian (it) Caveman rule pack** ([#8776](https://github.com/diegosouzapw/OmniRoute/pull/8776)) — thanks @Anjielon
+- **[v3.8.50] feat(combo): add maxContextWindow to contextRequirements (fixes #8777)** ([#8790](https://github.com/diegosouzapw/OmniRoute/pull/8790)) — thanks @Dingding-leo
+- **[v3.8.50] feat(images): add POST /v1/images/upscale (Adobe Firefly Topaz + Stability + Topaz Labs)** ([#8791](https://github.com/diegosouzapw/OmniRoute/pull/8791)) — thanks @artickc
+- **[v3.8.50] fix(providers): drop dead Cloudflare Workers AI free catalog IDs (#8717)** ([#8804](https://github.com/diegosouzapw/OmniRoute/pull/8804)) — thanks @DinonowDev
+- **[v3.8.50] fix(sse): stop fabricating encrypted Codex reasoning summary text** ([#8807](https://github.com/diegosouzapw/OmniRoute/pull/8807)) — thanks @Prudhvivuda
+- **[v3.8.50] fix(backend): update Cloudflare Workers AI model catalog & remove dead model IDs (#8717)** ([#8808](https://github.com/diegosouzapw/OmniRoute/pull/8808)) — thanks @Dingding-leo
+- **[TS7] [v3.8.50] refactor(db): preserve normalized combo model types** ([#8809](https://github.com/diegosouzapw/OmniRoute/pull/8809)) — thanks @backryun
+- **[v3.8.50] fix(db/apiKeys): respect provider parameter in group model permission checks (fixes #8803)** ([#8817](https://github.com/diegosouzapw/OmniRoute/pull/8817)) — thanks @Dingding-leo
+- **[TS7] [v3.8.50] fix(types): preserve browser abort handling** ([#8818](https://github.com/diegosouzapw/OmniRoute/pull/8818)) — thanks @backryun
+- **[v3.8.50] feat(cli): deliver the Antigravity credential straight to the remote install** ([#8834](https://github.com/diegosouzapw/OmniRoute/pull/8834))
+- **[v3.8.50] docs: slim AGENTS.md** ([#8839](https://github.com/diegosouzapw/OmniRoute/pull/8839)) — thanks @MumuTW
+- **docs(guides): add Antigravity (Google One AI) onboarding guide** ([#8904](https://github.com/diegosouzapw/OmniRoute/pull/8904)) — thanks @HouMinXi
+- **[v3.8.50] fix(usage): reject impossible provider token counts** ([#8927](https://github.com/diegosouzapw/OmniRoute/pull/8927)) — thanks @artickc
+- **Treat context metadata as a routing hint** ([#8944](https://github.com/diegosouzapw/OmniRoute/pull/8944)) — thanks @JxnLexn
+- **docs(db): specify MySQL conformance semantics** ([#8947](https://github.com/diegosouzapw/OmniRoute/pull/8947)) — thanks @rushsinging
+- **Add native ChatGPT Web provider for Codex clients** ([#8949](https://github.com/diegosouzapw/OmniRoute/pull/8949)) — thanks @JxnLexn
+- **i18n(ru): complete Russian locale — 100% coverage** ([#9001](https://github.com/diegosouzapw/OmniRoute/pull/9001)) — thanks @Egorich-print
+- **docs(troubleshooting): document the chat_admission_busy 503 and how to tune heavyweight chat concurrency** ([#9021](https://github.com/diegosouzapw/OmniRoute/pull/9021)) — thanks @xiaoyaner0201
+- **Security: Update Redis to fix critical vunerability** ([#9065](https://github.com/diegosouzapw/OmniRoute/pull/9065)) — thanks @tuxmonteiro
+- **[TS7] fix(types): validate chat context estimation inputs** ([#9084](https://github.com/diegosouzapw/OmniRoute/pull/9084)) — thanks @backryun
+- **[TS7] fix(types): narrow stream response output** ([#9086](https://github.com/diegosouzapw/OmniRoute/pull/9086)) — thanks @backryun
+- **docs: clarify free-provider model refresh outcomes** ([#9087](https://github.com/diegosouzapw/OmniRoute/pull/9087)) — thanks @AbdullahFageeh
+- **[TS7] [v3.8.50] fix(types): preserve SSE tool call function shape** ([#9090](https://github.com/diegosouzapw/OmniRoute/pull/9090)) — thanks @backryun
+- **[TS7] fix(types): narrow CCR store rejections** ([#9091](https://github.com/diegosouzapw/OmniRoute/pull/9091)) — thanks @backryun
+- **[TS7] fix(types): preserve array-buffer response bodies** ([#9092](https://github.com/diegosouzapw/OmniRoute/pull/9092)) — thanks @backryun
+- **[TS7] fix(types): narrow media generation failures** ([#9093](https://github.com/diegosouzapw/OmniRoute/pull/9093)) — thanks @backryun
+- **[TS7] fix(types): preserve thinking signature recovery failure** ([#9114](https://github.com/diegosouzapw/OmniRoute/pull/9114)) — thanks @backryun
+- **[TS7] fix(types): preserve Responses transform options** ([#9119](https://github.com/diegosouzapw/OmniRoute/pull/9119)) — thanks @backryun
+- **[TS7] fix(types): preserve validation failure narrowing** ([#9120](https://github.com/diegosouzapw/OmniRoute/pull/9120)) — thanks @backryun
+- **[TS7] fix(types): preserve client usage format contract** ([#9122](https://github.com/diegosouzapw/OmniRoute/pull/9122)) — thanks @backryun
+- **[TS7] fix(types): preserve request rule input contracts** ([#9135](https://github.com/diegosouzapw/OmniRoute/pull/9135)) — thanks @backryun
+- **[TS7] fix(types): simplify Codex service tier narrowing** ([#9136](https://github.com/diegosouzapw/OmniRoute/pull/9136)) — thanks @backryun
+- **[TS7] fix(types): tighten extracted chatCore contracts** ([#9137](https://github.com/diegosouzapw/OmniRoute/pull/9137)) — thanks @backryun
+- **[TS7] fix(types): align web executor event and model contracts** ([#9138](https://github.com/diegosouzapw/OmniRoute/pull/9138)) — thanks @backryun
+- **[TS7] fix(types): align web provider support contracts** ([#9139](https://github.com/diegosouzapw/OmniRoute/pull/9139)) — thanks @backryun
+- **[TS7] fix(types): type media provider request payloads** ([#9141](https://github.com/diegosouzapw/OmniRoute/pull/9141)) — thanks @backryun
+- **test(dashboard): drop stale next-intl mock breaking ProviderDetailPageClient smoke** ([#9150](https://github.com/diegosouzapw/OmniRoute/pull/9150)) — thanks @maxmad64bis
+- **test(mcp): guard Node 24 bundled MCP startup** ([#9162](https://github.com/diegosouzapw/OmniRoute/pull/9162)) — thanks @Gioxaa
+- **test(compression): lock in stacked RTK+Caveman savings on redundant tool_result content** ([#9278](https://github.com/diegosouzapw/OmniRoute/pull/9278)) — thanks @Sam280903
+- **chore: bump better-sqlite3 and add provider DB query scripts** ([#9325](https://github.com/diegosouzapw/OmniRoute/pull/9325)) — thanks @jowimila
+- **test(quota): wait for the hot-path consumption instead of sleeping** ([#9365](https://github.com/diegosouzapw/OmniRoute/pull/9365)) — thanks @HouMinXi
+- **refactor(sse): move the thinking-budget helpers out of base.ts** ([#9381](https://github.com/diegosouzapw/OmniRoute/pull/9381)) — thanks @HouMinXi
+- **test(sse): expect the trailing period in the no-credentials message** ([#9392](https://github.com/diegosouzapw/OmniRoute/pull/9392)) — thanks @HouMinXi
+- **chore(db): raise sqlite cache_size/mmap_size defaults** ([#9467](https://github.com/diegosouzapw/OmniRoute/pull/9467)) — thanks @Poid-ZA
+- **[TS7] fix(types): align stream failure callback contracts** ([#9561](https://github.com/diegosouzapw/OmniRoute/pull/9561)) — thanks @backryun
+- **[TS7] fix(types): narrow chatCore local contracts** ([#9562](https://github.com/diegosouzapw/OmniRoute/pull/9562)) — thanks @backryun
+- **[TS7] fix(types): validate Azure OpenAI base URLs** ([#9563](https://github.com/diegosouzapw/OmniRoute/pull/9563)) — thanks @backryun
+- **[TS7] fix(types): preserve sanitized tool array contracts** ([#9564](https://github.com/diegosouzapw/OmniRoute/pull/9564)) — thanks @backryun
+- **[TS7] fix(types): validate Vision Bridge combo names** ([#9565](https://github.com/diegosouzapw/OmniRoute/pull/9565)) — thanks @backryun
+- **[TS7] fix(types): preserve streaming PII choice keys** ([#9566](https://github.com/diegosouzapw/OmniRoute/pull/9566)) — thanks @backryun
+- **[TS7] test(types): use Vitest expectations in tier resolver** ([#9742](https://github.com/diegosouzapw/OmniRoute/pull/9742)) — thanks @backryun
+- **[TS7] fix(translator): preserve video URL override contracts** ([#9747](https://github.com/diegosouzapw/OmniRoute/pull/9747)) — thanks @backryun
+- **[TS7] fix(codex): preserve narrowed input arrays** ([#9748](https://github.com/diegosouzapw/OmniRoute/pull/9748)) — thanks @backryun
+- **[TS7] fix(kiro): complete cache-only usage totals** ([#9753](https://github.com/diegosouzapw/OmniRoute/pull/9753)) — thanks @backryun
+- **chore(repo): ignore Electron build output unpacked into repo root** ([#9858](https://github.com/diegosouzapw/OmniRoute/pull/9858), original [#9770](https://github.com/diegosouzapw/OmniRoute/pull/9770)) — thanks @Michael-Rocco-Goldmann
+- **test(integration): add general live-test tool for the real "default" combo + rootless wire capture** ([#9862](https://github.com/diegosouzapw/OmniRoute/pull/9862), original [#9744](https://github.com/diegosouzapw/OmniRoute/pull/9744)) — thanks @hartmark
+- **ci(test): route orphaned Vitest tests through blocking CI** ([#9875](https://github.com/diegosouzapw/OmniRoute/pull/9875), original [#9605](https://github.com/diegosouzapw/OmniRoute/pull/9605)) — thanks @MohitRawat017
+- **docs(proposals): Telegram Mini App integration feasibility analysis** ([#9906](https://github.com/diegosouzapw/OmniRoute/pull/9906), original [#9810](https://github.com/diegosouzapw/OmniRoute/pull/9810)) — thanks @benzntech
+- **chore: ignore docker-compose.override.yml** ([#9919](https://github.com/diegosouzapw/OmniRoute/pull/9919)) — thanks @lucasalx
+- **[TS7] fix(types): stabilize skill token extraction** ([#9920](https://github.com/diegosouzapw/OmniRoute/pull/9920)) — thanks @backryun
+- **docs: add quickstart code examples for Python, Node.js, PHP and cURL** ([#9922](https://github.com/diegosouzapw/OmniRoute/pull/9922)) — thanks @Hariprajwal
+- **[TS7] fix(types): narrow combo model collections** ([#9972](https://github.com/diegosouzapw/OmniRoute/pull/9972)) — thanks @backryun
+- **[TS7] fix(types): align Claude message contracts** ([#9973](https://github.com/diegosouzapw/OmniRoute/pull/9973)) — thanks @backryun
+- **[TS7] fix(types): type Copilot WebSocket construction** ([#9974](https://github.com/diegosouzapw/OmniRoute/pull/9974)) — thanks @backryun
+- **[TS7] chore(types): remove orphan combo manifest metrics** ([#9975](https://github.com/diegosouzapw/OmniRoute/pull/9975)) — thanks @backryun
+- **[TS7] fix(types): normalize stream usage before cost calculation** ([#9977](https://github.com/diegosouzapw/OmniRoute/pull/9977)) — thanks @backryun
+- **[TS7] fix(stream): collect synthesized Responses tool events** ([#9978](https://github.com/diegosouzapw/OmniRoute/pull/9978)) — thanks @backryun
+- **[TS7] fix(types): complete Responses stream failure contract** ([#9979](https://github.com/diegosouzapw/OmniRoute/pull/9979)) — thanks @backryun
+- **[TS7] fix(types): narrow chat dispatch contracts** ([#9986](https://github.com/diegosouzapw/OmniRoute/pull/9986)) — thanks @backryun
+- **[TS7] fix(types): narrow chatCore local contracts** ([#9987](https://github.com/diegosouzapw/OmniRoute/pull/9987)) — thanks @backryun
+- **[TS7] fix(types): preserve GHE Copilot executor configuration** ([#9988](https://github.com/diegosouzapw/OmniRoute/pull/9988)) — thanks @backryun
+- **[TS7] fix(types): validate Fal video result URLs** ([#9989](https://github.com/diegosouzapw/OmniRoute/pull/9989)) — thanks @backryun
+- **[TS7] fix(types): narrow Claude stream deltas** ([#9990](https://github.com/diegosouzapw/OmniRoute/pull/9990)) — thanks @backryun
+- **provider(agnes):refresh model catalog** ([#9998](https://github.com/diegosouzapw/OmniRoute/pull/9998)) — thanks @backryun
+- **docs: fix duplicated word in MCP server audit logging section** ([#10000](https://github.com/diegosouzapw/OmniRoute/pull/10000)) — thanks @TengSivtean
+- **docs: fix stale tool count (105 -> 104) in MCP server docs** ([#10002](https://github.com/diegosouzapw/OmniRoute/pull/10002)) — thanks @TengSivtean
+- **Document default behavior for ToS-flagged free-tier providers** ([#10013](https://github.com/diegosouzapw/OmniRoute/pull/10013)) — thanks @yulinlina
+- **[TS7] fix(tinycms): align executor and signer contracts** ([#10087](https://github.com/diegosouzapw/OmniRoute/pull/10087)) — thanks @backryun
+- **[TS7] fix(types): restore provider breaker predicate import** ([#10088](https://github.com/diegosouzapw/OmniRoute/pull/10088)) — thanks @backryun
+- **[TS7] ci: block new TypeScript 7 diagnostics** ([#10134](https://github.com/diegosouzapw/OmniRoute/pull/10134)) — thanks @backryun
+- **chore(repo): remove tracked local artifacts** ([#10178](https://github.com/diegosouzapw/OmniRoute/pull/10178)) — thanks @backryun
+- **maintenance — direct pushes (rollup):** release-gate and base-red repairs pushed straight to the release branch (typecheck, unit, quality-ratchet, file-size and ESLint-baseline corrections, stale assertion updates), repository hygiene (`_tasks` symlink untracking, `.source`/`.playwright-cli`/`.cbmignore` ignore entries, Electron build-output ignores, Open Collective link removal) and CI re-triggers after GitHub Actions incidents
+- **deps (rollup):** dependency bumps and lockfile maintenance across the cycle — Dependabot groups and manual CVE-driven bumps ([#9081](https://github.com/diegosouzapw/OmniRoute/pull/9081), [#9082](https://github.com/diegosouzapw/OmniRoute/pull/9082), [#9427](https://github.com/diegosouzapw/OmniRoute/pull/9427), [#9458](https://github.com/diegosouzapw/OmniRoute/pull/9458), [#9459](https://github.com/diegosouzapw/OmniRoute/pull/9459), [#9461](https://github.com/diegosouzapw/OmniRoute/pull/9461), [#9462](https://github.com/diegosouzapw/OmniRoute/pull/9462), [#9472](https://github.com/diegosouzapw/OmniRoute/pull/9472))
+- **docs/chore (rollup):** documentation, refactoring and repository-hygiene upkeep across the cycle ([#8954](https://github.com/diegosouzapw/OmniRoute/pull/8954), [#8991](https://github.com/diegosouzapw/OmniRoute/pull/8991), [#9059](https://github.com/diegosouzapw/OmniRoute/pull/9059), [#9194](https://github.com/diegosouzapw/OmniRoute/pull/9194), [#9258](https://github.com/diegosouzapw/OmniRoute/pull/9258), [#9508](https://github.com/diegosouzapw/OmniRoute/pull/9508))
+- **main-branch plumbing (rollup):** work that landed on `main` between cycles and was carried into this one — the Mergify merge-queue migration and tuning (#7168, #7179, #7216, #7220, #7225), npm-publish unblock via dynamic runner + CI build reuse (#8941), CodeQL-driven e2e mock hardening (#7559), hermetic self-ref guard (#6634, #7341), coverage-baseline tightening (#7347), Dependabot alert resolutions via npm overrides (#8067, #8070), README flag/doc-link polish (#8317), and the v3.8.49 release plumbing itself (#7076)
+
+### 🙌 Contributors
+
+Thanks to everyone whose work landed in v3.8.50:
+
+| Contributor | PRs / Issues |
+| --- | --- |
+| [@AbdullahFageeh](https://github.com/AbdullahFageeh) | #9087 |
+| [@adevwithpurpose](https://github.com/adevwithpurpose) | #9790 |
+| [@adrianojiu](https://github.com/adrianojiu) | #8438 |
+| [@agisota](https://github.com/agisota) | #9837 |
+| [@AgnesRiber](https://github.com/AgnesRiber) | #9718, #9976 |
+| [@ahmet-cetinkaya](https://github.com/ahmet-cetinkaya) | #8878 |
+| [@AIB1TAL0S](https://github.com/AIB1TAL0S) | #9284 |
+| [@AlanSyue](https://github.com/AlanSyue) | direct commit / report |
+| [@alex-jordan547](https://github.com/alex-jordan547) | #9235, #9245, #9813 |
+| [@AndrianBalanescu](https://github.com/AndrianBalanescu) | #8888, #8889, #8890, #8891, #8892, #8893, #8894, #8895 |
+| [@AnhLead](https://github.com/AnhLead) | #9722 |
+| [@aniketshukla1](https://github.com/aniketshukla1) | #9148 |
+| [@Anjielon](https://github.com/Anjielon) | #8776 |
+| [@apoapostolov](https://github.com/apoapostolov) | #8916 |
+| [@ARC345](https://github.com/ARC345) | #9628 |
+| [@artickc](https://github.com/artickc) | #8571, #8578, #8791, #8843, #8870, #8927, #8974, #9097, #9549 |
+| [@Arul-](https://github.com/Arul-) | #9761 |
+| [@b1nhm1nh](https://github.com/b1nhm1nh) | direct commit / report |
+| [@backryun](https://github.com/backryun) | #8228, #8451, #8627, #8809, #8818, #9084, #9086, #9090, #9091, #9092, #9093, #9114, #9119, #9120, #9122, #9135, #9136, #9137, #9138, #9139, #9141, #9561, #9562, #9563, #9564, #9565, #9566, #9742, #9747, #9748, #9751, #9753, #9755, #9791, #9792, #9793, #9795, #9796, #9797, #9798, #9920, #9972, #9973, #9974, #9975, #9977, #9978, #9979, #9984, #9986, #9987, #9988, #9989, #9990, #9998, #10087, #10088, #10134, #10178 |
+| [@Benson-mk](https://github.com/Benson-mk) | #8369 |
+| [@benzntech](https://github.com/benzntech) | #9810, #9812, #9939 |
+| [@Bl0ck154](https://github.com/Bl0ck154) | #9231 |
+| [@branben](https://github.com/branben) | #9940 |
+| [@Chewji9875](https://github.com/Chewji9875) | #9257, #9420, #9821, #9994 |
+| [@chirag127](https://github.com/chirag127) | #6674 |
+| [@chloeassistant](https://github.com/chloeassistant) | #9675, #9746 |
+| [@configurowebmax](https://github.com/configurowebmax) | #8877 |
+| [@corefusiion](https://github.com/corefusiion) | #8285 |
+| [@costaeder](https://github.com/costaeder) | #8626, #8629, #8630 |
+| [@csoftware-arigpt](https://github.com/csoftware-arigpt) | #3440 |
+| [@DaDecky](https://github.com/DaDecky) | direct commit / report |
+| [@ddarkr](https://github.com/ddarkr) | #9035, #9036 |
+| [@Dingding-leo](https://github.com/Dingding-leo) | #7987, #8640, #8678, #8704, #8774, #8790, #8808, #8817 |
+| [@DinonowDev](https://github.com/DinonowDev) | #8804 |
+| [@Dragost](https://github.com/Dragost) | #8339 |
+| [@dsitmilis](https://github.com/dsitmilis) | direct commit / report |
+| [@Egorich-print](https://github.com/Egorich-print) | #9001, #9020, #9058 |
+| [@engmarcosjr](https://github.com/engmarcosjr) | #9993 |
+| [@epsilonode](https://github.com/epsilonode) | #8871 |
+| [@ervareza](https://github.com/ervareza) | direct commit / report |
+| [@fajarhide](https://github.com/fajarhide) | #9191, #9198 |
+| [@fenix007](https://github.com/fenix007) | #9618 |
+| [@Gecky2102](https://github.com/Gecky2102) | #9280 |
+| [@Gioxaa](https://github.com/Gioxaa) | #9162, #9171 |
+| [@HaoNgo232](https://github.com/HaoNgo232) | direct commit / report |
+| [@Hariprajwal](https://github.com/Hariprajwal) | #9922 |
+| [@hartmark](https://github.com/hartmark) | #9635, #9704, #9711, #9712, #9727, #9734, #9735, #9738, #9741, #9744, #9745, #9822 |
+| [@Hdiaktoros](https://github.com/Hdiaktoros) | #8930 |
+| [@HectorBernstorff](https://github.com/HectorBernstorff) | direct commit / report |
+| [@HellFiveOsborn](https://github.com/HellFiveOsborn) | #9248 |
+| [@herjarsa](https://github.com/herjarsa) | #9714, #9816, #9937, #9946 |
+| [@horacecar](https://github.com/horacecar) | #7679 |
+| [@HouMinXi](https://github.com/HouMinXi) | #8886, #8904, #8905, #8976, #8984, #9079, #9106, #9207, #9242, #9328, #9340, #9342, #9351, #9365, #9380, #9381, #9392, #9449, #9482, #9483, #9509, #9510, #9572, #9631, #9634, #9695, #9929 |
+| [@hppsc1215](https://github.com/hppsc1215) | #8970 |
+| [@Iammilansoni](https://github.com/Iammilansoni) | #9353, #9397 |
+| [@ikelvingo](https://github.com/ikelvingo) | #8591, #8872, #9053 |
+| [@infinit-X](https://github.com/infinit-X) | #9095 |
+| [@isaaclb98](https://github.com/isaaclb98) | #9730 |
+| [@jackjinke](https://github.com/jackjinke) | #9556, #9601, #10005 |
+| [@jax-novita](https://github.com/jax-novita) | #8913 |
+| [@jhordanjw123](https://github.com/jhordanjw123) | #8736 |
+| [@jktan0504](https://github.com/jktan0504) | #9025 |
+| [@joachimBrindeau](https://github.com/joachimBrindeau) | #9200 |
+| [@JoshimOfficial](https://github.com/JoshimOfficial) | #9011 |
+| [@jowimila](https://github.com/jowimila) | #9325 |
+| [@JxnLexn](https://github.com/JxnLexn) | #8933, #8940, #8944, #8949 |
+| [@Kaedo17](https://github.com/Kaedo17) | #8922 |
+| [@khoazero123](https://github.com/khoazero123) | #9272 |
+| [@KittisakT](https://github.com/KittisakT) | #9423 |
+| [@KooshaPari](https://github.com/KooshaPari) | #7329 |
+| [@larin-vas](https://github.com/larin-vas) | #9828 |
+| [@lazysaltyfish](https://github.com/lazysaltyfish) | direct commit / report |
+| [@LeonG606](https://github.com/LeonG606) | #9457 |
+| [@Llliao1113](https://github.com/Llliao1113) | #8921 |
+| [@lucasalx](https://github.com/lucasalx) | #9919 |
+| [@lucasmellos](https://github.com/lucasmellos) | #8925 |
+| [@lukiod](https://github.com/lukiod) | #8828 |
+| [@luoyide](https://github.com/luoyide) | direct commit / report |
+| [@mad-gooze](https://github.com/mad-gooze) | #9052 |
+| [@maisdesign](https://github.com/maisdesign) | #8858 |
+| [@marchlhw](https://github.com/marchlhw) | #9050 |
+| [@matiasbaglieri](https://github.com/matiasbaglieri) | #9707 |
+| [@maxmad64bis](https://github.com/maxmad64bis) | #9150, #9246, #9291, #9414 |
+| [@McLuck](https://github.com/McLuck) | #8914 |
+| [@Michael-Rocco-Goldmann](https://github.com/Michael-Rocco-Goldmann) | #9770, #9773, #9777, #9787 |
+| [@MichaelYcJo](https://github.com/MichaelYcJo) | #8244 |
+| [@minhnhat166](https://github.com/minhnhat166) | direct commit / report |
+| [@MohitRawat017](https://github.com/MohitRawat017) | #8718, #8772, #9605 |
+| [@Momen4444](https://github.com/Momen4444) | #9612 |
+| [@MrShitFox](https://github.com/MrShitFox) | #9826 |
+| [@MumuTW](https://github.com/MumuTW) | #8839 |
+| [@mvanhorn](https://github.com/mvanhorn) | #9542 |
+| [@Mynacol](https://github.com/Mynacol) | #9733 |
+| [@nguyenha935](https://github.com/nguyenha935) | #9044, #9215 |
+| [@nosolosoft](https://github.com/nosolosoft) | #8900 |
+| [@oyi77](https://github.com/oyi77) | #8299, #8752, #9158, #9818 |
+| [@PixmaNts](https://github.com/PixmaNts) | #9432 |
+| [@pizzav-xyz](https://github.com/pizzav-xyz) | #9077 |
+| [@Poid-ZA](https://github.com/Poid-ZA) | #9467 |
+| [@Prudhvivuda](https://github.com/Prudhvivuda) | #8807, #9014, #9015, #9016 |
+| [@qianze0628](https://github.com/qianze0628) | #9038 |
+| [@raflyazf](https://github.com/raflyazf) | direct commit / report |
+| [@Rahulsharma0810](https://github.com/Rahulsharma0810) | #8961 |
+| [@rinseaid](https://github.com/rinseaid) | #8945, #9037, #9932, #9933, #9969, #9982 |
+| [@rixzkiye](https://github.com/rixzkiye) | direct commit / report |
+| [@RobertsXML](https://github.com/RobertsXML) | direct commit / report |
+| [@royanrosyad85](https://github.com/royanrosyad85) | direct commit / report |
+| [@rushsinging](https://github.com/rushsinging) | #8947 |
+| [@ryan-brosas](https://github.com/ryan-brosas) | #9693 |
+| [@ryanngit](https://github.com/ryanngit) | direct commit / report |
+| [@sadSanta-07](https://github.com/sadSanta-07) | #9938 |
+| [@SalyyS1](https://github.com/SalyyS1) | direct commit / report |
+| [@Sam280903](https://github.com/Sam280903) | #9274, #9278, #9281 |
+| [@seakleangnhak](https://github.com/seakleangnhak) | direct commit / report |
+| [@seanford](https://github.com/seanford) | #8523 |
+| [@SemonCat](https://github.com/SemonCat) | direct commit / report |
+| [@shixi-li](https://github.com/shixi-li) | #9022, #9513, #10001 |
+| [@soulhakr](https://github.com/soulhakr) | #8799 |
+| [@stanleytejakusuma](https://github.com/stanleytejakusuma) | #9610 |
+| [@Stazyu](https://github.com/Stazyu) | #9007, #9226, #9438 |
+| [@SupremeNexas](https://github.com/SupremeNexas) | #9913 |
+| [@swingtempo](https://github.com/swingtempo) | #9307 |
+| [@szzhoujiarui](https://github.com/szzhoujiarui) | #9218 |
+| [@tald26](https://github.com/tald26) | #9959 |
+| [@taltas](https://github.com/taltas) | direct commit / report |
+| [@TechNickAI](https://github.com/TechNickAI) | #9251 |
+| [@TengSivtean](https://github.com/TengSivtean) | #10000, #10002 |
+| [@TheFrenchGhosty](https://github.com/TheFrenchGhosty) | #9326 |
+| [@tuxmonteiro](https://github.com/tuxmonteiro) | #9065 |
+| [@vinogradovnet](https://github.com/vinogradovnet) | #9581 |
+| [@VXNCXNX](https://github.com/VXNCXNX) | #9111, #9783 |
+| [@wgordon17](https://github.com/wgordon17) | #8909, #9233, #9441, #9619 |
+| [@Witroch4](https://github.com/Witroch4) | #8713 |
+| [@witt3rd](https://github.com/witt3rd) | #9962, #9963 |
+| [@xiaoyaner0201](https://github.com/xiaoyaner0201) | #8757, #8869, #8876, #8883, #8906, #8931, #9021, #9027, #9452 |
+| [@xz-dev](https://github.com/xz-dev) | #8908, #9199, #9205, #9262, #9290, #9313, #9555, #9569, #9629, #9788, #9983 |
+| [@yansigit](https://github.com/yansigit) | #9834, #9911, #9917, #9921 |
+| [@yidecode](https://github.com/yidecode) | direct commit / report |
+| [@yulinlina](https://github.com/yulinlina) | #10013 |
+| [@yutuknown](https://github.com/yutuknown) | #8999 |
+| [@zabrodschiipavel-sketch](https://github.com/zabrodschiipavel-sketch) | #9312 |
+| [@Zartharas](https://github.com/Zartharas) | #9161, #9164, #9181, #9182, #9184, #9185, #9186, #9189, #9294, #9825, #9833, #9936, #9965, #9992 |
+| [@Zenlyte](https://github.com/Zenlyte) | #9005 |
+| [@zhiru](https://github.com/zhiru) | #9099, #9101 |
+| [@ziuus](https://github.com/ziuus) | #8912 |
+| [@zuckdorsey](https://github.com/zuckdorsey) | #9723 |
+| [@diegosouzapw](https://github.com/diegosouzapw) | maintainer |
+
+---
+
 ## [3.8.49] — 2026-07-28
 
 _Living section — regenerated 2026-07-19 from all 306 cycle commits (bump 2c62333b0 → tip). Bullets carry the merged PR and its author; direct pushes listed separately. Finalized at the v3.8.49 release._

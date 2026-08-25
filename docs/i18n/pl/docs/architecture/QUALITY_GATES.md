@@ -186,10 +186,10 @@ Działa tylko na pull requestach.
 
 Działa po `build`. Blokuje merge przy failure.
 
-| Suite            | Waliduje                                                | Blokująca                                                                  |
-| ---------------- | ------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `test:vitest`    | MCP server (94 tools), autoCombo, cache — vitest runner | Tak                                                                        |
-| `test:vitest:ui` | Testy komponentów UI — vitest runner                    | **Advisory** (`continue-on-error: true`) — failing aż do triage UI Fase 6A |
+| Suite            | Waliduje                                                 | Blokująca                                                                  |
+| ---------------- | -------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `test:vitest`    | MCP server (107 tools), autoCombo, cache — vitest runner | Tak                                                                        |
+| `test:vitest:ui` | Testy komponentów UI — vitest runner                     | **Advisory** (`continue-on-error: true`) — failing aż do triage UI Fase 6A |
 
 ### Workflowy nightly (harmonogram, advisory)
 

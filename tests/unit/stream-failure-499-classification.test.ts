@@ -1,13 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { createStreamFailureFinalizers } = await import(
-  "../../open-sse/utils/streamFailureFinalization.ts"
-);
+const { createStreamFailureFinalizers } =
+  await import("../../open-sse/utils/streamFailureFinalization.ts");
 
 test("createStreamFailureFinalizers: 499 client disconnect body is client_disconnected", () => {
-  let captured: { status: number; responseBody: unknown; errorCode?: string | null } | null =
-    null;
+  let captured: { status: number; responseBody: unknown; errorCode?: string | null } | null = null;
 
   const { onPipelineStreamError } = createStreamFailureFinalizers({
     isFailureCompletionRecorded: () => false,
@@ -48,13 +46,14 @@ test("createStreamFailureFinalizers: caller classification survives into respons
     persistFailureUsage: () => {},
   });
 
-  handleStreamFailure({
+  const handled = handleStreamFailure({
     status: 502,
     message: "Upstream stream error",
     code: "stream_pipeline_error",
     type: "stream_error",
   });
 
+  assert.equal(handled, true, "the callback contract reports that the stream failure was handled");
   const body = captured as { error: { type?: string; code?: string } };
   assert.equal(body.error.type, "stream_error");
   assert.equal(body.error.code, "stream_pipeline_error");

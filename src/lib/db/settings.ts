@@ -156,7 +156,7 @@ export async function getSettings() {
     providerStrategies: {},
     // Per-operator quota row visibility (dashboard usage tab). Keyed by
     // provider id → { hidden: [<quota visibility key>] }. Independent of the
-    // model catalog's isHidden/isDeleted flags (collectHiddenQuotaModelIds in
+    // model catalog's isHidden flag (collectHiddenQuotaModelIds in
     // ProviderLimits/utils.tsx) — this is a personal view preference, not an
     // admin model-catalog edit. Ported from upstream decolua/9router#2371.
     quotaVisibility: {},
@@ -165,6 +165,7 @@ export async function getSettings() {
     antigravitySignatureCacheMode: "enabled",
     requireLogin: true,
     oidcEnabled: false,
+    oidcDisablePasswordLogin: false,
     oidcIssuer: "",
     oidcClientId: "",
     oidcClientSecret: "",
@@ -227,7 +228,9 @@ export async function getSettings() {
     claudeLargeMessagesMaxMb: claudeLargeMessagesMaxMbFromEnv(
       process.env.OMNIROUTE_CLAUDE_LARGE_MESSAGES_MAX_BYTES
     ),
-    debugMode: true,
+    // #10312: opt-in only — a fresh install (or one missing the persisted key)
+    // must not run in debug mode; installs that persisted `true` keep it.
+    debugMode: false,
     // Opt-in diagnostic: when true, the chat handler emits a `log.debug("TOOLS", …)`
     // line per request summarizing tool count + MCP/hosted/client source breakdown.
     logToolSources: false,
@@ -240,6 +243,7 @@ export async function getSettings() {
     localOnlyManageScopeBypassEnabled: true,
     localOnlyManageScopeBypassPrefixes: ["/api/mcp/"],
     customBannedSignals: [],
+    autoDisableBannedScope: "all",
     proxyEnabled: true,
     perKeyProxyEnabled: false,
     customSystemPromptEnabled: false,
@@ -249,6 +253,17 @@ export async function getSettings() {
     // (`:free` suffix, zero-price pricing, or FREE_MODEL_BUDGETS membership). Default
     // false preserves prior behaviour; opt-in only.
     hidePaidModels: false,
+    // Opt-in, default off: same shape as hidePaidModels above, but requires a
+    // live hard-stop-guaranteed quota check for non-keyless free candidates.
+    // See open-sse/services/autoCombo/strictZeroCostFilter.ts.
+    freeAccessPolicy: "off",
+    excludeTosAvoid: false,
+    // #9418: Opt-in filter that hides auto/* virtual combos from the /v1/models catalog.
+    // User-defined combos are unaffected; routing still works for hidden ids sent explicitly.
+    hideAutoCombos: false,
+    // #9418: Opt-in filter that hides no-think/* gateway variants from the /v1/models catalog.
+    // Routing still works for hidden ids sent explicitly.
+    hideNoThinkVariants: false,
     // #6977: Opt-in per-connection auto-ping that warms a Codex OAuth connection's
     // quota window right after it resets, so the first real request doesn't land in
     // a cold window. `connections` maps connection id -> enabled. Default empty map
@@ -256,6 +271,8 @@ export async function getSettings() {
     // connection on, since pinging burns a small amount of real quota (Hard Rule #20
     // spirit: never mutate/consume on the operator's behalf by default).
     codexAutoPing: { connections: {} },
+    // #8848: opt-in per-connection Claude proactive warmup (empty = off for everyone).
+    claudeWarmup: { connections: {} },
   };
   for (const row of rows) {
     const record = toRecord(row);
@@ -311,10 +328,7 @@ export async function updateSettings(
   );
   const tx = db.transaction(() => {
     const currentRevision = readSettingsRevision(db);
-    if (
-      options?.expectedRevision !== undefined &&
-      options.expectedRevision !== currentRevision
-    ) {
+    if (options?.expectedRevision !== undefined && options.expectedRevision !== currentRevision) {
       throw new SettingsRevisionConflictError(currentRevision);
     }
     for (const [key, value] of Object.entries(updates)) {
@@ -817,7 +831,14 @@ export {
   resetAllPricing,
 } from "./settings/pricing";
 
-export { type LKGPRecord, getLKGP, setLKGP, clearAllLKGP } from "./settings/lkgp";
+export {
+  type LKGPRecord,
+  getLKGP,
+  setLKGP,
+  clearAllLKGP,
+  clearLKGP,
+  deleteLKGPByConnectionIds,
+} from "./settings/lkgp";
 
 export {
   type CacheTrendPoint,

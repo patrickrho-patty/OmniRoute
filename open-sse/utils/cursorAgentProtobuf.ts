@@ -20,6 +20,11 @@ import zlib from "node:zlib";
 import crypto from "node:crypto";
 import { decodeNativeTodoWriteCompletion } from "./cursorAgentProtobuf/nativeTodoWrite.ts";
 import {
+  cursorImageAttachmentPath,
+  encodeSelectedImageBody,
+  type EncodedImage,
+} from "./cursorAgentProtobuf/imageEncoding.ts";
+import {
   WT_VARINT,
   WT_LEN,
   encodeVarint,
@@ -63,24 +68,7 @@ const UM_MESSAGE_ID = 2; // UserMessage.message_id
 const UM_SELECTED_CONTEXT = 3; // UserMessage.selected_context (empty placeholder required)
 const UM_MODE = 4; // UserMessage.mode (cursor-agent sends 1)
 
-// ─── Vision input (image) field numbers ────────────────────────────────────
-// Pinned from cursor-agent's agent.v1 protobuf descriptor (bundle version
-// 2026.06.02-8c11d9f, cross-checked against composer-api's older-endpoint
-// encoder for shape). Images attach to the current UserMessage through its
-// selected_context (field 3): UserMessage.selected_context is a SelectedContext
-// whose `selected_images` (field 1) is a repeated SelectedImage. Each
-// SelectedImage carries the raw bytes inline in its `data_or_blob_id` oneof
-// (the `data` case, field 8) — cursor-agent's CLI instead sends a local file
-// `path`, which a proxy cannot use, so we inline the bytes like composer-api.
 const SC_SELECTED_IMAGES = 1; // SelectedContext.selected_images [repeated SelectedImage]
-
-const SI_UUID = 2; // SelectedImage.uuid
-const SI_DIMENSION = 4; // SelectedImage.dimension (SelectedImage.Dimension)
-const SI_MIME_TYPE = 7; // SelectedImage.mime_type
-const SI_DATA = 8; // SelectedImage.data (oneof data_or_blob_id) — inline image bytes
-
-const DIM_WIDTH = 1; // SelectedImage.Dimension.width (int32)
-const DIM_HEIGHT = 2; // SelectedImage.Dimension.height (int32)
 
 const RM_MODEL_ID = 1; // RequestedModel.model_id
 const RM_PARAMETERS = 3; // RequestedModel.parameters [repeated]
@@ -297,6 +285,12 @@ const CURSOR_MODEL_ALIASES: Record<string, string> = {
   "composer-2-5-fast": "composer-2.5-fast",
   "composer-2.5-sdk-fast": "composer-2.5-fast",
   "composer-latest-fast": "composer-2.5-fast",
+  "grok-4.5-medium": "cursor-grok-4.5-medium",
+  "grok-4.5-fast-medium": "cursor-grok-4.5-medium-fast",
+  "grok-4.5-high": "cursor-grok-4.5-high",
+  "grok-4.5-fast-high": "cursor-grok-4.5-high-fast",
+  "grok-4.5-xhigh": "cursor-grok-4.5-xhigh",
+  "grok-4.5-fast-xhigh": "cursor-grok-4.5-xhigh-fast",
 };
 
 export function normalizeCursorModelId(modelId: string): string {
@@ -313,6 +307,10 @@ export function normalizeCursorModelId(modelId: string): string {
 // {id:"reasoning", value:<suffix>}. "-fast"/"-thinking" are separate toggles
 // (already handled elsewhere / not covered by this suffix set) and must not
 // be misread as an effort value.
+//
+// Grok (`cursor-grok-*` / legacy `grok-*`) follows the Claude-style `effort`
+// parameter. Without the split, ids like `cursor-grok-4.5-high` return empty
+// turns (same symptom as #7289). Combined `-high-fast` is supported.
 const CURSOR_EFFORT_SUFFIXES = ["low", "medium", "high", "xhigh", "max"] as const;
 
 /**
@@ -342,25 +340,101 @@ function splitCursorEffortSuffix(
 }
 
 /**
+ * Grok family: strip optional `-fast`, then effort suffix → ModelParameters.
+ * Prefer `cursor-grok-` over bare `grok-` so `cursor-grok-*` is not mis-matched.
+ */
+function resolveGrokRequestedModel(
+  normalized: string
+): { modelId: string; parameters: Array<{ id: string; value: string }> } | null {
+  const prefix = normalized.startsWith("cursor-grok-")
+    ? "cursor-grok-"
+    : normalized.startsWith("grok-")
+      ? "grok-"
+      : null;
+  if (!prefix) return null;
+
+  let id = normalized;
+  const extraParams: Array<{ id: string; value: string }> = [];
+  if (id.endsWith("-fast") && id.length > prefix.length + "-fast".length) {
+    id = id.slice(0, -"-fast".length);
+    extraParams.push({ id: "fast", value: "true" });
+  }
+
+  const effortSplit = splitCursorEffortSuffix(id, prefix, "effort");
+  if (effortSplit) {
+    return {
+      modelId: effortSplit.modelId,
+      parameters: [...effortSplit.parameters, ...extraParams],
+    };
+  }
+  if (extraParams.length > 0) {
+    return { modelId: id, parameters: extraParams };
+  }
+  return null;
+}
+
+/**
  * cursor-agent rewrites model ids before putting them on the wire:
  *   "auto"                 → RequestedModel { model_id: "default" }
+ *   "auto-cost"            → RequestedModel { model_id: "default",
+ *                                             parameters: [{id: "optimization", value: "cost"}] }
  *   "composer-2-fast"      → RequestedModel { model_id: "composer-2",
  *                                             parameters: [{id: "fast", value: "true"}] }
  *   "claude-opus-4-8-high" → RequestedModel { model_id: "claude-opus-4-8",
  *                                             parameters: [{id: "effort", value: "high"}] }
  *   "gpt-5.5-high"         → RequestedModel { model_id: "gpt-5.5",
  *                                             parameters: [{id: "reasoning", value: "high"}] }
+ *   "cursor-grok-4.5-high" → RequestedModel { model_id: "cursor-grok-4.5",
+ *                                             parameters: [{id: "effort", value: "high"}] }
  *
  * Other ids are passed through verbatim after spelling-variant normalization
  * (see normalizeCursorModelId).
  */
-export function resolveRequestedModel(modelId: string): {
+/** Cursor Router optimization levels (OpenCodex `CURSOR_ROUTING_LEVELS`). */
+export const CURSOR_ROUTING_LEVELS = ["cost", "balance", "intelligence"] as const;
+export type CursorRoutingLevel = (typeof CURSOR_ROUTING_LEVELS)[number];
+
+/**
+ * ModelParameter id for Cursor's Cost/Balance/Intelligence control on wire model
+ * `default` (OpenCodex `CURSOR_ROUTING_LEVEL_PARAMETER_ID`).
+ */
+export const CURSOR_ROUTING_LEVEL_PARAMETER_ID = "optimization";
+
+export type ResolveRequestedModelOptions = {
+  /**
+   * When set and containing the normalized client model id, send that id
+   * verbatim on AgentRun (skip composer-fast / Claude / GPT splits).
+   * Live AvailableModels returns flattened effort-suffixed ids; stripping them
+   * to a missing base causes Cursor `AI Model Not Found`. Auto / auto-* still
+   * map to wire `default` (+ optimization) even when present in this set.
+   */
+  liveCatalogIds?: ReadonlySet<string>;
+};
+
+export function resolveRequestedModel(
+  modelId: string,
+  opts?: ResolveRequestedModelOptions
+): {
   modelId: string;
   parameters: Array<{ id: string; value: string }>;
 } {
   const normalized = normalizeCursorModelId(modelId);
   if (normalized === "auto") {
     return { modelId: "default", parameters: [] };
+  }
+  // OpenCodex-style router variants: auto-cost / auto-balance / auto-intelligence
+  // → wire `default` + ModelParameter { id: "optimization", value: <level> }.
+  for (const level of CURSOR_ROUTING_LEVELS) {
+    if (normalized === `auto-${level}`) {
+      return {
+        modelId: "default",
+        parameters: [{ id: CURSOR_ROUTING_LEVEL_PARAMETER_ID, value: level }],
+      };
+    }
+  }
+  // Live catalog is authoritative for exact ids (flattened effort variants).
+  if (opts?.liveCatalogIds?.has(normalized)) {
+    return { modelId: normalized, parameters: [] };
   }
   // Strip the "-fast" suffix and surface it as a parameter — only the composer
   // family observably needs this split today, but the protocol field is generic.
@@ -369,6 +443,10 @@ export function resolveRequestedModel(modelId: string): {
       modelId: normalized.slice(0, -"-fast".length),
       parameters: [{ id: "fast", value: "true" }],
     };
+  }
+  const grokSplit = resolveGrokRequestedModel(normalized);
+  if (grokSplit) {
+    return grokSplit;
   }
   const claudeSplit = splitCursorEffortSuffix(normalized, "claude-", "effort");
   if (claudeSplit) {
@@ -413,58 +491,17 @@ export type AgentRunInput = {
   // which the executor's processFrame replies to with the stored bytes.
   systemPrompt?: string;
   blobStore?: Map<string, Buffer>;
-  // Vision input: images attached to the current user turn. Encoded inline as
-  // SelectedContext.selected_images[] (see encodeSelectedImageBody). Empty /
-  // undefined keeps the request byte-identical to the text-only path.
+  // Vision input: images attached to the current user turn. Encoded as
+  // SelectedContext.selected_images[] via blobIdWithData (see
+  // encodeSelectedImageBody). Empty / undefined keeps the request
+  // byte-identical to the text-only path.
   images?: EncodedImage[];
+  /** Exact live AvailableModels ids — see resolveRequestedModel liveCatalogIds. */
+  liveCatalogIds?: ReadonlySet<string>;
 };
 
-/**
- * A resolved image ready to embed in a cursor request. `data` is the raw
- * decoded image bytes (already SSRF-checked / size-capped by the executor's
- * resolveCursorImages helper). `mimeType` (e.g. "image/png") helps cursor
- * decode the inline bytes; `width`/`height` populate the optional Dimension
- * sub-message when cheaply known; `uuid` is a stable per-image id.
- */
-export type EncodedImage = {
-  data: Buffer;
-  mimeType?: string;
-  width?: number;
-  height?: number;
-  uuid: string;
-};
-
-/**
- * Encode the body of a SelectedImage message (no outer field tag — the caller
- * wraps it via encodeMessage(SC_SELECTED_IMAGES, [body])). Sets the inline
- * `data` oneof case plus uuid, optional dimension, and mime_type. Fields are
- * written in ascending field-number order (canonical protobuf layout).
- */
-export function encodeSelectedImageBody(img: EncodedImage): Buffer {
-  const parts: Buffer[] = [encodeString(SI_UUID, img.uuid)];
-  if (
-    typeof img.width === "number" &&
-    typeof img.height === "number" &&
-    Number.isFinite(img.width) &&
-    Number.isFinite(img.height) &&
-    img.width > 0 &&
-    img.height > 0
-  ) {
-    parts.push(
-      encodeMessage(SI_DIMENSION, [
-        encodeUInt32Field(DIM_WIDTH, Math.floor(img.width)),
-        encodeUInt32Field(DIM_HEIGHT, Math.floor(img.height)),
-      ])
-    );
-  }
-  if (img.mimeType) {
-    parts.push(encodeString(SI_MIME_TYPE, img.mimeType));
-  }
-  // data_or_blob_id oneof = data (inline bytes) — field 8, written last to
-  // keep ascending field order.
-  parts.push(encodeBytes(SI_DATA, img.data));
-  return Buffer.concat(parts);
-}
+export { cursorImageAttachmentPath, encodeSelectedImageBody };
+export type { EncodedImage };
 
 /**
  * Convert OpenAI tool definitions to cursor McpToolDefinition bodies. Used
@@ -488,17 +525,22 @@ export function openAIToolsToMcpDefs(tools: OpenAITool[]): McpToolDefinition[] {
 export function encodeAgentRunRequest(input: AgentRunInput): Buffer {
   const conversationId = input.conversationId || crypto.randomUUID();
   const messageId = input.messageId || crypto.randomUUID();
-  const { modelId, parameters } = resolveRequestedModel(input.modelId);
+  const { modelId, parameters } = resolveRequestedModel(input.modelId, {
+    liveCatalogIds: input.liveCatalogIds,
+  });
 
   // UserMessage { text, message_id, selected_context, mode=1 }.
   // selected_context is normally an empty placeholder (required by the server
   // even when empty — see below), but when the turn carries vision input we
-  // populate its selected_images[] with the inline-encoded images. The
-  // empty-images path produces byte-identical output to the text-only request.
+  // populate its selected_images[] with blobIdWithData-encoded images (and
+  // store the bytes in blobStore for getBlob). The empty-images path produces
+  // byte-identical output to the text-only request.
   const selectedContextParts: Buffer[] = [];
   if (input.images && input.images.length > 0) {
     for (const img of input.images) {
-      selectedContextParts.push(encodeMessage(SC_SELECTED_IMAGES, [encodeSelectedImageBody(img)]));
+      selectedContextParts.push(
+        encodeMessage(SC_SELECTED_IMAGES, [encodeSelectedImageBody(img, input.blobStore)])
+      );
     }
   }
   // The empty selected_context placeholder and mode=1 match cursor-agent's

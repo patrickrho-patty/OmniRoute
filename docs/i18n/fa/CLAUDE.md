@@ -39,22 +39,22 @@ npm run test:all
 
 ## پروژه در یک نگاه
 
-**OmniRoute** — پروکسی/روتر AI یکپارچه. یک نقطه انتهایی، بیش از 160 ارائه‌دهنده LLM، بازگشت خودکار.
+**OmniRoute** — پروکسی/روتر AI یکپارچه. یک نقطه انتهایی، 329 ارائه‌دهنده LLM، بازگشت خودکار.
 
-| لایه          | مکان                    | هدف                                                            |
-| ------------- | ----------------------- | -------------------------------------------------------------- |
-| API Routes    | `src/app/api/v1/`       | روتر برنامه Next.js — نقاط ورودی                               |
-| Handlers      | `open-sse/handlers/`    | پردازش درخواست (چت، جاسازی‌ها و غیره)                          |
-| Executors     | `open-sse/executors/`   | ارسال HTTP خاص ارائه‌دهنده                                     |
-| Translators   | `open-sse/translator/`  | تبدیل فرمت (OpenAI↔Claude↔Gemini)                              |
-| Transformer   | `open-sse/transformer/` | API پاسخ‌ها ↔ تکمیل‌های چت                                     |
-| Services      | `open-sse/services/`    | مسیریابی ترکیبی، محدودیت‌های نرخ، کش و غیره                    |
-| Database      | `src/lib/db/`           | ماژول‌های دامنه SQLite (بیش از 45 فایل، 55 مهاجرت)             |
-| Domain/Policy | `src/domain/`           | موتور سیاست، قوانین هزینه، منطق بازگشت                         |
-| MCP Server    | `open-sse/mcp-server/`  | 37 ابزار (30 پایه + 3 حافظه + 4 مهارت)، 3 حمل و نقل، ~13 دامنه |
-| A2A Server    | `src/lib/a2a/`          | پروتکل عامل JSON-RPC 2.0                                       |
-| Skills        | `src/lib/skills/`       | چارچوب مهارت قابل گسترش                                        |
-| Memory        | `src/lib/memory/`       | حافظه گفتگوی پایدار                                            |
+| لایه          | مکان                    | هدف                                                                       |
+| ------------- | ----------------------- | ------------------------------------------------------------------------- |
+| API Routes    | `src/app/api/v1/`       | روتر برنامه Next.js — نقاط ورودی                                          |
+| Handlers      | `open-sse/handlers/`    | پردازش درخواست (چت، جاسازی‌ها و غیره)                                     |
+| Executors     | `open-sse/executors/`   | ارسال HTTP خاص ارائه‌دهنده                                                |
+| Translators   | `open-sse/translator/`  | تبدیل فرمت (OpenAI↔Claude↔Gemini)                                         |
+| Transformer   | `open-sse/transformer/` | API پاسخ‌ها ↔ تکمیل‌های چت                                                |
+| Services      | `open-sse/services/`    | مسیریابی ترکیبی، محدودیت‌های نرخ، کش و غیره                               |
+| Database      | `src/lib/db/`           | 110 top-level SQLite domain modules, 130 migrations                       |
+| Domain/Policy | `src/domain/`           | موتور سیاست، قوانین هزینه، منطق بازگشت                                    |
+| MCP Server    | `open-sse/mcp-server/`  | 107 unique tools, 3 transports (stdio / SSE / Streamable HTTP), 32 scopes |
+| A2A Server    | `src/lib/a2a/`          | پروتکل عامل JSON-RPC 2.0                                                  |
+| Skills        | `src/lib/skills/`       | چارچوب مهارت قابل گسترش                                                   |
+| Memory        | `src/lib/memory/`       | حافظه گفتگوی پایدار                                                       |
 
 مونوریپو: `src/` (برنامه Next.js 16)، `open-sse/` (فضای کار موتور استریمینگ)، `electron/` (برنامه دسکتاپ)، `tests/`، `bin/` (نقطه ورودی CLI).
 
@@ -76,7 +76,7 @@ Client → /v1/chat/completions (مسیر Next.js)
 
 مسیرهای API الگوی ثابتی را دنبال می‌کنند: `Route → CORS preflight → اعتبارسنجی بدنه Zod → احراز هویت اختیاری (extractApiKey/isValidApiKey) → اجرای سیاست کلید API → واگذاری Handler (open-sse)`. هیچ middleware جهانی Next.js وجود ندارد — قطع ارتباط خاص مسیر است.
 
-**مسیریابی ترکیبی** (`open-sse/services/combo.ts`): 14 استراتژی (اولویت، وزن‌دار، پر کردن اول، گردشی، P2C، تصادفی، کمترین استفاده، بهینه‌سازی هزینه، آگاه به بازنشانی، تصادفی سخت، خودکار، lkgp، بهینه‌سازی زمینه، انتقال زمینه). هر هدف `handleSingleModel()` را فراخوانی می‌کند که `handleChatCore()` را با مدیریت خطا برای هر هدف و بررسی‌های مدار شکن احاطه می‌کند. برای نمره‌دهی Auto-Combo با 9 عامل به `docs/routing/AUTO-COMBO.md` و برای 3 لایه تاب‌آوری به `docs/architecture/RESILIENCE_GUIDE.md` مراجعه کنید.
+**Combo routing** (`open-sse/services/combo.ts`): 19 public strategies (priority, weighted, fill-first, round-robin, p2c, random, least-used, cost-optimized, reset-aware, reset-window, headroom, strict-random, auto, lkgp, context-optimized, cache-optimized, context-relay, fusion, pipeline). Each target calls `handleSingleModel()`, which wraps `handleChatCore()` with per-target error handling and circuit-breaker checks. See `docs/routing/AUTO-COMBO.md` for the 13-factor Auto-Combo scoring and `docs/architecture/RESILIENCE_GUIDE.md` for the 3 resilience layers.
 
 ---
 
@@ -292,31 +292,31 @@ baseCooldownMs * 2 ** failureIndex;
 
 برای هر تغییر غیر جزئی، ابتدا عمیقاً به مستندات مربوطه مراجعه کنید:
 
-| حوزه                                          | مستند                                                             |
-| --------------------------------------------- | ----------------------------------------------------------------- |
-| ناوبری مخزن                                   | `docs/architecture/REPOSITORY_MAP.md`                             |
-| معماری                                        | `docs/architecture/ARCHITECTURE.md`                               |
-| مرجع مهندسی                                   | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
-| Auto-Combo (امتیازدهی 9 عاملی، 14 استراتژی)   | `docs/routing/AUTO-COMBO.md`                                      |
-| تاب‌آوری (3 مکانیزم)                          | `docs/architecture/RESILIENCE_GUIDE.md`                           |
-| پخش استدلال                                   | `docs/routing/REASONING_REPLAY.md`                                |
-| چارچوب مهارت‌ها                               | `docs/frameworks/SKILLS.md`                                       |
-| سیستم حافظه (FTS5 + Qdrant)                   | `docs/frameworks/MEMORY.md`                                       |
-| عوامل ابری                                    | `docs/frameworks/CLOUD_AGENT.md`                                  |
-| راهنماهای حفاظتی (PII / تزریق / بینش)         | `docs/security/GUARDRAILS.md`                                     |
-| اعتبارنامه‌های عمومی بالادستی (Gemini/etc.)   | `docs/security/PUBLIC_CREDS.md`                                   |
-| پاک‌سازی پیام‌های خطا                         | `docs/security/ERROR_SANITIZATION.md`                             |
-| ارزیابی‌ها                                    | `docs/frameworks/EVALS.md`                                        |
-| انطباق / حسابرسی                              | `docs/security/COMPLIANCE.md`                                     |
-| وب‌هوک‌ها                                     | `docs/frameworks/WEBHOOKS.md`                                     |
-| خط لوله مجوزدهی                               | `docs/architecture/AUTHZ_GUIDE.md`                                |
-| پنهان‌کاری (TLS / اثر انگشت)                  | `docs/security/STEALTH_GUIDE.md`                                  |
-| پروتکل‌های عامل (A2A / ACP / Cloud)           | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
-| سرور MCP                                      | `docs/frameworks/MCP-SERVER.md`                                   |
-| سرور A2A                                      | `docs/frameworks/A2A-SERVER.md`                                   |
-| مرجع API + OpenAPI                            | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
-| کاتالوگ ارائه‌دهنده (به‌طور خودکار تولید شده) | `docs/reference/PROVIDER_REFERENCE.md`                            |
-| جریان انتشار                                  | `docs/ops/RELEASE_CHECKLIST.md`                                   |
+| حوزه                                                 | مستند                                                             |
+| ---------------------------------------------------- | ----------------------------------------------------------------- |
+| ناوبری مخزن                                          | `docs/architecture/REPOSITORY_MAP.md`                             |
+| معماری                                               | `docs/architecture/ARCHITECTURE.md`                               |
+| مرجع مهندسی                                          | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
+| Auto-Combo (13-factor scoring, 19 public strategies) | `docs/routing/AUTO-COMBO.md`                                      |
+| تاب‌آوری (3 مکانیزم)                                 | `docs/architecture/RESILIENCE_GUIDE.md`                           |
+| پخش استدلال                                          | `docs/routing/REASONING_REPLAY.md`                                |
+| چارچوب مهارت‌ها                                      | `docs/frameworks/SKILLS.md`                                       |
+| سیستم حافظه (FTS5 + Qdrant)                          | `docs/frameworks/MEMORY.md`                                       |
+| عوامل ابری                                           | `docs/frameworks/CLOUD_AGENT.md`                                  |
+| راهنماهای حفاظتی (PII / تزریق / بینش)                | `docs/security/GUARDRAILS.md`                                     |
+| اعتبارنامه‌های عمومی بالادستی (Gemini/etc.)          | `docs/security/PUBLIC_CREDS.md`                                   |
+| پاک‌سازی پیام‌های خطا                                | `docs/security/ERROR_SANITIZATION.md`                             |
+| ارزیابی‌ها                                           | `docs/frameworks/EVALS.md`                                        |
+| انطباق / حسابرسی                                     | `docs/security/COMPLIANCE.md`                                     |
+| وب‌هوک‌ها                                            | `docs/frameworks/WEBHOOKS.md`                                     |
+| خط لوله مجوزدهی                                      | `docs/architecture/AUTHZ_GUIDE.md`                                |
+| پنهان‌کاری (TLS / اثر انگشت)                         | `docs/security/STEALTH_GUIDE.md`                                  |
+| پروتکل‌های عامل (A2A / ACP / Cloud)                  | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
+| سرور MCP                                             | `docs/frameworks/MCP-SERVER.md`                                   |
+| سرور A2A                                             | `docs/frameworks/A2A-SERVER.md`                                   |
+| مرجع API + OpenAPI                                   | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
+| کاتالوگ ارائه‌دهنده (به‌طور خودکار تولید شده)        | `docs/reference/PROVIDER_REFERENCE.md`                            |
+| جریان انتشار                                         | `docs/ops/RELEASE_CHECKLIST.md`                                   |
 
 ---
 
@@ -363,7 +363,9 @@ git push -u origin feat/your-feature
 
 ## محیط
 
-- **زمان اجرا**: Node.js ≥20.20.2 <21 || ≥22.22.2 <23 || ≥24 <25، ماژول‌های ES
+- **زمان اجرا**: Node.js ≥20.20.2 <21 |
+  | ≥22.22.2 <23 |
+  | ≥24 <25، ماژول‌های ES
 - **TypeScript**: 5.9+، هدف ES2022، ماژول esnext، حل‌گر بسته
 - **آلیاس‌های مسیر**: `@/*` → `src/`، `@omniroute/open-sse` → `open-sse/`، `@omniroute/open-sse/*` → `open-sse/*`
 - **پورت پیش‌فرض**: 20128 (API + داشبورد در همان پورت)

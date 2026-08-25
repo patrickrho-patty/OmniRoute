@@ -15,7 +15,15 @@ import { HistoricSessionBanner } from "./components/session/HistoricSessionBanne
 
 const BUFFER_MAX = 1000;
 
-export function TrafficInspectorPageClient() {
+export function TrafficInspectorPageClient({
+  title,
+  subtitle,
+  purpose,
+}: {
+  title?: string;
+  subtitle?: string;
+  purpose?: string;
+} = {}) {
   const [containerHeight, setContainerHeight] = useState(600);
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<InterceptedRequest | null>(null);
@@ -91,6 +99,14 @@ export function TrafficInspectorPageClient() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      {title && (
+        <div className="shrink-0 px-4 pt-4 pb-2">
+          <h1 className="text-2xl font-bold text-text-main">{title}</h1>
+          {subtitle && <p className="text-sm text-text-muted mt-1 max-w-2xl">{subtitle}</p>}
+          {purpose && <p className="text-xs text-text-muted mt-2 max-w-2xl italic">{purpose}</p>}
+        </div>
+      )}
+
       {/* Capture modes toolbar */}
       <div className="shrink-0 px-4 pt-4 pb-2">
         <CaptureModesToolbar customHostCount={0} />
@@ -100,9 +116,7 @@ export function TrafficInspectorPageClient() {
       {filters.sessionId !== undefined && (
         <div className="shrink-0 px-4 pb-2">
           <HistoricSessionBanner
-            sessionName={
-              recorder.sessions.find((s) => s.id === filters.sessionId)?.name ?? null
-            }
+            sessionName={recorder.sessions.find((s) => s.id === filters.sessionId)?.name ?? null}
             onBackToLive={() => setSessionId(undefined)}
           />
         </div>
@@ -178,7 +192,10 @@ export function TrafficInspectorPageClient() {
 
           {collapsed && (
             <div className="flex-1 flex items-start justify-center pt-4">
-              <span className="text-xs text-text-muted font-mono" style={{ writingMode: "vertical-rl" }}>
+              <span
+                className="text-xs text-text-muted font-mono"
+                style={{ writingMode: "vertical-rl" }}
+              >
                 {streamState.total} reqs
               </span>
             </div>

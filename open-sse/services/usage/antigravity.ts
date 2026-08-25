@@ -17,7 +17,7 @@ import {
   getAntigravityFetchAvailableModelsUrls,
 } from "../../config/antigravityUpstream.ts";
 import {
-  isUserCallableAntigravityModelId,
+  isDiscoverableAntigravityModelId,
   toClientAntigravityQuotaModelId,
 } from "../../config/antigravityModelAliases.ts";
 import { isUserCallableAgyModelId } from "../../config/agyModels.ts";
@@ -272,21 +272,21 @@ async function fetchAntigravityUserQuotaCached(
 
   const promise = (async () => {
     try {
-      const response = await fetch(
-        "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota",
-        {
+      for (const baseUrl of ANTIGRAVITY_RUNTIME_BASE_URLS) {
+        const response = await fetch(`${baseUrl}/v1internal:retrieveUserQuota`, {
           method: "POST",
           headers: getAntigravityContentHeaders(clientProfile, accessToken),
           body: JSON.stringify({ project: projectId }),
           signal: AbortSignal.timeout(10000),
-        }
-      );
+        });
 
-      if (!response.ok) return null;
+        if (!response.ok) continue;
 
-      const data = await response.json();
-      _antigravityUserQuotaCache.set(cacheKey, { data, fetchedAt: Date.now() });
-      return data;
+        const data = await response.json();
+        _antigravityUserQuotaCache.set(cacheKey, { data, fetchedAt: Date.now() });
+        return data;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -646,7 +646,7 @@ export async function getAntigravityUsage(
         info.isInternal === true ||
         !(provider === "agy"
           ? isUserCallableAgyModelId(modelKey)
-          : isUserCallableAntigravityModelId(modelKey)) ||
+          : isDiscoverableAntigravityModelId(modelKey)) ||
         Object.keys(quotaInfo).length === 0
       ) {
         continue;
@@ -699,7 +699,7 @@ export async function getAntigravityUsage(
         quotas[modelKey] ||
         !(provider === "agy"
           ? isUserCallableAgyModelId(modelKey)
-          : isUserCallableAntigravityModelId(modelKey))
+          : isDiscoverableAntigravityModelId(modelKey))
       ) {
         continue;
       }

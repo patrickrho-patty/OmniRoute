@@ -814,7 +814,7 @@ test("Model mapping: GPT-5.6 Terra sends its current internal preference", async
     });
 
     assert.equal(capturedBody.params.model_preference, "gpt56_terra");
-    assert.equal(capturedBody.params.mode, "search");
+    assert.equal(capturedBody.params.mode, "copilot");
   } finally {
     globalThis.fetch = original;
   }
@@ -905,10 +905,39 @@ test("Model mapping: thinking mode uses thinking variant", async () => {
     });
 
     assert.equal(capturedBody.params.model_preference, "claude50sonnetthinking");
-    // Thinking variants still go through mode "search" (THINKING_MAP path).
-    assert.equal(capturedBody.params.mode, "search");
+    // THINKING_MAP path posts "copilot" too ("search" is downgraded to CONCISE).
+    assert.equal(capturedBody.params.mode, "copilot");
   } finally {
     globalThis.fetch = original;
+  }
+});
+
+// ─── The search hint is opt-in ──────────────────────────────────────────────
+// It used to be appended to every system message and leaked into answers as
+// meta-commentary, which is noise for coding clients.
+
+test("buildQuery: search hint is off by default and opt-in via env", async () => {
+  const { buildQuery } = await import("../../open-sse/executors/perplexity-web/protocol.ts");
+  const parsed = { systemMsg: "You are terse.", history: [], currentMsg: "hi" };
+  const HINT = "built-in web search";
+  const prev = process.env.OMNIROUTE_PPLX_SEARCH_HINT;
+
+  try {
+    delete process.env.OMNIROUTE_PPLX_SEARCH_HINT;
+    const off = JSON.parse(buildQuery(parsed, null));
+    assert.deepEqual(off.instructions, ["You are terse."]);
+    assert.equal(off.query, "hi");
+
+    process.env.OMNIROUTE_PPLX_SEARCH_HINT = "1";
+    const on = JSON.parse(buildQuery(parsed, null));
+    assert.equal(on.instructions.length, 2);
+    assert.ok(on.instructions[1].includes(HINT));
+
+    process.env.OMNIROUTE_PPLX_SEARCH_HINT = "0";
+    assert.equal(JSON.parse(buildQuery(parsed, null)).instructions.length, 1);
+  } finally {
+    if (prev === undefined) delete process.env.OMNIROUTE_PPLX_SEARCH_HINT;
+    else process.env.OMNIROUTE_PPLX_SEARCH_HINT = prev;
   }
 });
 
@@ -1240,9 +1269,8 @@ test("Schematized API: dual ask_text tracks do not double-count", async () => {
 
 // Unit: extractAnswerFromFinalText pure helper
 test("extractAnswerFromFinalText: double-encoded FINAL step blob", async () => {
-  const { extractAnswerFromFinalText } = await import(
-    "../../open-sse/executors/perplexity-web/protocol.ts"
-  );
+  const { extractAnswerFromFinalText } =
+    await import("../../open-sse/executors/perplexity-web/protocol.ts");
   const text = JSON.stringify([
     { step_type: "INITIAL_QUERY", content: { query: "hello" } },
     {

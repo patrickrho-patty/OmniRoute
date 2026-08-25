@@ -6,8 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { DeepSeekWebExecutor, DEEPSEEK_WEB_BASE } =
-  await import("../../open-sse/executors/deepseek-web.ts");
+const { DeepSeekWebExecutor } = await import("../../open-sse/executors/deepseek-web.ts");
 
 const SENTINEL = "(prior reasoning summary unavailable)";
 
@@ -15,7 +14,7 @@ const SENTINEL = "(prior reasoning summary unavailable)";
 // fragment and emits real content in another.
 async function mockFlowEchoingSentinel() {
   const original = globalThis.fetch;
-  globalThis.fetch = async (url, opts) => {
+  globalThis.fetch = async (url, _opts) => {
     const urlStr = typeof url === "string" ? url : url.toString();
     const json = (body, status = 200) =>
       new Response(JSON.stringify(body), {

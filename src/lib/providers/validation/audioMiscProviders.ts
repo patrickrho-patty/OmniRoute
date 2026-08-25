@@ -80,6 +80,22 @@ export async function validateRevAiProvider({ apiKey, providerSpecificData = {} 
   }
 }
 
+export async function validateSonioxProvider({ apiKey, providerSpecificData = {} }: any) {
+  try {
+    const response = await validationRead("https://api.soniox.com/v1/transcriptions", {
+      method: "GET",
+      headers: buildBearerHeaders(apiKey, providerSpecificData),
+    });
+    if (response.ok) return { valid: true, error: null };
+    if (response.status === 401 || response.status === 403) {
+      return { valid: false, error: "Invalid API key" };
+    }
+    return { valid: false, error: `Validation failed: ${response.status}` };
+  } catch (error: any) {
+    return toValidationErrorResult(error);
+  }
+}
+
 export async function validateElevenLabsProvider({ apiKey, providerSpecificData = {} }: any) {
   try {
     // Lightweight auth check endpoint
@@ -244,7 +260,7 @@ export async function validateAwsPollyProvider({ apiKey, providerSpecificData = 
 
     if (response.ok) return { valid: true, error: null };
     if (response.status === 401 || response.status === 403) {
-      return { valid: false, error: "Invalid API key" };
+      return { valid: false, error: "Invalid AWS credentials" };
     }
     return { valid: false, error: `Validation failed: ${response.status}` };
   } catch (error: any) {
@@ -278,7 +294,9 @@ export async function validateBailianCodingPlanProvider({
         providerSpecificData
       ),
       body: JSON.stringify({
-        model: "qwen3-coder-plus",
+        // qwen3-coder-plus belonged to the retired Coding Plan host and is absent from
+        // BAILIAN_CODING_PLAN_MODELS; probe with a model this plan actually serves.
+        model: providerSpecificData.validationModelId || "qwen3.7-max",
         max_tokens: 1,
         messages: [{ role: "user", content: "test" }],
       }),

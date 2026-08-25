@@ -22,6 +22,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AgentId } from "../types";
 import { MitmHandlerBase } from "./base";
+import { TOOL_RENAME_MAP } from "@omniroute/open-sse/services/claudeCodeToolRemapper";
 
 interface GeminiPart {
   text?: string;
@@ -107,7 +108,7 @@ function joinPartsText(parts: GeminiPart[] | undefined): string {
 export function convertGeminiToOpenAI(
   geminiBody: GeminiRequestBody,
   model: string,
-  stream: boolean,
+  stream: boolean
 ): OpenAIChatBody {
   // Unwrap the cloudcode-pa envelope (`.request`) used by the real Antigravity IDE; fall
   // back to the top level for the legacy `/v1beta` shape. (#4294)
@@ -149,7 +150,7 @@ export class AntigravityHandler extends MitmHandlerBase {
     req: IncomingMessage,
     res: ServerResponse,
     body: Buffer,
-    mappedModel: string,
+    mappedModel: string
   ): Promise<void> {
     const startedAt = this.now();
     const intercepted = await this.hookBufferStart(req, body, mappedModel);
@@ -172,7 +173,14 @@ export class AntigravityHandler extends MitmHandlerBase {
 
       let collected = "";
       await this.pipeSSE(upstream, res, (chunk) => {
-        collected += chunk.toString();
+        let chunkStr = chunk.toString();
+        for (const [lower, capitalized] of Object.entries(TOOL_RENAME_MAP)) {
+          chunkStr = chunkStr.replace(
+            new RegExp(`"name"\\s*:\\s*"${lower}"`, "g"),
+            `"name":"${capitalized}"`
+          );
+        }
+        collected += chunkStr;
       });
 
       const total = this.now() - startedAt;

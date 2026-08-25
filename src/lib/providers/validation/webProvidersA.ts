@@ -13,11 +13,14 @@ import {
   normalizeSessionCookieHeader,
 } from "@/lib/providers/webCookieAuth";
 
-// kimi-web uses the international `www.kimi.com` Connect-RPC API. The legacy
-// `kimi.moonshot.cn` domain now 307-redirects every non-CN visitor, and even
-// if you bypass the redirect the old `/api/chat` REST endpoint is gone. The
-// SPA exposes a profile probe at `GET /api/user` that returns the user object
-// at the top level when the `Authorization: Bearer <access_token>` header is valid.
+// kimi-web uses the international (west-facing) `www.kimi.ai` Connect-RPC API by
+// default. `www.kimi.com` is the China-region endpoint — it serves China users but
+// the China region is not reliably reachable from outside CN, so it is not the
+// default. The legacy `kimi.moonshot.cn` domain now 307-redirects every non-CN
+// visitor, and even if you bypass the redirect the old `/api/chat` REST endpoint is
+// gone. The SPA exposes a profile probe at `GET /api/user` that returns the user
+// object at the top level when the `Authorization: Bearer <access_token>` header is
+// valid. Override the endpoint with KIMI_WEB_BASE_URL (opt-in).
 export async function validateKimiWebProvider({ apiKey }: any) {
   const rawCred = String(apiKey ?? "").trim();
   if (!rawCred) {
@@ -116,6 +119,7 @@ export async function validateDeepSeekWebProvider({ apiKey }: any) {
       return {
         valid: false,
         error: "userToken is invalid or expired — get a fresh one from localStorage",
+        statusCode: resp.status,
       };
     }
     if (!resp.ok) {
@@ -123,6 +127,20 @@ export async function validateDeepSeekWebProvider({ apiKey }: any) {
     }
     const json = await resp.json();
     const bizData = json?.data?.biz_data || json?.biz_data;
+
+    // DeepSeek's web endpoint can report auth rejection as HTTP 200 with an
+    // application-level error envelope. Code 40003 is the observed
+    // "Authorization Failed" signal. Preserve the real HTTP behavior while
+    // returning an auth-classifiable status to OmniRoute's connection-test
+    // layer so it is not collapsed into a generic upstream_error.
+    if (Number(json?.code) === 40003) {
+      return {
+        valid: false,
+        error: "userToken is invalid or expired — get a fresh one from localStorage",
+        statusCode: 401,
+      };
+    }
+
     if (!bizData?.token) {
       return {
         valid: false,

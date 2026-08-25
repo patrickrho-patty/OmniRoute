@@ -1,7 +1,7 @@
 ---
 title: "Codex CLI — Configuration with OmniRoute"
-version: 3.8.49
-lastUpdated: 2026-07-26
+version: 3.8.50
+lastUpdated: 2026-08-18
 ---
 
 # Codex CLI — Configuration with OmniRoute
@@ -9,6 +9,15 @@ lastUpdated: 2026-07-26
 Complete guide for using the Codex CLI pointed at OmniRoute as an OpenAI-compatible backend.
 
 ---
+
+> **TOML is the only effective format.** Modern Codex reads `~/.codex/config.toml`
+> exclusively (verified against codex-cli 0.147.0: `codex --help` documents
+> `-c/--config` overrides "loaded from `~/.codex/config.toml`"). The old
+> `~/.codex/config.yaml` belonged to the legacy npm CLI and is silently ignored.
+> The dashboard generator (`/api/cli-tools/apply`, tool `codex`) writes TOML with a
+> conservative merge — existing keys and other provider blocks are preserved, the
+> API key stays in `OMNIROUTE_API_KEY` (never in the file), and a leftover legacy
+> `config.yaml` is reported as a migration note without being touched.
 
 ## Ready-to-paste config.toml
 
@@ -36,6 +45,35 @@ wire_api             = "responses"
 export OMNIROUTE_API_KEY="<YOUR_KEY>"
 ```
 
+### macOS: Codex bundled inside the ChatGPT app
+
+If you installed Codex through the ChatGPT desktop app, the `codex` binary may
+exist only inside the app bundle and not yet be on your shell `PATH`. Add the
+resources directory to your shell startup file:
+
+```bash
+export PATH="/Applications/ChatGPT.app/Contents/Resources:$PATH"
+```
+
+Open a new shell, then verify:
+
+```bash
+command -v codex
+codex --version
+```
+
+### Local unauthenticated OmniRoute: placeholder key is enough
+
+Codex validates that the environment variable named by `env_key` exists
+**before** the first request leaves the CLI. If your **local** OmniRoute
+instance does not require auth, any non-empty placeholder works:
+
+```bash
+export OMNIROUTE_API_KEY="${OMNIROUTE_API_KEY:-local}"
+```
+
+Use a real key instead when your OmniRoute server is protected or remote.
+
 > **Common host options**
 >
 > | Access        | URL                           |
@@ -50,7 +88,7 @@ export OMNIROUTE_API_KEY="<YOUR_KEY>"
 
 Codex CLI deprecated `wire_api = "chat"` (Chat Completions) in February 2026 and now **requires** `wire_api = "responses"` (OpenAI Responses API). Setting `wire_api = "chat"` causes an immediate startup crash since v0.138.
 
-DeepSeek, GLM, Kimi and others only expose a Chat Completions endpoint — not the Responses API. If you pointed Codex directly at them, it would fail.
+Many providers, including GLM and Kimi, still expose only a Chat Completions endpoint. DeepSeek V4 now exposes a native Responses API as well as an Anthropic-compatible endpoint; OmniRoute uses Responses by default and lets each DeepSeek connection select Anthropic compatibility.
 
 **OmniRoute solves this transparently:**
 
@@ -58,8 +96,8 @@ DeepSeek, GLM, Kimi and others only expose a Chat Completions endpoint — not t
 Codex CLI
   → wire_api = "responses"
   → POST /v1/responses (OmniRoute)
-    → OmniRoute Responses ↔ Chat Completions transformer
-    → POST /chat/completions (DeepSeek / Mistral / GLM / Kimi / any provider)
+    → OmniRoute selects the provider's native protocol and translates when needed
+    → POST /responses (DeepSeek V4) or /chat/completions (Mistral / GLM / Kimi / others)
 ```
 
 You never need a separate translation proxy when using OmniRoute. **All models use `wire_api = "responses"`** — OmniRoute handles the rest.
@@ -141,6 +179,22 @@ Controls how much the model "thinks" before responding.
 codex -c model_reasoning_effort=low "rename variable x to count"
 codex -c model_reasoning_effort=xhigh "design the auth module"
 ```
+
+Also set a reasoning **summary** so Desktop can render thinking text (not only encrypted blobs):
+
+```toml
+# ~/.codex/config.toml
+model_reasoning_effort = "xhigh"   # or ultra when supported
+model_reasoning_summary = "detailed"  # auto | concise | detailed | none
+```
+
+### OmniRoute Thinking Budget (server setting)
+
+On the OmniRoute host, **Settings → AI → Thinking Budget** must be **`passthrough`** for Codex effort/summary to reach upstream. Mode **`auto` strips** all client `reasoning` / `reasoning_effort` fields and will empty thinking panels even when Codex is configured correctly.
+
+Full guide: [THINKING_BUDGET.md](./THINKING_BUDGET.md).
+
+Compression and prompt cache are independent and keep working under `passthrough`.
 
 ---
 
@@ -263,6 +317,17 @@ omniroute launch-codex --remote http://100.x.x.x:20128/v1 --api-key sk-xxx
 
 # Pass extra args to codex
 omniroute launch-codex --profile glm52 -- --yolo "fix this bug"
+```
+
+Codex is also a target of the two generic manifest-driven entry points
+(`bin/cli/cli-manifest.mjs`):
+
+```bash
+# Interactive model picker → writes ~/.codex/<name>.config.toml (TOML, env_key)
+omniroute configure codex
+
+# Launch codex with the omniroute provider injected via -c flags (no config written)
+omniroute run codex
 ```
 
 ---
@@ -503,6 +568,12 @@ Verify the model exists in OmniRoute with the correct prefix. Use `omniroute mod
 
 **`Authentication error`**
 Confirm `OMNIROUTE_API_KEY` is exported: `echo $OMNIROUTE_API_KEY`.
+
+**`ERROR: Missing environment variable: OMNIROUTE_API_KEY`**
+Codex validates that the env var exists before making the first request. Export
+a real key for protected servers, or a non-empty placeholder such as
+`OMNIROUTE_API_KEY=local` when your **local** OmniRoute instance does not
+require auth. Restart the shell if you added it to `~/.bashrc` or `~/.zshrc`.
 
 **`Connection refused`**
 Verify OmniRoute is running and the `base_url` host/port is correct for your network (local vs Tailscale vs VPS).

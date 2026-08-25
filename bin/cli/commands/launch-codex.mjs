@@ -1,7 +1,36 @@
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { t } from "../i18n.mjs";
 import { resolveActiveContext } from "../contexts.mjs";
 import { quoteShellArgs } from "../utils/winShellArgs.mjs";
+
+/**
+ * Probe PATH for a Windows executable via `where.exe`, preferring a `.exe` over
+ * a `.cmd`/`.bat` shim. Returns the absolute path to the preferred binary, or
+ * `null` when `where.exe` finds nothing (or cannot run). Mirrors the same probe
+ * in launch.mjs and `locateCommand()` in `src/shared/services/cliRuntime.ts`.
+ *
+ * @param {string} command  bare command name to look up
+ * @returns {Promise<string|null>} absolute path to the preferred match, or null
+ */
+function probeWindowsBinary(command) {
+  try {
+    const out = execFileSync("where.exe", [command], {
+      stdio: ["ignore", "pipe", "ignore"],
+      encoding: "utf8",
+      timeout: 3000,
+      windowsHide: true,
+    });
+    const lines = out
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return null;
+    const winExt = /\.(exe|cmd|bat|com)$/i;
+    return lines.find((l) => winExt.test(l)) || null;
+  } catch {
+    return null;
+  }
+}
 
 /** OpenAI/Codex env keys stripped from the child so a stale OpenAI key/base-url
  *  in the shell can't shadow the omniroute provider (defense-in-depth). Mirrors
@@ -23,11 +52,25 @@ const NO_AUTH_SENTINEL = "omniroute-no-auth";
 // On Windows the `codex` binary is an npm `.cmd` shim that `spawn` cannot resolve
 // without a shell (bare "codex" → ENOENT). Mirror the qodercli Windows fix (#6263):
 // spawn `codex.cmd` through a shell on win32, and the bare binary elsewhere.
-export function resolveCodexSpawn(platform) {
-  if (platform === "win32") {
-    return { command: "codex.cmd", shell: true };
+//
+// #9454: the native codex installer may ship a real `codex.exe` instead of the
+// npm `.cmd` shim. Probe PATH for `codex` first: when `where.exe` resolves a
+// `.exe`, spawn it directly (no shell — cmd.exe would split an absolute path
+// with spaces); otherwise fall back to `codex.cmd` + shell. Off Windows the bare
+// binary is spawned unchanged (no shell, no probe).
+/**
+ * @param {NodeJS.Platform|string} platform
+ * @param {{ probe?: (command: string) => Promise<string|null> }} [opts]  injectable probe for tests
+ * @returns {Promise<{ command: string, shell: true|undefined }>}
+ */
+export async function resolveCodexSpawn(platform, opts = {}) {
+  if (platform !== "win32") return { command: "codex", shell: undefined };
+  const probe = opts.probe ?? probeWindowsBinary;
+  const located = await probe("codex");
+  if (located && /\.exe$/i.test(located)) {
+    return { command: located, shell: undefined };
   }
-  return { command: "codex", shell: undefined };
+  return { command: "codex.cmd", shell: true };
 }
 
 /**
@@ -127,8 +170,8 @@ export function buildCodexEnv(baseEnv, authToken) {
  * @param {string} baseUrl  OmniRoute root URL (no /v1)
  * @returns {string[]}
  */
-export function buildCodexProviderArgs(baseUrl) {
-  return [
+export function buildCodexProviderArgs(baseUrl, model) {
+  const args = [
     "-c",
     tomlAssign("model_provider", "omniroute"),
     "-c",
@@ -142,6 +185,15 @@ export function buildCodexProviderArgs(baseUrl) {
     "-c",
     tomlAssign("model_providers.omniroute.requires_openai_auth", false),
   ];
+
+  if (model) {
+    const normalized = String(model).trim();
+    if (normalized) {
+      args.push("-c", tomlAssign("model_providers.omniroute.model", normalized));
+    }
+  }
+
+  return args;
 }
 
 /**
@@ -164,30 +216,58 @@ export async function runLaunchCodexCommand(opts = {}, codexArgs = []) {
 
   // Provider injected via -c (works without config.toml); then the profile (model),
   // then the user's pass-through args.
-  const providerArgs = buildCodexProviderArgs(baseUrl);
+  const providerArgs = buildCodexProviderArgs(baseUrl, opts.model);
   const profileArgs = opts.profile ? ["--profile", opts.profile] : [];
   const extraArgs = [...providerArgs, ...profileArgs, ...codexArgs];
   const env = buildCodexEnv(process.env, authToken);
 
+  const { command: codexLaunch, shell: shellValue } = await resolveCodexSpawn(process.platform);
+
   return await new Promise((resolve) => {
-    const { command: codexLaunch, shell: shellValue } = resolveCodexSpawn(process.platform);
     const child = spawn(codexLaunch, quoteCodexArgs(extraArgs, process.platform), {
       env,
       stdio: "inherit",
       shell: shellValue,
     });
+    let settled = false;
+    const signalExitCode = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 };
+    const signalHandlers = {};
+    const cleanupSignalHandlers = () => {
+      for (const signal of Object.keys(signalExitCode)) {
+        process.removeListener(signal, signalHandlers[signal]);
+      }
+    };
+    const finish = (code) => {
+      if (settled) return;
+      settled = true;
+      cleanupSignalHandlers();
+      resolve(code);
+    };
+    for (const signal of Object.keys(signalExitCode)) {
+      signalHandlers[signal] = () => {
+        try {
+          child.kill(signal);
+        } catch {
+          // The child may have already exited between the signal and cleanup.
+        }
+        finish(signalExitCode[signal]);
+      };
+      process.once(signal, signalHandlers[signal]);
+    }
     child.on("error", (err) => {
       if (err?.code === "ENOENT") {
         console.error(
           "The 'codex' CLI was not found in PATH. Install with:\n  npm install -g @openai/codex"
         );
-        resolve(127);
+        finish(127);
       } else {
         console.error(String(err?.message || err));
-        resolve(1);
+        finish(1);
       }
     });
-    child.on("exit", (code) => resolve(code ?? 0));
+    child.on("exit", (code, signalName) => {
+      finish(code ?? signalExitCode[signalName] ?? 0);
+    });
   });
 }
 

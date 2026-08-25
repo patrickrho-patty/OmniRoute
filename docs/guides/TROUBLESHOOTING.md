@@ -38,21 +38,64 @@ Common problems and solutions for OmniRoute.
 
 ---
 
+### Rate Limiting on Free Providers (429 / 400 / 401)
+
+**Symptom**: When using `model: "auto"` with free/no-auth providers (opencode, felo-web, auggie, etc.), you intermittently get `HTTP 429`, `400`, or `401` instead of answers. The requests succeed when retrying the same prompt moments later, but automation (cron jobs, agents, scripts) breaks on the first failure.
+
+**Root cause**: Three independent failure modes stack up:
+
+1. **Provider rate-limit (`429`)**: Free tiers (notably `felo/felo-chat`) enforce a per-window quota. A burst of parallel calls exhausts it, so the next request is refused until the window resets.
+2. **Broken model in passthrough (`400`/`401`)**: `auto/*` pools can include passthrough models from `opencode` that are registered in the catalog but have no live credentials (e.g. `oc/north-mini-code-free` → `401`). The auto-router tries one, fails, and the error propagates before fallback kicks in.
+3. **Concurrency amplification (`429` under load)**: When multiple agent/cron sessions hit `auto` at once, the aggregate request rate exceeds what free providers tolerate, so legitimate calls get flagged as abusive.
+
+**Verified fix (community-reported, 2026-08-10)**: tune three environment variables so that rotation, concurrency, and fallback absorb the free-tier churn instead of dying on it:
+
+```bash
+export OMNIROUTE_ROTATE_ON_400=true           # hop to another model/provider on 400/401 (skips broken passthrough models)
+export OMNIROUTE_CHAT_MAX_HEAVY_IN_FLIGHT=4   # raise the heavyweight admission ceiling (default 1) so long-context bursts are not rejected
+export OMNIROUTE_CHAT_ADMISSION_QUEUE_MS=5000 # longer bounded wait for heavyweight capacity instead of an immediate retryable 503
+```
+
+Set these in the OmniRoute process environment (the daemon, e.g. via the LaunchAgent plist or `systemctl edit`), then restart OmniRoute. The rotation flag is the single highest-leverage lever: it converts a hard failure into a transparent retry against a healthy provider in the pool.
+
+**Note**: `OMNIROUTE_CHAT_MAX_HEAVY_IN_FLIGHT` (default `1`, per process) caps how many heavyweight — long-context — requests run at once; the bound is an admission gate, not a provider rate limiter. Raising it only reduces client-visible `503 chat_admission_busy` rejects for heavy requests. The per-provider rate limiting (`open-sse/services/rateLimitManager.ts`) is governed separately by `RATE_LIMIT_MAX_WAIT_MS`, `RATE_LIMIT_MAX_QUEUE_DEPTH`, and `RATE_LIMIT_AUTO_ENABLE` — see `.env.example`.
+
+**How to verify it worked**: run your agent/cron twice in quick succession and confirm both succeed. Before the fix, the second run typically throws `429`/`401`. After the fix, failures (if any) are retried transparently and the call completes. You can also `curl /monitoring/health` and watch the `rateLimitedUntil` field on the provider connections and the `circuitBreakers.providerBreakers[].state` for the affected providers — the state is one of `CLOSED`, `DEGRADED`, `OPEN`, or `HALF_OPEN` (see `src/shared/utils/circuitBreaker.ts`), and a provider that keeps failing will flip `CLOSED → DEGRADED → OPEN` before the reset window lets a probe through (`HALF_OPEN`).
+
+**If you still see 429**: the active account for that provider has genuinely exhausted its _quota_ (not just rate). Add a second account for the same provider in the OmniRoute dashboard → Providers → Accounts, or mix in another free provider (e.g. `routeway`, `auggie`). Rotation only helps with transient rate/400/401; a hard quota exhaustion requires a second credential or a different provider.
+
+**If you see 403 on vision models (`auto/vision`, `bazaarlink/*`)**: the connected account lacks a paid plan that includes vision, or the API key has insufficient permissions. Verify in the provider dashboard that the key scope includes vision/multimodal, or connect a paid tier account and keep it as the vision target.
+
+---
+
+## npm install Warnings (ERESOLVE / peer / deprecated)
+
+When you run `npm install -g omniroute`, you may see a wall of warnings like `npm warn ERESOLVE`, peer-dependency notices, and `deprecated` messages. **These are expected and harmless.** Your install succeeded if you see `added <N> packages` in the output.
+
+The warnings come from stale peer-dependency ranges in third-party packages OmniRoute doesn't control:
+
+1. **`marked-terminal` wants `marked >=1 <16`, found `marked@18`** — works fine in practice; the upstream peer range is just stale.
+2. **`deprecated prebuild-install@7.1.3`** — the native-binary fetch helper. Only relevant later if a web-cookie provider reports a missing `tls-client-node` native binary (a separate issue, not caused by this warning).
+
+**No action needed** — the warnings cannot be fully silenced without forking upstream packages.
+
+---
+
 ## Quick Fixes
 
-| Problem                                             | Solution                                                                                                                                                 |
-| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| First login not working                             | Set `INITIAL_PASSWORD` in `.env` (no hardcoded default)                                                                                                  |
-| Dashboard opens on wrong port                       | Set `PORT=20128` and `NEXT_PUBLIC_BASE_URL=http://localhost:20128`                                                                                       |
-| No logs written to disk                             | Set `APP_LOG_TO_FILE=true` and verify call log capture is enabled                                                                                        |
-| EACCES: permission denied                           | Set `DATA_DIR=/path/to/writable/dir` to override `~/.omniroute`                                                                                          |
-| Routing strategy not saving                         | Update to the latest v3.x release (Zod schema fix for settings persistence shipped in earlier versions)                                                  |
-| Login crash / blank page                            | Check Node.js version — see [Node.js Compatibility](#nodejs-compatibility) below                                                                         |
-| `dlopen` / `slice is not valid mach-o file` (macOS) | Run `cd $(npm root -g)/omniroute/app && npm rebuild better-sqlite3 && omniroute` — see [macOS native module rebuild](#macos-native-module-rebuild) below |
-| Proxy "fetch failed"                                | Ensure proxy config is set at the correct level — see [Proxy Issues](#proxy-issues) below                                                                |
+| Problem                                                    | Solution                                                                                                                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| First login not working                                    | Set `INITIAL_PASSWORD` in `.env` (no hardcoded default)                                                                                                   |
+| Dashboard opens on wrong port                              | Set `PORT=20128` and `NEXT_PUBLIC_BASE_URL=http://localhost:20128`                                                                                        |
+| No logs written to disk                                    | Set `APP_LOG_TO_FILE=true` and verify call log capture is enabled                                                                                         |
+| EACCES: permission denied                                  | Set `DATA_DIR=/path/to/writable/dir` to override `~/.omniroute`                                                                                           |
+| Routing strategy not saving                                | Update to the latest v3.x release (Zod schema fix for settings persistence shipped in earlier versions)                                                   |
+| Login crash / blank page                                   | Check Node.js version — see [Node.js Compatibility](#nodejs-compatibility) below                                                                          |
+| `dlopen` / `slice is not valid mach-o file` (macOS)        | Run `cd $(npm root -g)/omniroute/app && npm rebuild better-sqlite3 && omniroute` — see [macOS native module rebuild](#macos-native-module-rebuild) below  |
+| Proxy "fetch failed"                                       | Ensure proxy config is set at the correct level — see [Proxy Issues](#proxy-issues) below                                                                 |
 | Docker `curl: (56) Recv failure: Connection reset by peer` | Your Docker port bind may be landing on IPv6. Use `-p 127.0.0.1:20128:20128` to force IPv4, or test with `curl -4`. See [Docker IPv6](#docker-ipv6) below |
-| Antivirus quarantines `README.md`                   | False positive — see [Antivirus false positives](#antivirus-false-positives) below                                                                       |
-| Kaspersky flags the Desktop app as a Trojan         | Behavioral false positive on the unsigned installer — see [Antivirus false positives](#antivirus-false-positives) below                                  |
+| Antivirus quarantines `README.md`                          | False positive — see [Antivirus false positives](#antivirus-false-positives) below                                                                        |
+| Kaspersky flags the Desktop app as a Trojan                | Behavioral false positive on the unsigned installer — see [Antivirus false positives](#antivirus-false-positives) below                                   |
 
 ---
 
@@ -95,7 +138,7 @@ dodge one vendor's heuristic would hurt every reader to satisfy a scanner bug.
 
 **This is a false positive from a behavioral heuristic. Nothing is infected.** Kaspersky's
 `PDM:` prefix means the verdict comes from its Proactive Defense Module (System Watcher),
-which judges what the installer *does* rather than matching it against known malware. When
+which judges what the installer _does_ rather than matching it against known malware. When
 it fires, Kaspersky "rolls back" the whole installation — deleting files it had already
 written — so the app ends up broken or missing.
 
@@ -162,6 +205,36 @@ until it lands, new releases can repeat this.
 4. Restart: `omniroute`
 
 > **Supported secure versions:** `>=22.22.2 <23` or `>=24.0.0 <27`. Node.js 24.x LTS (Krypton) and Node.js 26 are fully supported.
+
+### npm v11+: `better-sqlite3` not installed (Cannot find module)
+
+<a name="npm-v11-better-sqlite3-not-installed-cannot-find-module"></a>
+
+**Cause:** npm v11 (shipped with Node.js 24+) blocks install scripts for optional
+dependencies by default. Since `better-sqlite3` is listed in `optionalDependencies`
+and requires native compilation (`node-gyp rebuild`), npm silently skips it.
+
+**Symptoms:**
+
+- Server crashes on startup with `Cannot find module 'better-sqlite3'`
+- `ls node_modules/better-sqlite3` shows "No such file or directory"
+- `npm ls better-sqlite3` shows `(empty)`
+
+**Fix:**
+
+1. Approve the install scripts and reinstall:
+   ```bash
+   npm approve-scripts better-sqlite3
+   npm install
+   ```
+2. Or install the prebuilt manually:
+   ```bash
+   npm pack better-sqlite3@13.0.1
+   tar -xzf better-sqlite3-*.tgz -C node_modules
+   mv node_modules/package node_modules/better-sqlite3
+   rm better-sqlite3-*.tgz
+   ```
+3. Verify it works: `node -e "require('better-sqlite3')(':memory:').close(); console.log('OK')"`
 
 ### macOS: `dlopen` / "slice is not valid mach-o file"
 
@@ -306,6 +379,7 @@ see [`docs/guides/KIRO_SETUP.md`](./KIRO_SETUP.md).
 **Cause:** `docker run -p 20128:20128` publishes on both `0.0.0.0` (IPv4) and `::` (IPv6), but the process inside the container listens on IPv4 only. On hosts where `localhost` resolves to `::1` first, the connection lands on the IPv6 published port with no listener behind it → connection reset.
 
 **Fix:**
+
 1. **Quick diagnostic:** Run `curl -4 http://localhost:20128/v1/models`. If it works with `-4` but fails without, you have an IPv6 bind mismatch.
 2. **Permanent fix:** Bind to IPv4 explicitly by using `-p 127.0.0.1:20128:20128` in your `docker run` command:
    ```bash
@@ -404,7 +478,7 @@ If a provider repeatedly enters OPEN state:
 
 ### "Unsupported model" error
 
-- Ensure you're using the correct prefix: `deepgram/nova-3` or `assemblyai/best`
+- Use a model id whose first segment is a provider you have credentials for (`openai/whisper-1`, `openrouter/deepgram/nova-3`). Bare `deepgram/nova-3` requires a native Deepgram key.
 - Verify the provider is connected in **Dashboard → Providers**
 
 ### Transcription returns empty or fails
@@ -458,6 +532,70 @@ Provider profiles support these settings:
 
 When many concurrent requests hit a rate-limited provider, OmniRoute uses mutex + auto rate-limiting to serialize requests and prevent cascading failures. This is automatic for API key providers.
 
+### Chat requests fail with 503 / chat_admission_busy
+
+**Symptoms:**
+
+- The chat completions endpoint returns a retryable `503` response whose error code is
+  `chat_admission_busy`.
+- The response includes `Retry-After`; the byte-based path uses 2 seconds, while the
+  structure-based path uses 1 second and includes `reason: "structure_limit"`.
+- This can happen while another heavyweight chat or long-running streaming response is still
+  in flight.
+
+The byte-based response body is:
+
+```json
+{
+  "error": {
+    "message": "Chat admission capacity is temporarily unavailable. Retry shortly.",
+    "type": "server_error",
+    "code": "chat_admission_busy"
+  }
+}
+```
+
+The structure-based response uses the same type and code, with the message
+`Structurally heavy chat request capacity is busy; retry shortly.` and
+`reason: "structure_limit"`.
+At the default thresholds, a request is structurally heavy when it has at least `200` messages,
+at least `64` tools, or at least `32,000` estimated tokens, or when bounded structure estimation
+exhausts its bounds of `10,000` visited nodes or depth `12`.
+
+**Cause:** This is deliberate load shedding inside OmniRoute, not an upstream-provider failure.
+Each process uses a process-local guard to reserve limited heavyweight capacity before retaining
+and parsing a large request body. A heavyweight lease remains held for the lifetime of an SSE
+response.
+
+When capacity is busy, a heavyweight request first waits up to
+`OMNIROUTE_CHAT_ADMISSION_QUEUE_MS` (default `5000`, `0` disables the wait) for a slot to free up
+before answering the retryable `503`. The bounded wait exists so agent-style clients
+(OpenCode, Claude Code, Cursor) that fan out heavy sub-requests concurrently serialize the burst
+instead of burning their whole retry budget on immediate rejections and dying mid-task.
+Current heavyweight lease occupancy is not surfaced in the dashboard.
+Settings → Resilience → Request Queue → Concurrent Requests does not control this; that setting
+governs a separate provider request-queue mechanism.
+
+**Fix:**
+
+1. Retry first. Clients should honor `Retry-After` and use backoff rather than immediately
+   repeating the request. Note that with the default `OMNIROUTE_CHAT_ADMISSION_QUEUE_MS=5000`
+   a heavy request already waited up to 5 seconds before the `503`, so a client retry loop should
+   back off beyond that instead of hammering.
+2. If normal deployment traffic repeatedly exhausts the guard, you can cautiously raise
+   `OMNIROUTE_CHAT_MAX_HEAVY_IN_FLIGHT` from its default of `1`. Increase it one step at a time,
+   restart OmniRoute after each change, and observe memory headroom under representative load.
+   Every additional heavyweight request can increase concurrent V8 heap use and container or
+   host OOM risk. No value is safe for every deployment; validate the setting against your own
+   traffic and memory limits rather than assuming that `2` is universally safe.
+3. Prefer widening the wait (`OMNIROUTE_CHAT_ADMISSION_QUEUE_MS`) over raising the in-flight
+   limit when bursts are short: waiting costs latency, while an extra concurrent heavyweight
+   request costs heap residency for the whole request lifetime.
+
+See the [environment-variable reference](../reference/ENVIRONMENT.md#4-security--authentication)
+for the authoritative admission settings. Loosening the heavyweight classification thresholds
+can let expensive requests bypass this guard and is riskier than a cautious in-flight increase.
+
 ---
 
 ## Optional RAG / LLM failure taxonomy (16 problems)
@@ -498,25 +636,6 @@ You can ignore this section if you do not run RAG or agent pipelines behind Omni
 ## v3.8.0 Known Issues
 
 Issues specific to the v3.8.0 release and their current workarounds. If a fix lands in a later patch, the entry will be updated or removed.
-
-### Windsurf OAuth flow fails with 401
-
-**Symptoms:**
-
-- "401 unauthorized" while completing the Windsurf OAuth flow from the dashboard
-- Windsurf provider card stays in "needs reconnection" state after the callback
-
-**Causes:**
-
-- `WINDSURF_FIREBASE_API_KEY` env var missing or empty
-- `WINDSURF_API_KEY` misconfigured or pointing at a stale token
-- Local firewall/proxy blocking the OAuth callback
-
-**Fix:**
-
-1. Verify both `WINDSURF_FIREBASE_API_KEY` and `WINDSURF_API_KEY` are set in `.env`
-2. Restart OmniRoute so the new env values are picked up
-3. Re-run the OAuth flow from **Dashboard → Providers → Windsurf → Reconnect**
 
 ### Devin CLI auth failures
 

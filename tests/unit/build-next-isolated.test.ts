@@ -4,12 +4,12 @@ import fs from "node:fs/promises";
 import fsSync from "node:fs";
 import os from "node:os";
 import path from "node:path";
-
 const {
   getTransientBuildPaths,
   movePath,
   pruneStandaloneArtifacts,
   resolveNextBuildEnv,
+  syncStandaloneExtraModules,
   syncStandaloneNativeAssets,
 } = await import("../../scripts/build/build-next-isolated.mjs");
 const { parseBooleanEnv, parsePositiveIntegerEnv } =
@@ -106,15 +106,10 @@ test("build env helpers parse positive integers and booleans consistently", () =
   assert.equal(parseBooleanEnv(undefined, true), true);
 });
 
-test("resolveNextBuildEnv enables build worker mode unless already provided", () => {
+test("resolveNextBuildEnv forces stable build worker mode unless already provided", () => {
   const defaultEnv = resolveNextBuildEnv({ NODE_ENV: "test" });
-  assert.equal(defaultEnv.NEXT_PRIVATE_BUILD_WORKER, "1");
+  assert.equal(defaultEnv.NEXT_PRIVATE_BUILD_WORKER, "0");
   assert.equal(defaultEnv.NODE_ENV, "test");
-  assert.match(
-    defaultEnv.NODE_OPTIONS ?? "",
-    /--max-old-space-size=\d+/,
-    "workerized builds must still carry an explicit heap limit"
-  );
 
   const preservedEnv = resolveNextBuildEnv({
     NODE_ENV: "production",
@@ -194,36 +189,49 @@ test("pruneStandaloneArtifacts removes traced _tasks from standalone output", as
   });
 });
 
-test("syncStandaloneNativeAssets copies wreq-js native runtime into standalone output", async () => {
+test("syncStandaloneExtraModules copies the complete wreq-js runtime", async () => {
   await withTempDir(async (tempDir) => {
-    const sourceNativeFile = path.join(
-      tempDir,
-      "node_modules",
-      "wreq-js",
-      "rust",
-      "wreq-js.linux-x64-gnu.node"
-    );
-    const destinationNativeFile = path.join(
+    const sourcePackage = path.join(tempDir, "node_modules", "wreq-js");
+    const destinationPackage = path.join(
       tempDir,
       ".build",
       "next",
       "standalone",
       "node_modules",
-      "wreq-js",
-      "rust",
-      "wreq-js.linux-x64-gnu.node"
+      "wreq-js"
     );
     const logs: string[] = [];
-
-    await fs.mkdir(path.dirname(sourceNativeFile), { recursive: true });
-    await fs.writeFile(sourceNativeFile, "native module bytes");
-
-    const changed = await syncStandaloneNativeAssets(tempDir, fs, {
+    const logger: Console = Object.assign(Object.create(console), {
       log: (message: unknown) => logs.push(String(message)),
     });
 
+    await fs.mkdir(path.join(sourcePackage, "dist"), { recursive: true });
+    await fs.mkdir(path.join(sourcePackage, "rust"), { recursive: true });
+    await fs.writeFile(path.join(sourcePackage, "package.json"), '{"name":"wreq-js"}');
+    await fs.writeFile(path.join(sourcePackage, "dist", "wreq-js.cjs"), "exports.fetch = () => {}");
+    await fs.writeFile(
+      path.join(sourcePackage, "rust", "wreq-js.linux-x64-gnu.node"),
+      "native module bytes"
+    );
+
+    const changed = await syncStandaloneExtraModules(tempDir, fs, logger);
+
     assert.equal(changed, true);
-    assert.equal(await fs.readFile(destinationNativeFile, "utf8"), "native module bytes");
-    assert.match((logs[0] ?? "").replaceAll("\\", "/"), /wreq-js\/rust/);
+    assert.equal(
+      await fs.readFile(path.join(destinationPackage, "package.json"), "utf8"),
+      '{"name":"wreq-js"}'
+    );
+    assert.equal(
+      await fs.readFile(path.join(destinationPackage, "dist", "wreq-js.cjs"), "utf8"),
+      "exports.fetch = () => {}"
+    );
+    assert.equal(
+      await fs.readFile(
+        path.join(destinationPackage, "rust", "wreq-js.linux-x64-gnu.node"),
+        "utf8"
+      ),
+      "native module bytes"
+    );
+    assert.match(logs[0] ?? "", /wreq-js TLS runtime/);
   });
 });

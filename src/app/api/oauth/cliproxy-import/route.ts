@@ -3,12 +3,9 @@ import path from "path";
 import { NextResponse } from "next/server";
 
 import { createProviderConnection } from "@/models";
-import { isAuthRequired, isAuthenticated } from "@/shared/utils/apiAuth";
+import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
-import {
-  scanCliProxyAuthDir,
-  toConnectionPayload,
-} from "@/lib/oauth/utils/cliProxyAuthImport";
+import { scanCliProxyAuthDir, toConnectionPayload } from "@/lib/oauth/utils/cliProxyAuthImport";
 
 /**
  * #1934: import OAuth credentials saved by CLIProxyAPI (~/.cli-proxy-api/) so users
@@ -23,16 +20,19 @@ function cliProxyConfigDir(): string {
 }
 
 async function requireImportAuth(request: Request) {
-  if (!(await isAuthRequired(request))) return null;
-  if (await isAuthenticated(request)) return null;
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // GHSA-mg76: importing a provider connection is a state-mutating admin action;
+  // require management scope (or a dashboard session), not any valid client key.
+  return requireManagementAuth(request, { invalidApiKeyStatus: 401 });
 }
 
 export async function GET(request: Request) {
   const authResponse = await requireImportAuth(request);
   if (authResponse) return authResponse;
   try {
-    const { candidates, skipped, scanned } = await scanCliProxyAuthDir(cliProxyConfigDir(), Date.now());
+    const { candidates, skipped, scanned } = await scanCliProxyAuthDir(
+      cliProxyConfigDir(),
+      Date.now()
+    );
     // Sanitize: never return access/refresh tokens to the client.
     const accounts = candidates.map((c) => ({
       provider: c.provider,
@@ -52,7 +52,10 @@ export async function POST(request: Request) {
   const authResponse = await requireImportAuth(request);
   if (authResponse) return authResponse;
   try {
-    const { candidates, skipped, scanned } = await scanCliProxyAuthDir(cliProxyConfigDir(), Date.now());
+    const { candidates, skipped, scanned } = await scanCliProxyAuthDir(
+      cliProxyConfigDir(),
+      Date.now()
+    );
     let imported = 0;
     const results: Array<{ provider: string; email: string | null; ok: boolean; error?: string }> =
       [];

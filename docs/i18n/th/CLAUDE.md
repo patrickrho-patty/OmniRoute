@@ -39,22 +39,22 @@ npm run test:all
 
 ## โครงการโดยรวม
 
-**OmniRoute** — โปรเซสเซอร์/เราเตอร์ AI ที่รวมเป็นหนึ่ง จุดสิ้นสุดเดียว, ผู้ให้บริการ LLM มากกว่า 160 ราย, การสำรองข้อมูลอัตโนมัติ
+**OmniRoute** — โปรเซสเซอร์/เราเตอร์ AI ที่รวมเป็นหนึ่ง จุดสิ้นสุดเดียว, ผู้ให้บริการ LLM 329 ราย, การสำรองข้อมูลอัตโนมัติ
 
-| เลเยอร์       | ตำแหน่ง                 | วัตถุประสงค์                                                                               |
-| ------------- | ----------------------- | ------------------------------------------------------------------------------------------ |
-| API Routes    | `src/app/api/v1/`       | Next.js App Router — จุดเข้า                                                               |
-| Handlers      | `open-sse/handlers/`    | การประมวลผลคำขอ (แชท, การฝัง, ฯลฯ)                                                         |
-| Executors     | `open-sse/executors/`   | การส่ง HTTP เฉพาะผู้ให้บริการ                                                              |
-| Translators   | `open-sse/translator/`  | การแปลงรูปแบบ (OpenAI↔Claude↔Gemini)                                                       |
-| Transformer   | `open-sse/transformer/` | API การตอบกลับ ↔ การเติมแชท                                                                |
-| Services      | `open-sse/services/`    | การจัดเส้นทางแบบรวม, ขีดจำกัดอัตรา, การแคช, ฯลฯ                                            |
-| Database      | `src/lib/db/`           | โมดูลโดเมน SQLite (ไฟล์ 45+ ไฟล์, การโยกย้าย 55)                                           |
-| Domain/Policy | `src/domain/`           | เอนจินนโยบาย, กฎค่าใช้จ่าย, ลอจิกการสำรองข้อมูล                                            |
-| MCP Server    | `open-sse/mcp-server/`  | เครื่องมือ 37 รายการ (30 พื้นฐาน + 3 หน่วยความจำ + 4 ทักษะ), การขนส่ง 3 รายการ, ~13 ขอบเขต |
-| A2A Server    | `src/lib/a2a/`          | โปรโตคอลตัวแทน JSON-RPC 2.0                                                                |
-| Skills        | `src/lib/skills/`       | โครงสร้างทักษะที่ขยายได้                                                                   |
-| Memory        | `src/lib/memory/`       | หน่วยความจำการสนทนาที่คงอยู่                                                               |
+| เลเยอร์       | ตำแหน่ง                 | วัตถุประสงค์                                                              |
+| ------------- | ----------------------- | ------------------------------------------------------------------------- |
+| API Routes    | `src/app/api/v1/`       | Next.js App Router — จุดเข้า                                              |
+| Handlers      | `open-sse/handlers/`    | การประมวลผลคำขอ (แชท, การฝัง, ฯลฯ)                                        |
+| Executors     | `open-sse/executors/`   | การส่ง HTTP เฉพาะผู้ให้บริการ                                             |
+| Translators   | `open-sse/translator/`  | การแปลงรูปแบบ (OpenAI↔Claude↔Gemini)                                      |
+| Transformer   | `open-sse/transformer/` | API การตอบกลับ ↔ การเติมแชท                                               |
+| Services      | `open-sse/services/`    | การจัดเส้นทางแบบรวม, ขีดจำกัดอัตรา, การแคช, ฯลฯ                           |
+| Database      | `src/lib/db/`           | 110 top-level SQLite domain modules, 130 migrations                       |
+| Domain/Policy | `src/domain/`           | เอนจินนโยบาย, กฎค่าใช้จ่าย, ลอจิกการสำรองข้อมูล                           |
+| MCP Server    | `open-sse/mcp-server/`  | 107 unique tools, 3 transports (stdio / SSE / Streamable HTTP), 32 scopes |
+| A2A Server    | `src/lib/a2a/`          | โปรโตคอลตัวแทน JSON-RPC 2.0                                               |
+| Skills        | `src/lib/skills/`       | โครงสร้างทักษะที่ขยายได้                                                  |
+| Memory        | `src/lib/memory/`       | หน่วยความจำการสนทนาที่คงอยู่                                              |
 
 Monorepo: `src/` (แอป Next.js 16), `open-sse/` (พื้นที่ทำงานเครื่องยนต์สตรีมมิ่ง), `electron/` (แอปเดสก์ท็อป), `tests/`, `bin/` (จุดเข้า CLI).
 
@@ -74,7 +74,7 @@ Client → /v1/chat/completions (Next.js route)
 
 API routes follow a consistent pattern: `Route → CORS preflight → Zod body validation → Optional auth (extractApiKey/isValidApiKey) → API key policy enforcement → Handler delegation (open-sse)`. ไม่มี middleware ของ Next.js ทั่วไป — การดักจับจะเฉพาะเจาะจงต่อเส้นทาง
 
-**Combo routing** (`open-sse/services/combo.ts`): 14 กลยุทธ์ (priority, weighted, fill-first, round-robin, P2C, random, least-used, cost-optimized, reset-aware, strict-random, auto, lkgp, context-optimized, context-relay). เป้าหมายแต่ละตัวเรียก `handleSingleModel()` ซึ่งห่อหุ้ม `handleChatCore()` ด้วยการจัดการข้อผิดพลาดเฉพาะเป้าหมายและการตรวจสอบ circuit breaker ดู `docs/routing/AUTO-COMBO.md` สำหรับการให้คะแนน Auto-Combo 9 ปัจจัยและ `docs/architecture/RESILIENCE_GUIDE.md` สำหรับ 3 ชั้นของความทนทาน
+**Combo routing** (`open-sse/services/combo.ts`): 19 public strategies (priority, weighted, fill-first, round-robin, p2c, random, least-used, cost-optimized, reset-aware, reset-window, headroom, strict-random, auto, lkgp, context-optimized, cache-optimized, context-relay, fusion, pipeline). Each target calls `handleSingleModel()`, which wraps `handleChatCore()` with per-target error handling and circuit-breaker checks. See `docs/routing/AUTO-COMBO.md` for the 13-factor Auto-Combo scoring and `docs/architecture/RESILIENCE_GUIDE.md` for the 3 resilience layers.
 
 ---
 
@@ -290,31 +290,31 @@ baseCooldownMs * 2 ** failureIndex;
 
 สำหรับการเปลี่ยนแปลงที่ไม่ธรรมดา ให้อ่านเอกสารเชิงลึกที่ตรงกันก่อน:
 
-| พื้นที่                                         | เอกสาร                                                            |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| การนำทางใน Repo                                 | `docs/architecture/REPOSITORY_MAP.md`                             |
-| สถาปัตยกรรม                                     | `docs/architecture/ARCHITECTURE.md`                               |
-| เอกสารอ้างอิงด้านวิศวกรรม                       | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
-| Auto-Combo (การให้คะแนน 9 ปัจจัย, 14 กลยุทธ์)   | `docs/routing/AUTO-COMBO.md`                                      |
-| ความยืดหยุ่น (กลไก 3 ประการ)                    | `docs/architecture/RESILIENCE_GUIDE.md`                           |
-| การเล่นซ้ำการให้เหตุผล                          | `docs/routing/REASONING_REPLAY.md`                                |
-| กรอบทักษะ                                       | `docs/frameworks/SKILLS.md`                                       |
-| ระบบหน่วยความจำ (FTS5 + Qdrant)                 | `docs/frameworks/MEMORY.md`                                       |
-| ตัวแทนคลาวด์                                    | `docs/frameworks/CLOUD_AGENT.md`                                  |
-| รั้วป้องกัน (PII / การฉีด / วิสัยทัศน์)         | `docs/security/GUARDRAILS.md`                                     |
-| ข้อมูลประจำตัวสาธารณะจาก upstream (Gemini/etc.) | `docs/security/PUBLIC_CREDS.md`                                   |
-| การทำความสะอาดข้อความแสดงข้อผิดพลาด             | `docs/security/ERROR_SANITIZATION.md`                             |
-| การประเมินผล                                    | `docs/frameworks/EVALS.md`                                        |
-| การปฏิบัติตาม / การตรวจสอบ                      | `docs/security/COMPLIANCE.md`                                     |
-| Webhooks                                        | `docs/frameworks/WEBHOOKS.md`                                     |
-| ท่อการอนุญาต                                    | `docs/architecture/AUTHZ_GUIDE.md`                                |
-| การซ่อนตัว (TLS / ลายนิ้วมือ)                   | `docs/security/STEALTH_GUIDE.md`                                  |
-| โปรโตคอลตัวแทน (A2A / ACP / Cloud)              | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
-| เซิร์ฟเวอร์ MCP                                 | `docs/frameworks/MCP-SERVER.md`                                   |
-| เซิร์ฟเวอร์ A2A                                 | `docs/frameworks/A2A-SERVER.md`                                   |
-| เอกสารอ้างอิง API + OpenAPI                     | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
-| แคตตาล็อกผู้ให้บริการ (สร้างโดยอัตโนมัติ)       | `docs/reference/PROVIDER_REFERENCE.md`                            |
-| กระบวนการปล่อย                                  | `docs/ops/RELEASE_CHECKLIST.md`                                   |
+| พื้นที่                                              | เอกสาร                                                            |
+| ---------------------------------------------------- | ----------------------------------------------------------------- |
+| การนำทางใน Repo                                      | `docs/architecture/REPOSITORY_MAP.md`                             |
+| สถาปัตยกรรม                                          | `docs/architecture/ARCHITECTURE.md`                               |
+| เอกสารอ้างอิงด้านวิศวกรรม                            | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
+| Auto-Combo (13-factor scoring, 19 public strategies) | `docs/routing/AUTO-COMBO.md`                                      |
+| ความยืดหยุ่น (กลไก 3 ประการ)                         | `docs/architecture/RESILIENCE_GUIDE.md`                           |
+| การเล่นซ้ำการให้เหตุผล                               | `docs/routing/REASONING_REPLAY.md`                                |
+| กรอบทักษะ                                            | `docs/frameworks/SKILLS.md`                                       |
+| ระบบหน่วยความจำ (FTS5 + Qdrant)                      | `docs/frameworks/MEMORY.md`                                       |
+| ตัวแทนคลาวด์                                         | `docs/frameworks/CLOUD_AGENT.md`                                  |
+| รั้วป้องกัน (PII / การฉีด / วิสัยทัศน์)              | `docs/security/GUARDRAILS.md`                                     |
+| ข้อมูลประจำตัวสาธารณะจาก upstream (Gemini/etc.)      | `docs/security/PUBLIC_CREDS.md`                                   |
+| การทำความสะอาดข้อความแสดงข้อผิดพลาด                  | `docs/security/ERROR_SANITIZATION.md`                             |
+| การประเมินผล                                         | `docs/frameworks/EVALS.md`                                        |
+| การปฏิบัติตาม / การตรวจสอบ                           | `docs/security/COMPLIANCE.md`                                     |
+| Webhooks                                             | `docs/frameworks/WEBHOOKS.md`                                     |
+| ท่อการอนุญาต                                         | `docs/architecture/AUTHZ_GUIDE.md`                                |
+| การซ่อนตัว (TLS / ลายนิ้วมือ)                        | `docs/security/STEALTH_GUIDE.md`                                  |
+| โปรโตคอลตัวแทน (A2A / ACP / Cloud)                   | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
+| เซิร์ฟเวอร์ MCP                                      | `docs/frameworks/MCP-SERVER.md`                                   |
+| เซิร์ฟเวอร์ A2A                                      | `docs/frameworks/A2A-SERVER.md`                                   |
+| เอกสารอ้างอิง API + OpenAPI                          | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
+| แคตตาล็อกผู้ให้บริการ (สร้างโดยอัตโนมัติ)            | `docs/reference/PROVIDER_REFERENCE.md`                            |
+| กระบวนการปล่อย                                       | `docs/ops/RELEASE_CHECKLIST.md`                                   |
 
 ## การทดสอบ
 
@@ -359,7 +359,9 @@ git push -u origin feat/your-feature
 
 ## สภาพแวดล้อม
 
-- **Runtime**: Node.js ≥20.20.2 <21 || ≥22.22.2 <23 || ≥24 <25, ES Modules
+- **Runtime**: Node.js ≥20.20.2 <21 |
+  | ≥22.22.2 <23 |
+  | ≥24 <25, ES Modules
 - **TypeScript**: 5.9+, target ES2022, module esnext, resolution bundler
 - **Path aliases**: `@/*` → `src/`, `@omniroute/open-sse` → `open-sse/`, `@omniroute/open-sse/*` → `open-sse/*`
 - **พอร์ตเริ่มต้น**: 20128 (API + แดชบอร์ดบนพอร์ตเดียวกัน)

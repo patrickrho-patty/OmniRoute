@@ -26,6 +26,8 @@ import {
   DEFAULT_CODEX_RESPONSES_CONFIG,
   type CodexResponsesConfig,
   type ContextEditingConfig,
+  DEFAULT_OMNIGLYPH_CONFIG,
+  type OmniglyphConfig,
   type EngineToggle,
   type HeadroomConfig,
   type McpAccessibilityConfig,
@@ -168,6 +170,10 @@ function normalizeRtkConfig(value: unknown): RtkConfig {
       typeof record.applyToAssistantMessages === "boolean"
         ? record.applyToAssistantMessages
         : DEFAULT_RTK_CONFIG.applyToAssistantMessages,
+    enableRenderers:
+      typeof record.enableRenderers === "boolean"
+        ? record.enableRenderers
+        : (DEFAULT_RTK_CONFIG.enableRenderers ?? false),
     enabledFilters: Array.isArray(record.enabledFilters)
       ? record.enabledFilters.filter((filter): filter is string => typeof filter === "string")
       : DEFAULT_RTK_CONFIG.enabledFilters,
@@ -297,6 +303,19 @@ function normalizeLanguageConfig(value: unknown): CompressionLanguageConfig {
         ? record.autoDetect
         : DEFAULT_COMPRESSION_LANGUAGE_CONFIG.autoDetect,
     enabledPacks: [...new Set(enabledPacks.length > 0 ? enabledPacks : ["en"])],
+  };
+}
+
+function normalizeOmniglyphConfig(value: unknown): OmniglyphConfig {
+  const record = toRecord(value);
+  const profile = record.profile;
+  // Um perfil desconhecido não pode virar "roda com a política padrão": cai para
+  // o default explícito, e o adapter ainda falha fechado se algo passar por aqui.
+  return {
+    profile:
+      profile === "coding-safe" || profile === "balanced" || profile === "passthrough"
+        ? profile
+        : DEFAULT_OMNIGLYPH_CONFIG.profile,
   };
 }
 
@@ -599,10 +618,12 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
     stackedPipeline: normalizeStackedPipeline(undefined),
     aggressive: normalizeAggressiveConfig(undefined),
     ultra: normalizeUltraConfig(undefined),
+    lite: { compressToolResults: true },
     headroom: normalizeHeadroomConfig(undefined),
     ...buildDetailConfigDefaults(),
     contextBudget: normalizeContextBudgetConfig(undefined),
     contextEditing: { ...DEFAULT_CONTEXT_EDITING_CONFIG },
+    omniglyph: { ...DEFAULT_OMNIGLYPH_CONFIG },
     liveZone: { enabled: false },
     engines: {},
     activeComboId: null,
@@ -709,6 +730,9 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
       case "ultraConfig":
         config.ultra = normalizeUltraConfig(parsed);
         break;
+      case "lite":
+        config.lite = { compressToolResults: toRecord(parsed).compressToolResults !== false };
+        break;
       case "headroom":
       case "headroomConfig":
         config.headroom = normalizeHeadroomConfig(parsed);
@@ -722,6 +746,9 @@ export async function getCompressionSettings(): Promise<CompressionConfig> {
         break;
       case "contextEditing":
         config.contextEditing = normalizeContextEditingConfig(parsed);
+        break;
+      case "omniglyph":
+        config.omniglyph = normalizeOmniglyphConfig(parsed);
         break;
       case "liveZone":
         config.liveZone = { enabled: toRecord(parsed).enabled === true };

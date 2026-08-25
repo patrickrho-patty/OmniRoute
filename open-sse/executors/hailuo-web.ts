@@ -1,11 +1,11 @@
 /**
- * HailuoWebExecutor — Hailuo AI (MiniMax) web chat via www.hailuo.ai.
+ * HailuoWebExecutor — Hailuo AI (MiniMax) web chat via chat.minimax.io.
  *
  * Distinct from the paid API-key `minimax`/`minimax-cn` providers
  * (open-sse/config/providers/registry/minimax/) — this targets the free
- * consumer chat product at hailuo.ai / chat.minimax.io.
+ * consumer chat product at chat.minimax.io.
  *
- * Endpoint: POST https://www.hailuo.ai/v4/api/chat/msg?<fingerprint query>
+ * Endpoint: POST https://chat.minimax.io/v4/api/chat/msg?<fingerprint query>
  * Auth:     `token` header — value read from the site's `_token` localStorage
  *           entry, plus a per-request `yy` signature header.
  * Body:     multipart/form-data — characterID, msgContent, chatID, searchMode.
@@ -31,9 +31,12 @@
  */
 import { createHash } from "node:crypto";
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
-import { makeExecutorErrorResult as makeErrorResult, sanitizeErrorMessage } from "../utils/error.ts";
+import {
+  makeExecutorErrorResult as makeErrorResult,
+  sanitizeErrorMessage,
+} from "../utils/error.ts";
 
-const BASE_URL = "https://www.hailuo.ai";
+const BASE_URL = "https://chat.minimax.io";
 const API_PATH = "/v4/api/chat/msg";
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
@@ -201,9 +204,7 @@ export function extractHailuoMessageDelta(content: string, state: HailuoStreamSt
 }
 
 export type HailuoSseLine =
-  | { type: "event"; value: string }
-  | { type: "data"; value: unknown }
-  | null;
+  { type: "event"; value: string } | { type: "data"; value: unknown } | null;
 
 /** Parse a single raw SSE line. Malformed/truncated `data:` lines are swallowed, not thrown. */
 export function parseHailuoLine(line: string): HailuoSseLine {
@@ -238,7 +239,12 @@ function openAiChunk(id: string, created: number, modelId: string, content: stri
   };
 }
 
-function openAiCompletion(id: string, created: number, modelId: string, content: string): JsonRecord {
+function openAiCompletion(
+  id: string,
+  created: number,
+  modelId: string,
+  content: string
+): JsonRecord {
   return {
     id,
     object: "chat.completion",
@@ -511,11 +517,11 @@ export class HailuoWebExecutor extends BaseExecutor {
       return makeErrorResult(400, prepared.error, body, BASE_URL);
     }
 
-    const { url, headers: reqHeaders, form } = this.buildSignedRequest(
-      token,
-      credentials?.providerSpecificData,
-      prepared.msgContent
-    );
+    const {
+      url,
+      headers: reqHeaders,
+      form,
+    } = this.buildSignedRequest(token, credentials?.providerSpecificData, prepared.msgContent);
 
     const dispatched = await this.dispatch(url, reqHeaders, form, signal, body, bodyObj);
     if ("errorResult" in dispatched) return dispatched.errorResult;
@@ -541,6 +547,15 @@ export class HailuoWebExecutor extends BaseExecutor {
       };
     }
 
-    return this.buildNonStreamingResponse(upstream, id, created, modelId, url, reqHeaders, body, bodyObj);
+    return this.buildNonStreamingResponse(
+      upstream,
+      id,
+      created,
+      modelId,
+      url,
+      reqHeaders,
+      body,
+      bodyObj
+    );
   }
 }

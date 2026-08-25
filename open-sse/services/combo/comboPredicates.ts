@@ -6,16 +6,27 @@
  * predicates are re-exported from combo.ts for backward compatibility.
  */
 
+import { EXECUTOR_CONTRACT_VIOLATION_CODE } from "../../config/constants.ts";
 import { errorResponse } from "../../utils/error.ts";
 import { parseModel } from "../model.ts";
 import { isSelfInflictedUpstreamTimeout } from "../../handlers/chatCore/cooldownClassification.ts";
 import { isLocalStreamLifecycleError } from "@/shared/utils/circuitBreaker";
 import { CONTEXT_OVERFLOW_PATTERNS, MODEL_ACCESS_DENIED_PATTERNS } from "../accountFallback.ts";
 import { isResourceNotFoundResponse } from "../errorClassifier.ts";
+import { getTrustedLocalRateLimitResponse } from "../rateLimitManager/errors.ts";
 import type { ResolvedComboTarget } from "./types.ts";
 
 // Status codes that should mark round-robin target semaphores as cooling down.
 export const TRANSIENT_FOR_SEMAPHORE = [429, 502, 503, 504];
+// G1 (silent-stop fix): hard ceiling for the combo target loop when the operator
+// left comboTimeoutMs at 0 ("unlimited"). Without this, a hung upstream (per-model
+// timeout disabled) would freeze the request forever with no response. 10 minutes
+// is a generous bound for legitimate long-running fallback cascades.
+export const COMBO_LOOP_SAFETY_TIMEOUT_MS = 10 * 60 * 1000;
+// G1: after the safety timer fires, wait this long for in-flight targets to land
+// their per-model errors into comboErrors (so the 504 carries the same "tried:"
+// summary as the regular timeout path) before returning the safety response.
+export const COMBO_SAFETY_DRAIN_MS = 2000;
 // Patterns that signal all accounts for a provider are rate-limited / exhausted.
 // Used to detect 503 responses from handleNoCredentials so combo can fallback.
 export const ALL_ACCOUNTS_RATE_LIMITED_PATTERNS = [
@@ -85,6 +96,11 @@ export const MAX_COMBO_DEPTH = 3;
 export const MAX_COMBO_DEPTH_HARD_CAP = 10;
 export const MAX_FALLBACK_WAIT_MS = 5000;
 export const MAX_GLOBAL_ATTEMPTS = 30;
+// Absolute safety ceiling for the operator-configured shared attempt budget
+// (#11134). config.maxGlobalAttempts can raise the default (30) or lower it,
+// but never above this cap — an unbounded attempt budget is the same runaway
+// background-request DoS risk that motivated MAX_COMBO_DEPTH_HARD_CAP.
+export const MAX_GLOBAL_ATTEMPTS_HARD_CAP = 200;
 
 /**
  * Clamp an operator-configured combo nesting depth (config.maxComboDepth) to a
@@ -96,6 +112,20 @@ export function clampComboDepth(value: unknown): number {
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n) || n < 1) return MAX_COMBO_DEPTH;
   return Math.min(n, MAX_COMBO_DEPTH_HARD_CAP);
+}
+
+/**
+ * Clamp an operator-configured shared per-request attempt budget
+ * (config.maxGlobalAttempts) to a safe integer in
+ * [1, MAX_GLOBAL_ATTEMPTS_HARD_CAP] (#11134). Mirrors clampComboDepth: anything
+ * non-numeric, < 1, NaN or Infinity falls back to the default
+ * MAX_GLOBAL_ATTEMPTS so a bad config can never disable the budget (runaway
+ * retries against a dead pool) nor blow past the safety ceiling.
+ */
+export function clampGlobalAttempts(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 1) return MAX_GLOBAL_ATTEMPTS;
+  return Math.min(n, MAX_GLOBAL_ATTEMPTS_HARD_CAP);
 }
 
 /** Minimum recorded requests before the predictive-TTFT breaker trusts the average. */
@@ -133,7 +163,11 @@ const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408, 500, 502, 503, 504]);
  * failure (#1731 / #2743 gap-d). This is the consumer side of `skipProviderBreaker`:
  *
  * - Stream-readiness failures (pre-flight zombie/ping probes) never count as provider
- *   failures — they are a connection-readiness signal, not an upstream outage.
+ *   failures — they are a connection-readiness signal, not an upstream outage. EXCEPT a
+ *   STREAM_EARLY_EOF (`isStreamEarlyEof`): there the upstream returned HTTP 200, opened the
+ *   SSE stream and then hung up without a single non-ping event, which is a genuine upstream
+ *   failure. Excluding it made a provider-wide outage invisible to the breaker — see the
+ *   STREAM_EARLY_EOF section of RESILIENCE_GUIDE.md.
  * - Only whole-provider failure statuses (408/500/502/503/504) count. A plain rate-limit
  *   429 is deliberately EXCLUDED — it belongs to connection cooldown / model lockout scope
  *   (a genuine quota/token-limit 429 is handled there), NOT the whole-provider breaker. This
@@ -163,6 +197,10 @@ const PROVIDER_BREAKER_FAILURE_STATUSES = new Set([408, 500, 502, 503, 504]);
  */
 export function shouldRecordProviderBreakerFailure(args: {
   isStreamReadinessFailure: boolean;
+  /** True when the failure is specifically a STREAM_EARLY_EOF (upstream hung up after
+   * HTTP 200). Overrides the `isStreamReadinessFailure` exemption only; every other
+   * AND-term below still gates the trip. */
+  isStreamEarlyEof?: boolean;
   status: number;
   sameProviderNext: boolean;
   skipProviderBreaker?: boolean;
@@ -173,7 +211,7 @@ export function shouldRecordProviderBreakerFailure(args: {
   isProxyUnreachable?: boolean;
 }): boolean {
   return (
-    !args.isStreamReadinessFailure &&
+    (!args.isStreamReadinessFailure || args.isStreamEarlyEof === true) &&
     PROVIDER_BREAKER_FAILURE_STATUSES.has(args.status) &&
     (!args.sameProviderNext || args.isProxyUnreachable === true) &&
     !args.skipProviderBreaker &&
@@ -182,11 +220,20 @@ export function shouldRecordProviderBreakerFailure(args: {
   );
 }
 
-const REQUEST_SCOPED_UPSTREAM_ERROR_CODES = new Set([
-  "context_length_exceeded",
-  "upstream_empty_response",
-  "upstream_response_failed",
-]);
+const REQUEST_SCOPED_UPSTREAM_ERROR_CODES: Record<string, true> = {
+  context_length_exceeded: true,
+  upstream_empty_response: true,
+  upstream_response_failed: true,
+  // Local combo per-target timer (targetTimeoutRunner) — not a connection health signal.
+  combo_target_timeout: true,
+  // Local limiter queue-capacity codes — not a provider/connection health signal.
+  rate_limit_queue_timeout: true,
+  rate_limit_queue_full: true,
+  rate_limit_queue_wedged: true,
+  // #10360: our own executor-result contract violation. An internal defect, not
+  // a provider/account fault — it must never cool a connection or trip a breaker.
+  [EXECUTOR_CONTRACT_VIOLATION_CODE]: true,
+};
 
 /** Request/model-specific failures must not poison provider-wide resilience state. */
 export function isRequestScopedUpstreamFailure(error?: {
@@ -195,18 +242,23 @@ export function isRequestScopedUpstreamFailure(error?: {
 }): boolean {
   const code = typeof error?.code === "string" ? error.code.toLowerCase() : "";
   const type = typeof error?.type === "string" ? error.type.toLowerCase() : "";
-  return REQUEST_SCOPED_UPSTREAM_ERROR_CODES.has(code) || type === "context_length_exceeded";
+  return (
+    REQUEST_SCOPED_UPSTREAM_ERROR_CODES[code] === true ||
+    type === "context_length_exceeded" ||
+    type === "local_queue_capacity"
+  );
 }
 
 /** Request-scoped classification that also has access to the HTTP body. */
 export function isComboRequestScopedFailure(
-  status: number,
+  response: Response,
   errorText: string,
   error?: { code?: string | null; type?: string | null }
 ): boolean {
   return (
+    getTrustedLocalRateLimitResponse(response) !== null ||
     isRequestScopedUpstreamFailure(error) ||
-    (status === 404 && isResourceNotFoundResponse(errorText))
+    (response.status === 404 && isResourceNotFoundResponse(errorText))
   );
 }
 
@@ -245,6 +297,7 @@ export function isInputBoundRequestFailure(error?: {
 export function shouldSkipConnDisable(
   result: {
     status: number;
+    response?: Response;
     errorCode?: string | null;
     errorType?: string | null;
     error?: unknown;
@@ -260,6 +313,7 @@ export function shouldSkipConnDisable(
     // Client abort surfaced as a bare error (no statusCode → defaults to 502):
     // a local lifecycle event, not a provider failure (#4602 policy).
     isLocalStreamLifecycleError(result.error) ||
+    (result.response ? getTrustedLocalRateLimitResponse(result.response) !== null : false) ||
     result.errorCode === "plugin_block" ||
     result.errorType === "plugin_block" ||
     (is401 && hasExtraKeys) ||
@@ -309,6 +363,28 @@ export function isStreamReadinessFailureErrorBody(errorBody: unknown): boolean {
 }
 
 /**
+ * A STREAM_EARLY_EOF specifically: the upstream accepted the request (HTTP 200), opened the
+ * SSE stream, then closed it before emitting a single non-ping event.
+ *
+ * This is deliberately NOT the same signal as STREAM_READINESS_TIMEOUT. The readiness probe
+ * is a pre-flight liveness check on a connection we have not committed to yet, so failing it
+ * says "this connection looks stale", not "this provider is failing". An early EOF is the
+ * opposite: the provider took the request and then failed to serve it, which is an upstream
+ * failure by any reasonable definition.
+ *
+ * `isStreamReadinessFailureErrorBody` still covers both codes because the transient-retry and
+ * semaphore-cooldown paths in combo.ts want identical treatment for both. Only the
+ * whole-provider circuit breaker needs to tell them apart — see
+ * `shouldRecordProviderBreakerFailure`.
+ */
+export function isStreamEarlyEofErrorBody(errorBody: unknown): boolean {
+  if (!errorBody || typeof errorBody !== "object") return false;
+  const error = (errorBody as Record<string, unknown>).error;
+  if (!error || typeof error !== "object") return false;
+  return (error as Record<string, unknown>).code === "STREAM_EARLY_EOF";
+}
+
+/**
  * A local per-API-key token-limit breach surfaces as a 429 tagged with
  * errorCode "TOKEN_LIMIT_EXCEEDED" (see chatCore.ts Tier 2 early return). This
  * is NOT an upstream rate limit, so the combo loop must not cool the shared
@@ -320,6 +396,21 @@ export function isTokenLimitBreachErrorBody(errorBody: unknown): boolean {
   const error = (errorBody as Record<string, unknown>).error;
   if (!error || typeof error !== "object") return false;
   return (error as Record<string, unknown>).code === "TOKEN_LIMIT_EXCEEDED";
+}
+
+/** Local limiter capacity is not an upstream/provider failure and must not cascade. */
+export function isLocalQueueCapacityErrorBody(errorBody: unknown): boolean {
+  if (!errorBody || typeof errorBody !== "object") return false;
+  const error = (errorBody as Record<string, unknown>).error;
+  if (!error || typeof error !== "object") return false;
+  const code = String((error as Record<string, unknown>).code || "").toUpperCase();
+  const type = String((error as Record<string, unknown>).type || "").toLowerCase();
+  return (
+    code === "RATE_LIMIT_QUEUE_TIMEOUT" ||
+    code === "RATE_LIMIT_QUEUE_FULL" ||
+    code === "RATE_LIMIT_QUEUE_WEDGED" ||
+    type === "local_queue_capacity"
+  );
 }
 
 export function toRecordedTarget(target: ResolvedComboTarget) {
@@ -389,6 +480,73 @@ export function getConnectionStatusQuotaCutoffReason(
     return "rate_limited";
   }
   return undefined;
+}
+
+/**
+ * Pre-dispatch skip for a combo target whose connection is already on a
+ * persisted cooldown. Combo previously only learned that from AUTH after a
+ * real upstream call, so a burst could burn max_concurrent slots against a
+ * connection that SQLite already marked unavailable until a future reset.
+ *
+ * Honours a future rateLimitedUntil regardless of testStatus, the terminal
+ * statuses that must never be dispatched, and a bare `unavailable` status even
+ * when no timestamp was written alongside it.
+ */
+export function getPersistedConnectionCooldownSkipReason(
+  target: { modelStr: string; connectionId?: string | null },
+  connection: Record<string, unknown> | null | undefined,
+  allowRateLimitedConnection = false
+): string | null {
+  if (allowRateLimitedConnection) return null;
+  if (!target.connectionId || !connection) return null;
+  if (hasFutureRateLimitUntil(connection.rateLimitedUntil)) {
+    return `Skipping ${target.modelStr} — connection ${target.connectionId} has persisted cooldown until ${String(connection.rateLimitedUntil)}`;
+  }
+  const status = normalizeConnectionStatus(connection.testStatus);
+  if (QUOTA_BLOCKING_CONNECTION_STATUSES.has(status)) {
+    return `Skipping ${target.modelStr} — connection ${target.connectionId} status=${status}`;
+  }
+  // `unavailable` with no (or an already-expired) rateLimitedUntil still means AUTH
+  // took this connection out of rotation — markAccountUnavailable() writes the status
+  // before, and sometimes without, a timestamp ("Using zai account …" then a real
+  // upstream 429). Without this branch the pre-skip only fired once the timestamp had
+  // landed, so a burst still dispatched against a connection AUTH had already retired.
+  // Lazy recovery is unaffected: clearAccountError() resets the status on first success.
+  if (status === "unavailable") {
+    return `Skipping ${target.modelStr} — connection ${target.connectionId} status=unavailable`;
+  }
+  return null;
+}
+
+/**
+ * Async wrapper around `getPersistedConnectionCooldownSkipReason` for the combo
+ * dispatchers, which must re-check the persisted cooldown before EVERY upstream
+ * attempt — not just once before the retry loop.
+ *
+ * The retry path is exactly where the stale-read risk lives: a sibling request in
+ * the same burst can write `rate_limited_until` while this attempt is sleeping out
+ * its retry delay, so the caller passes a cache-bypassing fetcher for retry > 0
+ * (the readCache TTL is 5s, long enough to serve a "no cooldown" snapshot written
+ * before the 429 landed).
+ *
+ * Kept dependency-free — the fetcher is injected, so this module stays pure and
+ * unit-testable without a DB.
+ */
+export async function resolvePersistedConnectionCooldownSkipReason(
+  target: { modelStr: string; connectionId?: string | null },
+  fetchConnection: (id: string) => Promise<Record<string, unknown> | null | undefined>,
+  allowRateLimitedConnection = false
+): Promise<string | null> {
+  if (allowRateLimitedConnection) return null;
+  if (!target.connectionId) return null;
+  let connection: Record<string, unknown> | null | undefined;
+  try {
+    connection = await fetchConnection(target.connectionId);
+  } catch {
+    // A DB read failure must never block dispatch — fall through to the upstream call.
+    return null;
+  }
+  return getPersistedConnectionCooldownSkipReason(target, connection, allowRateLimitedConnection);
 }
 
 /** @param {string} errorText */

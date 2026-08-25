@@ -26,8 +26,11 @@ import { useTranslations } from "next-intl";
 import { useNotificationStore } from "@/store/notificationStore";
 import { isClaudeCodeCompatibleProvider } from "@/shared/constants/providers";
 import type { ConnectionRowConnection } from "../components/ConnectionRow";
-import { connectionBelongsToProviderPage } from "../../providerPageUtils";
-import { normalizeCodexLimitPolicy } from "../providerPageHelpers";
+import {
+  connectionBelongsToProviderPage,
+  getProviderConnectionsRequestUrl,
+} from "../../providerPageUtils";
+import { normalizeCodexLimitPolicy, providerText } from "../providerPageHelpers";
 import { useProviderQuotaVisibility } from "./useProviderQuotaVisibility";
 import { useReorderByAvailability } from "./useReorderByAvailability";
 import {
@@ -40,6 +43,16 @@ const MAX_BULK_IDS = 100;
 const PAGE_SIZE = 50;
 
 // ──── types ─────────────────────────────────────────────────────────────────
+
+/**
+ * Upstream proxy routing mode for Claude-Code-compatible providers. `native`
+ * uses OmniRoute's own executor; `cliproxyapi`/`dario` route every request
+ * through that backend directly; `fallback` tries native first and retries
+ * via `fallbackBackend` on failure. Mirrors the `mode` enum in
+ * src/app/api/upstream-proxy/[providerId]/route.ts.
+ */
+export type UpstreamProxyMode = "native" | "cliproxyapi" | "dario" | "fallback";
+export type UpstreamProxyFallbackBackend = "cliproxyapi" | "dario";
 
 export type BatchTestResults = {
   error: string | null;
@@ -67,6 +80,8 @@ export interface UseProviderConnectionsReturn {
   proxyConfig: any;
   connProxyMap: Record<string, { proxy: any; level: string } | null>;
   cpaProviderEnabled: boolean;
+  upstreamProxyMode: UpstreamProxyMode;
+  upstreamProxyFallbackBackend: UpstreamProxyFallbackBackend;
   refreshingId: string | null;
 
   // Setters (minimal surface for UI)
@@ -94,6 +109,10 @@ export interface UseProviderConnectionsReturn {
   handleToggleClaudeExtraUsage: (connectionId: string, enabled: boolean) => Promise<void>;
   handleToggleCodexLimit: (connectionId: string, field: string, enabled: boolean) => Promise<void>;
   handleToggleCliproxyapiMode: (connectionId: string, enabled: boolean) => Promise<void>;
+  handleSetUpstreamProxyMode: (
+    mode: UpstreamProxyMode,
+    fallbackBackend?: UpstreamProxyFallbackBackend
+  ) => Promise<void>;
   handleToggleProxyEnabled: (connectionId: string, proxyEnabled: boolean) => Promise<void>;
   handleTogglePerKeyProxyEnabled: (
     connectionId: string,
@@ -174,8 +193,14 @@ export function useProviderConnections(
     Record<string, { proxy: any; level: string } | null>
   >({});
 
-  // ── CLIProxyAPI state ───────────────────────────────────────────────────
-  const [cpaProviderEnabled, setCpaProviderEnabled] = useState(false);
+  // ── Upstream proxy routing state (native / CLIProxyAPI / Dario / fallback) ─
+  const [upstreamProxyMode, setUpstreamProxyModeState] = useState<UpstreamProxyMode>("native");
+  const [upstreamProxyFallbackBackend, setUpstreamProxyFallbackBackendState] =
+    useState<UpstreamProxyFallbackBackend>("cliproxyapi");
+  // Legacy derived flag — kept for any consumer still reading a plain
+  // enabled/disabled signal instead of the full mode.
+  const cpaProviderEnabled =
+    upstreamProxyMode === "cliproxyapi" || upstreamProxyMode === "fallback";
 
   // ── token refresh state ─────────────────────────────────────────────────
   const [refreshingId, setRefreshingId] = useState<string | null>(null);
@@ -199,8 +224,9 @@ export function useProviderConnections(
 
   const fetchConnections = useCallback(async () => {
     try {
+      const connectionsUrl = getProviderConnectionsRequestUrl(providerId);
       const [connectionsRes, nodesRes] = await Promise.all([
-        fetch("/api/providers", { cache: "no-store" }),
+        fetch(connectionsUrl, { cache: "no-store" }),
         fetch("/api/provider-nodes", { cache: "no-store" }),
       ]);
       const connectionsData = await connectionsRes.json();
@@ -272,26 +298,21 @@ export function useProviderConnections(
     }
   }, [loading, connections, loadConnProxies]);
 
-  // CLIProxyAPI upstream proxy config
+  // Upstream proxy routing config (native / CLIProxyAPI / Dario / fallback)
   useEffect(() => {
     if (!isCcCompatible) return;
 
-    fetch(`/api/settings`)
-      .then((r) => r.json())
-      .then(() => {
-        // Check if this provider has CLIProxyAPI routing enabled
-      })
-      .catch(() => {});
-
     fetch(`/api/upstream-proxy/${providerId}`)
-      .then((r) => {
-        if (!r.ok) return null;
-        return r.json();
-      })
+      .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.enabled && (data.mode === "cliproxyapi" || data.mode === "fallback")) {
-          setCpaProviderEnabled(true);
-        }
+        if (!data) return;
+        const validModes: UpstreamProxyMode[] = ["cliproxyapi", "dario", "fallback"];
+        const mode: UpstreamProxyMode =
+          data.enabled && validModes.includes(data.mode) ? data.mode : "native";
+        setUpstreamProxyModeState(mode);
+        setUpstreamProxyFallbackBackendState(
+          data.fallbackBackend === "dario" ? "dario" : "cliproxyapi"
+        );
       })
       .catch(() => {});
   }, [isCcCompatible, providerId]);
@@ -378,7 +399,14 @@ export function useProviderConnections(
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        notify.error(data.error || "Failed to update Claude extra-usage policy");
+        notify.error(
+          data.error ||
+            providerText(
+              t,
+              "failedUpdateClaudeExtraUsagePolicy",
+              "Failed to update Claude extra-usage policy"
+            )
+        );
         return;
       }
 
@@ -408,12 +436,26 @@ export function useProviderConnections(
       );
       notify.success(
         enabled
-          ? "Claude extra-usage blocking enabled (extra usage will be blocked)"
-          : "Claude extra-usage blocking disabled (extra usage is allowed)"
+          ? providerText(
+              t,
+              "claudeExtraUsageBlockingEnabled",
+              "Claude extra-usage blocking enabled (extra usage will be blocked)"
+            )
+          : providerText(
+              t,
+              "claudeExtraUsageBlockingDisabled",
+              "Claude extra-usage blocking disabled (extra usage is allowed)"
+            )
       );
     } catch (error) {
       console.error("Error toggling Claude extra-usage policy:", error);
-      notify.error("Failed to update Claude extra-usage policy");
+      notify.error(
+        providerText(
+          t,
+          "failedUpdateClaudeExtraUsagePolicy",
+          "Failed to update Claude extra-usage policy"
+        )
+      );
     }
   };
 
@@ -447,7 +489,10 @@ export function useProviderConnections(
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        notify.error(data.error || "Failed to update Codex limit policy");
+        notify.error(
+          data.error ||
+            providerText(t, "failedUpdateCodexLimitPolicy", "Failed to update Codex limit policy")
+        );
         return;
       }
 
@@ -464,36 +509,68 @@ export function useProviderConnections(
             : connection
         )
       );
-      notify.success("Codex limit policy updated");
+      notify.success(providerText(t, "codexLimitPolicyUpdated", "Codex limit policy updated"));
     } catch (error) {
       console.error("Error toggling Codex quota policy:", error);
-      notify.error("Failed to update Codex limit policy");
+      notify.error(
+        providerText(t, "failedUpdateCodexLimitPolicy", "Failed to update Codex limit policy")
+      );
     }
   };
 
-  const handleToggleCliproxyapiMode = async (_connectionId: string, enabled: boolean) => {
+  const UPSTREAM_PROXY_MODE_MESSAGES: Record<UpstreamProxyMode, string> = {
+    native: "Requests now use native OmniRoute (direct)",
+    cliproxyapi: "Requests now route through CLIProxyAPI (deeper emulation)",
+    dario: "Requests now route through Dario (Claude subscription proxy)",
+    fallback: "Requests try native first, retrying via the configured backend on failure",
+  };
+
+  const handleSetUpstreamProxyMode = async (
+    mode: UpstreamProxyMode,
+    fallbackBackend?: UpstreamProxyFallbackBackend
+  ) => {
     try {
       const res = await fetch(`/api/upstream-proxy/${providerId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: enabled ? "cliproxyapi" : "native", enabled }),
+        body: JSON.stringify({
+          mode,
+          enabled: mode !== "native",
+          ...(mode === "fallback"
+            ? { fallbackBackend: fallbackBackend ?? upstreamProxyFallbackBackend }
+            : {}),
+        }),
       });
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        notify.error(data.error || "Failed to update CLIProxyAPI routing");
+        notify.error(
+          data.error ||
+            providerText(
+              t,
+              "failedUpdateCliproxyRouting",
+              "Failed to update upstream proxy routing"
+            )
+        );
         return;
       }
 
-      setCpaProviderEnabled(enabled);
-      notify.success(
-        enabled
-          ? "Requests now route through CLIProxyAPI (deeper emulation)"
-          : "Requests now use native OmniRoute (direct)"
-      );
+      setUpstreamProxyModeState(mode);
+      if (mode === "fallback" && fallbackBackend) {
+        setUpstreamProxyFallbackBackendState(fallbackBackend);
+      }
+      notify.success(UPSTREAM_PROXY_MODE_MESSAGES[mode]);
     } catch {
-      notify.error("Failed to update CLIProxyAPI routing");
+      notify.error(
+        providerText(t, "failedUpdateCliproxyRouting", "Failed to update upstream proxy routing")
+      );
     }
+  };
+
+  // Legacy binary wrapper — kept so existing callers (and the "exposes all
+  // expected handler functions" hook test) keep working unchanged.
+  const handleToggleCliproxyapiMode = async (_connectionId: string, enabled: boolean) => {
+    await handleSetUpstreamProxyMode(enabled ? "cliproxyapi" : "native");
   };
 
   const handleToggleProxyEnabled = async (connectionId: string, proxyEnabled: boolean) => {
@@ -555,11 +632,23 @@ export function useProviderConnections(
     if (refreshingId) return;
     setRefreshingId(connectionId);
     try {
-      const res = await fetch(`/api/providers/${connectionId}/refresh`, { method: "POST" });
+      const conn = connections.find((c) => c.id === connectionId);
+      const isCursor = conn?.provider === "cursor";
+      // Cursor has no refresh_token by design — the generic /refresh route's
+      // getAccessToken() call always 502s for it. The dedicated route nudges
+      // cursor-agent and re-scrapes IDE/agent credential sources instead.
+      const url = isCursor
+        ? `/api/providers/${connectionId}/refresh-cursor`
+        : `/api/providers/${connectionId}/refresh`;
+      const res = await fetch(url, { method: "POST" });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
-        notify.success(t("tokenRefreshed"));
-        await fetchConnections();
+        if (isCursor && data.unchanged) {
+          notify.info(t("cursorSessionUnchanged"));
+        } else {
+          notify.success(t("tokenRefreshed"));
+          await fetchConnections();
+        }
       } else {
         notify.error(data.error || t("tokenRefreshFailed"));
       }
@@ -664,10 +753,10 @@ export function useProviderConnections(
         if (onAfter) await onAfter();
       } else {
         const data = await res.json();
-        notify.error(data.error || "Batch delete failed");
+        notify.error(data.error || providerText(t, "batchDeleteFailed", "Batch delete failed"));
       }
     } catch {
-      notify.error("Network error during batch delete");
+      notify.error(providerText(t, "batchDeleteNetworkError", "Network error during batch delete"));
     } finally {
       setBatchDeleting(false);
     }
@@ -689,7 +778,11 @@ export function useProviderConnections(
         });
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(data.error?.message || data.error || "Batch update failed");
+          throw new Error(
+            data.error?.message ||
+              data.error ||
+              providerText(t, "batchUpdateFailed", "Batch update failed")
+          );
         }
         const data = await res.json();
         updated += data.updated ?? 0;
@@ -710,7 +803,10 @@ export function useProviderConnections(
         );
       }
     } catch (error: any) {
-      notify.error(error?.message || "Network error during batch update");
+      notify.error(
+        error?.message ||
+          providerText(t, "batchUpdateNetworkError", "Network error during batch update")
+      );
     } finally {
       setBatchUpdating(null);
     }
@@ -805,7 +901,13 @@ export function useProviderConnections(
       const proxiesData = await proxiesRes.json();
       const savedProxies = (proxiesData?.items || []).filter((p: any) => p.status === "active");
       if (savedProxies.length === 0) {
-        notify.error("No saved proxies found. Add proxies in Settings → Proxy first.");
+        notify.error(
+          providerText(
+            t,
+            "noSavedProxies",
+            "No saved proxies found. Add proxies in Settings → Proxy first."
+          )
+        );
         return;
       }
 
@@ -856,11 +958,16 @@ export function useProviderConnections(
       await fetchConnections();
       const tagLabel = tagFilter ? `"${tagFilter}" ` : "";
       notify.success(
-        `Distributed ${assigned} proxy assignment(s) across ${tagLabel}${sorted.length} connection(s).`
+        providerText(
+          t,
+          "proxiesDistributed",
+          "Distributed {assigned} proxy assignment(s) across {tagLabel}{total} connection(s).",
+          { assigned, tagLabel, total: sorted.length }
+        )
       );
     } catch (err) {
       console.error("Error distributing proxies:", err);
-      notify.error("Failed to distribute proxies.");
+      notify.error(providerText(t, "failedDistributeProxies", "Failed to distribute proxies."));
     } finally {
       setDistributingProxies(false);
     }
@@ -888,6 +995,8 @@ export function useProviderConnections(
     proxyConfig,
     connProxyMap,
     cpaProviderEnabled,
+    upstreamProxyMode,
+    upstreamProxyFallbackBackend,
     refreshingId,
     reorderingByAvailability,
 
@@ -913,6 +1022,7 @@ export function useProviderConnections(
     handleToggleClaudeExtraUsage,
     handleToggleCodexLimit,
     handleToggleCliproxyapiMode,
+    handleSetUpstreamProxyMode,
     handleToggleProxyEnabled,
     handleTogglePerKeyProxyEnabled,
     handleRetestConnection,

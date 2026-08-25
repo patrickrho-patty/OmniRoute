@@ -6,6 +6,7 @@
 import { getResolvedModelCapabilities } from "@/lib/modelCapabilities";
 import { PROVIDER_MODELS, PROVIDER_ID_TO_ALIAS } from "@omniroute/open-sse/config/providerModels";
 import { hasUsableCredentialsForModel } from "./visionBridgeCredentials";
+import { isVisionBridgeForcedModel } from "@/shared/constants/visionBridgeDefaults";
 
 export interface VisionModelCandidate {
   modelId: string;
@@ -133,7 +134,7 @@ async function getVisionCapableModels(
       const fullModelId = `${providerAlias}/${model.id}`;
       const caps = getResolvedModelCapabilities(fullModelId);
 
-      if (caps.supportsVision === true) {
+      if (caps.supportsVision === true && !isVisionBridgeForcedModel(fullModelId)) {
         checks.push(
           checkCreds(fullModelId).then((usable) => {
             // Only a confirmed `false` excludes a candidate — `null` (indeterminate,
@@ -209,17 +210,29 @@ function selectBestModel(
 
 /**
  * Get the best vision model for image description.
- * Respects fixed model override if configured.
+ * Respects fixed model override if configured, but validates it has usable
+ * credentials before short-circuiting — a fixedModel that is confirmed
+ * unreachable on this instance falls through to auto-selection.
+ * Returns `null` when no vision-capable candidate has usable credentials.
  */
 export async function getBestVisionModel(
   config: Partial<VisionBridgeRouterConfig> = {},
   deps: VisionBridgeRouterDeps = {}
-): Promise<string> {
+): Promise<string | null> {
   const fullConfig = { ...DEFAULT_ROUTER_CONFIG, ...config };
 
-  // If fixed model is configured, use it
+  // If fixed model is configured, validate it has usable credentials first.
+  // (#8430) An unreachable fixedModel (e.g. the default "openai/gpt-4o-mini"
+  // on an instance with no OpenAI connection/key) must not short-circuit the
+  // credential check — fall through to auto-selection instead.
   if (fullConfig.fixedModel) {
-    return fullConfig.fixedModel;
+    const checkCreds = deps.hasUsableCredentials ?? hasUsableCredentialsForModel;
+    const usable = await checkCreds(fullConfig.fixedModel);
+    // Only skip credential validation when the check is indeterminate (null).
+    // A confirmed `false` means fall through to auto-selection.
+    if (usable !== false) {
+      return fullConfig.fixedModel;
+    }
   }
 
   // Check selection cache — key includes excluded models to prevent cache pollution
@@ -240,8 +253,8 @@ export async function getBestVisionModel(
   const best = selectBestModel(candidates, fullConfig);
 
   if (!best) {
-    // Fallback to default
-    return "openai/gpt-4o-mini";
+    // No vision-capable candidate has usable credentials on this instance
+    return null;
   }
 
   // Cache the selection

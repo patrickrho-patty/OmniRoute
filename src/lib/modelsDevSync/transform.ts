@@ -137,7 +137,6 @@ export const MODELS_DEV_PROVIDER_MAP: Record<string, string[]> = {
   // OAuth / special providers
   bedrock: ["kiro", "kr"], // kr = Kiro (AWS Bedrock)
   "github-copilot": ["github", "gh"],
-  "github-models": ["github", "gh"],
   kilo: ["kilocode", "kc", "kilo-gateway"],
   kilocode: ["kilocode", "kc", "kilo-gateway"],
   "kimi-for-coding": ["kimi-coding", "kmc", "kimi-coding-apikey", "kmca"],
@@ -166,7 +165,6 @@ export const MODELS_DEV_PROVIDER_MAP: Record<string, string[]> = {
   "minimax-cn": ["minimax-cn"],
   longcat: ["lc", "longcat"],
   pollinations: ["pol", "pollinations"],
-  puter: ["pu", "puter"],
   cloudflare: ["cf"],
   scaleway: ["scw"],
   ollama: ["ollamacloud", "ollama-cloud"],

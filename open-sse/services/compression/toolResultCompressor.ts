@@ -11,7 +11,7 @@ const SHELL_PROMPT_RE = /\$\s/;
 const JSON_PREFIX_RE = /^\s*[{[]/;
 const COMPRESSED_MARKER_RE = /^\[COMPRESSED:/;
 
-function isCodeLikeLine(rawLine: string): boolean {
+export function isCodeLikeLine(rawLine: string): boolean {
   const line = rawLine.trimStart();
   return (
     line.startsWith("import ") ||
@@ -171,9 +171,7 @@ export interface AnthropicToolResultBlock {
 
 export function isAnthropicToolResultBlock(value: unknown): value is AnthropicToolResultBlock {
   return (
-    !!value &&
-    typeof value === "object" &&
-    (value as { type?: unknown }).type === "tool_result"
+    !!value && typeof value === "object" && (value as { type?: unknown }).type === "tool_result"
   );
 }
 

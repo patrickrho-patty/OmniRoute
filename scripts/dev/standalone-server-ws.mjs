@@ -3,11 +3,25 @@ import net from "node:net";
 import { randomUUID } from "node:crypto";
 import { createResponsesWsProxy } from "./responses-ws-proxy.mjs";
 import { ensurePeerStampToken, wrapRequestListenerWithPeerStamp } from "./peer-stamp.mjs";
-import { maybeHandleWebdav } from "./webdav-handler.mjs";
+import { maybeHandleWebdav, WEBDAV_PREFIX } from "./webdav-handler.mjs";
 import methodGuard from "./http-method-guard.cjs";
 import headResponseGuard from "./head-response-guard.cjs";
 import { resolveTlsOptions, createServerListener } from "./tls-options.mjs";
 import { getMainServerTimeoutConfig } from "./main-server-timeouts.mjs";
+import { createSystemdNotifier } from "./systemd-notify.mjs";
+
+// systemd sd_notify (Type=notify / WatchdogSec=): this process is the one
+// whose event loop can freeze (cold /v1/models rebuild), so it must own the
+// watchdog pings — a blocked loop stops the pings and systemd kills the
+// service. No-op outside systemd (no NOTIFY_SOCKET).
+const systemdNotifier = createSystemdNotifier();
+let systemdReadySent = false;
+// NOTE: if an operator sets NEXT_MANUAL_SIG_HANDLE=1, Next never registers its
+// own signal cleanup and these once() handlers would suppress Node's default
+// signal exit (process lingers until systemd's stop-timeout SIGKILL). Nothing
+// in this repo sets that var; acceptable, documented behavior.
+process.once("SIGINT", () => systemdNotifier.stopping());
+process.once("SIGTERM", () => systemdNotifier.stopping());
 
 const originalCreateServer = http.createServer.bind(http);
 const proxiesByPort = new Map();
@@ -122,14 +136,20 @@ function wrapUpgradeListener(server, listener) {
  * Returns true if the request was handled; the wrapped listener is never called.
  */
 function wrapRequestListenerWithWebdav(listener) {
-  return async function webdavAwareRequestHandler(req, res) {
-    try {
-      const handled = await maybeHandleWebdav(req, res);
-      if (handled) return;
-    } catch {
-      // Never block a request on WebDAV errors — fall through to Next
+  return function webdavAwareRequestHandler(req, res) {
+    if (!(req.url || "").startsWith(WEBDAV_PREFIX)) {
+      return listener.call(this, req, res);
     }
-    return listener.call(this, req, res);
+    const self = this;
+    (async () => {
+      try {
+        const handled = await maybeHandleWebdav(req, res);
+        if (handled) return;
+      } catch {
+        // Never block a request on WebDAV errors — fall through to Next
+      }
+      return listener.call(self, req, res);
+    })();
   };
 }
 
@@ -202,6 +222,15 @@ http.createServer = function createServerWithResponsesWs(...args) {
     }
     return originalAddListener(eventName, listener);
   };
+
+  // sd_notify READY once the main listener is actually accepting, then arm
+  // the watchdog keep-alive interval (unref'd — never keeps the process up).
+  server.once("listening", () => {
+    if (systemdReadySent) return;
+    systemdReadySent = true;
+    systemdNotifier.ready();
+    systemdNotifier.startWatchdog();
+  });
 
   return server;
 };

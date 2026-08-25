@@ -150,30 +150,30 @@ Zobacz [A2A-SERVER.md](./A2A-SERVER.md) w sprawie szczegółów protokołu.
 
 ### API Skills (22)
 
-| ID                     | Area            | Entry Point                         |
-| :--------------------- | :-------------- | :---------------------------------- |
-| `omni-auth`            | auth            | Auth + session management           |
-| `omni-providers`       | providers       | Provider connection management      |
-| `omni-models`          | models          | Model catalog and capabilities      |
-| `omni-combos-routing`  | combos-routing  | Combo routing strategies            |
-| `omni-api-keys`        | api-keys        | API key management                  |
-| `omni-usage-logs`      | usage-logs      | Usage and cost logs                 |
-| `omni-budget`          | budget          | Budget guards                       |
-| `omni-settings`        | settings        | Global settings                     |
-| `omni-proxies`         | proxies         | Proxy pool management               |
-| `omni-cache`           | cache           | Semantic + prompt cache             |
-| `omni-compression`     | compression     | Context compression engines         |
-| `omni-context-rtk`     | context-rtk     | RTK compression                     |
-| `omni-resilience`      | resilience      | Circuit breakers + cooldowns        |
-| `omni-cli-tools`       | cli-tools       | CLI tools REST proxy                |
-| `omni-tunnels`         | tunnels         | Tunnel management                   |
-| `omni-sync-cloud`      | sync-cloud      | Cloud sync                          |
-| `omni-db-backups`      | db-backups      | Database backups                    |
-| `omni-webhooks`        | webhooks        | Webhook event dispatcher            |
-| `omni-mcp`             | mcp             | MCP server (87 tools, 3 transports) |
-| `omni-agents-a2a`      | agents-a2a      | A2A agent protocol                  |
-| `omni-version-manager` | version-manager | Version and update management       |
-| `omni-inference`       | inference       | Direct inference / completions      |
+| ID                     | Area            | Entry Point                                     |
+| :--------------------- | :-------------- | :---------------------------------------------- |
+| `omni-auth`            | auth            | Auth + session management                       |
+| `omni-providers`       | providers       | Provider connection management                  |
+| `omni-models`          | models          | Model catalog and capabilities                  |
+| `omni-combos-routing`  | combos-routing  | Combo routing strategies                        |
+| `omni-api-keys`        | api-keys        | API key management                              |
+| `omni-usage-logs`      | usage-logs      | Usage and cost logs                             |
+| `omni-budget`          | budget          | Budget guards                                   |
+| `omni-settings`        | settings        | Global settings                                 |
+| `omni-proxies`         | proxies         | Proxy pool management                           |
+| `omni-cache`           | cache           | Semantic + prompt cache                         |
+| `omni-compression`     | compression     | Context compression engines                     |
+| `omni-context-rtk`     | context-rtk     | RTK compression                                 |
+| `omni-resilience`      | resilience      | Circuit breakers + cooldowns                    |
+| `omni-cli-tools`       | cli-tools       | CLI tools REST proxy                            |
+| `omni-tunnels`         | tunnels         | Tunnel management                               |
+| `omni-sync-cloud`      | sync-cloud      | Cloud sync                                      |
+| `omni-db-backups`      | db-backups      | Database backups                                |
+| `omni-webhooks`        | webhooks        | Webhook event dispatcher                        |
+| `omni-mcp`             | mcp             | MCP server (107 tools, 3 transports, 32 scopes) |
+| `omni-agents-a2a`      | agents-a2a      | A2A agent protocol                              |
+| `omni-version-manager` | version-manager | Version and update management                   |
+| `omni-inference`       | inference       | Direct inference / completions                  |
 
 ### CLI Skills (20)
 

@@ -7,6 +7,8 @@
  * - /v1/audio/speech (TTS API)
  */
 
+import { getProviderAlias } from "@/shared/constants/providers";
+
 interface AudioModel {
   id: string;
   name: string;
@@ -14,6 +16,14 @@ interface AudioModel {
 
 export interface AudioProvider {
   id: string;
+  /**
+   * Provider key to look credentials up under. Dynamic provider nodes are exposed
+   * to callers under their `prefix` (that is what appears in `provider/model`),
+   * but their connections are stored under the node **id** — without this the
+   * credential lookup silently misses. Absent for hardcoded providers, where the
+   * id already is the credential key.
+   */
+  credentialProviderId?: string;
   baseUrl: string;
   authType: string;
   authHeader: string;
@@ -137,6 +147,19 @@ export const AUDIO_TRANSCRIPTION_PROVIDERS: Record<string, AudioProvider> = {
     ],
   },
 
+  soniox: {
+    id: "soniox",
+    baseUrl: "https://api.soniox.com/v1/transcriptions",
+    authType: "apikey",
+    authHeader: "bearer",
+    async: true,
+    format: "soniox",
+    models: [
+      { id: "stt-async-v5", name: "Soniox STT Async v5" },
+      { id: "stt-async-v4", name: "Soniox STT Async v4" },
+    ],
+  },
+
   nvidia: {
     id: "nvidia",
     baseUrl: "https://integrate.api.nvidia.com/v1/audio/transcriptions",
@@ -226,6 +249,17 @@ export const AUDIO_TRANSCRIPTION_PROVIDERS: Record<string, AudioProvider> = {
     format: "speechmatics",
     models: [{ id: "enhanced", name: "Enhanced" }],
   },
+
+  nanogpt: {
+    id: "nanogpt",
+    baseUrl: "https://nano-gpt.com/api/v1/audio/transcriptions",
+    authType: "apikey",
+    authHeader: "bearer",
+    models: [
+      { id: "whisper-1", name: "Whisper 1" },
+      { id: "gpt-4o-transcription", name: "GPT-4o Transcription" },
+    ],
+  },
 };
 
 /**
@@ -253,6 +287,19 @@ export const AUDIO_TRANSLATION_PROVIDERS: Record<string, AudioProvider> = {
 };
 
 export const AUDIO_SPEECH_PROVIDERS: Record<string, AudioProvider> = {
+  google: {
+    id: "google",
+    credentialProviderId: "gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/models",
+    authType: "apikey",
+    authHeader: "x-goog-api-key",
+    format: "gemini-tts",
+    models: [
+      { id: "gemini-3.1-flash-tts-preview", name: "Gemini 3.1 Flash TTS" },
+      { id: "gemini-2.5-flash-preview-tts", name: "Gemini 2.5 Flash TTS" },
+      { id: "gemini-2.5-pro-preview-tts", name: "Gemini 2.5 Pro TTS" },
+    ],
+  },
   vertex: {
     id: "vertex",
     baseUrl: "https://us-central1-aiplatform.googleapis.com/v1",
@@ -310,6 +357,15 @@ export const AUDIO_SPEECH_PROVIDERS: Record<string, AudioProvider> = {
       { id: "nvidia/fastpitch", name: "FastPitch" },
       { id: "nvidia/tacotron2", name: "Tacotron2" },
     ],
+  },
+
+  soniox: {
+    id: "soniox",
+    baseUrl: "https://tts-rt.soniox.com/tts",
+    authType: "apikey",
+    authHeader: "bearer",
+    format: "soniox-tts",
+    models: [{ id: "tts-rt-v1", name: "Soniox TTS RT v1" }],
   },
 
   elevenlabs: {
@@ -540,6 +596,17 @@ export const AUDIO_SPEECH_PROVIDERS: Record<string, AudioProvider> = {
       { id: "mimo-v2.5-tts-voiceclone", name: "MiMo V2.5 Voice Clone" },
     ],
   },
+
+  nanogpt: {
+    id: "nanogpt",
+    baseUrl: "https://nano-gpt.com/api/v1/audio/speech",
+    authType: "apikey",
+    authHeader: "bearer",
+    models: [
+      { id: "tts-1-hd", name: "TTS 1 HD" },
+      { id: "tts-1", name: "TTS 1" },
+    ],
+  },
 };
 
 /**
@@ -564,27 +631,49 @@ export function getSpeechProvider(providerId: string): AudioProvider | null {
 }
 
 export interface ProviderNodeRow {
+  /** provider_node row id — the key its connections (and credentials) are stored under. */
+  id?: string;
   prefix: string;
   name: string;
   baseUrl: string;
   apiType?: string;
 }
 
+/** Hosts reachable only from the operator's machine/Docker network. */
+export function isLoopbackNodeHost(baseUrl: string): boolean {
+  try {
+    const hostname = new URL(baseUrl).hostname;
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      /^172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Build a dynamic AudioProvider from a provider_node DB entry.
- * Only used for local providers (localhost/127.0.0.1) — remote nodes are
- * excluded by the caller to prevent auth bypass and SSRF.
+ *
+ * Loopback nodes keep `authType: "none"` — a local Ollama/LM Studio has no key and
+ * must not be blocked on a missing credential. A remote node is the opposite: it is
+ * only reachable when the operator opted in, and it must present the credential
+ * stored on its connection, so it is built as an api-key provider keyed by the node
+ * id (`credentialProviderId`) rather than by the caller-facing prefix.
  */
 export function buildDynamicAudioProvider(node: ProviderNodeRow, audioPath: string): AudioProvider {
   if (!node.prefix || !node.baseUrl) {
     throw new Error(`Invalid provider_node: missing prefix or baseUrl`);
   }
   const baseUrl = node.baseUrl.replace(/\/+$/, "");
+  const isLocal = isLoopbackNodeHost(node.baseUrl);
   return {
     id: node.prefix,
+    ...(node.id ? { credentialProviderId: node.id } : {}),
     baseUrl: `${baseUrl}${audioPath}`,
-    authType: "none",
-    authHeader: "none",
+    authType: isLocal ? "none" : "apikey",
+    authHeader: isLocal ? "none" : "bearer",
     models: [],
   };
 }
@@ -600,6 +689,16 @@ function parseAudioModel(
   for (const [providerId] of Object.entries(registry)) {
     if (modelStr.startsWith(providerId + "/")) {
       return { provider: providerId, model: modelStr.slice(providerId.length + 1) };
+    }
+  }
+
+  // Phase 1.5: prefix match against the short provider alias the catalog itself
+  // advertises (e.g. "el/eleven_multilingual_v2" for elevenlabs) when it differs
+  // from the canonical registry key already tried in Phase 1.
+  for (const [providerId] of Object.entries(registry)) {
+    const alias = getProviderAlias(providerId);
+    if (alias && alias !== providerId && modelStr.startsWith(alias + "/")) {
+      return { provider: providerId, model: modelStr.slice(alias.length + 1) };
     }
   }
 
@@ -635,6 +734,85 @@ export function parseSpeechModel(modelStr: string | null, dynamicProviders?: Aud
 
 export function parseTranslationModel(modelStr: string | null, dynamicProviders?: AudioProvider[]) {
   return parseAudioModel(modelStr, AUDIO_TRANSLATION_PROVIDERS, dynamicProviders);
+}
+
+export interface AudioProviderMatch {
+  provider: string;
+  model: string;
+  config: AudioProvider;
+}
+
+/**
+ * Candidate model ids to try when the prefix-matched provider has no credentials.
+ * Includes the raw request string (a gateway may list `deepgram/nova-3` as its
+ * own model id) plus the parsed native id and `provider/model`.
+ */
+export function audioModelAliasCandidates(
+  originalModel: string,
+  failedProvider: string,
+  resolvedModel: string | null
+): string[] {
+  const candidates = [originalModel];
+  if (resolvedModel) {
+    candidates.push(resolvedModel);
+    candidates.push(`${failedProvider}/${resolvedModel}`);
+  }
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+/**
+ * Find another registry provider that lists one of the candidate model ids.
+ * Used when `deepgram/nova-3` prefix-matches native Deepgram but only a
+ * gateway such as OpenRouter has credentials for that model id.
+ */
+export function findAlternateAudioProvider(
+  registry: Record<string, AudioProvider>,
+  failedProvider: string,
+  candidates: string[]
+): AudioProviderMatch | null {
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    for (const [providerId, config] of Object.entries(registry)) {
+      if (providerId === failedProvider) continue;
+      if (config.models.some((m) => m.id === candidate)) {
+        return { provider: providerId, model: candidate, config };
+      }
+    }
+  }
+  return null;
+}
+
+/** Qualified catalog ids (`gateway/model`) that list the same nested model. */
+export function listAlternateAudioModelIds(
+  registry: Record<string, AudioProvider>,
+  failedProvider: string,
+  candidates: string[]
+): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    for (const [providerId, config] of Object.entries(registry)) {
+      if (providerId === failedProvider) continue;
+      if (!config.models.some((m) => m.id === candidate)) continue;
+      const id = `${providerId}/${candidate}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+  }
+  return ids;
+}
+
+export function missingAudioProviderCredentialsMessage(
+  provider: string,
+  alternateIds: string[] = []
+): string {
+  const base = `No credentials for provider: ${provider}`;
+  if (alternateIds.length === 0) return base;
+  return `${base}. The catalog also lists this model as ${alternateIds.join(", ")}`;
 }
 
 /**

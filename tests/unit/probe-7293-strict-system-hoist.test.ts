@@ -4,9 +4,7 @@ import { translateRequest } from "../../open-sse/translator/index.ts";
 import { FORMATS } from "../../open-sse/translator/formats.ts";
 
 function buildRepro(messageCount: number) {
-  const messages: Array<{ role: string; content: string }> = [
-    { role: "user", content: "hello" },
-  ];
+  const messages: Array<{ role: string; content: string }> = [{ role: "user", content: "hello" }];
   for (let i = 1; i < messageCount - 1; i++) {
     messages.push({ role: i % 2 === 1 ? "assistant" : "user", content: `turn ${i}` });
   }
@@ -141,4 +139,40 @@ test("#7293: already-compliant strict-provider request is a no-op (prompt-cache 
   );
 
   assert.deepEqual(result.messages, messages);
+});
+
+test("#7293: Claude-source request keeps a single leading system message after claudeToOpenAI re-adds body.system", () => {
+  // Claude Code's real shape: a top-level `system` field AND a system-role
+  // message inside `messages`. claudeToOpenAI pushes body.system as the leading
+  // system message and then appends the converted messages, so hoisting before
+  // translation is not enough — the offender reappears at index 1.
+  const body = {
+    model: "mimo-v2.5",
+    system: [{ type: "text", text: "You are a coding assistant." }],
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "system", content: "deferred tools list" },
+      { role: "user", content: "go" },
+    ],
+  };
+
+  const result = translateRequest(
+    FORMATS.CLAUDE,
+    FORMATS.OPENAI,
+    "mimo-v2.5",
+    body,
+    false,
+    null,
+    "xiaomi-mimo"
+  );
+
+  const outMessages = result.messages as Array<{ role: string; content: string }>;
+  const systemIndices = outMessages
+    .map((m, i) => (m.role === "system" ? i : -1))
+    .filter((i) => i >= 0);
+
+  assert.deepEqual(systemIndices, [0]);
+  // Merge, never drop: both the top-level system and the offender survive.
+  assert.match(outMessages[0].content, /You are a coding assistant\./);
+  assert.match(outMessages[0].content, /deferred tools list/);
 });

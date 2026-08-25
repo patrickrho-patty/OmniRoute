@@ -39,22 +39,22 @@ npm run test:all
 
 ## نظرة عامة على المشروع
 
-**OmniRoute** — وكيل/موجه AI موحد. نقطة نهاية واحدة، أكثر من 160 مزود LLM، تراجع تلقائي.
+**OmniRoute** — وكيل/موجه AI موحد. نقطة نهاية واحدة، 329 مزود LLM، تراجع تلقائي.
 
-| الطبقة         | الموقع                  | الغرض                                                            |
-| -------------- | ----------------------- | ---------------------------------------------------------------- |
-| مسارات API     | `src/app/api/v1/`       | موجه تطبيق Next.js — نقاط الدخول                                 |
-| المعالجات      | `open-sse/handlers/`    | معالجة الطلبات (الدردشة، التضمينات، إلخ)                         |
-| المنفذون       | `open-sse/executors/`   | إرسال HTTP محدد لمزود الخدمة                                     |
-| المترجمون      | `open-sse/translator/`  | تحويل التنسيق (OpenAI↔Claude↔Gemini)                             |
-| المحول         | `open-sse/transformer/` | واجهات برمجة التطبيقات للردود ↔ إكمالات الدردشة                  |
-| الخدمات        | `open-sse/services/`    | توجيه مجموعة، حدود المعدل، التخزين المؤقت، إلخ                   |
-| قاعدة البيانات | `src/lib/db/`           | وحدات مجال SQLite (أكثر من 45 ملف، 55 ترحيل)                     |
-| المجال/السياسة | `src/domain/`           | محرك السياسة، قواعد التكلفة، منطق التراجع                        |
-| خادم MCP       | `open-sse/mcp-server/`  | 37 أداة (30 قاعدة + 3 ذاكرة + 4 مهارات)، 3 وسائل نقل، ~13 نطاقات |
-| خادم A2A       | `src/lib/a2a/`          | بروتوكول وكيل JSON-RPC 2.0                                       |
-| المهارات       | `src/lib/skills/`       | إطار عمل مهارات قابل للتوسيع                                     |
-| الذاكرة        | `src/lib/memory/`       | ذاكرة محادثة دائمة                                               |
+| الطبقة         | الموقع                  | الغرض                                                                     |
+| -------------- | ----------------------- | ------------------------------------------------------------------------- |
+| مسارات API     | `src/app/api/v1/`       | موجه تطبيق Next.js — نقاط الدخول                                          |
+| المعالجات      | `open-sse/handlers/`    | معالجة الطلبات (الدردشة، التضمينات، إلخ)                                  |
+| المنفذون       | `open-sse/executors/`   | إرسال HTTP محدد لمزود الخدمة                                              |
+| المترجمون      | `open-sse/translator/`  | تحويل التنسيق (OpenAI↔Claude↔Gemini)                                      |
+| المحول         | `open-sse/transformer/` | واجهات برمجة التطبيقات للردود ↔ إكمالات الدردشة                           |
+| الخدمات        | `open-sse/services/`    | توجيه مجموعة، حدود المعدل، التخزين المؤقت، إلخ                            |
+| قاعدة البيانات | `src/lib/db/`           | 110 top-level SQLite domain modules, 130 migrations                       |
+| المجال/السياسة | `src/domain/`           | محرك السياسة، قواعد التكلفة، منطق التراجع                                 |
+| خادم MCP       | `open-sse/mcp-server/`  | 107 unique tools, 3 transports (stdio / SSE / Streamable HTTP), 32 scopes |
+| خادم A2A       | `src/lib/a2a/`          | بروتوكول وكيل JSON-RPC 2.0                                                |
+| المهارات       | `src/lib/skills/`       | إطار عمل مهارات قابل للتوسيع                                              |
+| الذاكرة        | `src/lib/memory/`       | ذاكرة محادثة دائمة                                                        |
 
 Monorepo: `src/` (تطبيق Next.js 16)، `open-sse/` (مساحة عمل محرك البث)، `electron/` (تطبيق سطح المكتب)، `tests/`، `bin/` (نقطة دخول CLI).
 
@@ -76,7 +76,7 @@ Monorepo: `src/` (تطبيق Next.js 16)، `open-sse/` (مساحة عمل محر
 
 تتبع مسارات واجهة برمجة التطبيقات نمطًا متسقًا: `Route → CORS preflight → Zod body validation → مصادقة اختيارية (extractApiKey/isValidApiKey) → تنفيذ سياسة مفتاح واجهة برمجة التطبيقات → تفويض المعالج (open-sse)`. لا توجد وسائط عالمية لـ Next.js — الاعتراض خاص بالمسار.
 
-**توجيه المجموعة** (`open-sse/services/combo.ts`): 14 استراتيجية (الأولوية، الوزن، ملء أولاً، التناوب، P2C، عشوائي، الأقل استخدامًا، الأمثل من حيث التكلفة، الواعي بإعادة التعيين، عشوائي صارم، تلقائي، lkgp، الأمثل من حيث السياق، نقل السياق). كل هدف يستدعي `handleSingleModel()` الذي يلف `handleChatCore()` مع معالجة الأخطاء الخاصة بكل هدف وفحوصات قاطع الدائرة. راجع `docs/routing/AUTO-COMBO.md` لتسجيل 9 عوامل Auto-Combo و `docs/architecture/RESILIENCE_GUIDE.md` للطبقات الثلاث من المرونة.
+**Combo routing** (`open-sse/services/combo.ts`): 19 public strategies (priority, weighted, fill-first, round-robin, p2c, random, least-used, cost-optimized, reset-aware, reset-window, headroom, strict-random, auto, lkgp, context-optimized, cache-optimized, context-relay, fusion, pipeline). Each target calls `handleSingleModel()`, which wraps `handleChatCore()` with per-target error handling and circuit-breaker checks. See `docs/routing/AUTO-COMBO.md` for the 13-factor Auto-Combo scoring and `docs/architecture/RESILIENCE_GUIDE.md` for the 3 resilience layers.
 
 ---
 
@@ -296,31 +296,31 @@ baseCooldownMs * 2 ** failureIndex;
 
 لأي تغيير غير تافه، اقرأ الغوص العميق المطابق أولاً:
 
-| المجال                                    | الوثيقة                                                           |
-| ----------------------------------------- | ----------------------------------------------------------------- |
-| تنقل المستودع                             | `docs/architecture/REPOSITORY_MAP.md`                             |
-| الهندسة                                   | `docs/architecture/ARCHITECTURE.md`                               |
-| مرجع الهندسة                              | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
-| Auto-Combo (تقييم 9 عوامل، 14 استراتيجية) | `docs/routing/AUTO-COMBO.md`                                      |
-| المرونة (3 آليات)                         | `docs/architecture/RESILIENCE_GUIDE.md`                           |
-| إعادة تشغيل التفكير                       | `docs/routing/REASONING_REPLAY.md`                                |
-| إطار المهارات                             | `docs/frameworks/SKILLS.md`                                       |
-| نظام الذاكرة (FTS5 + Qdrant)              | `docs/frameworks/MEMORY.md`                                       |
-| وكلاء السحابة                             | `docs/frameworks/CLOUD_AGENT.md`                                  |
-| حواجز الأمان (PII / حقن / رؤية)           | `docs/security/GUARDRAILS.md`                                     |
-| بيانات اعتماد عامة (Gemini/إلخ.)          | `docs/security/PUBLIC_CREDS.md`                                   |
-| تطهير رسائل الخطأ                         | `docs/security/ERROR_SANITIZATION.md`                             |
-| التقييمات                                 | `docs/frameworks/EVALS.md`                                        |
-| الامتثال / التدقيق                        | `docs/security/COMPLIANCE.md`                                     |
-| Webhooks                                  | `docs/frameworks/WEBHOOKS.md`                                     |
-| خط أنابيب التفويض                         | `docs/architecture/AUTHZ_GUIDE.md`                                |
-| التخفي (TLS / بصمة)                       | `docs/security/STEALTH_GUIDE.md`                                  |
-| بروتوكولات الوكلاء (A2A / ACP / سحابة)    | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
-| خادم MCP                                  | `docs/frameworks/MCP-SERVER.md`                                   |
-| خادم A2A                                  | `docs/frameworks/A2A-SERVER.md`                                   |
-| مرجع API + OpenAPI                        | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
-| كتالوج المزودين (تم إنشاؤه تلقائيًا)      | `docs/reference/PROVIDER_REFERENCE.md`                            |
-| تدفق الإصدار                              | `docs/ops/RELEASE_CHECKLIST.md`                                   |
+| المجال                                               | الوثيقة                                                           |
+| ---------------------------------------------------- | ----------------------------------------------------------------- |
+| تنقل المستودع                                        | `docs/architecture/REPOSITORY_MAP.md`                             |
+| الهندسة                                              | `docs/architecture/ARCHITECTURE.md`                               |
+| مرجع الهندسة                                         | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
+| Auto-Combo (13-factor scoring, 19 public strategies) | `docs/routing/AUTO-COMBO.md`                                      |
+| المرونة (3 آليات)                                    | `docs/architecture/RESILIENCE_GUIDE.md`                           |
+| إعادة تشغيل التفكير                                  | `docs/routing/REASONING_REPLAY.md`                                |
+| إطار المهارات                                        | `docs/frameworks/SKILLS.md`                                       |
+| نظام الذاكرة (FTS5 + Qdrant)                         | `docs/frameworks/MEMORY.md`                                       |
+| وكلاء السحابة                                        | `docs/frameworks/CLOUD_AGENT.md`                                  |
+| حواجز الأمان (PII / حقن / رؤية)                      | `docs/security/GUARDRAILS.md`                                     |
+| بيانات اعتماد عامة (Gemini/إلخ.)                     | `docs/security/PUBLIC_CREDS.md`                                   |
+| تطهير رسائل الخطأ                                    | `docs/security/ERROR_SANITIZATION.md`                             |
+| التقييمات                                            | `docs/frameworks/EVALS.md`                                        |
+| الامتثال / التدقيق                                   | `docs/security/COMPLIANCE.md`                                     |
+| Webhooks                                             | `docs/frameworks/WEBHOOKS.md`                                     |
+| خط أنابيب التفويض                                    | `docs/architecture/AUTHZ_GUIDE.md`                                |
+| التخفي (TLS / بصمة)                                  | `docs/security/STEALTH_GUIDE.md`                                  |
+| بروتوكولات الوكلاء (A2A / ACP / سحابة)               | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
+| خادم MCP                                             | `docs/frameworks/MCP-SERVER.md`                                   |
+| خادم A2A                                             | `docs/frameworks/A2A-SERVER.md`                                   |
+| مرجع API + OpenAPI                                   | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
+| كتالوج المزودين (تم إنشاؤه تلقائيًا)                 | `docs/reference/PROVIDER_REFERENCE.md`                            |
+| تدفق الإصدار                                         | `docs/ops/RELEASE_CHECKLIST.md`                                   |
 
 ## الاختبار
 
@@ -365,7 +365,9 @@ git push -u origin feat/your-feature
 
 ## البيئة
 
-- **وقت التشغيل**: Node.js ≥20.20.2 <21 || ≥22.22.2 <23 || ≥24 <25، وحدات ES
+- **وقت التشغيل**: Node.js ≥20.20.2 <21 |
+  | ≥22.22.2 <23 |
+  | ≥24 <25، وحدات ES
 - **TypeScript**: 5.9+، الهدف ES2022، الوحدة esnext، دقة المجمع
 - **أسماء المسارات**: `@/*` → `src/`، `@omniroute/open-sse` → `open-sse/`، `@omniroute/open-sse/*` → `open-sse/*`
 - **المنفذ الافتراضي**: 20128 (API + لوحة التحكم على نفس المنفذ)

@@ -17,40 +17,12 @@ interface LiteCompressionOptions {
   model?: string;
   supportsVision?: boolean | null;
   preserveSystemPrompt?: boolean;
-}
-
-function trimTrailingHorizontalWhitespace(line: string): string {
-  let end = line.length;
-  while (end > 0) {
-    const code = line.charCodeAt(end - 1);
-    if (code !== 32 && code !== 9) break;
-    end--;
-  }
-  return end === line.length ? line : line.slice(0, end);
-}
-
-function collapseNewlineRuns(content: string): string {
-  let normalized = "";
-  let newlineRun = 0;
-
-  for (const char of content) {
-    if (char === "\n") {
-      newlineRun++;
-      if (newlineRun <= 2) {
-        normalized += char;
-      }
-      continue;
-    }
-
-    newlineRun = 0;
-    normalized += char;
-  }
-
-  return normalized;
+  compressToolResults?: boolean;
 }
 
 function normalizeMessageWhitespace(content: string): string {
-  return collapseNewlineRuns(content).split("\n").map(trimTrailingHorizontalWhitespace).join("\n");
+  if (!content) return "";
+  return content.replace(/\n{3,}/g, "\n\n").replace(/[ \t]+$/gm, "");
 }
 
 // Vision detection is centralized in `@/shared/constants/visionModels` (#4072) so
@@ -253,9 +225,11 @@ export function applyLiteCompression(
   current = r2.body;
   if (r2.applied) techniquesApplied.push("system-dedup");
 
-  const r3 = compressToolResults(current);
-  current = r3.body;
-  if (r3.applied) techniquesApplied.push("tool-compress");
+  if (options?.compressToolResults !== false) {
+    const r3 = compressToolResults(current);
+    current = r3.body;
+    if (r3.applied) techniquesApplied.push("tool-compress");
+  }
 
   const r4 = removeRedundantContent(current, options);
   current = r4.body;

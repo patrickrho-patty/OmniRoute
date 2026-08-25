@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
 import {
   listSemanticCacheEntries,
@@ -21,7 +22,14 @@ export async function GET(req: NextRequest) {
     const sortBy = searchParams.get("sortBy") || "created_at";
     const sortOrder = searchParams.get("sortOrder") || "desc";
 
-    const { entries, total } = listSemanticCacheEntries({ page, limit, search, model, sortBy, sortOrder });
+    const { entries, total } = listSemanticCacheEntries({
+      page,
+      limit,
+      search,
+      model,
+      sortBy,
+      sortOrder,
+    });
 
     return NextResponse.json({
       entries,

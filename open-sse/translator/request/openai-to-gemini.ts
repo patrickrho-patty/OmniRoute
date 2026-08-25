@@ -39,7 +39,12 @@ import {
   escapeHistoricalContextAttribute,
   escapeHistoricalContextContent,
   buildHistoricalToolResultContext,
+  type GeminiPart,
+  type GeminiContent,
+  mergeConsecutiveSameRoleContents,
 } from "./openai-to-gemini/helpers.ts";
+
+export { mergeConsecutiveSameRoleContents, type GeminiContent, type GeminiPart };
 
 // Observed Antigravity wrapper output cap, not an underlying model capability.
 // Keep this bridge-local: Antigravity currently caps visible output around 16K.
@@ -55,9 +60,6 @@ const GEMINI_BUILTIN_TOOL_NAMES = new Set<string>([
   "search_web",
   "googleSearch",
 ]);
-
-type GeminiPart = Record<string, unknown>;
-type GeminiContent = { role: string; parts: GeminiPart[] };
 
 type GeminiFunctionDeclaration = {
   name: string;
@@ -157,29 +159,6 @@ type GeminiToolNameOptions = {
   /** Antigravity supports the thoughtSignature field. Standard Gemini rejects it with 400. */
   supportsSignatureBypass?: boolean;
 };
-
-// Gemini-family APIs (incl. Antigravity / Vertex) reject a `contents[]` array that
-// has two adjacent entries with the same role:
-//   400 INVALID_ARGUMENT "Request contains consecutive messages with the same role".
-// Client history that carries consecutive user turns — or a tool-result turn (mapped
-// to role:"user") immediately followed by a plain user turn — would otherwise leak
-// that invalid alternation through. Merge adjacent same-role entries by concatenating
-// their parts, the same normalization the Kiro and Claude request paths already apply
-// (9router#2191).
-export function mergeConsecutiveSameRoleContents(contents: GeminiContent[]): GeminiContent[] {
-  const merged: GeminiContent[] = [];
-  for (const entry of contents) {
-    const last = merged[merged.length - 1];
-    if (last && last.role === entry.role) {
-      last.parts.push(...entry.parts);
-    } else {
-      // Shallow-copy the entry and its `parts` array so a later same-role merge
-      // (`last.parts.push(...)`) never mutates the caller's input objects.
-      merged.push({ ...entry, parts: [...entry.parts] });
-    }
-  }
-  return merged;
-}
 
 // Core: Convert OpenAI request to Gemini format (base for all variants)
 function openaiToGeminiBase(
@@ -464,12 +443,17 @@ function openaiToGeminiBase(
 
             // Gemini expects the signature on the functionCall part itself.
             // If we are in a mode where missing signatures cause 400s (and we couldn't find one),
-            // safely default to the bypass string to protect against 400s.
+            // safely default to the bypass string to protect against 400s. The bypass sentinel is
+            // an audit-trail risk (a magic validator-bypass string upstream could log/flag), so
+            // operators can disable it via ANTIGRAVITY_ALLOW_SIGNATURE_BYPASS=0 — real signatures
+            // are always preferred; the sentinel only fills the gap when none is available.
+            const signatureBypassEnabled =
+              toolNameOptions.supportsSignatureBypass &&
+              signaturelessToolCallMode !== "text" &&
+              process.env.ANTIGRAVITY_ALLOW_SIGNATURE_BYPASS !== "0";
             const finalSignature =
               embeddedThoughtSignature ||
-              (toolNameOptions.supportsSignatureBypass && signaturelessToolCallMode !== "text"
-                ? "skip_thought_signature_validator"
-                : undefined);
+              (signatureBypassEnabled ? "skip_thought_signature_validator" : undefined);
             parts.push({
               ...(finalSignature ? { thoughtSignature: finalSignature } : {}),
               functionCall: {
@@ -734,11 +718,24 @@ function wrapInCloudCodeEnvelope(model, cloudCodeRequest, credentials = null) {
     envelope._toolNameMap = cloudCodeRequest._toolNameMap;
   }
 
+  // #9030 — Client system content must NOT be combined with default in systemInstruction
+  //
+  // The upstream Antigravity / Cloud Code endpoint rejects oversized systemInstruction
+  // with 429 RESOURCE_EXHAUSTED. Keep only the lightweight ANTIGRAVITY_DEFAULT_SYSTEM
+  // in systemInstruction and relocate any client system content (which can be very
+  // large — Hermes ~125k tokens) to the first user message.
   const defaultPart: GeminiPart = { text: ANTIGRAVITY_DEFAULT_SYSTEM };
-  if (envelope.request.systemInstruction?.parts) {
-    envelope.request.systemInstruction.parts.unshift(defaultPart);
-  } else {
-    envelope.request.systemInstruction = { role: "system", parts: [defaultPart] };
+  const clientParts = envelope.request.systemInstruction?.parts?.slice() ?? [];
+  envelope.request.systemInstruction = { role: "system", parts: [defaultPart] };
+
+  if (clientParts.length > 0) {
+    // Prepend client system parts to the first user message so they still guide
+    // the model's behavior early in the conversation.
+    if (envelope.request.contents && envelope.request.contents.length > 0) {
+      envelope.request.contents[0].parts.unshift(...clientParts);
+    } else {
+      envelope.request.contents = [{ role: "user", parts: [...clientParts] }];
+    }
   }
 
   // Strip Gemini built-in tool *names* out of functionDeclarations: Antigravity's

@@ -1,5 +1,4 @@
 [
-  "deepseek-ai/deepseek-v4-pro",
   "google/gemma-4-31b-it",
   "minimaxai/minimax-m2.7",
   "mistralai/devstral-2-123b-instruct-2512",
@@ -13,6 +12,5 @@
   "qwen/qwen3.5-397b-a17b",
   "stepfun-ai/step-3.5-flash",
   "thinkingmachines/inkling",
-  "z-ai/glm-5.1",
   "z-ai/glm-5.2"
 ]

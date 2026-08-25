@@ -575,6 +575,9 @@ test("OpenAI -> Antigravity wraps Gemini requests in a Cloud Code envelope", () 
   );
 
   assert.equal(result.project, "proj-1");
+  // #9008: identity tool-name mappings (weather → weather) are retained so the
+  // response path can restore the caller's original casing. The Antigravity
+  // executor strips `_toolNameMap` before the upstream wire body.
   assert.deepEqual(Object.keys(result), [
     "project",
     "requestId",
@@ -582,7 +585,10 @@ test("OpenAI -> Antigravity wraps Gemini requests in a Cloud Code envelope", () 
     "model",
     "userAgent",
     "requestType",
+    // #9568: identity entries are emitted too (Gemini lowercases tool names in responses).
+    "_toolNameMap",
   ]);
+  assert.equal((result._toolNameMap as Map<string, string>).get("weather"), "weather");
   assert.equal(result.userAgent, "antigravity");
   assert.equal(result.requestType, "agent");
   assert.match(result.requestId, /^agent\/\d+\/[0-9a-f]{8}$/);
@@ -601,7 +607,7 @@ test("OpenAI -> Antigravity wraps Gemini requests in a Cloud Code envelope", () 
 
 test("OpenAI -> Antigravity Gemini omits signature-less historical tool calls and keeps response context", () => {
   const result = openaiToAntigravityRequest(
-    "gemini-3.5-flash-low",
+    "gemini-3.7-flash-low",
     {
       messages: [
         { role: "user", content: "Update todo" },
@@ -680,7 +686,7 @@ test("OpenAI -> Antigravity Gemini omits signature-less historical tool calls an
 
 test("OpenAI -> Antigravity preserves multiple signature-less historical tool responses as context", () => {
   const result = openaiToAntigravityRequest(
-    "gemini-3.5-flash-low",
+    "gemini-3.7-flash-low",
     {
       messages: [
         { role: "user", content: "Inspect OmniRoute config" },
@@ -741,7 +747,7 @@ test("OpenAI -> Antigravity preserves signed Gemini tool calls in native form", 
   storeGeminiThoughtSignature(buildGeminiThoughtSignatureKey(ns, toolId), "SIG_AG_SIGNED_XYZ");
 
   const result = openaiToAntigravityRequest(
-    "gemini-3.5-flash-low",
+    "gemini-3.7-flash-low",
     {
       messages: [
         { role: "user", content: "Read status" },
@@ -781,7 +787,7 @@ test("OpenAI -> Antigravity preserves signed Gemini tool calls in native form", 
 
 test("OpenAI -> Antigravity escapes signature-less tool response context content", () => {
   const result = openaiToAntigravityRequest(
-    "gemini-3.5-flash-low",
+    "gemini-3.7-flash-low",
     {
       messages: [
         { role: "user", content: "Inspect previous output" },
@@ -860,7 +866,14 @@ test("OpenAI -> Antigravity maps Claude-family models to Gemini-compatible schem
   assert.match(result.requestId, /^agent\/\d+\/[0-9a-f]{8}$/);
   assert.equal(result.enabledCreditTypes, undefined);
   assert.equal(result.request.systemInstruction.parts[0].text, ANTIGRAVITY_DEFAULT_SYSTEM);
-  assert.equal(result.request.systemInstruction.parts[1].text, "Project rules");
+  assert.equal(
+    result.request.systemInstruction.parts.length,
+    1,
+    "systemInstruction must contain only ANTIGRAVITY_DEFAULT_SYSTEM (#9030)"
+  );
+  // #9030 — Client system content moved to first user message to avoid upstream 429s
+  assert.equal(result.request.contents[0].parts[0].text, "Project rules");
+  assert.equal(result.request.contents[0].parts[1].text, "Read a file");
   assert.equal((result as any).request?.generationConfig.maxOutputTokens, undefined);
   assert.equal((result as any).request?.messages, undefined);
   assert.equal((result as any).request?.system, undefined);

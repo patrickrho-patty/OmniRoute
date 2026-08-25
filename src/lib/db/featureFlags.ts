@@ -8,8 +8,15 @@
 
 import { FEATURE_FLAG_DEFINITIONS } from "@/shared/constants/featureFlagDefinitions";
 import { getDbInstance } from "./core";
+import { finishModelCatalogWriteWithoutBackup } from "./models/modelCatalogWriteSignals";
 
 const NAMESPACE = "feature_flags";
+
+const CATALOG_RELEVANT_FEATURE_FLAGS = new Set([
+  "MODEL_CATALOG_INCLUDE_NAMES",
+  "MODELS_CATALOG_PREFIX_MODE",
+  "EXPOSE_CC_DISCOVERY_ALIASES",
+]);
 
 /**
  * Returns all feature flag overrides as a key→value map.
@@ -62,6 +69,9 @@ export function setFeatureFlagOverride(key: string, value: string): void {
     key,
     value
   );
+  if (CATALOG_RELEVANT_FEATURE_FLAGS.has(key)) {
+    finishModelCatalogWriteWithoutBackup();
+  }
 }
 
 /**
@@ -71,6 +81,9 @@ export function setFeatureFlagOverride(key: string, value: string): void {
 export function removeFeatureFlagOverride(key: string): void {
   const db = getDbInstance();
   db.prepare("DELETE FROM key_value WHERE namespace = ? AND key = ?").run(NAMESPACE, key);
+  if (CATALOG_RELEVANT_FEATURE_FLAGS.has(key)) {
+    finishModelCatalogWriteWithoutBackup();
+  }
 }
 
 /**
@@ -78,5 +91,13 @@ export function removeFeatureFlagOverride(key: string): void {
  */
 export function clearAllFeatureFlagOverrides(): void {
   const db = getDbInstance();
+  const hadRelevantOverride = Boolean(
+    db
+      .prepare("SELECT 1 FROM key_value WHERE namespace = ? AND key IN (?, ?, ?) LIMIT 1")
+      .get(NAMESPACE, ...Array.from(CATALOG_RELEVANT_FEATURE_FLAGS))
+  );
   db.prepare("DELETE FROM key_value WHERE namespace = ?").run(NAMESPACE);
+  if (hadRelevantOverride) {
+    finishModelCatalogWriteWithoutBackup();
+  }
 }

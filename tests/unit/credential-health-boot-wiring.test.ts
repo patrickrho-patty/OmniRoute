@@ -10,8 +10,7 @@ import { fileURLToPath } from "node:url";
 // (src/instrumentation-node.ts) and NOT in the unused src/server-init.ts — the exact
 // mistake that made the earlier attempt (closed PR #7432) a no-op.
 
-const read = (rel: string) =>
-  readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
+const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.meta.url)), "utf8");
 
 const instrumentation = read("../../src/instrumentation-node.ts");
 
@@ -30,6 +29,11 @@ test("credential health scheduler is started from the real Next.js instrumentati
     instrumentation,
     /\[STARTUP\] Credential health scheduler started/,
     "a [STARTUP] log line proves the boot wiring ran (grep-able in app.log)"
+  );
+  assert.match(
+    instrumentation,
+    /\[STARTUP\] Credential health scheduler disabled/,
+    "#11016: disable env must log disabled, not lie with started"
   );
 });
 

@@ -37,13 +37,23 @@ function resolveRootDir(rootDir) {
   }
 }
 
+// Secrets this file may fill in when `.env.example` ships them blank.
+//
+// JWT_SECRET, API_KEY_SECRET and STORAGE_ENCRYPTION_KEY are deliberately NOT
+// here: the server owns them. It restores each one from its durable store, or
+// generates and persists it there on first use — STORAGE_ENCRYPTION_KEY in
+// bin/omniroute.mjs (guarded by bin/cli/utils/storageKeyProvision.mjs), the
+// other two in src/instrumentation-node.ts::ensureSecrets(), which persists to
+// the `secrets` namespace of the database under DATA_DIR.
+//
+// Filling any of them here defeats that: this file lives inside the installed
+// package, so `npm i -g` replaces it and postinstall writes a *different*
+// value, while ensureSecrets() — which only acts on an empty variable — never
+// gets to restore the real one. The secret then rotates silently on every
+// update, invalidating dashboard sessions (JWT_SECRET) and API-key CRCs
+// (API_KEY_SECRET). STORAGE_ENCRYPTION_KEY was pulled out first, for the same
+// reason, when it cost users their encrypted credentials (issue #1622).
 const CRYPTO_SECRETS = {
-  JWT_SECRET: () => randomBytes(64).toString("hex"),
-  API_KEY_SECRET: () => randomBytes(32).toString("hex"),
-  // STORAGE_ENCRYPTION_KEY: Generated at server startup instead of postinstall.
-  // Generated in bin/omniroute.mjs:ensureStorageEncryptionKey() and persisted to
-  // ~/.omniroute/.env to survive across upgrades. This prevents credential loss
-  // when upgrading OmniRoute (issue #1622).
   MACHINE_ID_SALT: () => `omniroute-${randomBytes(8).toString("hex")}`,
 };
 

@@ -9,7 +9,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-const { getCliRuntimeStatus, getKnownToolPaths, CLI_TOOL_IDS } =
+const { getCliRuntimeStatus, getKnownToolPaths, normalizeCliToolId, CLI_TOOL_IDS } =
   await import("../../src/shared/services/cliRuntime.ts");
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -78,6 +78,16 @@ describe("CLI_TOOL_IDS", () => {
     for (const id of expected) {
       assert.ok(CLI_TOOL_IDS.includes(id), `Missing tool: ${id}`);
     }
+  });
+});
+
+describe("CLI tool id compatibility aliases", () => {
+  it("normalizes legacy binary names without creating duplicate ids", () => {
+    assert.equal(normalizeCliToolId("kilocode"), "kilo");
+    assert.equal(normalizeCliToolId("kilo-code"), "kilo");
+    assert.equal(normalizeCliToolId("openai-codex"), "codex");
+    assert.equal(normalizeCliToolId("cc"), "claude");
+    assert.equal(normalizeCliToolId("unknown-tool"), "unknown-tool");
   });
 });
 
@@ -321,5 +331,39 @@ describe("resolveOpencodeConfigPath — cross-platform", () => {
       "C:\\Users\\dev"
     );
     assert.equal(result, path.join("D:\\xdg", "opencode", "opencode.json"));
+  });
+
+  it("selects an existing opencode.jsonc instead of inventing opencode.json (#10227)", () => {
+    const xdgRoot = createTempDir();
+    const configDir = path.join(xdgRoot, "opencode");
+    const jsoncPath = path.join(configDir, "opencode.jsonc");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(jsoncPath, "{\n  // native OpenCode config\n}\n");
+
+    const result = resolveOpencodeConfigPathFn(
+      process.platform,
+      { XDG_CONFIG_HOME: xdgRoot },
+      os.homedir()
+    );
+
+    assert.equal(result, jsoncPath);
+  });
+
+  it("prefers opencode.jsonc when both native filenames exist (#10227)", () => {
+    const xdgRoot = createTempDir();
+    const configDir = path.join(xdgRoot, "opencode");
+    const jsonPath = path.join(configDir, "opencode.json");
+    const jsoncPath = path.join(configDir, "opencode.jsonc");
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(jsonPath, "{}\n");
+    fs.writeFileSync(jsoncPath, "{}\n");
+
+    const result = resolveOpencodeConfigPathFn(
+      process.platform,
+      { XDG_CONFIG_HOME: xdgRoot },
+      os.homedir()
+    );
+
+    assert.equal(result, jsoncPath);
   });
 });

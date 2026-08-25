@@ -10,14 +10,15 @@
  *   GET https://g4f.space/api/groq/...              → live Groq backend
  *
  * Verifies each of the 5 sub-path providers is wired end-to-end the same way as
- * the other no-key gateway providers (hackclub, uncloseai):
+ * the other no-key gateway providers (uncloseai):
  *   - present in the executor REGISTRY with a no-key OpenAI-compatible shape
  *   - resolvable through getExecutor() (falls through to DefaultExecutor)
  *   - listed in AGGREGATOR_PROVIDER_IDS so it shows up in the aggregator
  *     category on the dashboard
  *   - allowed to skip API key validation (providerAllowsOptionalApiKey)
  *   - has provider metadata (name/website/free-tier note) in the apikey
- *     gateway catalog
+ *     gateway catalog (hasFree flipped false by #10071 — anonymous tier now
+ *     requires proof-of-work credits; a g4f.dev member key is required)
  */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -43,9 +44,8 @@ interface ApikeyMetaShape {
 
 const { REGISTRY } = await import("../../open-sse/config/providerRegistry.ts");
 const { getExecutor, DefaultExecutor } = await import("../../open-sse/executors/index.ts");
-const { AGGREGATOR_PROVIDER_IDS, providerAllowsOptionalApiKey } = await import(
-  "../../src/shared/constants/providers.ts"
-);
+const { AGGREGATOR_PROVIDER_IDS, providerAllowsOptionalApiKey } =
+  await import("../../src/shared/constants/providers.ts");
 const { APIKEY_PROVIDERS } = await import("../../src/shared/constants/providers/apikey/index.ts");
 
 const SUB_PATHS: Record<string, string> = {
@@ -83,7 +83,7 @@ for (const [id, subPath] of Object.entries(SUB_PATHS)) {
   test(`#6650 ${id} is classified as an aggregator/gateway provider`, () => {
     assert.ok(
       AGGREGATOR_PROVIDER_IDS.has(id),
-      `${id} must be listed in AGGREGATOR_PROVIDER_IDS alongside hackclub/uncloseai`
+      `${id} must be listed in AGGREGATOR_PROVIDER_IDS alongside uncloseai`
     );
   });
 
@@ -96,7 +96,10 @@ for (const [id, subPath] of Object.entries(SUB_PATHS)) {
     assert.ok(meta, `${id} should have an APIKEY_PROVIDERS metadata entry`);
     assert.equal(meta.id, id);
     assert.equal(meta.website, "https://g4f.space");
-    assert.equal(meta.hasFree, true);
+    // hasFree was true at #6650 time; the anonymous tier was walled behind proof-of-work
+    // credits in 2026 (#10071), so the flag is now false. Registry wiring above is unchanged:
+    // the provider still works with a g4f.dev member key, hence authType stays "optional".
+    assert.equal(meta.hasFree, false);
     assert.equal(typeof meta.freeNote, "string");
     assert.ok((meta.freeNote as string).length > 0);
   });

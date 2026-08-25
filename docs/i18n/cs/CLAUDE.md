@@ -39,22 +39,22 @@ Pro plnou testovací matici viz `CONTRIBUTING.md` → "Spouštění testů". Pro
 
 ## Projekt na první pohled
 
-**OmniRoute** — jednotný AI proxy/router. Jeden koncový bod, 160+ poskytovatelů LLM, automatické zálohování.
+**OmniRoute** — jednotný AI proxy/router. Jeden koncový bod, 329 poskytovatelů LLM, automatické zálohování.
 
-| Vrstva        | Umístění                | Účel                                                                            |
-| ------------- | ----------------------- | ------------------------------------------------------------------------------- |
-| API Routes    | `src/app/api/v1/`       | Next.js App Router — vstupní body                                               |
-| Handlers      | `open-sse/handlers/`    | Zpracování požadavků (chat, embeddings, atd.)                                   |
-| Executors     | `open-sse/executors/`   | HTTP dispatch specifický pro poskytovatele                                      |
-| Translators   | `open-sse/translator/`  | Konverze formátu (OpenAI↔Claude↔Gemini)                                         |
-| Transformer   | `open-sse/transformer/` | API odpovědí ↔ Dokončení chatu                                                  |
-| Services      | `open-sse/services/`    | Kombinované směrování, limity rychlosti, caching, atd.                          |
-| Database      | `src/lib/db/`           | SQLite doménové moduly (45+ souborů, 55 migrací)                                |
-| Domain/Policy | `src/domain/`           | Engin politiky, pravidla nákladů, logika zálohování                             |
-| MCP Server    | `open-sse/mcp-server/`  | 37 nástrojů (30 základních + 3 paměť + 4 dovednosti), 3 transporty, ~13 rozsahů |
-| A2A Server    | `src/lib/a2a/`          | JSON-RPC 2.0 agent protokol                                                     |
-| Skills        | `src/lib/skills/`       | Rozšiřitelný rámec dovedností                                                   |
-| Memory        | `src/lib/memory/`       | Trvalá konverzační paměť                                                        |
+| Vrstva        | Umístění                | Účel                                                                      |
+| ------------- | ----------------------- | ------------------------------------------------------------------------- |
+| API Routes    | `src/app/api/v1/`       | Next.js App Router — vstupní body                                         |
+| Handlers      | `open-sse/handlers/`    | Zpracování požadavků (chat, embeddings, atd.)                             |
+| Executors     | `open-sse/executors/`   | HTTP dispatch specifický pro poskytovatele                                |
+| Translators   | `open-sse/translator/`  | Konverze formátu (OpenAI↔Claude↔Gemini)                                   |
+| Transformer   | `open-sse/transformer/` | API odpovědí ↔ Dokončení chatu                                            |
+| Services      | `open-sse/services/`    | Kombinované směrování, limity rychlosti, caching, atd.                    |
+| Database      | `src/lib/db/`           | 110 top-level SQLite domain modules, 130 migrations                       |
+| Domain/Policy | `src/domain/`           | Engin politiky, pravidla nákladů, logika zálohování                       |
+| MCP Server    | `open-sse/mcp-server/`  | 107 unique tools, 3 transports (stdio / SSE / Streamable HTTP), 32 scopes |
+| A2A Server    | `src/lib/a2a/`          | JSON-RPC 2.0 agent protokol                                               |
+| Skills        | `src/lib/skills/`       | Rozšiřitelný rámec dovedností                                             |
+| Memory        | `src/lib/memory/`       | Trvalá konverzační paměť                                                  |
 
 Monorepo: `src/` (Next.js 16 aplikace), `open-sse/` (pracovní prostor streamovacího enginu), `electron/` (desktopová aplikace), `tests/`, `bin/` (CLI vstupní bod).
 
@@ -76,7 +76,7 @@ Klient → /v1/chat/completions (Next.js route)
 
 API trasy následují konzistentní vzor: `Route → CORS preflight → Zod validace těla → Volitelná autentizace (extractApiKey/isValidApiKey) → Vynucení politiky API klíče → Delegace handleru (open-sse)`. Žádný globální Next.js middleware — interceptace je specifická pro trasu.
 
-**Combo routing** (`open-sse/services/combo.ts`): 14 strategií (priorita, vážené, fill-first, round-robin, P2C, náhodné, nejméně používané, optimalizované podle nákladů, reset-aware, strict-random, auto, lkgp, optimalizované podle kontextu, kontext-relay). Každý cíl volá `handleSingleModel()`, který obaluje `handleChatCore()` s chybovým zpracováním a kontrolami obvodu pro každý cíl. Viz `docs/routing/AUTO-COMBO.md` pro 9-faktorové hodnocení Auto-Combo a `docs/architecture/RESILIENCE_GUIDE.md` pro 3 vrstvy odolnosti.
+**Combo routing** (`open-sse/services/combo.ts`): 19 public strategies (priority, weighted, fill-first, round-robin, p2c, random, least-used, cost-optimized, reset-aware, reset-window, headroom, strict-random, auto, lkgp, context-optimized, cache-optimized, context-relay, fusion, pipeline). Each target calls `handleSingleModel()`, which wraps `handleChatCore()` with per-target error handling and circuit-breaker checks. See `docs/routing/AUTO-COMBO.md` for the 13-factor Auto-Combo scoring and `docs/architecture/RESILIENCE_GUIDE.md` for the 3 resilience layers.
 
 ---
 
@@ -312,31 +312,31 @@ připojení pokračovat v obsluze dalších modelů.
 
 Před jakoukoli netriviální změnou si nejprve přečtěte odpovídající podrobnou analýzu:
 
-| Oblast                                           | Dokument                                                          |
-| ------------------------------------------------ | ----------------------------------------------------------------- |
-| Navigace repozitářem                             | `docs/architecture/REPOSITORY_MAP.md`                             |
-| Architektura                                     | `docs/architecture/ARCHITECTURE.md`                               |
-| Odkaz na inženýrství                             | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
-| Auto-Combo (9-faktorové hodnocení, 14 strategií) | `docs/routing/AUTO-COMBO.md`                                      |
-| Odolnost (3 mechanismy)                          | `docs/architecture/RESILIENCE_GUIDE.md`                           |
-| Opakování uvažování                              | `docs/routing/REASONING_REPLAY.md`                                |
-| Rámec dovedností                                 | `docs/frameworks/SKILLS.md`                                       |
-| Systém paměti (FTS5 + Qdrant)                    | `docs/frameworks/MEMORY.md`                                       |
-| Cloudoví agenti                                  | `docs/frameworks/CLOUD_AGENT.md`                                  |
-| Ochranné prvky (PII / injekce / vize)            | `docs/security/GUARDRAILS.md`                                     |
-| Veřejné přihlašovací údaje (Gemini atd.)         | `docs/security/PUBLIC_CREDS.md`                                   |
-| Sanitizace chybových zpráv                       | `docs/security/ERROR_SANITIZATION.md`                             |
-| Hodnocení                                        | `docs/frameworks/EVALS.md`                                        |
-| Soulad / audit                                   | `docs/security/COMPLIANCE.md`                                     |
-| Webhooky                                         | `docs/frameworks/WEBHOOKS.md`                                     |
-| Autorizační pipeline                             | `docs/architecture/AUTHZ_GUIDE.md`                                |
-| Stealth (TLS / otisk)                            | `docs/security/STEALTH_GUIDE.md`                                  |
-| Protokoly agentů (A2A / ACP / Cloud)             | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
-| MCP server                                       | `docs/frameworks/MCP-SERVER.md`                                   |
-| A2A server                                       | `docs/frameworks/A2A-SERVER.md`                                   |
-| Odkaz na API + OpenAPI                           | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
-| Katalog poskytovatelů (automaticky generovaný)   | `docs/reference/PROVIDER_REFERENCE.md`                            |
-| Tok vydání                                       | `docs/ops/RELEASE_CHECKLIST.md`                                   |
+| Oblast                                               | Dokument                                                          |
+| ---------------------------------------------------- | ----------------------------------------------------------------- |
+| Navigace repozitářem                                 | `docs/architecture/REPOSITORY_MAP.md`                             |
+| Architektura                                         | `docs/architecture/ARCHITECTURE.md`                               |
+| Odkaz na inženýrství                                 | `docs/architecture/CODEBASE_DOCUMENTATION.md`                     |
+| Auto-Combo (13-factor scoring, 19 public strategies) | `docs/routing/AUTO-COMBO.md`                                      |
+| Odolnost (3 mechanismy)                              | `docs/architecture/RESILIENCE_GUIDE.md`                           |
+| Opakování uvažování                                  | `docs/routing/REASONING_REPLAY.md`                                |
+| Rámec dovedností                                     | `docs/frameworks/SKILLS.md`                                       |
+| Systém paměti (FTS5 + Qdrant)                        | `docs/frameworks/MEMORY.md`                                       |
+| Cloudoví agenti                                      | `docs/frameworks/CLOUD_AGENT.md`                                  |
+| Ochranné prvky (PII / injekce / vize)                | `docs/security/GUARDRAILS.md`                                     |
+| Veřejné přihlašovací údaje (Gemini atd.)             | `docs/security/PUBLIC_CREDS.md`                                   |
+| Sanitizace chybových zpráv                           | `docs/security/ERROR_SANITIZATION.md`                             |
+| Hodnocení                                            | `docs/frameworks/EVALS.md`                                        |
+| Soulad / audit                                       | `docs/security/COMPLIANCE.md`                                     |
+| Webhooky                                             | `docs/frameworks/WEBHOOKS.md`                                     |
+| Autorizační pipeline                                 | `docs/architecture/AUTHZ_GUIDE.md`                                |
+| Stealth (TLS / otisk)                                | `docs/security/STEALTH_GUIDE.md`                                  |
+| Protokoly agentů (A2A / ACP / Cloud)                 | `docs/frameworks/AGENT_PROTOCOLS_GUIDE.md`                        |
+| MCP server                                           | `docs/frameworks/MCP-SERVER.md`                                   |
+| A2A server                                           | `docs/frameworks/A2A-SERVER.md`                                   |
+| Odkaz na API + OpenAPI                               | `docs/reference/API_REFERENCE.md` + `docs/reference/openapi.yaml` |
+| Katalog poskytovatelů (automaticky generovaný)       | `docs/reference/PROVIDER_REFERENCE.md`                            |
+| Tok vydání                                           | `docs/ops/RELEASE_CHECKLIST.md`                                   |
 
 ## Testování
 
@@ -381,7 +381,9 @@ git push -u origin feat/your-feature
 
 ## Prostředí
 
-- **Runtime**: Node.js ≥20.20.2 <21 || ≥22.22.2 <23 || ≥24 <25, ES moduly
+- **Runtime**: Node.js ≥20.20.2 <21 |
+  | ≥22.22.2 <23 |
+  | ≥24 <25, ES moduly
 - **TypeScript**: 5.9+, cíl ES2022, modul esnext, rozlišení bundler
 - **Cestovní aliasy**: `@/*` → `src/`, `@omniroute/open-sse` → `open-sse/`, `@omniroute/open-sse/*` → `open-sse/*`
 - **Výchozí port**: 20128 (API + dashboard na stejném portu)

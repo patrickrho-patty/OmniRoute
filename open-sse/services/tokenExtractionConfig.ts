@@ -185,6 +185,26 @@ const RAW_CONFIGS: TokenExtractionConfig[] = [
     { cookieDomain: ".chat.qwen.ai" }
   ),
 
+  // ── Volcano Engine Ark Console ───────────────────────────
+  config(
+    "volcengine-console",
+    "Volcano Engine Ark Console",
+    "https://console.volcengine.com/ark/region:cn-beijing/subscription/coding-plan",
+    "https://console.volcengine.com",
+    [
+      { type: "cookie", name: "digest", domain: ".volcengine.com" },
+      { type: "cookie", name: "AccountID", domain: ".volcengine.com" },
+      { type: "cookie", name: "csrfToken", domain: ".volcengine.com" },
+      { type: "cookie", name: "userInfo", domain: ".volcengine.com" },
+    ],
+    "Log in to the Volcano Engine Ark console. The console session is used to discover Agent/Coding Plan API keys and live quota usage.",
+    {
+      cookieDomain: ".volcengine.com",
+      successUrlPattern: /console\.volcengine\.com\/ark/i,
+      pollingConfig: { timeout: 300_000, minLoginTime: 3000 },
+    }
+  ),
+
   // ── Kimi Web ──────────────────────────────────────────────
   config(
     "kimi-web",
@@ -230,9 +250,8 @@ const RAW_CONFIGS: TokenExtractionConfig[] = [
     "Microsoft Copilot",
     "https://copilot.microsoft.com/",
     "https://copilot.microsoft.com",
-    [{ type: "cookie", name: "RPSCAuth", domain: ".microsoft.com" }],
-    "Log in with your Microsoft account at copilot.microsoft.com. The session auth cookie will be extracted.",
-    { cookieDomain: ".microsoft.com" }
+    [{ type: "header", name: "Authorization" }],
+    "Log in with your Microsoft account at copilot.microsoft.com. The bearer access token will be extracted from an authenticated request."
   ),
 
   // ── DuckDuckGo Web ────────────────────────────────────────
@@ -381,12 +400,11 @@ const RAW_CONFIGS: TokenExtractionConfig[] = [
   // ── Z.ai Web (#4056) ────────────────────────────────────────
   config(
     "zai-web",
-    "Z.ai Web (Free)",
+    "Z.ai Web",
     "https://chat.z.ai/",
     "https://chat.z.ai",
-    [{ type: "cookie", name: "token", domain: ".z.ai" }],
-    "Log in to Z.ai at chat.z.ai. The session token will be extracted.",
-    { cookieDomain: ".z.ai" }
+    [{ type: "localStorage", key: "token" }],
+    'Log in to Z.ai at chat.z.ai. OmniRoute extracts the Local Storage value named "token"; chat CAPTCHA is handled by the browser transport.'
   ),
 ];
 

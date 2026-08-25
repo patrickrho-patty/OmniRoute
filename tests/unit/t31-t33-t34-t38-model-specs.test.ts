@@ -21,7 +21,7 @@ test("T31: antigravity static catalog exposes client-visible Gemini preview IDs"
   // catalog) retired the `gemini-3-pro-preview` alias, so assert the current
   // client-visible top flash tier instead.
   const staticIds = (getStaticModelsForProvider("antigravity") || []).map((m) => m.id);
-  assert.ok(staticIds.includes("gemini-3.6-flash-high"));
+  assert.ok(staticIds.includes("gemini-3.7-flash-high"));
   assert.ok(!staticIds.includes("gemini-3-pro-preview"));
   // #3303 (agy parity, discussion #3184): the Gemini + Claude budget tiers ARE
   // client-visible on the Antigravity OAuth backend (Claude was never removed).
@@ -107,6 +107,8 @@ test("opencode-go family: context/output caps match upstream provider docs", () 
   assert.equal(getModelSpec("qwen3.8-max-preview").supportsThinking, true);
   assert.equal(getModelSpec("qwen3.8-max-preview").supportsTools, true);
   assert.equal(getModelSpec("qwen3.8-max-preview").supportsVision, true);
+  assert.equal(getModelSpec("qwen3.8-max").contextWindow, 1000000);
+  assert.equal(getModelSpec("qwen3.8-max").maxOutputTokens, 65536);
   assert.equal(getModelSpec("qwen3.7-max").contextWindow, 1000000);
   assert.equal(getModelSpec("qwen3-max-2026-01-23").contextWindow, 1000000);
   assert.equal(getModelSpec("qwen3.6-plus").contextWindow, 1000000);

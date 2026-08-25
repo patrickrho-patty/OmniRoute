@@ -25,6 +25,7 @@ function toStringOrNull(value: unknown): string | null {
 export interface ProviderConnectionView {
   id: string;
   provider: string;
+  authType: string | null;
   email: string | null;
   isActive: boolean;
   rateLimitedUntil: string | null;
@@ -65,6 +66,7 @@ export function toProviderConnection(value: unknown): ProviderConnectionView {
   return {
     id: toStringOrNull(row.id) || "",
     provider: toStringOrNull(row.provider) || "",
+    authType: toStringOrNull(row.authType),
     email: toStringOrNull(row.email),
     isActive: row.isActive === true,
     rateLimitedUntil: toStringOrNull(row.rateLimitedUntil),

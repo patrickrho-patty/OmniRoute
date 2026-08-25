@@ -87,10 +87,15 @@ describe("detectModelFamily (pure)", () => {
   });
 
   it("advertises exactly one auto/<family> catalog id per family", () => {
-    assert.deepEqual(
-      [...AUTO_FAMILY_IDS].sort(),
-      ["auto/gemini", "auto/gemma", "auto/glm", "auto/llama", "auto/mimo", "auto/minimax", "auto/zai"]
-    );
+    assert.deepEqual([...AUTO_FAMILY_IDS].sort(), [
+      "auto/gemini",
+      "auto/gemma",
+      "auto/glm",
+      "auto/llama",
+      "auto/mimo",
+      "auto/minimax",
+      "auto/zai",
+    ]);
   });
 });
 
@@ -133,7 +138,23 @@ describe("auto/<family> materialization (#6453)", () => {
     // "degrades gracefully" test below documents for opencode/minimax — a
     // no-auth backend that genuinely serves a family model IS a legitimate
     // member of the family pool, not just credentialed provider_connections rows.
-    assert.deepEqual(providerIds, ["auggie", "glm", "zai"]);
+    // `devin-cli-agentic` joined for the same documented reason as `auggie`:
+    // #8914 added the Devin ACP bridge whose catalog (registry/devin/catalog.ts)
+    // advertises the glm-5-2* line, so it genuinely serves the family.
+    // `zcode` joined for the same documented reason too — #10184 added the local
+    // ZCode app-server backend whose registry (registry/zcode) advertises the
+    // full GLM_SHARED_MODELS line-up, so it genuinely serves the family.
+    // `cloudflare-playground` joined on the same rule — its registry
+    // (open-sse/config/providers/registry/cloudflare-playground/index.ts) advertises
+    // zai-org/glm-5.2 and zai-org/glm-4.7-flash, so it genuinely serves the family.
+    assert.deepEqual(providerIds, [
+      "auggie",
+      "cloudflare-playground",
+      "devin-cli-agentic",
+      "glm",
+      "zai",
+      "zcode",
+    ]);
     // Every candidate must be a glm-family model (the Cartesian pool now surfaces
     // each backend's full glm line-up, not only the glm-5.2 default), and the
     // connected openai/gpt-4o-mini backend must be excluded — same family
@@ -200,7 +221,6 @@ describe("auto/<family> materialization (#6453)", () => {
       "every candidate in auto/minimax must actually be a minimax model"
     );
   });
-
 
   it("rejects auto/<unknownfamily> with the same clean error as any unknown combo", async () => {
     await assert.rejects(

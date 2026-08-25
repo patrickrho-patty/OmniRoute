@@ -35,15 +35,35 @@ export function isStaleEncryptionConnection(
 ): boolean {
   return connection?.credentialDecryptFailed === true;
 }
-
 export function buildStaleEncryptionKeyResponse(
-  connection: { credentialDecryptFailed?: unknown } | null | undefined
+  connection:
+    | {
+        credentialDecryptFailed?: unknown;
+        id?: unknown;
+        provider?: unknown;
+      }
+    | null
+    | undefined
 ): NextResponse | null {
   if (!isStaleEncryptionConnection(connection)) return null;
 
+  // #9927 — surface WHICH credential failed plus the recovery path so the
+  // dashboard points the operator at the account to re-authenticate instead of
+  // a generic "API key cannot be decrypted".
+  const provider = typeof connection.provider === "string" ? connection.provider : "";
+  const id = typeof connection.id === "string" ? connection.id : "";
+  const identity = [provider && `provider "${provider}"`, id && `connection ${id}`]
+    .filter(Boolean)
+    .join(", ");
+
+  const message =
+    `Stored credential${identity ? ` for ${identity}` : ""} cannot be decrypted ` +
+    `(STORAGE_ENCRYPTION_KEY changed or unset). Re-authenticate this account, or verify ` +
+    `STORAGE_ENCRYPTION_KEY matches the key used to store it.`;
+
   // buildErrorBody sanitizes the message (Rule #12); override the type so the
   // client can key off the specific stale-encryption cause.
-  const body = buildErrorBody(424, STALE_ENCRYPTION_MESSAGE);
+  const body = buildErrorBody(424, message);
   body.error.type = "storage_encryption_stale";
   return NextResponse.json(body, { status: 424 });
 }

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { isConnectionUnavailableToAuxiliaryActivity } from "@/lib/exclusiveLeaseIsolation";
 import { getProviderConnectionById, updateProviderConnection } from "@/lib/db/providers";
 import { validateProviderApiKey } from "@/lib/providers/validation";
 import { VNC_CONFIG, getVncProvider } from "./manifest";
@@ -90,16 +91,17 @@ export function getSession(connectionId: string, sessionId: string): VncSession 
 
 export function listSessions(connectionId?: string): VncSession[] {
   const sessions = [...SESSIONS.values()];
-  return connectionId ? sessions.filter((session) => session.connectionId === connectionId) : sessions;
+  return connectionId
+    ? sessions.filter((session) => session.connectionId === connectionId)
+    : sessions;
 }
 
 async function reconcileStaleContainers(): Promise<void> {
   if (!reconciliationPromise) {
     reconciliationPromise = (async () => {
-      const listed = await docker(
-        ["ps", "-aq", "--filter", `label=${LABEL}=true`],
-        { timeoutMs: 20_000 }
-      );
+      const listed = await docker(["ps", "-aq", "--filter", `label=${LABEL}=true`], {
+        timeoutMs: 20_000,
+      });
       if (listed.code !== 0) return;
       const ids = listed.out
         .split(/\s+/)
@@ -153,6 +155,9 @@ async function publishedPort(containerName: string, containerPort: number): Prom
 }
 
 export async function startSession(connectionId: string): Promise<VncSession> {
+  if (await isConnectionUnavailableToAuxiliaryActivity(connectionId))
+    throw new Error("Browser login is unavailable for managed lease connections");
+
   await reconcileStaleContainers();
 
   const connection = await getProviderConnectionById(connectionId);
@@ -254,6 +259,9 @@ export async function harvestSession(
   connectionId: string,
   sessionId: string
 ): Promise<HarvestSessionResult> {
+  if (await isConnectionUnavailableToAuxiliaryActivity(connectionId))
+    throw new Error("Browser login is unavailable for managed lease connections");
+
   const session = getSession(connectionId, sessionId);
   if (!session) throw new Error("Browser-login session not found");
   if (session.status !== "running") {

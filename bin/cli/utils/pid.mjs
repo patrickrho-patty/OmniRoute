@@ -2,7 +2,9 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "
 import { join } from "node:path";
 import { resolveDataDir } from "../data-dir.mjs";
 
-const SERVICES = ["server", "mitm", "tunnel/cloudflared", "tunnel/tailscale"];
+// #9455: "supervisor" must be tracked so killAllSubprocesses() can stop the
+// supervisor process, not just the child server it spawned (and respawns).
+const SERVICES = ["server", "supervisor", "mitm", "tunnel/cloudflared", "tunnel/tailscale"];
 
 function getServicePidPath(service) {
   return join(resolveDataDir(), service, ".pid");
@@ -100,7 +102,7 @@ export async function waitForServer(port, timeout = 60000) {
 // - "not-listening": nothing is accepting connections on the port at all.
 async function pollHealthOnce(port) {
   try {
-    const res = await fetch(`http://localhost:${port}/api/monitoring/health`, {
+    const res = await fetch(`http://127.0.0.1:${port}/api/monitoring/health`, {
       signal: AbortSignal.timeout(2000),
     });
     return res.ok ? "ready" : "fast-reject";

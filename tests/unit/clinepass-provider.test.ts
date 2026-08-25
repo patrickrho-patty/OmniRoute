@@ -1,9 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-const { APIKEY_PROVIDERS, OAUTH_PROVIDERS, supportsApiKeyOnFreeProvider } =
-  await import("../../src/shared/constants/providers.ts");
+const {
+  APIKEY_PROVIDERS,
+  OAUTH_PROVIDERS,
+  supportsApiKeyOnFreeProvider,
+  supportsDualAuthProvider,
+} = await import("../../src/shared/constants/providers.ts");
 const { isManagedProviderConnectionId } = await import("../../src/lib/providers/catalog.ts");
+const { connectionMatchesProviderCard } =
+  await import("../../src/app/(dashboard)/dashboard/providers/providerPageUtils.ts");
 const { PROVIDERS: oauthFlows } = await import("../../src/lib/oauth/providers/index.ts");
 const { REGISTRY: providerRegistry } = await import("../../open-sse/config/providerRegistry.ts");
 const { unwrapClinepassEnvelope } = await import("../../open-sse/utils/clinepassEnvelope.ts");
@@ -62,6 +68,7 @@ test("ClinePass fallback is the official subscription-only catalog", () => {
     "cline-pass/kimi-k2.7-code",
     "cline-pass/mimo-v2.5-pro",
     "cline-pass/mimo-v2.5",
+    "cline-pass/qwen3.8-max",
     "cline-pass/qwen3.7-max",
     "cline-pass/qwen3.7-plus",
   ]);
@@ -80,7 +87,7 @@ test("ClinePass fallback is the official subscription-only catalog", () => {
 test("Cline fallback owns recommended/free models and excludes the ClinePass namespace", () => {
   const ids = providerRegistry.cline.models.map((model: { id: string }) => model.id);
   assert.deepEqual(ids, [
-    "zai/glm-5.2",
+    "z-ai/glm-5.2",
     "x-ai/grok-4.5",
     "openai/gpt-5.6-sol",
     "moonshotai/kimi-k3",
@@ -309,6 +316,13 @@ test("ClinePass API-key connections pass the managed gate while staying OAuth-pr
     !supportsApiKeyOnFreeProvider("clinepass"),
     "clinepass must NOT be in FREE_APIKEY_PROVIDER_IDS — that would flip isOAuth false"
   );
+  assert.equal(supportsDualAuthProvider("clinepass"), true);
+  for (const authType of ["apikey", "api_key"]) {
+    assert.equal(
+      connectionMatchesProviderCard({ provider: "clinepass", authType }, "clinepass", "oauth"),
+      true
+    );
+  }
 });
 
 // ── Catalog ↔ registry alias consistency (routing prefix) ───────────────────

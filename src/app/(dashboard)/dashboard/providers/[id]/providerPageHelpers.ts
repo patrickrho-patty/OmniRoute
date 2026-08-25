@@ -85,7 +85,6 @@ export type CompatModelRow = {
   normalizeToolCallId?: boolean;
   preserveOpenAIDeveloperRole?: boolean;
   isHidden?: boolean;
-  isDeleted?: boolean;
   upstreamHeaders?: Record<string, string>;
   compatByProtocol?: CompatByProtocolMap;
   /** #2905: per-model upstream wire-format override. */ targetFormat?: string;
@@ -130,6 +129,7 @@ export function validationBadgeProps(result: string): {
 /** A single model's outcome from a `/api/models/test-all` response. */
 export interface TestAllModelOutcome {
   status: "ok" | "error";
+  isQuota?: boolean;
   shouldHide: boolean;
 }
 type TestAllEntryStatus = "ok" | "error" | "slow";
@@ -159,16 +159,23 @@ export function evaluateTestAllEntry(
         rateLimited?: boolean;
         isTimeout?: boolean;
         isTransient?: boolean;
+        isQuota?: boolean;
       }
     | null
     | undefined,
   autoHideFailed: boolean
 ): TestAllModelOutcome {
   const ok = entry?.status === "ok";
-  const transient = [entry?.rateLimited, entry?.isTimeout, entry?.isTransient].some(Boolean);
+  const transient = [entry?.rateLimited, entry?.isTimeout, entry?.isTransient, entry?.isQuota].some(
+    Boolean
+  );
   return {
     status: ok ? "ok" : "error",
-    // Hide only persistent failures. Transient (rate-limited, timeout) are
+    // #9511: quota errors (isQuota) are surfaced on the icon but kept visible
+    // so an evening Test All on a free-tier provider doesn't silently wipe the
+    // catalog for the next day.
+    ...(entry?.isQuota ? { isQuota: true } : {}),
+    // Hide only persistent failures. Transient (rate-limited, timeout, quota) are
     // surfaced on the icon but kept visible so a single throttled batch test
     // does not silently wipe the catalog.
     shouldHide: !ok && autoHideFailed && !transient,
@@ -223,6 +230,7 @@ export const CONFIGURABLE_BASE_URL_PROVIDERS = new Set([
   "databricks",
   "snowflake",
   "searxng-search",
+  "firecrawl",
   "petals",
   "comfyui",
   // #7447 — Moonshot/Kimi's international host (api.moonshot.ai) rejects
@@ -240,10 +248,11 @@ export const CONFIGURABLE_BASE_URL_PROVIDERS = new Set([
 export const DEFAULT_PROVIDER_BASE_URLS: Record<string, string> = {
   "azure-openai": "https://example-resource.openai.azure.com",
   "azure-ai": "https://example-resource.services.ai.azure.com/openai/v1",
-  "bailian-coding-plan": "https://coding-intl.dashscope.aliyuncs.com/apps/anthropic/v1",
+  "bailian-coding-plan": "https://token-plan.ap-southeast-1.maas.aliyuncs.com/apps/anthropic/v1",
   "xiaomi-mimo": "https://token-plan-sgp.xiaomimimo.com/v1",
   siliconflow: "https://api.siliconflow.com/v1",
   "searxng-search": "http://localhost:8888/search",
+  firecrawl: "https://api.firecrawl.dev",
   petals: "https://chat.petals.dev/api/v1/generate",
   comfyui: "http://localhost:8188",
   // #7447 — default stays the international host so existing/new
@@ -328,6 +337,8 @@ export function getProviderBaseUrlHint(
       return t ? t("snowflakeBaseUrlHint") : undefined;
     case "searxng-search":
       return t ? t("searxngBaseUrlHint") : undefined;
+    case "firecrawl":
+      return t ? t("firecrawlBaseUrlHint") : undefined;
     default:
       return undefined;
   }
@@ -343,6 +354,7 @@ export function getProviderBaseUrlPlaceholder(providerId?: string | null) {
     case "bailian-coding-plan":
     case "xiaomi-mimo":
     case "comfyui":
+    case "firecrawl":
       return getProviderBaseUrlDefault(providerId);
     case "siliconflow":
       return "https://api.siliconflow.cn/v1";
@@ -491,7 +503,7 @@ export function getDisplayModelAlias(modelId: string, alias?: string | null): st
 }
 
 function readActiveHiddenFlag(row: CompatModelRow | undefined): boolean | undefined {
-  if (!row || row.isDeleted === true) return undefined;
+  if (!row) return undefined;
   if (Object.prototype.hasOwnProperty.call(row, "isHidden")) {
     return Boolean(row.isHidden);
   }
@@ -616,6 +628,43 @@ export const CODEX_ACCOUNT_SERVICE_TIER_VALUES: CodexServiceTier[] = [
   "priority",
   "flex",
 ];
+
+export const CODEX_FINGERPRINT_MODE_VALUES = ["off", "device", "session", "full"] as const;
+export type CodexFingerprintModeValue = (typeof CODEX_FINGERPRINT_MODE_VALUES)[number];
+
+export function getCodexFingerprintMode(providerSpecificData: unknown): CodexFingerprintModeValue {
+  const data =
+    providerSpecificData &&
+    typeof providerSpecificData === "object" &&
+    !Array.isArray(providerSpecificData)
+      ? (providerSpecificData as Record<string, unknown>)
+      : undefined;
+  const raw = data?.codexFingerprintMode ?? data?.codex_fingerprint_mode;
+  const normalized = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return (CODEX_FINGERPRINT_MODE_VALUES as readonly string[]).includes(normalized)
+    ? (normalized as CodexFingerprintModeValue)
+    : "session";
+}
+
+export function getCodexFingerprintModeLabel(
+  t: ProviderMessageTranslator,
+  value: CodexFingerprintModeValue
+): string {
+  if (value === "off") {
+    return providerText(t, "codexFingerprintModeOff", "Off — pass client IDs through");
+  }
+  if (value === "device") {
+    return providerText(t, "codexFingerprintModeDevice", "Device — one installation ID");
+  }
+  if (value === "full") {
+    return providerText(t, "codexFingerprintModeFull", "Full — one device, session, and thread");
+  }
+  return providerText(
+    t,
+    "codexFingerprintModeSession",
+    "Session — one device and session, thread per client"
+  );
+}
 
 export const CODEX_GLOBAL_SERVICE_MODE_VALUES: CodexGlobalServiceMode[] = [
   "none",
@@ -816,7 +865,10 @@ export function shouldSwitchToVisibleFilter(opts: {
 // ---------------------------------------------------------------------------
 // Error-type label map — shared by ConnectionRow and EditConnectionModal
 // ---------------------------------------------------------------------------
-export const ERROR_TYPE_LABELS: Record<string, { labelKey: string; variant: string }> = {
+export const ERROR_TYPE_LABELS: Record<
+  string,
+  { labelKey: string; variant: "error" | "default" | "warning" | "success" | "info" | "primary" }
+> = {
   runtime_error: { labelKey: "errorTypeRuntime", variant: "warning" },
   upstream_auth_error: { labelKey: "errorTypeUpstreamAuth", variant: "error" },
   account_deactivated: { labelKey: "Account Deactivated", variant: "error" },

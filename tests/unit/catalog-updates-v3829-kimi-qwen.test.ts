@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { getModelsByProviderId } from "../../open-sse/config/providerModels.ts";
+import { getResolvedModelCapabilities } from "../../src/lib/modelCapabilities.ts";
 
 const providerPageUtils =
   await import("../../src/app/(dashboard)/dashboard/providers/providerPageUtils.ts");
@@ -60,6 +61,22 @@ test("Kimi exposes one Code card plus Web and Moonshot services", () => {
   assert.equal(providers.OAUTH_PROVIDERS["kimi-coding"].name, "Kimi Code CLI");
   assert.equal(providers.WEB_COOKIE_PROVIDERS["kimi-web"].name, "Kimi Web");
   assert.equal(providerCatalog.isManagedProviderConnectionId("kimi-coding"), false);
+});
+
+test("Kimi Web models do not advertise unsupported function tools", () => {
+  const models = getModelsByProviderId("kimi-web");
+  assert.deepEqual(
+    models.map(({ id, toolCalling }) => ({ id, toolCalling })),
+    [
+      { id: "k3", toolCalling: false },
+      { id: "k2d6", toolCalling: false },
+    ]
+  );
+  for (const model of models) {
+    const capabilities = getResolvedModelCapabilities({ provider: "kimi-web", model: model.id });
+    assert.equal(capabilities.toolCalling, false);
+    assert.equal(capabilities.supportsTools, false);
+  }
 });
 
 test("Kimi API-key connections fold into the Code provider card", () => {

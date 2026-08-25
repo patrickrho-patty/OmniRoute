@@ -7,9 +7,7 @@ const mod = await import("../../open-sse/executors/promptql.ts");
 const usage = await import("../../open-sse/services/usage/promptql.ts");
 const models = await import("../../open-sse/services/promptqlModels.ts");
 const { getModelsByProviderId } = await import("../../open-sse/config/providerModels.ts");
-const { WEB_COOKIE_PROVIDERS } = await import(
-  "../../src/shared/constants/providers/web-cookie.ts"
-);
+const { WEB_COOKIE_PROVIDERS } = await import("../../src/shared/constants/providers/web-cookie.ts");
 
 // Sample JWT payload (unsigned shape for claim extraction only)
 function makeFakeJwt(claims: Record<string, unknown>): string {
@@ -56,7 +54,7 @@ describe("PromptQl — registry consistency", () => {
   it("registers a model catalog via getModelsByProviderId", () => {
     const catalog = getModelsByProviderId("promptql");
     assert.ok(catalog.length >= 5);
-    assert.ok(catalog.some((m) => m.id === "gemini-3.5-flash" || m.id.includes("gemini")));
+    assert.ok(catalog.some((m) => m.id === "gemini-3.7-flash" || m.id.includes("gemini")));
     assert.ok(catalog.some((m) => m.id.includes("gpt-5.6") || m.id.includes("fable")));
   });
 });
@@ -131,10 +129,10 @@ describe("PromptQl — helpers", () => {
         );
       }
       if (!auth.includes(ddnLuxJwt)) {
-        return new Response(
-          JSON.stringify({ errors: [{ message: "unexpected token in test" }] }),
-          { status: 200, headers: { "content-type": "application/json" } }
-        );
+        return new Response(JSON.stringify({ errors: [{ message: "unexpected token in test" }] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
       }
       return new Response(
         JSON.stringify({
@@ -155,14 +153,23 @@ describe("PromptQl — helpers", () => {
       const result = (await usage.getPromptQlUsage(sampleJwt, {
         projectId: PROJECT_ID,
         luxJwt: ddnLuxJwt,
-      })) as { quotas?: { credits?: { used?: number; remaining?: number; total?: number } }; message?: string };
-      assert.ok(result.quotas?.credits, `expected credits quota from luxJwt, got ${JSON.stringify(result)}`);
+      })) as {
+        quotas?: { credits?: { used?: number; remaining?: number; total?: number } };
+        message?: string;
+      };
+      assert.ok(
+        result.quotas?.credits,
+        `expected credits quota from luxJwt, got ${JSON.stringify(result)}`
+      );
       assert.equal(result.quotas!.credits!.total, 50);
       assert.equal(result.quotas!.credits!.used, 22);
       assert.equal(result.quotas!.credits!.remaining, 28);
       // First attempt should use luxJwt (DDN preferred over enrich apiKey)
       assert.ok(calls.length >= 1);
-      assert.ok(calls[0]!.includes(ddnLuxJwt), `first call should use DDN luxJwt, got ${calls[0]?.slice(0, 80)}`);
+      assert.ok(
+        calls[0]!.includes(ddnLuxJwt),
+        `first call should use DDN luxJwt, got ${calls[0]?.slice(0, 80)}`
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -209,11 +216,14 @@ describe("PromptQl — helpers", () => {
   });
 
   it("resolves model slugs and prefixes", () => {
-    assert.equal(models.clientFacingPromptQlModelId("promptql/gemini-3.5-flash"), "gemini-3.5-flash");
+    assert.equal(
+      models.clientFacingPromptQlModelId("promptql/gemini-3.7-flash"),
+      "gemini-3.7-flash"
+    );
     assert.equal(models.clientFacingPromptQlModelId("pql/gpt-5.6-sol"), "gpt-5.6-sol");
     const r = models.resolvePromptQlModel("Claude Fable 5");
     assert.ok(r);
-    assert.equal(r!.id, "vertex-claude-fable-5");
+    assert.equal(r!.id, "bedrock-claude-fable-5");
   });
 
   it("converts credit micros to USD", () => {
@@ -238,9 +248,7 @@ describe("PromptQl — helpers", () => {
       "USAGE_FETCHER_PROVIDERS must list promptql so generic quota fetcher can call it"
     );
     assert.ok((usageMain.USAGE_FETCHER_PROVIDERS as readonly string[]).includes("pql"));
-    const { USAGE_SUPPORTED_PROVIDERS } = await import(
-      "../../src/shared/constants/providers.ts"
-    );
+    const { USAGE_SUPPORTED_PROVIDERS } = await import("../../src/shared/constants/providers.ts");
     assert.ok(
       (USAGE_SUPPORTED_PROVIDERS as readonly string[]).includes("promptql"),
       "USAGE_SUPPORTED_PROVIDERS must list promptql for provider-limits sync"
@@ -249,7 +257,10 @@ describe("PromptQl — helpers", () => {
 
   it("extracts OpenAI content-parts arrays", () => {
     assert.equal(
-      mod.extractMessageText([{ type: "text", text: "hi" }, { type: "text", text: " there" }]),
+      mod.extractMessageText([
+        { type: "text", text: "hi" },
+        { type: "text", text: " there" },
+      ]),
       "hi\n there"
     );
   });
@@ -265,7 +276,7 @@ describe("PromptQlExecutor — auth / validation", () => {
   it("returns 401 when no token is supplied", async () => {
     const executor = new mod.PromptQlExecutor();
     const result = await executor.execute({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       body: { messages: [{ role: "user", content: "hi" }] },
       stream: false,
       credentials: {},
@@ -279,7 +290,7 @@ describe("PromptQlExecutor — auth / validation", () => {
   it("returns 400 when no user message is present", async () => {
     const executor = new mod.PromptQlExecutor();
     const result = await executor.execute({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.7-flash",
       body: { messages: [{ role: "assistant", content: "hi" }] },
       stream: false,
       credentials: { apiKey: sampleJwt },
@@ -388,22 +399,10 @@ describe("PromptQl — thread continuity (no cross-chat sticky)", () => {
   });
 
   it("readClientThreadId accepts body and header variants", () => {
-    assert.equal(
-      mod.readClientThreadId({ promptql_thread_id: "t1" } as never),
-      "t1"
-    );
-    assert.equal(
-      mod.readClientThreadId({ thread_id: "t2" } as never),
-      "t2"
-    );
-    assert.equal(
-      mod.readClientThreadId({} as never, { "X-PromptQL-Thread-Id": "t3" }),
-      "t3"
-    );
-    assert.equal(
-      mod.readClientThreadId({} as never, { "x-conversation-id": "t4" }),
-      "t4"
-    );
+    assert.equal(mod.readClientThreadId({ promptql_thread_id: "t1" } as never), "t1");
+    assert.equal(mod.readClientThreadId({ thread_id: "t2" } as never), "t2");
+    assert.equal(mod.readClientThreadId({} as never, { "X-PromptQL-Thread-Id": "t3" }), "t3");
+    assert.equal(mod.readClientThreadId({} as never, { "x-conversation-id": "t4" }), "t4");
   });
 
   it("system messages do not collide independent user chats", () => {
@@ -525,10 +524,7 @@ describe("PromptQl — thread continuity (no cross-chat sticky)", () => {
 
   it("normalizeForFingerprint strips agent_mention and User request wrappers", () => {
     assert.equal(mod.normalizeForFingerprint("<agent_mention /> hello"), "hello");
-    assert.equal(
-      mod.normalizeForFingerprint("noise\n\nUser request:\nhello 2"),
-      "hello 2"
-    );
+    assert.equal(mod.normalizeForFingerprint("noise\n\nUser request:\nhello 2"), "hello 2");
   });
 });
 
@@ -614,7 +610,7 @@ describe("PromptQlExecutor — mocked GraphQL turn", () => {
     try {
       const executor = new mod.PromptQlExecutor();
       const result = await executor.execute({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.7-flash",
         body: { messages: [{ role: "user", content: "ping" }] },
         stream: false,
         credentials: { apiKey: sampleJwt },
@@ -628,7 +624,7 @@ describe("PromptQlExecutor — mocked GraphQL turn", () => {
       };
       assert.equal(json.choices[0]!.message.content, "HELLO-PQL");
       assert.equal(json.promptql_thread_id, "thread-1");
-      assert.equal(json.model, "gemini-3.5-flash");
+      assert.equal(json.model, "gemini-3.7-flash");
       assert.ok(call >= 2);
       assert.equal(result.response.headers.get("X-PromptQL-Thread-Id"), "thread-1");
     } finally {

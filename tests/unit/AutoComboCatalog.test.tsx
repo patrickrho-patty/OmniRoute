@@ -26,7 +26,11 @@ function makeContainer(): HTMLElement {
   return container;
 }
 
-describe("AutoComboCatalog", () => {
+// The component pulls a heavy dependency graph (Card + i18n), so the cold
+// module import in the first test takes ~20s of transform overhead. Sibling
+// tests (agent-card.test.tsx) use a 30s timeout for the same reason; the
+// import must settle before any render assertions can run.
+describe("AutoComboCatalog", { timeout: 60_000 }, () => {
   beforeEach(() => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
