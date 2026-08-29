@@ -1,64 +1,67 @@
 ---
 title: "Progressive Web App (PWA) Guide"
-version: 3.8.40
-lastUpdated: 2026-06-28
+version: 3.8.51
+lastUpdated: 2026-08-29
 ---
 
 # Progressive Web App (PWA) Guide
 
-OmniRoute ships as a fully installable Progressive Web App. When you access the dashboard from any mobile browser — Android (Chrome) or iOS (Safari) — you can "Add to Home Screen" and get a native app-like experience with no app store required.
+Patty ships as a fully installable Progressive Web App for the OmniRoute dashboard. When you access the dashboard from a supported mobile browser — Android (Chrome) or iOS (Safari) — you can "Add to Home Screen" and get a native app-like experience with no app store required.
 
 ## What Is a PWA?
 
-A Progressive Web App turns the OmniRoute web dashboard into something that looks and feels like a native mobile app. Once installed, it:
+A Progressive Web App turns the dashboard into something that looks and feels like a native mobile app. Once Patty is installed, it:
 
 - Launches from your home screen with its own icon
-- Opens fullscreen — no browser address bar or tab UI
+- Opens in a standalone window — no browser address bar or tab UI
 - Works offline with a dedicated connectivity page
 - Caches static assets for faster loading
 - Supports both portrait and landscape orientations
 
 ## Installation
 
+Service workers require a secure browser context. Use HTTPS for any non-loopback host;
+plain HTTP is supported only for local development on `localhost` or `127.0.0.1`.
+
 ### Android (Chrome)
 
-1. Open the OmniRoute dashboard in Chrome: `http://YOUR_IP:20128`
-2. Chrome will show an **"Add OmniRoute to Home screen"** banner automatically, or:
+1. Open the Patty dashboard in Chrome: `https://YOUR_HOST`
+2. Chrome may show an **"Add Patty to Home screen"** banner automatically, or:
    - Tap the **⋮** menu (three dots) → **"Add to Home screen"** or **"Install app"**
 3. Confirm the prompt
-4. OmniRoute appears on your home screen as a standalone app
+4. Patty appears on your home screen as a standalone app
 
 ### iOS (Safari)
 
-1. Open the OmniRoute dashboard in Safari: `http://YOUR_IP:20128`
+1. Open the Patty dashboard in Safari: `https://YOUR_HOST`
 2. Tap the **Share** button (box with arrow)
 3. Scroll down and tap **"Add to Home Screen"**
-4. Name it (defaults to "OmniRoute") and tap **Add**
-5. OmniRoute appears on your home screen with the app icon
+4. Name it (defaults to "Patty") and tap **Add**
+5. Patty appears on your home screen with the app icon
 
 ### Desktop (Chrome / Edge)
 
-1. Open the OmniRoute dashboard
-2. Click the **install icon** in the address bar (or ⋮ → "Install OmniRoute...")
+1. Open the Patty dashboard
+2. Click the **install icon** in the address bar (or ⋮ → "Install Patty...")
 3. Confirm the prompt
-4. OmniRoute opens as a standalone window — no tabs, no address bar
+4. Patty opens as a standalone window — no tabs, no address bar
 
 ## Features
 
-### Fullscreen Experience
+### Standalone Experience
 
-The manifest is configured with `display: "fullscreen"`, which means the installed app uses the entire screen — no browser chrome, no status bar overlap. This makes the dashboard feel truly native.
+The manifest is configured with `display: "standalone"`, so the installed app has its own window without normal browser tabs or an address bar. The operating system can still display its status and navigation areas.
 
 ### Offline Support
 
-OmniRoute includes a service worker (`sw.js`) that provides intelligent caching:
+Patty includes a service worker (`sw.js`) that provides intelligent caching:
 
 | Asset Type                                              | Strategy                           | Behavior                                                                     |
 | ------------------------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------- |
 | **App Shell**                                           | Cache-first                        | `/`, `/offline`, manifest, and icons are pre-cached on install               |
-| **Static assets** (CSS, JS, images, fonts)              | Network-first with cache fallback  | Fetches fresh from the network; falls back to cache if offline               |
+| **Static assets** (CSS, JS, images, fonts)              | Cache-first                        | Serves a cached response when present; otherwise fetches and caches it       |
 | **Next.js bundles** (`/_next/`)                         | Network-first with cache update    | Fetches from network and updates cache; serves cached version if offline     |
-| **Navigation requests**                                 | Network-only with offline fallback | Always fetches from network; shows `/offline` page if network is unavailable |
+| **Navigation requests**                                 | Network-first with cached fallback | Fetches from network; falls back to the requested page, `/`, then `/offline` |
 | **API routes** (`/api/`, `/a2a`, `/dashboard/endpoint`) | Bypass (never cached)              | Always goes directly to the server — never intercepted by the service worker |
 
 ### Offline Page
@@ -72,16 +75,13 @@ When the network is unavailable and a user navigates to a new page, the service 
 
 ### App Icons
 
-OmniRoute provides icons optimized for each platform:
+Patty provides icons optimized for each platform:
 
-| File                   | Size             | Used By                               |
-| ---------------------- | ---------------- | ------------------------------------- |
-| `icon-512.png`         | 512×512          | Android install prompt, splash screen |
-| `apple-touch-icon.png` | 180×180          | iOS home screen icon                  |
-| `icon-192.svg`         | 192×192 (vector) | Android adaptive icon                 |
-| `apple-touch-icon.svg` | 180×180 (vector) | Apple fallback                        |
-| `favicon.svg`          | Vector           | Browser tabs                          |
-| `favicon.ico`          | Multi-size       | Legacy browsers                       |
+| File           | Size       | Used By                                             |
+| -------------- | ---------- | --------------------------------------------------- |
+| `icon-192.png` | 192×192    | Chromium PWA install promotion and compact displays |
+| `icon-512.png` | 512×512    | Android and iOS home screens and splash screens     |
+| `favicon.ico`  | Multi-size | Browser tabs and legacy browser favicon support     |
 
 ### Automatic Registration
 
@@ -95,18 +95,18 @@ Generated by Next.js via `src/app/manifest.ts`:
 
 ```json
 {
-  "name": "OmniRoute",
-  "short_name": "OmniRoute",
-  "description": "OmniRoute is an AI gateway for multi-provider LLMs. One endpoint for all your AI providers.",
-  "start_url": "/",
+  "name": "Patty",
+  "short_name": "Patty",
+  "description": "Patty — where AI becomes everyone's superpower.",
+  "start_url": "/dashboard",
   "scope": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "orientation": "any",
-  "background_color": "#0b0f1a",
-  "theme_color": "#0b0f1a",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
   "icons": [
-    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
   ]
 }
 ```
@@ -118,7 +118,7 @@ A vanilla service worker (no framework dependencies) with:
 - **Install phase**: Pre-caches the app shell (root, offline page, manifest, icons)
 - **Activate phase**: Cleans up old cache versions and claims all clients
 - **Fetch phase**: Intelligent routing based on request type (navigation, static asset, API)
-- **Cache versioning**: `omniroute-pwa-v2` — bump this to force a fresh cache on update
+- **Cache versioning**: `omniroute-pwa-v3` — bump this to force a fresh cache on update
 
 ### Layout Metadata (`src/app/layout.tsx`)
 
@@ -146,32 +146,33 @@ When running OmniRoute on Android via Termux, the PWA works seamlessly:
 
 1. Start OmniRoute in Termux: `npx omniroute`
 2. Open Chrome on the same phone: `http://localhost:20128`
-3. Install the PWA via "Add to Home Screen"
-4. The PWA connects to the local Termux server — everything runs on-device
+3. Install Patty via "Add to Home Screen"
+4. Patty connects to the local Termux server — everything runs on-device
 
 This combination means your Android phone is both the **server** (Termux) and the **client** (PWA) — a complete self-contained AI gateway.
 
 ## Use From Other Devices
 
-Install the PWA on any device that has browser access to your OmniRoute server:
+Install Patty on any device that has secure browser access to your OmniRoute server:
 
-- **Another phone/tablet**: Navigate to `http://PHONE_IP:20128` and install the PWA
+- **Another phone/tablet**: Navigate to the server's HTTPS URL and install the PWA
 - **Laptop**: Open Chrome/Edge and install it as a desktop PWA
-- **Smart TV with browser**: Access the dashboard fullscreen
+- **Smart TV with browser**: Access the dashboard in its standalone window where supported
 
 ## Customization
 
 ### Instance Name
 
-The PWA title respects the **Instance Name** setting from `Dashboard → Settings`. If you rename your instance to "My AI Gateway", the installed PWA will show that name.
+The browser title and application metadata respect the **Instance Name** setting from `Dashboard → Settings`. The install manifest name remains **Patty**.
 
 ### Custom Favicon
 
-If you upload a custom favicon via `Dashboard → Settings`, the PWA icon on desktop will reflect the custom icon. Mobile home screen icons use the pre-built `icon-512.png` and `apple-touch-icon.png` files.
+If you upload a custom favicon via `Dashboard → Settings`, browser tabs use the custom icon.
+Installed PWA icons use the pre-built `icon-192.png` and `icon-512.png` files.
 
 ## Limitations
 
-- **No push notifications** — The service worker does not implement the Push API. Notifications are handled by the Electron app instead.
+- **Platform-dependent push notifications** — The service worker handles push events, but delivery and background behavior depend on browser support, operating-system policy, and notification permission.
 - **No background sync** — Offline actions are not queued for replay. The PWA is primarily a dashboard viewer.
 - **iOS restrictions** — Safari on iOS does not support all PWA features (e.g., install prompts are manual, and background service workers are limited).
 - **Cache size** — The service worker caches static assets only. Large response payloads from `/api/` routes are never cached.
@@ -186,7 +187,6 @@ If you upload a custom favicon via `Dashboard → Settings`, the PWA icon on des
 | `src/shared/components/PwaRegister.tsx` | Client component that registers the service worker               |
 | `src/app/offline/page.tsx`              | Offline fallback page with live status indicator                 |
 | `src/app/layout.tsx`                    | Root layout with PWA metadata (apple-web-app, theme-color, etc.) |
-| `public/icon-512.png`                   | 512×512 PNG icon (Android, splash screen)                        |
-| `public/apple-touch-icon.png`           | 180×180 PNG icon (iOS home screen)                               |
-| `public/icon-192.svg`                   | 192×192 SVG icon (Android adaptive)                              |
-| `public/apple-touch-icon.svg`           | 180×180 SVG icon (Apple fallback)                                |
+| `public/icon-192.png`                   | 192×192 PNG icon (Chromium install promotion)                    |
+| `public/icon-512.png`                   | 512×512 PNG icon (Android, iOS, splash screen)                   |
+| `public/favicon.ico`                    | Multi-size browser favicon                                       |

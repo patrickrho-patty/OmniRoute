@@ -45,10 +45,9 @@ export async function generateMetadata() {
         ? "/api/settings/favicon"
         : [
             { url: "/favicon.ico", sizes: "any" },
-            { url: "/favicon.svg", type: "image/svg+xml" },
             { url: "/icon-512.png", type: "image/png", sizes: "512x512" },
           ],
-      apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+      apple: [{ url: "/icon-512.png", sizes: "512x512", type: "image/png" }],
     },
   };
 }

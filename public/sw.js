@@ -1,11 +1,5 @@
-const CACHE_NAME = "omniroute-pwa-v2";
-const APP_SHELL = [
-  "/",
-  "/offline",
-  "/manifest.webmanifest",
-  "/icon-512.png",
-  "/apple-touch-icon.png",
-];
+const CACHE_NAME = "omniroute-pwa-v3";
+const APP_SHELL = ["/", "/offline", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 const EXCLUDED_PATH_PREFIXES = ["/api/", "/a2a", "/dashboard/endpoint"];
 
 self.addEventListener("install", (event) => {
@@ -116,7 +110,9 @@ self.addEventListener("fetch", (event) => {
 });
 
 async function navigationFallback(request) {
-  return (await caches.match(request)) || (await caches.match("/")) || (await caches.match("/offline"));
+  return (
+    (await caches.match(request)) || (await caches.match("/")) || (await caches.match("/offline"))
+  );
 }
 
 // ── Push Notifications ───────────────────────────────────────────────────────
@@ -126,14 +122,14 @@ self.addEventListener("push", (event) => {
   try {
     data = event.data ? event.data.json() : {};
   } catch {
-    data = { title: "OmniRoute", body: event.data?.text() || "New notification" };
+    data = { title: "Patty", body: event.data?.text() || "New notification" };
   }
 
-  const title = data.title || "OmniRoute";
+  const title = data.title || "Patty";
   const options = {
     body: data.body || "",
     icon: data.icon || "/icon-512.png",
-    badge: data.badge || "/icon-192.png",
+    ...(data.badge ? { badge: data.badge } : {}),
     tag: data.tag || "omniroute-default",
     data: {
       url: data.url || "/dashboard",

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSettings } from "@/lib/db/settings";
 import { SAFE_OUTBOUND_FETCH_PRESETS, safeOutboundFetch } from "@/shared/network/safeOutboundFetch";
+import { withBasePath } from "@/shared/utils/basePath";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +35,11 @@ function validateImageData(base64Data: string, contentType: string): boolean {
   return true;
 }
 
-export async function GET() {
+export function defaultFaviconRedirect(request: Request): NextResponse {
+  return NextResponse.redirect(new URL(withBasePath("/favicon.ico"), request.url));
+}
+
+export async function GET(request: Request) {
   try {
     const settings = await getSettings();
 
@@ -83,12 +88,12 @@ export async function GET() {
     }
 
     if (!faviconData) {
-      return NextResponse.redirect("/favicon.svg");
+      return defaultFaviconRedirect(request);
     }
 
     const match = faviconData.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) {
-      return NextResponse.redirect("/favicon.svg");
+      return defaultFaviconRedirect(request);
     }
 
     const contentType = match[1];
@@ -103,6 +108,6 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Favicon API error:", error);
-    return NextResponse.redirect("/favicon.svg");
+    return defaultFaviconRedirect(request);
   }
 }
