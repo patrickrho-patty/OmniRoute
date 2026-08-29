@@ -17,13 +17,13 @@ export default function manifest(): MetadataRoute.Manifest {
     prefer_related_applications: false,
     icons: [
       {
-        src: "/icon-192.png",
+        src: "/icon-192.png?v=patty-p-dot-20260830",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icon-512.png",
+        src: "/icon-512.png?v=patty-p-dot-20260830",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",

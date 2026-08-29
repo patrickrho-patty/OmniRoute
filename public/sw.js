@@ -1,5 +1,11 @@
-const CACHE_NAME = "omniroute-pwa-v3";
-const APP_SHELL = ["/", "/offline", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
+const CACHE_NAME = "omniroute-pwa-v4";
+const APP_SHELL = [
+  "/",
+  "/offline",
+  "/manifest.webmanifest",
+  "/icon-192.png?v=patty-p-dot-20260830",
+  "/icon-512.png?v=patty-p-dot-20260830",
+];
 const EXCLUDED_PATH_PREFIXES = ["/api/", "/a2a", "/dashboard/endpoint"];
 
 self.addEventListener("install", (event) => {
@@ -128,7 +134,7 @@ self.addEventListener("push", (event) => {
   const title = data.title || "Patty";
   const options = {
     body: data.body || "",
-    icon: data.icon || "/icon-512.png",
+    icon: data.icon || "/icon-512.png?v=patty-p-dot-20260830",
     ...(data.badge ? { badge: data.badge } : {}),
     tag: data.tag || "omniroute-default",
     data: {
