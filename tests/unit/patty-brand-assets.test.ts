@@ -46,13 +46,13 @@ test("web and PWA consumers use only the canonical Patty icons", () => {
   const manifestIcons = manifest().icons ?? [];
   assert.deepEqual(manifestIcons, [
     {
-      src: "/icon-192.png",
+      src: "/icon-192.png?v=patty-p-dot-20260830",
       sizes: "192x192",
       type: "image/png",
       purpose: "any",
     },
     {
-      src: "/icon-512.png",
+      src: "/icon-512.png?v=patty-p-dot-20260830",
       sizes: "512x512",
       type: "image/png",
       purpose: "any",
@@ -70,12 +70,12 @@ test("web and PWA consumers use only the canonical Patty icons", () => {
     assert.doesNotMatch(source, /\/(?:apple-touch-icon(?:\.png|\.svg)|favicon\.svg|icon-192\.svg)/);
   }
 
-  assert.match(consumers[0], /url: "\/favicon\.ico"/);
-  assert.match(consumers[0], /apple: \[\{ url: "\/icon-512\.png"/);
+  assert.match(consumers[0], /url: "\/favicon\.ico\?v=patty-p-dot-20260830"/);
+  assert.match(consumers[0], /apple:\s*\[\s*\{\s*url: "\/icon-512\.png\?v=patty-p-dot-20260830"/);
   assert.match(consumers[1], /defaultFaviconRedirect\(request\)/);
-  assert.match(consumers[2], /const CACHE_NAME = "omniroute-pwa-v3"/);
-  assert.match(consumers[2], /"\/icon-192\.png"/);
-  assert.match(consumers[2], /"\/icon-512\.png"/);
+  assert.match(consumers[2], /const CACHE_NAME = "omniroute-pwa-v4"/);
+  assert.match(consumers[2], /"\/icon-192\.png\?v=patty-p-dot-20260830"/);
+  assert.match(consumers[2], /"\/icon-512\.png\?v=patty-p-dot-20260830"/);
   assert.match(consumers[2], /\.\.\.\(data\.badge \? \{ badge: data\.badge \} : \{\}\)/);
   assert.doesNotMatch(consumers[2], /badge: data\.badge \|\|/);
   assert.doesNotMatch(consumers[2], /badge:\s*["']\/icon-/);
