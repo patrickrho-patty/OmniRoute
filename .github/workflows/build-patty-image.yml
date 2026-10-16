@@ -12,9 +12,15 @@ name: Build & Publish Fork Image to GHCR
 # Dockerfile comfortably, and minutes are free for this public repo. See the
 # 2026-08-05 deploy investigation for the kernel-log proof.
 #
-# Target: runner-cli (the superset — Chromium/Playwright + bundled CLIs),
-# matching docker-compose.prod.yml. Arch: linux/amd64 only (the VPS is amd64;
-# arm64 would double CI time for an image the host can't run).
+# Target: runner-web — the flavor that actually ships a browser. `runner-cli`
+# copies the Playwright libraries but installs no browser binary, so every provider
+# that calls `chromium.launch` (cloudflare-playground, gemini-web, zai-web,
+# deepseek-web, perplexity-web, muse-spark-web, the chatgpt-web-codex fallback)
+# failed with `browserType.launch: Executable doesn't exist` — and this comment
+# used to claim the CLI flavor was "the superset — Chromium/Playwright", which is
+# what made that confusing. docker-compose.prod.yml documents the same split:
+# runner-web is the flavor "required for web-cookie providers". Arch: linux/amd64
+# only (the VPS is amd64; arm64 would double CI time for an image the host can't run).
 
 on:
   push:
@@ -96,7 +102,8 @@ jobs:
       # tax on top of next build's ~10 GB peak: 2× V8 procs + Turbopack native).
       # Build on the host instead (full 16 GB, no buildkit), then substitute the
       # builder STAGE with the prebuilt tree via a named build context — the
-      # Dockerfile itself is untouched, runner-cli still assembles the image.
+      # Dockerfile itself is untouched, and the selected runtime stage still
+      # assembles the image.
       - name: Set up Node 26 (matches the image's node:26-trixie base)
         uses: actions/setup-node@v6
         with:
@@ -153,7 +160,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          target: runner-cli
+          target: runner-web
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
