@@ -1,3 +1,5 @@
+import { resolveSelfLoopBearer } from "@/shared/middleware/chatAdmissionIdentity";
+import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import { sanitizeErrorMessage } from "../utils/error.ts";
 
 export type PattyHarness = "claude" | "codex";
@@ -569,6 +571,27 @@ function assertPattyHarness(request: Request, harness: PattyHarness): void {
   }
 }
 
+/**
+ * True when the request is this process's own in-process self-loop.
+ *
+ * Our diagnostics (the dashboard's per-model health test) post to /v1/responses
+ * through the internal route with the self-loop bearer and no harness header. That
+ * endpoint is a billing endpoint, so the harness assertion rejected the probe with
+ * "Patty harness does not match this endpoint" — a false verdict on a healthy model,
+ * thrown before `handleChat` logs the request, so the failure left no call-log entry.
+ *
+ * Only the process secret proves this: `resolveSelfLoopBearer()` is either the
+ * operator's configured key or the per-process generated secret, never handed to a
+ * client. The comparison is constant-time, and `x-internal-test` is deliberately NOT
+ * sufficient on its own — a remote caller can set any header, and honouring it would
+ * turn this bypass into a way to skip provider billing.
+ */
+function isInternalSelfLoopRequest(request: Request): boolean {
+  const match = /^bearer\s+(\S+)$/i.exec((request.headers.get("authorization") || "").trim());
+  if (!match) return false;
+  return timingSafeCompare(match[1].trim().toLowerCase(), resolveSelfLoopBearer().toLowerCase());
+}
+
 function publicModelFromBody(body: Record<string, unknown>): string {
   const publicModel = typeof body.model === "string" ? body.model.trim() : "";
   if (!publicModel) {
@@ -621,6 +644,9 @@ export async function preparePattyRequest<T extends Record<string, unknown>>(
 ): Promise<{ body: T; decision: PattyDecision | null }> {
   const endpoint = new URL(request.url).pathname.replace(/\/$/, "");
   if (!isPattyBillingEndpoint(endpoint)) return { body, decision: null };
+
+  // Our own health probes are not harness turns and must not be billed as one.
+  if (isInternalSelfLoopRequest(request)) return { body, decision: null };
 
   if (!shouldPrepareWithPatty(deps)) return { body, decision: null };
 
