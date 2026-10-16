@@ -1,7 +1,9 @@
 name: Build & Publish Fork Image to GHCR
 
 # Builds the OmniRoute Docker image on GitHub-hosted runners and pushes it to
-# THIS fork's own GHCR namespace (ghcr.io/patty-internal/omniroute). The
+# THIS fork's own GHCR namespace (ghcr.io/<fork-owner>/omniroute, derived from
+# github.repository_owner so a repo transfer cannot point it at a stale
+# namespace). The
 # Contabo VPS then `docker pull`s the image instead of building it locally.
 #
 # Why: the local `next build` / Turbopack phase reaches ~14 GiB RSS and was
@@ -33,16 +35,23 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  IMAGE_NAME: ghcr.io/patty-internal/omniroute
+  # Derived from the repo owner on purpose. The fork has been transferred twice
+  # (patrickrho-patty → patty-internal 2026-08, then back to patrickrho-patty
+  # 2026-10); each transfer silently redirected this literal to a namespace the
+  # repo's GITHUB_TOKEN could no longer push to.
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/omniroute
 
 jobs:
   build:
     name: Build and push (amd64)
     # Only ever run on the fork — never on upstream diegosouzapw/OmniRoute.
-    # NOTE: this must match the repo's CANONICAL name. The repo was transferred
-    # to the patty-internal org (2026-08); the old patrickrho-patty slug stopped
-    # matching github.repository and every build since was silently skipped.
-    if: github.repository == 'patty-internal/OmniRoute'
+    # Deliberately a NEGATIVE test against upstream, not an equality check on
+    # this fork's slug. An equality check broke silently on both transfers
+    # (patrickrho-patty → patty-internal 2026-08; back 2026-10): github.repository
+    # stopped matching and every build was skipped with no failure to notice.
+    # Upstream has no copy of this file, so "not upstream" is the whole rule and
+    # no future transfer can break it.
+    if: github.repository != 'diegosouzapw/OmniRoute'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -79,7 +88,7 @@ jobs:
           labels: |
             org.opencontainers.image.title=omniroute
             org.opencontainers.image.description=OmniRoute fork image — CI-built, pulled by the Contabo VPS (no local build)
-            org.opencontainers.image.source=https://github.com/patty-internal/OmniRoute
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.licenses=MIT
 
       # ── Host-side Next build (2026-09-24 restructure) ─────────────────────────

@@ -5,7 +5,7 @@
 # Deployment model (rewritten 2026-09-28 after the "phantom deploy" incident):
 #   1. A push to `patty` triggers .github/workflows/build-patty-image.yml, which
 #      builds on GitHub runners and publishes
-#      ghcr.io/patty-internal/omniroute:{latest,sha-<short7>,<branch>} to GHCR.
+#      ghcr.io/patrickrho-patty/omniroute:{latest,sha-<short7>,<branch>} to GHCR.
 #   2. This script refuses to deploy unless the CI run for the target commit
 #      concluded successfully, pulls the commit's `sha-<short7>` tag and the
 #      registry `:latest` on the box, and verifies both resolve to the SAME
@@ -38,7 +38,7 @@
 #                                                # verification against the sha tag still applies)
 #
 # Rollback (manual, on the box):
-#   docker tag ghcr.io/patty-internal/omniroute:sha-<old7> ghcr.io/patty-internal/omniroute:latest
+#   docker tag ghcr.io/patrickrho-patty/omniroute:sha-<old7> ghcr.io/patrickrho-patty/omniroute:latest
 #   cd /opt/omniroute && docker compose up -d --pull never omniroute
 #
 set -euo pipefail
@@ -50,8 +50,8 @@ BOX_IP="109.123.231.227"
 BOX_DIR="/opt/omniroute"
 BOX_CONTAINER="omniroute-p5"
 BOX_SERVICE="omniroute"
-IMAGE="ghcr.io/patty-internal/omniroute"
-FORK_REPO="patty-internal/OmniRoute"
+IMAGE="ghcr.io/patrickrho-patty/omniroute"
+FORK_REPO="patrickrho-patty/OmniRoute"
 WORKFLOW="build-patty-image.yml"
 EDGE_HEALTH_URL="https://omni.patty.io/api/monitoring/health"
 

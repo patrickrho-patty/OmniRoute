@@ -34,7 +34,12 @@ set -euo pipefail
 
 DEPLOY_BRANCH="${OMNIROUTE_DEPLOY_BRANCH:-patty}"
 WORKFLOW="${OMNIROUTE_DEPLOY_WORKFLOW:-build-patty-image.yml}"
-GHCR_IMAGE="${OMNIROUTE_DEPLOY_IMAGE:-ghcr.io/patty-internal/omniroute:latest}"
+# Image namespace follows the repo's CURRENT owner. A hardcoded owner is how the
+# 2026-10 transfer (patty-internal → patrickrho-patty) left the VPS pulling a
+# stale :latest out of the old namespace and reporting a healthy container.
+ORIGIN_URL="$(git config --get remote.origin.url 2>/dev/null || true)"
+ORIGIN_OWNER="$(printf '%s' "$ORIGIN_URL" | sed -E 's#.*[:/]([^/]+)/[^/]+$#\1#')"
+GHCR_IMAGE="${OMNIROUTE_DEPLOY_IMAGE:-ghcr.io/${ORIGIN_OWNER:-patrickrho-patty}/omniroute:latest}"
 VPS_HOST="${OMNIROUTE_DEPLOY_HOST:-root@109.123.231.227}"
 VPS_KEY="${OMNIROUTE_DEPLOY_KEY:-$HOME/.ssh/t1_fetcher_ed25519}"
 VPS_COMPOSE_DIR="${OMNIROUTE_DEPLOY_COMPOSE_DIR:-/opt/omniroute}"
