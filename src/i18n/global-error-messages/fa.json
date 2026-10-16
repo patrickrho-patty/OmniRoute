@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "یک خطای غیرمنتظره رخ داده است. این موضوع ثبت شده و تیم ما بررسی خواهد کرد.",
+      "detailsAriaLabel": "جزئیات خطا",
+      "retryAriaLabel": "بار دیگر تلاش کنید تا صفحه را بارگذاری کنید",
+      "statusAriaLabel": "وضعیت سیستم را باز کنید",
+      "systemStatus": "وضعیت سیستم",
+      "title": "چیزی اشتباه پیش رفت",
+      "tryAgain": "دوباره تلاش کنید"
+    }
+  }
+}

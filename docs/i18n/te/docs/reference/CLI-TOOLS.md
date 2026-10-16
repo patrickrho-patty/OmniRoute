@@ -43,31 +43,27 @@ ACP ఏజెంట్లు (విరుద్ధ ఉత్పత్తి ప
 
 ---
 
-## `setup-*` తో ఆటో-కన్ఫిగర్ చేయండి
+## `setup-*`తో ఆటో-కాన్ఫిగర్ చేయండి
 
-మీరు ప్రతి సాధన యొక్క కాన్ఫిగరేషన్‌ను చేతితో రాయాల్సిన అవసరం లేదు. OmniRoute ఒక `setup-*`
-ఆదేశాన్ని అందిస్తుంది, ఇది నడుస్తున్న OmniRoute (స్థానిక లేదా దూర) నుండి **ప్రస్తుతం** మోడల్ కాటలాగ్‌ను చదువుతుంది
-మరియు మీ యంత్రంలో సాధన యొక్క స్వంత కాన్ఫిగరేషన్‌ను రాస్తుంది:
+మీరు ప్రతి టూల్ యొక్క కాన్ఫిగరేషన్ను చేతితో వ్రాయవలసిన అవసరం లేదు. OmniRoute మద్దతు ఉన్న ప్రతి CLI కోసం `setup-*` కమాండ్ను అందిస్తుంది, ఇది నడుస్తున్న OmniRoute (స్థానిక లేదా రిమోట్) నుండి **లైవ్** మోడల్ కేటలాగ్ను చదివి, మీ మెషీన్లో టూల్ యొక్క స్వంత కాన్ఫిగరేషన్ను వ్రాస్తుంది:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
 omniroute setup-cline        omniroute setup-kilo         omniroute setup-continue
 omniroute setup-cursor       omniroute setup-roo          omniroute setup-crush
 omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
+omniroute setup-5dive
 ```
 
-ప్రతి `--remote <url> --api-key <key>` (దూర OmniRoute కు వ్యతిరేకంగా స్థానిక సాధనాన్ని కాన్ఫిగర్ చేయండి), `--dry-run` (రాయకుండా ప్రివ్యూ), మరియు `--port` ను స్వీకరిస్తుంది. మోడల్ ఆటో-డిస్కవరీ లేని సాధనాలు (Cline, Kilo, Roo, Goose, Aider, Qwen) `--model <id>` (మరియు `--yes` కోసం ఇంటరాక్టివ్ రన్లకు) తీసుకుంటాయి. సరైన వాతావరణం చొప్పించబడిన CLI ను ప్రారంభించడానికి మరియు ఏ కాన్ఫిగరేషన్ రాయకుండా, సాధారణ `omniroute run <target>` లాంచర్‌ను ఉపయోగించండి (claude, codex, aider, goose, opencode, qwen, gemini — లక్ష్యాలు మరియు అలియాస్లు `bin/cli/cli-manifest.mjs` నుండి వస్తాయి); పాత ప్రతి సాధనానికి ప్రత్యేక లాంచర్లు `omniroute launch` (Claude Code) మరియు `omniroute launch-codex` (Codex) అందుబాటులో ఉన్నాయి. Gemini CLI కేవలం ప్రారంభించడానికి మాత్రమే: ఇది `omniroute run` లక్ష్యం కానీ `setup-*`/`configure` రెసిపీ లేదు.
+ప్రతి కమాండ్ `--remote <url> --api-key <key>` (రిమోట్ OmniRouteకి వ్యతిరేకంగా స్థానిక టూల్ను కాన్ఫిగర్ చేయడానికి), `--dry-run` (వ్రాయకుండా ప్రివ్యూ చేయడానికి), మరియు `--port`లను అంగీకరిస్తుంది. మోడల్ ఆటో-డిస్కవరీ లేని టూల్స్ (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) `--model <id>` (మరియు నాన్-ఇంటరాక్టివ్ రన్ల కోసం `--yes`) తీసుకుంటాయి. `setup-5dive` అనేది `$HOME` కింద వ్రాయని ఏకైక రెసిపీ: ఇది ఫ్లీట్ హోస్ట్లో రూట్-ఓన్డ్ ఆథ్ ప్రొఫైల్ను వ్రాయడం ద్వారా 5dive ఏజెంట్ ఫ్లీట్ను కాన్ఫిగర్ చేస్తుంది, కాబట్టి ఇది `sudo` ద్వారా తిరిగి అమలు అవుతుంది మరియు దానికి దాని స్వంత రిమోట్ మోడ్ లేదు. సరైన env ఇంజెక్ట్ చేయబడి మరియు ఎటువంటి కాన్ఫిగరేషన్ వ్రాయబడకుండా CLIని ప్రారంభించడానికి, సాధారణ `omniroute run <target>` లాంచర్ను ఉపయోగించండి (claude, codex, aider, goose, opencode, qwen, gemini — టార్గెట్లు మరియు అలియాస్లు `bin/cli/cli-manifest.mjs` నుండి వస్తాయి); పాత పద్ధతిలో ఉన్న ప్రతి-టూల్ లాంచర్లు `omniroute launch` (Claude Code) మరియు `omniroute launch-codex` (Codex) అందుబాటులో ఉన్నాయి. Gemini CLI లాంచ్-మాత్రమే: ఇది `omniroute run` టార్గెట్, కానీ `setup-*`/`configure` రెసిపీ లేదు.
 
-> **పూర్తి సూచిక:** మాస్టర్ పట్టిక — ప్రతి ఆదేశం ఏమి రాస్తుంది, ప్రతి జెండా,
-> స్థానిక vs దూర, మరియు ఏ సాధనాలు `/v1` సఫిక్స్ కావాలనుకుంటున్నాయో — ఉంది
-> **[CLI Integrations](../guides/CLI-INTEGRATIONS.md)**.
+> **పూర్తి సూచన:** ప్రతి కమాండ్ ఏమి వ్రాస్తుంది, ప్రతి ఫ్లాగ్, స్థానిక vs రిమోట్, మరియు ఏ టూల్స్ `/v1` సఫిక్స్ను కోరుకుంటాయి అనే మాస్టర్ టేబుల్ **[CLI Integrations](../guides/CLI-INTEGRATIONS.md)**లో ఉంది.
 
-### కంటైనర్‌లో ఇవి నడపడం
+### వీటిని కంటైనర్లో నడపడం
 
-OmniRoute కంటైనర్‌లో అమలు చేసిన `setup-*` ఆదేశం కంటైనర్ యొక్క స్వంత హోమ్‌లో రాస్తుంది, ఇది ఏ హోస్ట్ CLI చదవదు మరియు కంటైనర్‌తో కలిసి పోతుంది. OmniRoute అది గుర్తించి `2` తో నిష్క్రమిస్తుంది మరియు రాయడం కాకుండా సూచనలను అందిస్తుంది. ముందుకు వెళ్లడానికి రెండు మద్దతు మార్గాలు — CLIని హోస్ట్‌లో ఇన్‌స్టాల్ చేయండి మరియు కంటైనర్‌కు `omniroute connect` చేయండి, లేదా కాన్ఫిగ్ డైరెక్టరీలను బైండ్-మౌంట్ చేయండి మరియు `CLI_CONFIG_HOME` ను సెట్ చేయండి (కంపోజ్ `host` ప్రొఫైల్). ప్రతి `setup-*` ఆదేశం, అలాగే `omniroute configure` మరియు `omniroute config set`, కంటైనర్ యొక్క స్వంత CLIs ను కాన్ఫిగర్ చేయడం మీరు నిజంగా అర్థం చేసుకున్నది అయితే `--allow-container-write` ను స్వీకరిస్తుంది; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` సర్వర్ కోసం అదే చేస్తుంది. చూడండి
-[Docker Guide → Configuring host CLI tools](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+OmniRoute కంటైనర్ లోపల అమలు చేయబడిన `setup-*` కమాండ్ కంటైనర్ యొక్క స్వంత హోమ్లోకి వ్రాస్తుంది, దీనిని ఏ హోస్ట్ CLI చదవదు మరియు కంటైనర్తో పాటు అదృశ్యమవుతుంది. OmniRoute దీనిని గుర్తించి, వ్రాయకుండా సూచనలతో `2`తో నిష్క్రమిస్తుంది. రెండు మద్దతు ఉన్న మార్గాలు — హోస్ట్లో CLIని ఇన్స్టాల్ చేసి, కంటైనర్కు `omniroute connect` చేయండి, లేదా కాన్ఫిగ్ డైరెక్టరీలను బైండ్-మౌంట్ చేసి `CLI_CONFIG_HOME` (కంపోజ్ `host` ప్రొఫైల్) సెట్ చేయండి. ప్రతి `setup-*` కమాండ్, అలాగే `omniroute configure` మరియు `omniroute config set`, కంటైనర్ యొక్క స్వంత CLIsని కాన్ఫిగర్ చేయడమే మీరు నిజంగా ఉద్దేశించినప్పుడు `--allow-container-write`ని అంగీకరిస్తుంది; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` సర్వర్కు కూడా అదే చేస్తుంది. [Docker Guide → Configuring host CLI tools](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker) చూడండి.
 
-డాష్‌బోర్డ్ యొక్క **apply endpoint** (`POST /api/cli-tools/apply`) అదే రక్షణను అమలు చేస్తుంది: కంటైనర్‌లో, లక్ష్యం హోస్ట్ నుండి బైండ్-మౌంట్ చేయబడని రాయడం **`422`** తో సమాధానం ఇస్తుంది `containerEphemeralTarget: true`, సురక్షిత పొరపాటు పాఠం మరియు — హోస్ట్ రెసిపీ ఉన్న సాధనాల కోసం (claude, codex, opencode, cline, kilo, continue) — హోస్ట్‌లో నడపడానికి `hostSetupCommand` (ఉదా: `omniroute setup-opencode`) ; ఏదీ రాయబడదు. `dryRun: true` కంటైనర్ మోడ్‌లో పనిచేస్తుంది మరియు డిస్క్‌ను తాకకుండా ఉత్పత్తి చేసిన కంటెంట్ + లక్ష్య మార్గాన్ని తిరిగి ఇస్తుంది, కాబట్టి మీరు డాష్‌బోర్డ్ నుండి ప్రివ్యూ చేయవచ్చు మరియు హోస్ట్‌పై వర్తింపజేయవచ్చు. ఈ ప్రవర్తన ఉద్దేశ్యపూర్వకంగా ఉంది మరియు `tests/unit/api/cli-tools/apply-container-guard.test.ts` ద్వారా పునరావృతంగా రక్షించబడింది — 422ని రక్షణను తొలగించడం ద్వారా "సరిదిద్దడం" చేయకండి.
+డాష్బోర్డ్ యొక్క **అప్లై ఎండ్పాయింట్** (`POST /api/cli-tools/apply`) అదే రక్షణను అమలు చేస్తుంది: కంటైనర్లో, హోస్ట్ నుండి బైండ్-మౌంట్ చేయబడని టార్గెట్కు వ్రాసినప్పుడు **`422`**తో `containerEphemeralTarget: true`, సురక్షితమైన ఎర్రర్ టెక్స్ట్ మరియు — హోస్ట్ రెసిపీ ఉన్న టూల్స్ (claude, codex, opencode, cline, kilo, continue) కోసం — బదులుగా హోస్ట్లో అమలు చేయడానికి `hostSetupCommand` (ఉదా. `omniroute setup-opencode`)తో సమాధానం ఇస్తుంది; ఏమీ వ్రాయబడదు. `dryRun: true` కంటైనర్ మోడ్లో పని చేస్తూనే ఉంటుంది మరియు డిస్క్ను తాకకుండా సవరించిన ప్రివ్యూ + టార్గెట్ పాత్ను అందిస్తుంది. ప్రివ్యూ కంటెంట్ కాపీ చేయడానికి లేదా దిగుమతి చేసుకోవడానికి క్రెడెన్షియల్-బేరింగ్ కాన్ఫిగరేషన్ కాదు. హోస్ట్లో అసలు టూల్/బేస్ URL/API కీ/మోడల్ ఇన్పుట్లతో అప్లై చేయండి, లేదా సూచించిన హోస్ట్-సైడ్ సెటప్ కమాండ్ను ఉపయోగించండి. ప్రివ్యూ హెడర్ మరియు రిక్వెస్ట్ కాంట్రాక్ట్ కోసం [CLI configuration security](../security/CLI-CONFIGURATION.md) చూడండి. ఈ ప్రవర్తన ఉద్దేశపూర్వకమైనది మరియు `tests/unit/api/cli-tools/apply-container-guard.test.ts` ద్వారా రిగ్రెషన్-గార్డ్ చేయబడింది — గార్డ్ను తొలగించడం ద్వారా 422ను ఎప్పుడూ "సరిచేయవద్దు".
 
 ---
 
@@ -559,63 +555,63 @@ kiro-cli status
 
 ## 10. అంతర్గత OmniRoute CLI
 
-`omniroute` బైనరీ సర్వర్ జీవితచక్రం, సెటప్, నిర్ధారణలు మరియు ప్రొవైడర్ నిర్వహణ కోసం ఆదేశాలను అందిస్తుంది. ఎంట్రీ పాయింట్: `bin/omniroute.mjs`.
+`omniroute` బైనరీ సర్వర్ జీవితచక్రం, సెటప్, డయాగ్నస్టిక్స్ మరియు ప్రొవైడర్ నిర్వహణ కోసం కమాండ్లను అందిస్తుంది. ఎంట్రీ పాయింట్: `bin/omniroute.mjs`.
 
 ```bash
 omniroute                              # సర్వర్ను ప్రారంభించండి (డిఫాల్ట్ పోర్ట్ 20128)
 omniroute setup                        # ఇంటరాక్టివ్ సెటప్ విజార్డ్
-omniroute doctor                       # కాన్ఫిగ్, DB, పోర్టులు, రన్టైమ్ను తనిఖీ చేయండి
+omniroute doctor                       # కాన్ఫిగ్, DB, పోర్ట్లు, రన్టైమ్ను తనిఖీ చేయండి
 omniroute providers list               # కాన్ఫిగర్ చేసిన ప్రొవైడర్ కనెక్షన్లు
-omniroute providers test-all           # సక్రియంగా ఉన్న ప్రతి కనెక్షన్ను పరీక్షించండి
+omniroute providers test-all           # ప్రతి సక్రియ కనెక్షన్ను పరీక్షించండి
 omniroute reset-password               # అడ్మిన్ పాస్వర్డ్ను రీసెట్ చేయండి
-omniroute logs                         # అభ్యర్థన లాగ్లను స్ట్రీమ్ చేయండి
+omniroute logs                         # రిక్వెస్ట్ లాగ్లను స్ట్రీమ్ చేయండి
 omniroute health                       # వివరణాత్మక ఆరోగ్య స్థితి (బ్రేకర్లు, క్యాష్, మెమరీ)
-omniroute --version                    # వెర్షన్ను ప్రింట్ చేయండి
-omniroute --help                       # అన్ని ఆదేశాలను చూపండి
+omniroute --version                    # వెర్షన్ను ముద్రించండి
+omniroute --help                       # అన్ని కమాండ్లను చూపించండి
 ```
 
 ### సెటప్ & ప్రారంభీకరణ
 
 ```bash
 omniroute setup                        # ఇంటరాక్టివ్ సెటప్ విజార్డ్
-omniroute setup --non-interactive      # CI/ఆటోమేషన్ మోడ్ (env వేరియబుల్లు + ఫ్లాగ్లను చదువుతుంది)
+omniroute setup --non-interactive      # CI/ఆటోమేషన్ మోడ్ (ఎన్విరాన్మెంట్ వేరియబుల్స్ + ఫ్లాగ్లను చదువుతుంది)
 omniroute setup --password '<value>'   # అడ్మిన్ పాస్వర్డ్ను నేరుగా సెట్ చేయండి
 omniroute setup --add-provider \
   --provider openai \
   --api-key '<value>' \
-  --test-provider                      # ఒకే చర్యలో ప్రొవైడర్ను జోడించి పరీక్షించండి
+  --test-provider                      # ఒకే దశలో ప్రొవైడర్ను జోడించి పరీక్షించండి
 ```
 
-నాన్-ఇంటరాక్టివ్ సెటప్ కోసం గుర్తించబడే ఎన్విరాన్మెంట్ వేరియబుల్లు:
+నాన్-ఇంటరాక్టివ్ సెటప్ కోసం గుర్తించబడే ఎన్విరాన్మెంట్ వేరియబుల్స్:
 
 | వేరియబుల్           | ప్రయోజనం                                                                     |
 | ------------------- | ---------------------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | ప్రొవైడర్ API కీ (Commander `.env()` ద్వారా `--api-key`కు అనుసంధానించబడింది) |
+| `OMNIROUTE_API_KEY` | ప్రొవైడర్ API కీ (Commander `.env()` ద్వారా `--api-key`కి అనుసంధానించబడింది) |
 | `DATA_DIR`          | OmniRoute డేటా డైరెక్టరీని ఓవర్రైడ్ చేయండి                                   |
 
-ఇతర అన్ని నాన్-ఇంటరాక్టివ్ ఇన్పుట్లు ఎన్విరాన్మెంట్ వేరియబుల్లుగా కాకుండా ఫ్లాగ్లుగా పంపబడతాయి:
+ఇతర అన్ని నాన్-ఇంటరాక్టివ్ ఇన్పుట్లు ఎన్విరాన్మెంట్ వేరియబుల్స్గా కాకుండా ఫ్లాగ్లుగా పంపబడతాయి:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
 (పైన ఉన్న `omniroute setup` ఎంపికలను చూడండి).
 
-### నిర్ధారణలు
+### డయాగ్నస్టిక్స్
 
 ```bash
-omniroute doctor                       # కాన్ఫిగ్, DB, పోర్టులు, రన్టైమ్, మెమరీ, సజీవ స్థితిని తనిఖీ చేయండి
+omniroute doctor                       # కాన్ఫిగ్, DB, పోర్ట్లు, రన్టైమ్, మెమరీ, లైవ్నెస్ను తనిఖీ చేయండి
 omniroute doctor --json                # మెషీన్ చదవగల JSON
 omniroute doctor --no-liveness         # HTTP ఆరోగ్య ప్రోబ్ను దాటవేయండి
-omniroute doctor --host 0.0.0.0        # సజీవ స్థితి హోస్ట్ను ఓవర్రైడ్ చేయండి
-omniroute doctor --liveness-url <url>  # పూర్తి ఆరోగ్య ఎండ్పాయింట్ URL ఓవర్రైడ్
+omniroute doctor --host 0.0.0.0        # లైవ్నెస్ హోస్ట్ను ఓవర్రైడ్ చేయండి
+omniroute doctor --liveness-url <url>  # పూర్తి ఆరోగ్య ఎండ్పాయింట్ URLను ఓవర్రైడ్ చేయండి
 ```
 
-డాక్టర్ ఈ తనిఖీలను అమలు చేస్తుంది: `Config`, `Database`, `Storage/encryption`,
+doctor ఈ తనిఖీలను అమలు చేస్తుంది: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` మరియు `Server liveness`. ఏదైనా తనిఖీ `fail` అయితే, ఇది సున్నా-కాని స్థితితో నిష్క్రమిస్తుంది.
+`Memory` మరియు `Server liveness`. ఏదైనా తనిఖీ `fail` అయితే ఇది సున్నా కాని ఎగ్జిట్ కోడ్తో నిష్క్రమిస్తుంది.
 
 ### ప్రొవైడర్ నిర్వహణ
 
 ```bash
 omniroute providers available                       # OmniRoute ప్రొవైడర్ కేటలాగ్
-omniroute providers available --search openai       # id/పేరు/ఉపనామం/వర్గం ఆధారంగా కేటలాగ్ను ఫిల్టర్ చేయండి
+omniroute providers available --search openai       # id/పేరు/అలియాస్/వర్గం ఆధారంగా కేటలాగ్ను ఫిల్టర్ చేయండి
 omniroute providers available --category api-key    # వర్గం ఆధారంగా ఫిల్టర్ చేయండి (api-key, oauth, free, ...)
 omniroute providers available --json                # మెషీన్ చదవగల JSON
 
@@ -623,63 +619,75 @@ omniroute providers list                            # కాన్ఫిగర�
 omniroute providers list --json
 
 omniroute providers test <id|name>                  # కాన్ఫిగర్ చేసిన ఒక కనెక్షన్ను పరీక్షించండి
-omniroute providers test-all                        # సక్రియంగా ఉన్న ప్రతి కనెక్షన్ను పరీక్షించండి
-omniroute providers validate                        # స్థానిక నిర్మాణాత్మక ధృవీకరణ మాత్రమే
+omniroute providers test-all                        # ప్రతి సక్రియ కనెక్షన్ను పరీక్షించండి
+omniroute providers validate                        # లోకల్కు మాత్రమే పరిమితమైన నిర్మాణాత్మక ధ్రువీకరణ
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
-omniroute providers auth <provider>                 # ఇప్పటికే ఉన్న OAuth ప్రవాహం
+omniroute providers auth <provider>                 # ఇప్పటికే ఉన్న OAuth ఫ్లో
 omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-`providers add/import/auth/edit/remove` API-ప్రాధాన్యంతో పనిచేస్తాయి, అందువల్ల అవి
-సక్రియ స్థానిక లేదా రిమోట్ కాంటెక్స్ట్కు వ్యతిరేకంగా పనిచేస్తాయి. క్రెడెన్షియల్ ఇన్పుట్ కోసం
-`--credential-stdin` లేదా `--credential-env`ను ఉపయోగించాలి; `--dry-run --json` కేవలం
-రెడాక్ట్ చేసిన ఉనికి/నిర్మాణాన్ని మాత్రమే నివేదిస్తుంది. `providers available` OmniRoute కేటలాగ్ను చదువుతుంది;
-`providers list/test/test-all/validate` వాటి స్థానిక SQLite ప్రవర్తనను కొనసాగిస్తాయి మరియు
+`providers add/import/auth/edit/remove` API-ప్రథమమైనవి, అందువల్ల అవి
+సక్రియ లోకల్ లేదా రిమోట్ కాంటెక్స్ట్పై పనిచేస్తాయి. క్రెడెన్షియల్ ఇన్పుట్ కోసం
+`--credential-stdin` లేదా `--credential-env`ను ఉపయోగించాలి; `--dry-run --json`
+రెడాక్ట్ చేసిన ఉనికి/ఆకారాన్ని మాత్రమే నివేదిస్తుంది. `providers available` OmniRoute కేటలాగ్ను చదువుతుంది;
+`providers list/test/test-all/validate` వాటి లోకల్ SQLite ప్రవర్తనను కొనసాగిస్తాయి మరియు
 సర్వర్ రన్ అవుతూ ఉండాల్సిన అవసరం లేదు.
 
-### రికవరీ & రీసెట్
+అనుకూల OpenAI-అనుకూల లేదా Anthropic-అనుకూల నోడ్ కోసం, `omniroute nodes add` తిరిగి ఇచ్చిన
+నోడ్ IDకి క్రెడెన్షియల్స్ను జోడించడానికి `omniroute keys add "$NODE_ID" --stdin`ను ఉపయోగించండి.
+దీనికి సర్వర్ రన్ అవుతూ ఉండటం మరియు సక్రియ కాంటెక్స్ట్కు నిర్వహణ ప్రామాణీకరణ అవసరం.
+CLI `POST /api/providers`ను ఉపయోగిస్తుంది, ఇది నోడ్ను ధ్రువీకరించి దాని ఎండ్పాయింట్
+సెట్టింగ్లను కనెక్షన్లోకి కాపీ చేస్తుంది. నోడ్ లేకపోవడం, అధికార వైఫల్యం లేదా సర్వర్
+అందుబాటులో లేకపోవడం జరిగితే, లోకల్ ఫాల్బ్యాక్ క్రెడెన్షియల్ను సృష్టించకుండా ఎర్రర్ను అందిస్తుంది.
+
+`nodes add --base-url` నోడ్ ఎండ్పాయింట్ను సెట్ చేస్తుంది; ఇది
+`OMNIROUTE_BASE_URL`లోని సర్వర్ చిరునామాకు భిన్నమైనది. OpenAPI ఫైల్ల కోసం,
+`omniroute openapi dump --format json --out ./openapi.json`ను ఉపయోగించండి; గ్లోబల్ `--output`
+గమ్యస్థాన ఫైల్ పేరును కాకుండా CLI డిస్ప్లే ఫార్మాటింగ్ను ఎంచుకుంటుంది.
+
+### పునరుద్ధరణ & రీసెట్
 
 ```bash
 omniroute reset-password                # అడ్మిన్ పాస్వర్డ్ను రీసెట్ చేయండి (ఇది కూడా: omniroute-reset-password)
-omniroute reset-encrypted-columns       # ఎన్క్రిప్ట్ చేసిన క్రెడెన్షియల్ రీసెట్ కోసం హెచ్చరిక + డ్రై-రన్ను చూపండి
-omniroute reset-encrypted-columns --force  # SQLiteలోని ఎన్క్రిప్ట్ చేసిన క్రెడెన్షియల్లను నిజంగా null చేయండి
+omniroute reset-encrypted-columns       # ఎన్క్రిప్ట్ చేసిన క్రెడెన్షియల్ రీసెట్ కోసం హెచ్చరిక + డ్రై-రన్ను చూపించండి
+omniroute reset-encrypted-columns --force  # SQLiteలో ఎన్క్రిప్ట్ చేసిన క్రెడెన్షియల్స్ను నిజంగా nullగా చేయండి
 ```
 
-### క్రెడెన్షియల్ ఎక్స్పోర్ట్ (⚠ జాగ్రత్తగా నిర్వహించండి)
+### క్రెడెన్షియల్ ఎగుమతి (⚠ జాగ్రత్తగా నిర్వహించండి)
 
 ```bash
-omniroute auth export                                 # హెచ్చరిక + నిర్ధారణ గేట్ను చూపండి — DB యాక్సెస్ లేదు
-omniroute auth export --force                          # అన్ని కనెక్షన్ల DECRYPTED క్రెడెన్షియల్లను JSONగా stdoutకు ఎక్స్పోర్ట్ చేయండి
-omniroute auth export --force --id <id>                 # సరిపోలే కనెక్షన్ను మాత్రమే ఎక్స్పోర్ట్ చేయండి
-omniroute auth export --force --format env               # OMNIROUTE_<PROVIDER>_<FIELD>=<value> పంక్తులను విడుదల చేయండి
+omniroute auth export                                 # హెచ్చరిక + నిర్ధారణ గేట్ను చూపించండి — DB యాక్సెస్ లేదు
+omniroute auth export --force                          # అన్ని కనెక్షన్ల డీక్రిప్ట్ చేసిన క్రెడెన్షియల్స్ను JSONగా stdoutకు ఎగుమతి చేయండి
+omniroute auth export --force --id <id>                 # సరిపోలే కనెక్షన్ను మాత్రమే ఎగుమతి చేయండి
+omniroute auth export --force --format env               # OMNIROUTE_<PROVIDER>_<FIELD>=<value> లైన్లను అవుట్పుట్ చేయండి
 omniroute auth export --force --out creds.json           # ఫైల్కు వ్రాయండి (0600 అనుమతులతో సృష్టించబడుతుంది)
 ```
 
-`auth export` **స్థానికం మాత్రమే** (నేరుగా SQLite రీడ్, HTTP రూట్ లేదు) మరియు ఉద్దేశపూర్వకంగా
-**సాదా టెక్స్ట్** `apiKey`/`accessToken`/`refreshToken`/`idToken` విలువలను ప్రింట్/వ్రాస్తుంది — ఇది ఒక ఫీచర్,
-బగ్ కాదు. `--force` లేకుండా డేటాబేస్ నుండి ఏదీ చదవబడదు మరియు ఏదీ డీక్రిప్ట్ చేయబడదు. ఏదైనా సాదా టెక్స్ట్
-విడుదలయ్యే ముందు stderrలో హెచ్చరిక బ్యానర్ ఎల్లప్పుడూ ప్రింట్ అవుతుంది. `STORAGE_ENCRYPTION_KEY` సెట్ చేసి
-ఉండాలి. డీక్రిప్ట్ చేయడంలో విఫలమైన ఫీల్డ్ (పాత కీ, దెబ్బతిన్న సైఫర్టెక్స్ట్), మొత్తం ఎక్స్పోర్ట్ను
-నిలిపివేయడం లేదా అంతర్లీన లోపాన్ని బహిర్గతం చేయడం బదులు `<field>DecryptFailed: true`గా నివేదించబడుతుంది.
+`auth export` **స్థానికంగా మాత్రమే** పనిచేస్తుంది (నేరుగా SQLite నుండి చదువుతుంది, HTTP route లేదు) మరియు ఉద్దేశపూర్వకంగానే
+**సాదా పాఠ్యంగా** `apiKey`/`accessToken`/`refreshToken`/`idToken` విలువలను ప్రింట్ చేస్తుంది/వ్రాస్తుంది — ఇది ఒక ఫీచర్,
+బగ్ కాదు. `--force` లేకుండా డేటాబేస్ నుండి ఏదీ చదవబడదు, అలాగే ఏదీ డీక్రిప్ట్ చేయబడదు. ఏదైనా సాదా పాఠ్యం విడుదలయ్యే ముందు
+stderr హెచ్చరిక బ్యానర్ ఎల్లప్పుడూ ప్రింట్ అవుతుంది. `STORAGE_ENCRYPTION_KEY` సెట్ చేయడం
+అవసరం. డీక్రిప్ట్ చేయడంలో విఫలమైన ఫీల్డ్ (పాత కీ, పాడైన సైఫర్టెక్స్ట్) మొత్తం ఎగుమతిని నిలిపివేయడం లేదా అంతర్గత లోపాన్ని బహిర్గతం చేయడం బదులు
+`<field>DecryptFailed: true`గా నివేదించబడుతుంది.
 
-### ఇతర ఉపఆదేశాలు
+### ఇతర సబ్కమాండ్లు
 
-వేరుగా పేర్కొనకపోతే, ఇవి రన్ అవుతున్న OmniRoute సర్వర్ను అవసరంగా భావిస్తాయి:
+వేరుగా పేర్కొనకపోతే, ఇవి నడుస్తున్న OmniRoute సర్వర్ ఉందని భావిస్తాయి:
 
 ```bash
 omniroute status                       # సమగ్ర రన్టైమ్ స్థితి
-omniroute logs                         # అభ్యర్థన లాగ్లను ప్రసారం చేయండి (--json, --search, --follow)
+omniroute logs                         # అభ్యర్థన లాగ్లను స్ట్రీమ్ చేయండి (--json, --search, --follow)
 omniroute config list                  # కాన్ఫిగర్ చేసిన CLI సాధనాలను ప్రదర్శించండి
 
 omniroute provider list                # అందుబాటులో ఉన్న ప్రొవైడర్లను జాబితా చేయండి (providers listకు మారుపేరు)
 omniroute provider add                 # ఒక సాధనంలో OmniRouteను ప్రొవైడర్గా నమోదు చేయండి
 omniroute keys add | list | remove     # API కీలను నిర్వహించండి
-omniroute models [provider]            # మోడళ్లను జాబితా చేయండి (--json, --search)
+omniroute models [provider]            # మోడల్లను జాబితా చేయండి (--json, --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # కాన్ఫిగరేషన్ + DB స్నాప్షాట్
+omniroute backup                       # కాన్ఫిగరేషన్ + DB స్నాప్షాట్ను సృష్టించండి
 omniroute restore                      # మునుపటి స్నాప్షాట్ నుండి పునరుద్ధరించండి
 
 omniroute health                       # వివరణాత్మక ఆరోగ్య స్థితి (బ్రేకర్లు, క్యాష్, మెమరీ)
@@ -691,7 +699,7 @@ omniroute mcp status | restart         # MCP సర్వర్ స్థిత�
 omniroute a2a status | card            # A2A సర్వర్ స్థితి / ఏజెంట్ కార్డ్
 
 omniroute tunnel list | create | stop  # టన్నెల్లను నిర్వహించండి (cloudflare/tailscale/ngrok)
-omniroute env show | get <k> | set <k> <v>  # ఎన్విరాన్మెంట్ వేరియబుల్స్ను పరిశీలించండి / సెట్ చేయండి (తాత్కాలికం)
+omniroute env show | get <k> | set <k> <v>  # env వేరియబుల్లను పరిశీలించండి / సెట్ చేయండి (తాత్కాలికం)
 
 omniroute test                         # ప్రొవైడర్ కనెక్టివిటీ స్మోక్ టెస్ట్
 omniroute update                       # అప్డేట్ల కోసం తనిఖీ చేయండి
@@ -700,15 +708,15 @@ omniroute completion                   # షెల్ కంప్లీషన�
 
 ### సాధారణ ఫ్లాగ్లు
 
-| ఫ్లాగ్              | వివరణ                                                     |
-| ------------------- | --------------------------------------------------------- |
-| `--no-open`         | ప్రారంభంలో బ్రౌజర్ను స్వయంచాలకంగా తెరవవద్దు               |
-| `--port <n>`        | API పోర్ట్ను ఓవర్రైడ్ చేయండి (డిఫాల్ట్ 20128)             |
-| `--mcp`             | stdio ద్వారా MCP సర్వర్గా అమలు చేయండి (IDEల కోసం)         |
-| `--non-interactive` | CI మోడ్ (ప్రాంప్ట్లు ఉండవు; env/ఫ్లాగ్ల నుండి చదువుతుంది) |
-| `--json`            | యంత్రం చదవగల JSON అవుట్పుట్ (doctor, providers మొదలైనవి)  |
-| `--help`, `-h`      | కమాండ్కు నిర్దిష్టమైన సహాయాన్ని చూపండి                    |
-| `--version`, `-v`   | ఇన్స్టాల్ చేసిన వెర్షన్ను ముద్రించండి                     |
+| ఫ్లాగ్              | వివరణ                                                       |
+| ------------------- | ----------------------------------------------------------- |
+| `--no-open`         | ప్రారంభంలో బ్రౌజర్ను స్వయంచాలకంగా తెరవవద్దు                 |
+| `--port <n>`        | API పోర్ట్ను ఓవర్రైడ్ చేయండి (డిఫాల్ట్ 20128)               |
+| `--mcp`             | stdio ద్వారా MCP సర్వర్గా అమలు చేయండి (IDEల కోసం)           |
+| `--non-interactive` | CI మోడ్ (ప్రాంప్ట్లు లేవు; env/ఫ్లాగ్ల నుండి చదువుతుంది)    |
+| `--json`            | యంత్రం చదవగలిగే JSON అవుట్పుట్ (doctor, providers మొదలైనవి) |
+| `--help`, `-h`      | కమాండ్కు ప్రత్యేకమైన సహాయాన్ని చూపించండి                    |
+| `--version`, `-v`   | ఇన్స్టాల్ చేసిన వెర్షన్ను ప్రింట్ చేయండి                    |
 
 ---
 

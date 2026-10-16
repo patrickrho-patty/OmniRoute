@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { STATUS_CODES } from "node:http";
+import { relayForwardingHeaders } from "./peer-stamp.mjs";
 
 const _wreqRequire = createRequire(import.meta.url);
 
@@ -119,6 +120,41 @@ function getResponseErrorStatus(error) {
     if (Number.isInteger(status) && status >= 400 && status <= 599) return status;
   }
   return null;
+}
+
+const RESPONSES_TOOL_ITEM_TYPES = new Set([
+  "function_call",
+  "custom_tool_call",
+  "local_shell_call",
+  "mcp_call",
+  "computer_call",
+]);
+
+/**
+ * True when an upstream Responses event carries output the user sees: a non-empty text,
+ * reasoning or tool-argument delta, or a tool call item (first-output timing).
+ */
+function responsesEventCarriesOutput(data) {
+  if (
+    typeof data !== "string" ||
+    (!data.includes(".delta") && !data.includes("output_item.added"))
+  ) {
+    return false;
+  }
+  let event;
+  try {
+    event = JSON.parse(data);
+  } catch {
+    return false;
+  }
+  const type = typeof event?.type === "string" ? event.type : "";
+  if (type.startsWith("response.") && type.endsWith(".delta")) {
+    return typeof event.delta === "string" ? event.delta.length > 0 : Boolean(event.delta);
+  }
+  if (type === "response.output_item.added") {
+    return RESPONSES_TOOL_ITEM_TYPES.has(event.item?.type);
+  }
+  return false;
 }
 
 function getTerminalResponseEvent(rawData) {
@@ -302,7 +338,7 @@ export function writeHttpError(socket, status, body, headers = {}) {
   socket.end(bodyBuffer);
 }
 
-function getAuthHeaders(requestUrl, requestHeaders) {
+function getAuthHeaders(requestUrl, requestHeaders, forwarding) {
   const headers = {};
   if (isText(requestHeaders.authorization)) {
     headers.authorization = requestHeaders.authorization;
@@ -319,9 +355,9 @@ function getAuthHeaders(requestUrl, requestHeaders) {
 
   if (isText(requestHeaders.cookie)) headers.cookie = requestHeaders.cookie;
   if (isText(requestHeaders.origin)) headers.origin = requestHeaders.origin;
-  if (isText(requestHeaders["x-forwarded-for"])) {
-    headers["x-forwarded-for"] = requestHeaders["x-forwarded-for"];
-  }
+  // Upstream: the proxy's own peer-stamped forwarding object owns x-forwarded-for — a raw
+  // client header must not overwrite it (scripts/dev/peer-stamp.mjs).
+  Object.assign(headers, forwarding);
   for (const name of [
     "x-patty-harness",
     "x-patty-original-authorization",
@@ -383,12 +419,13 @@ function withPreparedResponseCreate(message, preparedBody) {
   return next;
 }
 
-async function callInternal(fetchImpl, baseUrl, bridgeSecret, action, payload) {
+async function callInternal(fetchImpl, baseUrl, bridgeSecret, action, payload, forwarding) {
   const response = await fetchImpl(new URL(INTERNAL_ROUTE, baseUrl), {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-omniroute-ws-bridge-secret": bridgeSecret,
+      ...forwarding,
     },
     body: JSON.stringify({ action, ...payload }),
   });
@@ -409,6 +446,7 @@ class ResponsesWsSession {
     fetchImpl,
     socket,
     requestHeaders,
+    forwarding,
     requestUrl,
     wsFactory,
     pingIntervalMs,
@@ -421,6 +459,8 @@ class ResponsesWsSession {
     this.fetchImpl = fetchImpl;
     this.socket = socket;
     this.requestHeaders = requestHeaders;
+    // Fails closed: a session built without it reports its client as unknown, never as local.
+    this.forwarding = forwarding ?? { "x-forwarded-for": "unknown" };
     this.requestUrl = requestUrl;
     this.wsFactory = wsFactory;
     this.pingIntervalMs = pingIntervalMs;
@@ -429,6 +469,10 @@ class ResponsesWsSession {
     this.maxMessageBytes = normalizePositiveInteger(maxMessageBytes, DEFAULT_MAX_WS_MESSAGE_BYTES);
     this.sessionId = randomUUID();
     this.startedAt = Date.now();
+    // Per-turn timing. A reused connection serves many response.create turns, so
+    // history must measure each turn from its own request, not from the connection open.
+    this.turnStartedAt = this.startedAt;
+    this.turnFirstOutputAt = null;
     this.closed = false;
     this.buffer = Buffer.alloc(0);
     this.fragmentOpcode = null;
@@ -619,12 +663,13 @@ class ResponsesWsSession {
       "prepare",
       {
         requestUrl: this.requestUrl,
-        headers: getAuthHeaders(this.requestUrl, this.requestHeaders),
+        headers: getAuthHeaders(this.requestUrl, this.requestHeaders, this.forwarding),
         requestId: this.sessionId,
         turnId,
         message,
         response: responseBody,
-      }
+      },
+      this.forwarding
     );
 
     if (!prepared.ok) {
@@ -713,6 +758,8 @@ class ResponsesWsSession {
         if (this.closed) return;
         const data =
           typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
+        // Upstream's turn-timing graft lives in forwardUpstreamMessage(), which owns the
+        // terminal-event + settlement path on the fork.
         this.upstreamProcessing = this.upstreamProcessing
           .then(() => this.forwardUpstreamMessage(data))
           .catch((error) => this.failSettlement(error));
@@ -756,6 +803,11 @@ class ResponsesWsSession {
   }
 
   async forwardUpstreamMessage(data) {
+    // Upstream turn timing: first output-bearing event of the turn, measured before the
+    // terminal branch below (persistHistory reads it synchronously).
+    if (this.turnFirstOutputAt === null && responsesEventCarriesOutput(data)) {
+      this.turnFirstOutputAt = Date.now();
+    }
     const terminalEvent = getTerminalResponseEvent(data);
     if (!terminalEvent) {
       const parsed = parseJsonRecord(data);
@@ -809,6 +861,9 @@ class ResponsesWsSession {
         ? terminalMessage.response
         : terminalEvent.responseBody,
     });
+    // The turn is over; a later session-level failure row must not reuse its timing.
+    this.turnStartedAt = null;
+    this.turnFirstOutputAt = null;
     this.sendJson(terminalMessage);
   }
 
@@ -828,7 +883,7 @@ class ResponsesWsSession {
     this.close(1011, "patty_settlement_failed");
   }
 
-  async finishFailedTurn(code, message, status, closeReason) {
+  async finishFailedTurn(code, message, status, closeReason, clientMessage = message) {
     const turn = this.activeTurn;
     if (turn?.decision) {
       const settlement = await callInternal(
@@ -860,7 +915,9 @@ class ResponsesWsSession {
       if (isRecord(settlement.json?.rateLimits)) this.sendJson(settlement.json.rateLimits);
     }
 
-    const failurePayload = this.sendFailure(code, message);
+    // `message` (raw — may carry proxy URL/internal detail) goes to history only;
+    // `clientMessage` is what the client sees (Hard Rule #12).
+    const failurePayload = this.sendFailure(code, clientMessage);
     void this.persistHistory({
       status,
       success: false,
@@ -873,6 +930,10 @@ class ResponsesWsSession {
   }
 
   async forwardClientMessage(message) {
+    if (getResponseCreatePayload(message) !== null) {
+      this.turnStartedAt = Date.now();
+      this.turnFirstOutputAt = null;
+    }
     try {
       if (!this.upstream) {
         const { upstream, firstMessage } = await this.ensureUpstream(message);
@@ -925,14 +986,18 @@ class ResponsesWsSession {
             code,
             messageText,
             Number.isInteger(error?.status) ? error.status : 502,
-            "upstream_connect_failed"
+            "upstream_connect_failed",
+            "Upstream WebSocket connection failed"
           );
         } catch (settlementError) {
           this.failSettlement(settlementError);
         }
         return;
       }
-      const failurePayload = this.sendFailure(code, messageText);
+      // Hard Rule #12: the connect error can carry the upstream proxy URL (with its
+      // credentials) or internal addresses. The client gets a fixed message; the raw text
+      // stays in the server-side request history below.
+      const failurePayload = this.sendFailure(code, "Upstream WebSocket connection failed");
       void this.persistHistory({
         status: Number.isInteger(error?.status) ? error.status : 502,
         success: false,
@@ -948,7 +1013,14 @@ class ResponsesWsSession {
     if (this.leaseReleased || this.leaseReleaseInFlight || !this.leaseId) return;
     this.leaseReleaseInFlight = true;
     const leaseId = this.leaseId;
-    void callInternal(this.fetchImpl, this.baseUrl, this.bridgeSecret, "release", { leaseId })
+    void callInternal(
+      this.fetchImpl,
+      this.baseUrl,
+      this.bridgeSecret,
+      "release",
+      { leaseId },
+      this.forwarding
+    )
       .then((response) => {
         if (!response.ok) throw new Error("lease release rejected");
         this.leaseReleased = true;
@@ -963,7 +1035,14 @@ class ResponsesWsSession {
 
   releaseLeaseId(leaseId) {
     if (!leaseId) return;
-    void callInternal(this.fetchImpl, this.baseUrl, this.bridgeSecret, "release", { leaseId })
+    void callInternal(
+      this.fetchImpl,
+      this.baseUrl,
+      this.bridgeSecret,
+      "release",
+      { leaseId },
+      this.forwarding
+    )
       .then((response) => {
         if (!response.ok) throw new Error("lease release rejected");
       })
@@ -994,27 +1073,40 @@ class ResponsesWsSession {
     this.loggedTurnIds.add(turnId);
 
     const finishedAt = Date.now();
+    // No turn in flight (e.g. upstream closed after the last turn finished): the row covers
+    // no request, so it gets no duration or TTFT instead of the previous turn's.
+    const turnStartedAt = this.turnStartedAt ?? finishedAt;
+    const firstOutputMs =
+      this.turnFirstOutputAt === null ? null : Math.max(0, this.turnFirstOutputAt - turnStartedAt);
     try {
-      await callInternal(this.fetchImpl, this.baseUrl, this.bridgeSecret, "log", {
-        sessionId: this.sessionId,
-        transport: "responses_websocket",
-        requestUrl: this.requestUrl,
-        headers: getAuthHeaders(this.requestUrl, this.requestHeaders),
-        path: new URL(this.requestUrl || "/v1/responses", "http://omniroute.local").pathname,
-        startedAt: new Date(this.startedAt).toISOString(),
-        completedAt: new Date(finishedAt).toISOString(),
-        durationMs: Math.max(0, finishedAt - this.startedAt),
-        status: toFiniteNumber(status),
-        success,
-        errorCode,
-        errorMessage,
-        clientRequest: this.currentRequestBody || this.firstResponseBody,
-        terminalMessage,
-        responseBody,
-        sourceFormat: "openai-responses",
-        targetFormat: "openai-responses",
-        ...this.preparedContext,
-      });
+      await callInternal(
+        this.fetchImpl,
+        this.baseUrl,
+        this.bridgeSecret,
+        "log",
+        {
+          sessionId: this.sessionId,
+          transport: "responses_websocket",
+          requestUrl: this.requestUrl,
+          headers: getAuthHeaders(this.requestUrl, this.requestHeaders, this.forwarding),
+          path: new URL(this.requestUrl || "/v1/responses", "http://omniroute.local").pathname,
+          startedAt: new Date(turnStartedAt).toISOString(),
+          completedAt: new Date(finishedAt).toISOString(),
+          durationMs: Math.max(0, finishedAt - turnStartedAt),
+          firstOutputMs,
+          status: toFiniteNumber(status),
+          success,
+          errorCode,
+          errorMessage,
+          clientRequest: this.currentRequestBody || this.firstResponseBody,
+          terminalMessage,
+          responseBody,
+          sourceFormat: "openai-responses",
+          targetFormat: "openai-responses",
+          ...this.preparedContext,
+        },
+        this.forwarding
+      );
     } catch {
       // History logging must never break an already-established WebSocket session.
     }
@@ -1150,10 +1242,21 @@ export function createResponsesWsProxy({
       }
 
       try {
-        const auth = await callInternal(fetchImpl, baseUrl, bridgeSecret, "authenticate", {
-          requestUrl: req.url || pathname,
-          headers: getAuthHeaders(req.url || pathname, req.headers),
-        });
+        const forwarding = relayForwardingHeaders(
+          req.socket && req.socket.remoteAddress,
+          req.headers
+        );
+        const auth = await callInternal(
+          fetchImpl,
+          baseUrl,
+          bridgeSecret,
+          "authenticate",
+          {
+            requestUrl: req.url || pathname,
+            headers: getAuthHeaders(req.url || pathname, req.headers, forwarding),
+          },
+          forwarding
+        );
         if (!auth.ok) {
           // Do NOT forward the internal fetch's response headers onto the raw
           // upgrade socket — they carry chunked transfer-encoding + Next security
@@ -1200,6 +1303,7 @@ export function createResponsesWsProxy({
           socket,
           requestUrl: req.url || pathname,
           requestHeaders: req.headers,
+          forwarding,
           wsFactory,
           pingIntervalMs,
           idleTimeoutMs,
@@ -1208,12 +1312,18 @@ export function createResponsesWsProxy({
         });
         return true;
       } catch (error) {
+        // Hard Rule #12: the exception text can carry filesystem paths and stack frames —
+        // keep it in the server log and give the client a fixed message.
+        console.error(
+          "[responses-ws-proxy] upgrade failed:",
+          error instanceof Error ? error.message : String(error)
+        );
         writeHttpError(
           socket,
           500,
           JSON.stringify({
             error: {
-              message: error instanceof Error ? error.message : String(error),
+              message: "Responses WebSocket proxy failed",
               code: "responses_websocket_proxy_failed",
             },
           })

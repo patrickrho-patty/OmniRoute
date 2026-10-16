@@ -20,6 +20,7 @@ import {
   ensureBase64ImagesForClaudeWire,
 } from "./visionBridgeHelpers";
 import { fetch as undiciFetch } from "undici";
+import { detectMediaParts } from "@omniroute/open-sse/utils/mediaParts";
 import {
   getVisionBridgeConfig,
   isVisionBridgeForcedModel,
@@ -33,6 +34,7 @@ import {
   hasUsableCredentialsForModel,
 } from "./visionBridgeCredentials";
 import { MAX_COMBO_DEPTH } from "@omniroute/open-sse/services/combo/comboPredicates.ts";
+import { combineCredentialChecks, resolveVisionBridgeKeyScope } from "./visionBridgeKeyScope";
 
 export { isProviderConnectionUsable, hasUsableCredentialsForModel };
 
@@ -103,6 +105,29 @@ async function resolveComboRefVisionCapability(
   }
 
   return hasLeaf ? tally : fallback;
+}
+
+/**
+ * Count images nested in Responses tool outputs. `extractImageParts` deliberately
+ * excludes nested media because description replacement only knows how to splice
+ * top-level content parts; whole-request rerouting has no such restriction and
+ * must still notice these images so the raw Responses body can reach a native
+ * vision target unchanged.
+ */
+function countNestedToolOutputImages(items: unknown[]): number {
+  let count = 0;
+  for (const item of items) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    if (record.type !== "function_call_output" && record.type !== "custom_tool_call_output") {
+      continue;
+    }
+    if (!Array.isArray(record.output)) continue;
+    count += detectMediaParts([{ content: record.output }]).filter(
+      (part) => part.kind === "image"
+    ).length;
+  }
+  return count;
 }
 
 export function resolveVisionComboName(mapping: Record<string, unknown>): string | null {
@@ -289,12 +314,18 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // Declare before the conditional so they're available to the rest of preCall
     let forceVisionBridge = false;
     let comboVisionBridgeDecision: ComboVisionBridgeDecision | undefined;
+    // #14003: the requested model's resolved vision capability, hoisted out of
+    // the `!isAuto` block so the reroute gate below can reason about it.
+    // `null` means UNKNOWN (no spec / registry / synced verdict), which is a
+    // different fact from `false` (proven text-only) and must not be conflated.
+    let requestedModelVision: boolean | null = null;
 
     if (!isAuto) {
       forceVisionBridge = isVisionBridgeForcedModel(model);
 
       // 4. Check if model supports vision
       const capabilities = getResolvedModelCapabilities(model);
+      requestedModelVision = capabilities?.supportsVision ?? null;
       comboVisionBridgeDecision = forceVisionBridge
         ? "process"
         : this.deps.checkModelHasComboMapping
@@ -354,11 +385,28 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
       return { block: false };
     }
 
-    // 8. Check for images using helper (extractImageParts returns empty if no images)
+    // 8. Check for images. Description mode can only replace top-level parts,
+    // while reroute mode preserves the entire body and therefore also supports
+    // images nested inside Responses function_call_output items.
     const imageParts = extractImageParts(messages as Parameters<typeof extractImageParts>[0]);
-    if (imageParts.length === 0) {
+    const nestedToolImageCount = countNestedToolOutputImages(messages as unknown[]);
+    const detectedImageCount = imageParts.length + nestedToolImageCount;
+    if (detectedImageCount === 0) {
       return { block: false };
     }
+
+    // 8b. Caller API-key scope. A key restricted by connections, quota pools or
+    // model lists may only have its image described/rerouted by a vision model
+    // it is allowed to use, on a connection it is allowed to use. `null` (no
+    // key, or a key without such restrictions) keeps the unscoped behavior.
+    const checkCreds = this.deps.hasUsableCredentials ?? hasUsableCredentialsForModel;
+    const keyScope = await resolveVisionBridgeKeyScope(context.apiKeyInfo);
+    const scopedCheckCreds = !keyScope
+      ? checkCreds
+      : this.deps.hasUsableCredentials
+        ? combineCredentialChecks(this.deps.hasUsableCredentials, keyScope)
+        : keyScope.hasUsableCredentials;
+    const scopedRouterConfig = keyScope ? { cacheScope: keyScope.cacheScope } : {};
 
     // 9. Individual non-combo model with images → optionally REROUTE to best vision-capable model
     // instead of describing images through an intermediate vision call.
@@ -384,19 +432,60 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // exactly like a single text-only model, and without this fallback an image
     // request would die in the combo capability filter (capability_mismatch)
     // whenever the describe path cannot run.
+    // #14003: a BARE model id (no `provider/` prefix) with UNKNOWN vision
+    // capability must not be whole-request rerouted.
+    //
+    // For a bare id, getResolvedModelCapabilities resolves `provider` to null,
+    // so getRegistryModel() and getSyncedCapabilityForResolved() are both
+    // skipped and only MODEL_SPECS / isVisionModelId() can produce a verdict.
+    // `supportsVision === null` therefore means OmniRoute has no static
+    // knowledge of that wire id at all. Providers rename and upgrade wire
+    // models faster than the static spec table tracks, so that is a
+    // stale-catalog condition, NOT proof the model is text-only. Hijacking
+    // such a request sent it to a different provider's model with no error: the
+    // reported case routed every `kimi-for-coding` image request to
+    // `command-code/moonshotai/Kimi-K2.6`, so the wrong model answered, the
+    // request was billed against the wrong connection, and `call_logs`
+    // recorded the substitute as intended.
+    //
+    // The credential guard cannot save these requests on its own:
+    // hasUsableCredentialsForModel splits on "/" and treats the model name as a
+    // provider, finds no connection rows, and reports a hard `false` instead of
+    // the `null` that would have failed open. This gate uses the same
+    // string-level notion of a provider prefix.
+    //
+    // The model string, not capabilities.provider, decides "bare": a
+    // provider-qualified id must not be classified as bare, because for those
+    // the registry and synced rows are the authoritative sources. Combos are
+    // excluded as well: a zero-vision combo is deliberately reroute-eligible
+    // (#10415) and its capability is resolved from its targets, not its name.
+    const bareIdUnknownVision =
+      !isAuto &&
+      !forceVisionBridge &&
+      !model.includes("/") &&
+      requestedModelVision === null &&
+      comboVisionBridgeDecision === "not-combo";
+    if (bareIdUnknownVision) {
+      context.log?.warn?.(
+        "VISION_BRIDGE",
+        `Vision capability unknown for bare model ${model}; not whole-request rerouting - describing images and keeping the requested model`
+      );
+    }
     const rerouteEligible =
+      runtime.mode === "reroute" ||
       rerouteTextOnly ||
-      ((comboVisionBridgeDecision === "not-combo" ||
-        comboVisionBridgeDecision === "no-vision" ||
-        isAuto) &&
+      (!bareIdUnknownVision &&
+        (comboVisionBridgeDecision === "not-combo" ||
+          comboVisionBridgeDecision === "no-vision" ||
+          isAuto) &&
         !forceVisionBridge);
     // Forced modes short-circuit BEFORE the auto heuristic (#6640/#7204 untouched):
     // - "describe" skips the whole reroute block → straight to the describe path.
     // - "reroute" skips only the keep-credentialed-model guard; the reroute-target
-    //   credential guard still applies, and with no usable target it falls through
-    //   to describe (raw images must never reach a text-only backend — #8430).
+    //   credential guard still applies, and with no usable target the request is
+    //   blocked below instead of described (raw images must never reach a
+    //   text-only backend — #8430).
     if (rerouteEligible && runtime.mode !== "describe") {
-      const checkCreds = this.deps.hasUsableCredentials ?? hasUsableCredentialsForModel;
       const originalUsable = runtime.mode === "reroute" ? false : await checkCreds(model);
 
       if (originalUsable === true && !isAuto && !rerouteTextOnly) {
@@ -423,11 +512,11 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
         // falls back to the real DB-backed hasUsableCredentialsForModel and
         // ignores an injected `deps.hasUsableCredentials` test/DI override.
         const bestModel = await getBestVisionModel(
-          { fixedModel: configuredModel },
-          { hasUsableCredentials: checkCreds }
+          { fixedModel: configuredModel, ...scopedRouterConfig },
+          { hasUsableCredentials: scopedCheckCreds }
         );
         if (bestModel && bestModel !== model) {
-          const bestUsable = await checkCreds(bestModel);
+          const bestUsable = await scopedCheckCreds(bestModel);
           // Only block the reroute when we KNOW the target is unusable (false).
           // `null` (no DB / tests) fails open so existing unit tests keep working.
           // `auto/*` ids (e.g. auto/best-vision) are VIRTUAL combos: credentials
@@ -453,6 +542,13 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
               ...(rerouteBody as Record<string, unknown>),
               model: bestModel,
             };
+            // #14003: a whole-request reroute answers from a DIFFERENT model
+            // than the one the client named, so it must stay visible in the log
+            // even when it succeeds. The report was that it happened silently.
+            context.log?.warn?.(
+              "VISION_BRIDGE",
+              `Whole-request vision reroute ${model} -> ${bestModel} for ${detectedImageCount} image(s)`
+            );
             return {
               block: false,
               modifiedPayload: modifiedBody as unknown,
@@ -460,13 +556,29 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
                 rerouted: true,
                 fromModel: model,
                 toModel: bestModel,
-                imagesKept: imageParts.length,
+                imagesKept: detectedImageCount,
               },
             };
           }
         }
       }
       // Fall through: describe images as text (or no-op if describe path can't run)
+    }
+
+    // Reroute mode is a lossless policy: a request with an image must reach a
+    // usable vision-capable model. Falling through to description would violate
+    // that contract, especially for nested tool-output images that description
+    // mode cannot splice back into the Responses payload.
+    if (runtime.mode === "reroute") {
+      return {
+        block: true,
+        message: "No usable vision-capable model is available for this image request",
+        meta: {
+          imagesDetected: detectedImageCount,
+          rerouteFailed: true,
+          requestedModel: model,
+        },
+      };
     }
 
     // 10. Get configuration — fed from the resolved runtime values so the new
@@ -479,6 +591,29 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
       visionBridgeTimeout: runtime.timeoutMs,
       visionBridgeMaxImages: runtime.maxImages,
     });
+
+    // 10b. Key-scoped describe: pick the vision model among those the key may
+    // use. With none permitted, step aside and pass the request through
+    // unchanged — the documented fail-open guardrail behavior, as if the bridge
+    // were disabled — rather than sending the image outside the key's scope.
+    let describeModel = config.model;
+    if (keyScope) {
+      const scopedModel = await getBestVisionModel(
+        { fixedModel: config.model, ...scopedRouterConfig },
+        { hasUsableCredentials: scopedCheckCreds }
+      );
+      if (!scopedModel) {
+        context.log?.warn?.(
+          "VISION_BRIDGE",
+          `No vision model is permitted for this API key; passing ${detectedImageCount} image(s) through unchanged`
+        );
+        return {
+          block: false,
+          meta: { skipped: true, reason: "no_permitted_vision_model", requestedModel: model },
+        };
+      }
+      describeModel = scopedModel;
+    }
 
     // 11. Limit images
     const limitedParts = imageParts.slice(0, config.maxImages);
@@ -497,8 +632,10 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // every describe. Tests inject their own callVisionModel.
     const describeConfig = {
       ...config,
+      model: describeModel,
       prompt: composedPrompt,
       fetchImpl: undiciFetch as unknown as typeof fetch,
+      ...(keyScope ? { keyScope } : {}),
     };
 
     // Shared describe cache (sha256 of contentRef+prompt+model): the same image
@@ -601,7 +738,7 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
         // Keep meta observability stable: report a human label for failures.
         descriptions: descriptions.map((d, i) => d ?? `[Image ${i + 1}]: (unavailable)`),
         processingTimeMs: processingTime,
-        visionModel: config.model,
+        visionModel: describeModel,
       },
     };
   }

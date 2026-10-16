@@ -72,24 +72,31 @@ canonical alias dedupe නොමැතිව, මිල ගණන් නොම�
 
 ## විකල්ප
 
-| Key                              | පෙරනිමිය                                        | සටහන්                                                                                                                |
-| -------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `providerId`                     | `"omniroute"`                                   | Provider id එක, integration id එක සහ models දිස් වන උපසර්ගය                                                          |
-| `baseURL`                        | අවශ්යයි                                         | Gateway root එක, `http(s)` පමණි; අවශ්ය තැන්වල `/v1` ප්රත්යය එක් කෙරේ                                                 |
-| `apiKey`                         | සම්බන්ධිත අක්තපත්රය, ඉන්පසු `OMNIROUTE_API_KEY` | `/v1/*` සඳහා chat key එක                                                                                             |
-| `managementReadToken`            | `apiKey` වෙත පසුබැසෙයි                          | `/api/*` සඳහා key එක — සාමාන්යයෙන් එය එකම එක **නොවේ**                                                                |
-| `displayName`                    | `"OmniRoute"`                                   | Picker එකේ provider නාමය                                                                                             |
-| `timeoutMs`                      | `10000`                                         | එක් එක් endpoint එක සඳහා fetch timeout එක (auto-combos සඳහා 5s භාවිත වේ)                                             |
-| `modelCacheTtlMs`                | `300000`                                        | නාමාවලි cache TTL එක; disk snapshot එකක් cold starts වේගවත් කරයි                                                     |
-| `timeouts`                       | `timeoutMs` වෙත පසුබැසෙයි                       | ms වලින් එක් එක් endpoint එක සඳහා කාල සීමා: `models`, `combos`, `autoCombos`, `enrichment`                           |
-| `enrichment`                     | `true`                                          | නාම, මිල ගණන් සහ නොමිලේ-ස්ථර භාවිත සීමා ලබාගන්න                                                                      |
-| `providerTag`                    | `true`                                          | ප්රදර්ශන නාමයකට එය route කරන upstream provider එකේ නම උපසර්ගයක් ලෙස එක් කරන්න                                        |
-| `usableOnly`                     | `false`                                         | Gateway එක provisioned ලෙස වාර්තා කරන providers පමණක් තබාගන්න                                                        |
-| `visibleModels` / `hiddenModels` | `[]`                                            | නිශ්චිත-හෝ-ප්රත්ය allowlists; deny එකට ප්රමුඛතාව ලැබේ                                                                |
-| `geminiSanitization`             | `true`                                          | Gemini විසින් ප්රතික්ෂේප කරන JSON-Schema keywords tool schemas වෙතින් ඉවත් කරන්න (`$ref` tools වෙනස් නොකර යොමු කෙරේ) |
-| `apiFormat.allowAnthropic`       | `false`                                         | Allowlist කළ ids Anthropic API block එක හරහා route කරන්න                                                             |
-| `apiFormat.anthropicModels`      | `[]`                                            | Anthropic වෙත route කරන සම්පූර්ණ model ids                                                                           |
-| `logLevel` / `startupDebug`      | `warn` / `false`                                | Logger විස්තරාත්මක මට්ටම                                                                                             |
+| යතුර                             | පෙරනිමිය                                        | සටහන්                                                                                                               |
+| -------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `providerId`                     | `"omniroute"`                                   | සැපයුම්කරු හැඳුනුම්කාරකය, අනුකලන හැඳුනුම්කාරකය සහ ආකෘති දිස්වන උපසර්ගය                                              |
+| `baseURL`                        | අවශ්යයි                                         | ද්වාර මූලය, `http(s)` පමණි; අවශ්ය තැන්වල `/v1` ප්රත්යය එක් කෙරේ                                                     |
+| `apiKey`                         | සම්බන්ධිත අක්තපත්රය, ඉන්පසු `OMNIROUTE_API_KEY` | `/v1/*` සඳහා වන කතාබස් යතුර                                                                                         |
+| `managementReadToken`            | `apiKey` වෙත යොමු වේ                            | `/api/*` සඳහා යතුර — සාමාන්යයෙන් එය **එකම** යතුර නොවේ                                                               |
+| `displayName`                    | `"OmniRoute"`                                   | තේරීම්කාරකයේ ඇති සැපයුම්කරුගේ නම                                                                                    |
+| `timeoutMs`                      | `10000`                                         | එක් එක් අන්ත ලක්ෂ්යය සඳහා ලබාගැනීමේ කාලසීමාව (ස්වයංක්රීය සංයෝජන තත්පර 5ක් භාවිත කරයි)                               |
+| `modelCacheTtlMs`                | `300000`                                        | නාමාවලි හැඹිලියේ TTL; තැටි ස්නැප්ෂොට් එකක් ශීත ආරම්භ වේගවත් කරයි                                                    |
+| `timeouts`                       | `timeoutMs` වෙත යොමු වේ                         | ms වලින් එක් එක් අන්ත ලක්ෂ්යය සඳහා සීමා: `models`, `combos`, `autoCombos`, `enrichment`                             |
+| `enrichment`                     | `true`                                          | නම්, මිල ගණන් සහ නොමිලේ-ස්ථර සීමා ලබාගන්න                                                                           |
+| `providerTag`                    | `true`                                          | සංදර්ශන නමකට එය මාර්ගගත කරන උඩුගං සැපයුම්කරුගේ නම උපසර්ගයක් ලෙස එක් කරන්න                                           |
+| `usableOnly`                     | `false`                                         | ද්වාරය සපයා ඇති ලෙස වාර්තා කරන සැපයුම්කරුවන් පමණක් තබාගන්න                                                          |
+| `showcasePerOwner`               | `10`                                            | එක් සැපයුම්කරුවෙකු සඳහා පෙරනිමි දසුනේ තබාගන්නා ඇතුළත් කිරීම්                                                        |
+| `freshPerOwner`                  | `10`                                            | එක් සැපයුම්කරුවෙකු සඳහා පෙරනිමි දසුනේ තබාගන්නා නව ඇතුළත් කිරීම්                                                     |
+| `freshWindowDays`                | `90`                                            | නව ශාඛාව සඳහා නැවුම්බව මනින දින කවුළුව                                                                              |
+| `usageMemory`                    | `true`                                          | දින 30ක භාවිත විශ්ලේෂණ මගින් නම් කරන ලද, ස්ථිතිකව ඉවත් කළ ඇතුළත් කිරීම් ප්රතිසාධනය කරන්න (කළමනාකරණ ටෝකනයක් අවශ්යයි) |
+| `visibleModels` / `hiddenModels` | `[]`                                            | නිශ්චිත-හෝ-ප්රත්ය ඉඩලැයිස්තු; ප්රතික්ෂේපය ජය ගනී; `*` සම්පූර්ණ නාමාවලිය ප්රකාශ කරයි (අනෙකුත් පෙරහන් තවමත් අදාළ වේ)  |
+| `geminiSanitization`             | `true`                                          | මෙවලම් ස්කීමාවලින් Gemini ප්රතික්ෂේප කරන JSON-Schema මූලපද ඉවත් කරන්න (`$ref` මෙවලම් නොවෙනස්ව යොමු කෙරේ)            |
+| `apiFormat.allowAnthropic`       | `false`                                         | ඉඩලැයිස්තුගත හැඳුනුම්කාරක Anthropic API කොටස හරහා මාර්ගගත කරන්න                                                     |
+| `apiFormat.anthropicModels`      | `[]`                                            | Anthropic වෙත මාර්ගගත කරන සම්පූර්ණ ආකෘති හැඳුනුම්කාරක                                                               |
+| `logLevel` / `startupDebug`      | `warn` / `false`                                | ලොගර් විස්තරාත්මකභාවය                                                                                               |
+
+භාවිත මතකය පෙරනිමියෙන් සක්රියයි. කළමනාකරණ ටෝකනයක් නොමැතිව එය අක්රියව පවතී
+(ආරම්භක දැනුම්දීමක් ලොග් කෙරේ) සහ කිසිවක් ප්රතිසාධනය නොකෙරේ.
 
 ## නාමාවලිය යාවත්කාලීනව පවතින ආකාරය
 

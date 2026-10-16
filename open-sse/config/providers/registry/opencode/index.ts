@@ -11,6 +11,10 @@ export const opencodeProvider: RegistryEntry = {
   authHeader: "Authorization",
   authPrefix: "Bearer",
   passthroughModels: true,
+  toolCalling: "emulated",
+  // #15540: the keyless Free tier serves every model below even when the account row
+  // (apiKey "public") only syncs a subset, so a partial discovery must not reject them.
+  liveCatalogAuthoritative: false,
   defaultContextLength: 200000,
   models: [
     // #2900: big-pickle's upstream runs DeepSeek thinking mode — declare the
@@ -76,7 +80,16 @@ export const opencodeProvider: RegistryEntry = {
     // were delisted (401 "Model X is not supported") and replaced by the 4
     // entries below, confirmed live against
     // https://opencode.ai/zen/v1/chat/completions.
-    { id: "mimo-v2.5-free", name: "MiMo V2.5 Free", contextLength: 131000 },
+    { id: "mimo-v2.5-free", name: "MiMo V2.5 Free", contextLength: 1048576 },
+    // MiMo V2.6 Flash Free ships a 1M window upstream (same as V2.5); without
+    // this row it falls through to the 200000 provider default and clients
+    // compact far too early.
+    {
+      id: "mimo-v2.6-flash-free",
+      name: "MiMo V2.6 Flash Free",
+      contextLength: 1048576,
+      maxOutputTokens: 131072,
+    },
     { id: "hy3-free", name: "HY3 Free", contextLength: 131000 },
     { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", contextLength: 1000000 },
     { id: "north-mini-code-free", name: "North Mini Code Free", contextLength: 131000 },

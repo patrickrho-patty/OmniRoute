@@ -17,11 +17,14 @@ import {
   buildQoderCompletionPayload,
   buildQoderPrompt,
   createQoderErrorResponse,
+  isQoderUpstreamBusy,
   parseQoderCliFailure,
+  parseQoderRetryAfterSeconds,
   parseQoderCliResult,
   runQoderCli,
 } from "../services/qoderCli.ts";
 import { sanitizeErrorMessage } from "../utils/error.ts";
+import { hasQoderCallerTools, resolveQoderAuthToken } from "../services/qoderCapabilities.ts";
 
 function truncate(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -124,6 +127,18 @@ async function unwrapQoderEnvelope(response: Response): Promise<Response> {
 
   if (errorStatus) {
     reader.cancel();
+    // #3510: a 403 envelope carrying the nested code 10605 is Qoder's temporary
+    // queue throttle, not an auth failure. Surface it as 503 upstream_busy (same
+    // classification as the CLI path) so healthy accounts are not parked on the
+    // auth cooldown.
+    if (isQoderUpstreamBusy(errorMsg)) {
+      return createQoderErrorResponse({
+        status: 503,
+        message: `[qoder error ${errorStatus}: ${sanitizeErrorMessage(truncate(errorMsg, 200))}]`,
+        code: "upstream_busy",
+        retryAfterSeconds: parseQoderRetryAfterSeconds(errorMsg),
+      });
+    }
     const errType =
       errorStatus === 401 || errorStatus === 403 ? "authentication_error" : "provider_error";
     return new Response(
@@ -166,22 +181,6 @@ async function unwrapQoderEnvelope(response: Response): Promise<Response> {
   });
 }
 
-function getAuthToken(credentials: ProviderCredentials): string {
-  if (typeof credentials.apiKey === "string" && credentials.apiKey.trim()) {
-    return credentials.apiKey.trim();
-  }
-  if (typeof credentials.accessToken === "string" && credentials.accessToken.trim()) {
-    return credentials.accessToken.trim();
-  }
-  if (typeof credentials.refreshToken === "string" && credentials.refreshToken.trim()) {
-    return credentials.refreshToken.trim();
-  }
-  // Fallback: QODER_PERSONAL_ACCESS_TOKEN env var (#966)
-  const envToken = String(process.env.QODER_PERSONAL_ACCESS_TOKEN || "").trim();
-  if (envToken) return envToken;
-  return "";
-}
-
 export class QoderExecutor extends BaseExecutor {
   constructor() {
     super("qoder", PROVIDERS.qoder);
@@ -208,7 +207,7 @@ export class QoderExecutor extends BaseExecutor {
   }
 
   async execute({ model, body, stream, credentials, signal, upstreamExtraHeaders }: ExecuteInput) {
-    const token = getAuthToken(credentials);
+    const token = resolveQoderAuthToken(credentials);
 
     if (!token) {
       return {
@@ -236,6 +235,19 @@ export class QoderExecutor extends BaseExecutor {
     // HTTP path can no longer replicate.
     const isPatToken = token.startsWith("pt-");
     if (isPatToken) {
+      if (hasQoderCallerTools(body)) {
+        return {
+          response: createQoderErrorResponse({
+            status: 400,
+            message:
+              "Qoder PAT/CLI connections do not support caller tool calling. Use a compatible HTTP connection or another provider for agent requests.",
+            code: "tool_calling_unsupported",
+          }),
+          url: "qodercli://stdio",
+          headers: {},
+          transformedBody: body,
+        };
+      }
       return this.executeViaQoderCli({ model: resolvedModel, body, stream, token, signal });
     }
 

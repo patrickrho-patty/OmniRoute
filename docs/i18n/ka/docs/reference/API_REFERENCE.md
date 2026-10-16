@@ -4,9 +4,12 @@
 
 ---
 
-🌐 **Languages:** 🇺🇸 [English](../../../../reference/API_REFERENCE.md) · 🇪🇹 [am](../../../am/docs/reference/API_REFERENCE.md) · 🇸🇦 [ar](../../../ar/docs/reference/API_REFERENCE.md) · 🇦🇿 [az](../../../az/docs/reference/API_REFERENCE.md) · 🇧🇬 [bg](../../../bg/docs/reference/API_REFERENCE.md) · 🇧🇩 [bn](../../../bn/docs/reference/API_REFERENCE.md) · 🇧🇦 [bs](../../../bs/docs/reference/API_REFERENCE.md) · 🇨🇿 [cs](../../../cs/docs/reference/API_REFERENCE.md) · 🇩🇰 [da](../../../da/docs/reference/API_REFERENCE.md) · 🇩🇪 [de](../../../de/docs/reference/API_REFERENCE.md) · 🇬🇷 [el](../../../el/docs/reference/API_REFERENCE.md) · 🇪🇸 [es](../../../es/docs/reference/API_REFERENCE.md) · 🇪🇪 [et](../../../et/docs/reference/API_REFERENCE.md) · 🇮🇷 [fa](../../../fa/docs/reference/API_REFERENCE.md) · 🇫🇮 [fi](../../../fi/docs/reference/API_REFERENCE.md) · 🇫🇷 [fr](../../../fr/docs/reference/API_REFERENCE.md) · 🇮🇪 [ga](../../../ga/docs/reference/API_REFERENCE.md) · 🇮🇳 [gu](../../../gu/docs/reference/API_REFERENCE.md) · 🇳🇬 [ha](../../../ha/docs/reference/API_REFERENCE.md) · 🇮🇱 [he](../../../he/docs/reference/API_REFERENCE.md) · 🇮🇳 [hi](../../../hi/docs/reference/API_REFERENCE.md) · 🇭🇷 [hr](../../../hr/docs/reference/API_REFERENCE.md) · 🇭🇺 [hu](../../../hu/docs/reference/API_REFERENCE.md) · 🇦🇲 [hy](../../../hy/docs/reference/API_REFERENCE.md) · 🇮🇩 [id](../../../id/docs/reference/API_REFERENCE.md) · 🇳🇬 [ig](../../../ig/docs/reference/API_REFERENCE.md) · 🇮🇹 [it](../../../it/docs/reference/API_REFERENCE.md) · 🇯🇵 [ja](../../../ja/docs/reference/API_REFERENCE.md) · 🇰🇭 [km](../../../km/docs/reference/API_REFERENCE.md) · 🇮🇳 [kn](../../../kn/docs/reference/API_REFERENCE.md) · 🇰🇷 [ko](../../../ko/docs/reference/API_REFERENCE.md) · 🇱🇹 [lt](../../../lt/docs/reference/API_REFERENCE.md) · 🇱🇻 [lv](../../../lv/docs/reference/API_REFERENCE.md) · 🇮🇳 [ml](../../../ml/docs/reference/API_REFERENCE.md) · 🇮🇳 [mr](../../../mr/docs/reference/API_REFERENCE.md) · 🇲🇾 [ms](../../../ms/docs/reference/API_REFERENCE.md) · 🇲🇹 [mt](../../../mt/docs/reference/API_REFERENCE.md) · 🇲🇲 [my](../../../my/docs/reference/API_REFERENCE.md) · 🇳🇵 [ne](../../../ne/docs/reference/API_REFERENCE.md) · 🇳🇱 [nl](../../../nl/docs/reference/API_REFERENCE.md) · 🇳🇴 [no](../../../no/docs/reference/API_REFERENCE.md) · 🇮🇳 [or](../../../or/docs/reference/API_REFERENCE.md) · 🇮🇳 [pa](../../../pa/docs/reference/API_REFERENCE.md) · 🇵🇭 [phi](../../../phi/docs/reference/API_REFERENCE.md) · 🇵🇱 [pl](../../../pl/docs/reference/API_REFERENCE.md) · 🇵🇹 [pt](../../../pt/docs/reference/API_REFERENCE.md) · 🇧🇷 [pt-BR](../../../pt-BR/docs/reference/API_REFERENCE.md) · 🇷🇴 [ro](../../../ro/docs/reference/API_REFERENCE.md) · 🇷🇺 [ru](../../../ru/docs/reference/API_REFERENCE.md) · 🇱🇰 [si](../../../si/docs/reference/API_REFERENCE.md) · 🇸🇰 [sk](../../../sk/docs/reference/API_REFERENCE.md) · 🇸🇮 [sl](../../../sl/docs/reference/API_REFERENCE.md) · 🇷🇸 [sr](../../../sr/docs/reference/API_REFERENCE.md) · 🇸🇪 [sv](../../../sv/docs/reference/API_REFERENCE.md) · 🇰🇪 [sw](../../../sw/docs/reference/API_REFERENCE.md) · 🇮🇳 [ta](../../../ta/docs/reference/API_REFERENCE.md) · 🇮🇳 [te](../../../te/docs/reference/API_REFERENCE.md) · 🇹🇭 [th](../../../th/docs/reference/API_REFERENCE.md) · 🇹🇷 [tr](../../../tr/docs/reference/API_REFERENCE.md) · 🇺🇦 [uk-UA](../../../uk-UA/docs/reference/API_REFERENCE.md) · 🇵🇰 [ur](../../../ur/docs/reference/API_REFERENCE.md) · 🇺🇿 [uz](../../../uz/docs/reference/API_REFERENCE.md) · 🇻🇳 [vi](../../../vi/docs/reference/API_REFERENCE.md) · 🇳🇬 [yo](../../../yo/docs/reference/API_REFERENCE.md) · 🇨🇳 [zh-CN](../../../zh-CN/docs/reference/API_REFERENCE.md) · 🇹🇼 [zh-TW](../../../zh-TW/docs/reference/API_REFERENCE.md)
+🌐 **ენები:** 🇺🇸 [English](./API_REFERENCE.md) | 🇪🇹 [አማርኛ](../i18n/am/docs/reference/API_REFERENCE.md) | 🇸🇦 [العربية](../i18n/ar/docs/reference/API_REFERENCE.md) | 🇦🇿 [Azərbaycan dili](../i18n/az/docs/reference/API_REFERENCE.md) | 🇧🇬 [Български](../i18n/bg/docs/reference/API_REFERENCE.md) | 🇧🇩 [বাংলা](../i18n/bn/docs/reference/API_REFERENCE.md) | 🇧🇦 [Bosanski](../i18n/bs/docs/reference/API_REFERENCE.md) | 🇨🇿 [Čeština](../i18n/cs/docs/reference/API_REFERENCE.md) | 🇩🇰 [Dansk](../i18n/da/docs/reference/API_REFERENCE.md) | 🇩🇪 [Deutsch](../i18n/de/docs/reference/API_REFERENCE.md) | 🇬🇷 [Ελληνικά](../i18n/el/docs/reference/API_REFERENCE.md) | 🇪🇸 [Español](../i18n/es/docs/reference/API_REFERENCE.md) | 🇪🇪 [Eesti](../i18n/et/docs/reference/API_REFERENCE.md) | 🇮🇷 [فارسی](../i18n/fa/docs/reference/API_REFERENCE.md) | 🇫🇮 [Suomi](../i18n/fi/docs/reference/API_REFERENCE.md) | 🇫🇷 [Français](../i18n/fr/docs/reference/API_REFERENCE.md) | 🇮🇪 [Gaeilge](../i18n/ga/docs/reference/API_REFERENCE.md) | 🇮🇳 [ગુજરાતી](../i18n/gu/docs/reference/API_REFERENCE.md) | 🇳🇬 [Hausa](../i18n/ha/docs/reference/API_REFERENCE.md) | 🇮🇱 [עברית](../i18n/he/docs/reference/API_REFERENCE.md) | 🇮🇳 [हिन्दी](../i18n/hi/docs/reference/API_REFERENCE.md) | 🇭🇷 [Hrvatski](../i18n/hr/docs/reference/API_REFERENCE.md) | 🇭🇺 [Magyar](../i18n/hu/docs/reference/API_REFERENCE.md) | 🇦🇲 [Հայերեն](../i18n/hy/docs/reference/API_REFERENCE.md) | 🇮🇩 [Bahasa Indonesia](../i18n/id/docs/reference/API_REFERENCE.md) | 🇳🇬 [Igbo](../i18n/ig/docs/reference/API_REFERENCE.md) | 🇮🇹 [Italiano](../i18n/it/docs/reference/API_REFERENCE.md) | 🇯🇵 [日本語](../i18n/ja/docs/reference/API_REFERENCE.md) | 🇬🇪 [ქართული](../i18n/ka/docs/reference/API_REFERENCE.md) | 🇰🇭 [ខ្មែរ](../i18n/km/docs/reference/API_REFERENCE.md) | 🇮🇳 [ಕನ್ನಡ](../i18n/kn/docs/reference/API_REFERENCE.md) | 🇰🇷 [한국어](../i18n/ko/docs/reference/API_REFERENCE.md) | 🇱🇹 [Lietuvių](../i18n/lt/docs/reference/API_REFERENCE.md) | 🇱🇻 [Latviešu](../i18n/lv/docs/reference/API_REFERENCE.md) | 🇮🇳 [മലയാളം](../i18n/ml/docs/reference/API_REFERENCE.md) | 🇮🇳 [मराठी](../i18n/mr/docs/reference/API_REFERENCE.md) | 🇲🇾 [Bahasa Melayu](../i18n/ms/docs/reference/API_REFERENCE.md) | 🇲🇹 [Malti](../i18n/mt/docs/reference/API_REFERENCE.md) | 🇲🇲 [မြန်မာ](../i18n/my/docs/reference/API_REFERENCE.md) | 🇳🇵 [नेपाली](../i18n/ne/docs/reference/API_REFERENCE.md) | 🇳🇱 [Nederlands](../i18n/nl/docs/reference/API_REFERENCE.md) | 🇳🇴 [Norsk](../i18n/no/docs/reference/API_REFERENCE.md) | 🇮🇳 [ଓଡ଼ିଆ](../i18n/or/docs/reference/API_REFERENCE.md) | 🇮🇳 [ਪੰਜਾਬੀ](../i18n/pa/docs/reference/API_REFERENCE.md) | 🇵🇭 [Filipino](../i18n/phi/docs/reference/API_REFERENCE.md) | 🇵🇱 [Polski](../i18n/pl/docs/reference/API_REFERENCE.md) | 🇵🇹 [Português (Portugal)](../i18n/pt/docs/reference/API_REFERENCE.md) | 🇧🇷 [Português (Brasil)](../i18n/pt-BR/docs/reference/API_REFERENCE.md) | 🇷🇴 [Română](../i18n/ro/docs/reference/API_REFERENCE.md) | 🇷🇺 [Русский](../i18n/ru/docs/reference/API_REFERENCE.md) | 🇱🇰 [සිංහල](../i18n/si/docs/reference/API_REFERENCE.md) | 🇸🇰 [Slovenčina](../i18n/sk/docs/reference/API_REFERENCE.md) | 🇸🇮 [Slovenščina](../i18n/sl/docs/reference/API_REFERENCE.md) | 🇷🇸 [Српски](../i18n/sr/docs/reference/API_REFERENCE.md) | 🇸🇪 [Svenska](../i18n/sv/docs/reference/API_REFERENCE.md) | 🇰🇪 [Kiswahili](../i18n/sw/docs/reference/API_REFERENCE.md) | 🇮🇳 [தமிழ்](../i18n/ta/docs/reference/API_REFERENCE.md) | 🇮🇳 [తెలుగు](../i18n/te/docs/reference/API_REFERENCE.md) | 🇹🇭 [ไทย](../i18n/th/docs/reference/API_REFERENCE.md) | 🇹🇷 [Türkçe](../i18n/tr/docs/reference/API_REFERENCE.md) | 🇺🇦 [Українська](../i18n/uk-UA/docs/reference/API_REFERENCE.md) | 🇵🇰 [اردو](../i18n/ur/docs/reference/API_REFERENCE.md) | 🇺🇿 [Oʻzbekcha](../i18n/uz/docs/reference/API_REFERENCE.md) | 🇻🇳 [Tiếng Việt](../i18n/vi/docs/reference/API_REFERENCE.md) | 🇳🇬 [Yorùbá](../i18n/yo/docs/reference/API_REFERENCE.md) | 🇨🇳 [中文 (简体)](../i18n/zh-CN/docs/reference/API_REFERENCE.md) | 🇹🇼 [中文 (繁體)](../i18n/zh-TW/docs/reference/API_REFERENCE.md)
 
-OmniRoute API-ის ძირითადი ცნობარი. იგი მოიცავს საჯარო `/v1` ინტერფეისსა და მართვის ყველაზე ხშირად გამოყენებულ საბოლოო წერტილებს; ამომწურავი წყაროებია მანქანურად წაკითხვადი [`docs/openapi.yaml`](../openapi.yaml) და მარშრუტების ხე `src/app/api/`-ის ქვეშ.
+OmniRoute API-ის ძირითადი საცნობარო დოკუმენტი. ის მოიცავს საჯარო `/v1` ინტერფეისსა და მართვის ყველაზე ხშირად გამოყენებულ საბოლოო წერტილებს; ამომწურავი წყაროებია მანქანურად წაკითხვადი [`docs/openapi.yaml`](../openapi.yaml) და `src/app/api/`-ში არსებული მარშრუტების ხე.
+
+OpenAI-თან თავსებადი პროტოკოლისა და პროვაიდერების შესაძლებლობების დეტალური მატრიცისთვის იხილეთ
+[`OPENAI_COMPATIBILITY.md`](./OPENAI_COMPATIBILITY.md).
 
 ---
 
@@ -189,7 +192,7 @@ X-OmniRoute-Compression: <mode>; source=<source>
 
 ---
 
-## ემბედინგები
+## ჩაშენებები
 
 ```bash
 POST /v1/embeddings
@@ -204,11 +207,16 @@ Content-Type: application/json
 
 ხელმისაწვდომი პროვაიდერები: Nebius, OpenAI, Mistral, Together AI, Fireworks, NVIDIA, **OpenRouter**, Jina AI.
 
-კატალოგის იდენტიფიკატორების ფორმატია `provider/model` (მაგალითად: `jina-ai/jina-embeddings-v5-omni-small`). რეესტრში არსებული Jina-ს მოდელების უპრეფიქსო იდენტიფიკატორებიც (მაგალითად, `jina-embeddings-v5-text-small`, `jina-reranker-v3.5`) მუშავდება. Jina-ს embed/rerank/classify/segment ოპერაციები თავდაპირველად მართვის პანელის `jina-ai` ავტორიზაციის მონაცემებს იყენებს; `JINA_AI_API_KEY` მხოლოდ მაშინ გამოიყენება სარეზერვო ვარიანტად, როდესაც მართვის პანელში გასაღები არ არსებობს. `jina-reader` ბარათი განკუთვნილია მხოლოდ Reader-ისთვის / `r.jina.ai`-ისთვის (`POST /v1/web/fetch`) და არასოდეს უზრუნველყოფს ემბედინგებს ან ხელახალ რანჟირებას.
+კატალოგის იდენტიფიკატორების ფორმატია `provider/model` (მაგალითად: `jina-ai/jina-embeddings-v5-omni-small`). რეესტრში არსებული Jina-ს მოდელების პროვაიდერის გარეშე მითითებული იდენტიფიკატორებიც (მაგალითად, `jina-embeddings-v5-text-small`, `jina-reranker-v3.5`) სწორად განისაზღვრება. Jina-ს embed/rerank/classify/segment ფუნქციები პირველ რიგში მართვის პანელის `jina-ai` ავტორიზაციის მონაცემებს იყენებს; `JINA_AI_API_KEY` მხოლოდ მაშინ გამოიყენება სარეზერვო ვარიანტად, როდესაც მართვის პანელში გასაღები არ არსებობს. `jina-reader` ბარათი განკუთვნილია მხოლოდ Reader / `r.jina.ai`-სთვის (`POST /v1/web/fetch`) და არასდროს უზრუნველყოფს ჩაშენებების ან ხელახალი რანჟირების ფუნქციებს.
 
-რეესტრის მოდელები, რომლებიც მულტიმოდალურ მხარდაჭერას აცხადებს, ასევე იღებს პროვაიდერისგან დამოუკიდებელ, მაქსიმუმ 32 სტრუქტურირებულ ელემენტს. მედია-ელემენტების ტიპებია `text`, `image`, `audio`, `video` და `document`. მათი მედიის `source` არის ან `{"type":"url","url":"https://..."}`, ან `{"type":"base64","data":"...","media_type":"..."}`.
+რეესტრის მოდელები, რომლებიც მულტიმოდალურ მხარდაჭერას აცხადებენ, ასევე იღებს პროვაიდერისგან დამოუკიდებელ, მაქსიმუმ 32 სტრუქტურირებულ
+ელემენტს. მედია-ელემენტების ტიპებია `text`, `image`, `audio`, `video` და `document`. მათი მედიის `source`
+არის ან `{"type":"url","url":"https://..."}`, ან
+`{"type":"base64","data":"...","media_type":"..."}`.
 
-Jina v5 Omni (`jina-ai/jina-embeddings-v5-omni-small`, `jina-ai/jina-embeddings-v5-omni-nano` და ოჯახის ფსევდონიმი `jina-ai/jina-embeddings-v5-omni` → omni-small) ასევე იღებს Jina-ს მშობლიურ EmbeddingsV5Request დოკუმენტებს და **უცვლელად გადაგზავნის მათ** მისამართზე `https://api.jina.ai/v1/embeddings`:
+Jina v5 Omni (`jina-ai/jina-embeddings-v5-omni-small`, `jina-ai/jina-embeddings-v5-omni-nano`
+და ოჯახის ფსევდონიმი `jina-ai/jina-embeddings-v5-omni` → omni-small) ასევე იღებს Jina-ს ნატიურ
+EmbeddingsV5Request დოკუმენტებს და **უცვლელად გადააგზავნის მათ** მისამართზე `https://api.jina.ai/v1/embeddings`:
 
 ```json
 {
@@ -225,18 +233,33 @@ Jina v5 Omni (`jina-ai/jina-embeddings-v5-omni-small`, `jina-ai/jina-embeddings-
 }
 ```
 
-მშობლიური `{ image | audio | video | pdf }` მნიშვნელობები შეიძლება იყოს საჯარო HTTPS URL, `data:` URI ან დაუმუშავებელი base64. OmniRoute ამ ობიექტებს სტრიქონებად არ გარდაქმნის და მშობლიური სურათების URL-ებიდან მონაცემებს არ ჩამოტვირთავს — საჯარო მედიას თავად Jina იღებს. Jina-ს დამატებითი ველები (`task`, `normalized`, `truncate`, `embedding_type`) გადაგზავნილია. მხოლოდ ტექსტისთვის განკუთვნილი Jina SKU-ები კვლავ უარყოფს არატექსტურ დოკუმენტებს.
+ნატიური `{ image | audio | video | pdf }` მნიშვნელობები შეიძლება იყოს საჯარო HTTPS URL, `data:` URI ან დაუმუშავებელი
+base64. OmniRoute ამ ობიექტებს სტრიქონებად არ გარდაქმნის და ნატიური სურათების URL-ებს არ ჩამოტვირთავს — საჯარო
+მედიას თავად Jina იღებს. Jina-ს დამატებითი ველები (`task`, `normalized`, `truncate`, `embedding_type`)
+გადაიგზავნება. მხოლოდ ტექსტისთვის განკუთვნილი Jina SKU-ები კვლავ უარყოფს არატექსტურ დოკუმენტებს.
 
 უსაფრთხოებისა და ტრანსპორტირების შეზღუდვები:
 
-- დისტანციური მედიის URL-ები საჯარო HTTPS უნდა იყოს. კანონიკური `{type,source:url}` ელემენტები სერვერის მხარეს იტვირთება (გადამისამართებების ხელახალი ვალიდაციით, დროის ლიმიტით, ზომის შეზღუდვებით, საჯარო DNS-ითა და კავშირის ფიქსირებით) და პროვაიდერის გამოძახებამდე უშუალოდ მოთხოვნაში თავსდება. Jina-ს მშობლიური `{image:"https://..."}` ელემენტები იმავე საჯარო HTTPS შემოწმების შემდეგ უცვლელად გადაიგზავნება; URL-ს Jina ტვირთავს.
-- მოთხოვნაში ჩასმული base64 მედია შეზღუდულია თითოეულ ელემენტზე დეკოდირებული 8 MiB-ით და მთელ მოთხოვნაში დეკოდირებული 16 MiB-ით.
+- დისტანციური მედიის URL-ები საჯარო HTTPS მისამართები უნდა იყოს. კანონიკური `{type,source:url}` ელემენტები
+  სერვერის მხარეს იტვირთება (გადამისამართებების ხელახალი ვალიდაცია, დროის ლიმიტი, ზომის ლიმიტები, საჯარო DNS, კავშირის ფიქსაცია) და
+  პროვაიდერის გამოძახებამდე უშუალოდ ჩაერთვება მოთხოვნაში. Jina-ს ნატიური `{image:"https://..."}` ელემენტები იმავე
+  საჯარო HTTPS შემოწმების შემდეგ უცვლელად გადაიგზავნება; URL-ს Jina ჩამოტვირთავს.
+- ჩაშენებული base64 მედია შეზღუდულია თითოეულ ელემენტზე დეკოდირებული 8 MiB-ით და მთელ მოთხოვნაში დეკოდირებული 16 MiB-ით.
 
-პროვაიდერისთვის გარდაქმნა (კანონიკური ელემენტები არასოდეს გადაიგზავნება უცვლელად):
+პროვაიდერისთვის გარდაქმნა (კანონიკური ელემენტები არასდროს გადაიგზავნება უცვლელად):
 
-- Jina-ს მულტიმოდალური მოდელები: თითოეული ზედა დონის ელემენტი გარდაიქმნება მოდალობის გასაღების მქონე ერთ ობიექტად (`text` / `image` / `audio` / `video` / `pdf`), მოთხოვნაში ჩასმული მედიისთვის data URI-ების გამოყენებით; თითო ვექტორი ყოველ ზედა დონის ელემენტზე.
-- Gemini Embedding 2-ის ოჯახი: ზედა დონის ერთი მასივი გარდაიქმნება ერთ მშობლიურ `models/{model}:embedContent` მოთხოვნად, `content.parts`-ით (`text` ან `inline_data`).
-- უცნობი/დინამიკური მოდელები, რომლებსაც მოდალობის ცხადი მეტამონაცემები არ გააჩნია, სტრუქტურირებულ შეყვანას HTTP 400-ით უარყოფს.
+- Jina-ს მულტიმოდალური მოდელები: თითოეული ზედა დონის ელემენტი გარდაიქმნება მოდალობის გასაღების მქონე ერთ ობიექტად
+  (`text` / `image` / `audio` / `video` / `pdf`), ხოლო ჩაშენებული მედიისთვის გამოიყენება data URI-ები; თითო ვექტორი
+  ზედა დონის თითოეულ ელემენტზე.
+- Gemini Embedding 2-ის ოჯახი: ზედა დონის ერთი მასივი გარდაიქმნება ერთ ნატიურ
+  `models/{model}:embedContent` მოთხოვნად, `content.parts`-ით (`text` ან `inline_data`).
+- llama.cpp (`llama-cpp/<model>`, ლოკალური სერვერის მიერ ჩატვირთული ნებისმიერი მოდელი): კანონიკური `text` ელემენტები
+  გარდაიქმნება უბრალო სტრიქონებად, ხოლო `image` / `audio` / `video` — თითოეულისთვის ერთ
+  `{"content": [part]}` ობიექტად, llama-server-ის ჩატის შიგთავსის ნაწილების გამოყენებით (`image_url`,
+  `input_audio` ფორმატით `wav` / `mp3` / `flac`, `input_video`) და ჩაშენებული მონაცემებით; თითო ვექტორი
+  ზედა დონის თითოეულ ელემენტზე. სერვერი გაშვებული უნდა იყოს `--embedding --mmproj …` პარამეტრებით; პროექტორის გარეშე ის
+  თავად უარყოფს მედიას. `document` მხარდაჭერილი არ არის.
+- აშკარა მოდალობის მეტამონაცემების არმქონე უცნობი/დინამიკური მოდელები სტრუქტურირებულ შეყვანას HTTP 400 პასუხით უარყოფს.
 
 ```json
 {
@@ -253,10 +276,11 @@ Jina v5 Omni (`jina-ai/jina-embeddings-v5-omni-small`, `jina-ai/jina-embeddings-
 }
 ```
 
-მოდელისა და მოდალობის მხარდაუჭერელი კომბინაციები ელემენტის იძულებით გარდაქმნის ნაცვლად HTTP 400-ს აბრუნებს. ძველი სტრიქონული/ტოკენური მოთხოვნების შეყვანასთან დაუკავშირებელი გაფართოების ველები კვლავ უცვლელად გადაიცემა.
+მოდელისა და მოდალობის მხარდაუჭერელი კომბინაციები ელემენტის იძულებითი გარდაქმნის ნაცვლად აბრუნებს HTTP 400 პასუხს. შეყვანის გარდა სხვა
+გაფართოების ველები ძველი სტრიქონული/ტოკენური მოთხოვნებისთვის კვლავ უცვლელად გადაიცემა.
 
 ```bash
-# ყველა ემბედინგის მოდელის ჩამონათვალი
+# ჩაშენების ყველა მოდელის ჩამონათვალი
 GET /v1/embeddings
 ```
 
@@ -271,15 +295,34 @@ Content-Type: application/json
 
 {
   "model": "openai/gpt-image-2",
-  "prompt": "A beautiful sunset over mountains",
+  "prompt": "მშვენიერი მზის ჩასვლა მთების ფონზე",
   "size": "1024x1024"
 }
 ```
 
-ხელმისაწვდომი პროვაიდერები: OpenAI (GPT Image 2), xAI (Grok Image), Together AI (FLUX), Fireworks AI, Nebius (FLUX), Hyperbolic, NanoBanana, **OpenRouter**, SD WebUI (ლოკალური), ComfyUI (ლოკალური).
+ხელმისაწვდომ პროვაიდერებს შორისაა OpenAI (GPT Image 2), xAI (Grok Image), Together AI (FLUX), Fireworks AI, Nebius (FLUX), Hyperbolic, NanoBanana, **OpenRouter**, **ZenMux**, SD WebUI (ლოკალური), ComfyUI (ლოკალური).
+
+ZenMux ხელახლა იყენებს არსებულ API-გასაღების კავშირს და იღებს `zenmux/` ან `zm/` პრეფიქსებს:
+
+- `zenmux/openai/gpt-image-2` იყენებს ZenMux-ის OpenAI Images API-ს. პარამეტრებს შორისაა `size`,
+  `quality`, `n`, `output_format`, `output_compression`, `background` და `response_format`.
+- სხვა გამომცემლები, მაგალითად `zm/meta/muse-image-1.0`, იყენებენ ZenMux-ის Vertex AI `:predict`
+  საბოლოო წერტილს. `n` შეესაბამება `sampleCount`-ს, `aspect_ratio` — `aspectRatio`-ს, ხოლო `image_size`
+  (`1K`, `2K`, `4K`) — `sampleImageSize`-ს. პიქსელებში მითითებული `size` განსაზღვრავს მხოლოდ გვერდების თანაფარდობას
+  და არა გარანტირებულ პიქსელურ ზომებს. მხარდაჭერილი თანაფარდობები, გარჩევადობები და რაოდენობები მოდელის მიხედვით განსხვავდება.
+- `zm/inclusionai/ming-image-0.1-design` ზომებს თავად ირჩევს. გამოტოვეთ `size`,
+  `aspect_ratio` და `image_size`; აშკარად მითითებული მნიშვნელობები დააბრუნებს HTTP 400-ს. PNG-ის, JPEG-ისა და WebP-ის
+  მოთხოვნა შესაძლებელია `output_format`-ის გამოყენებით.
+
+ეს ინტეგრაცია მხარს უჭერს ტექსტიდან სურათის გენერაციას და არა საცნობარო სურათის რედაქტირებას. Vertex-ის
+გამომავალი ნორმალიზდება `data[].b64_json`-ში; `response_format: "url"` აბრუნებს ზედა დონის
+HTTPS URL-ს ან base64 მონაცემთა URL-ს, როდესაც ხელმისაწვდომია მხოლოდ სურათის ბაიტები. ცარიელი/გაფილტრული გამომავალი
+ცარიელი წარმატებული პასუხის ნაცვლად შეცდომას აბრუნებს. მოდელზე წვდომა დამოკიდებულია ZenMux-ის ანგარიშზე.
+იხილეთ [ZenMux-ის Vertex API](https://docs.zenmux.ai/api/vertexai/generate-images) და
+[OpenAI Images API](https://docs.zenmux.ai/api/openai/generate-an-image).
 
 ```bash
-# სურათების ყველა მოდელის ჩამონათვალი
+# ყველა სურათის მოდელის ჩამონათვალი
 GET /v1/images/generations
 ```
 
@@ -352,43 +395,57 @@ Service Account JSON-ის ავტორიზაციის მონაც
 GET /v1/models
 Authorization: Bearer your-api-key
 
-→ აბრუნებს ჩატის, embedding-ისა და სურათების ყველა მოდელს + კომბინაციებს OpenAI-ის ფორმატში
+→ აბრუნებს ჩატის, embedding-ისა და გამოსახულების ყველა მოდელსა და კომბინაციას OpenAI-ის ფორმატში
 ```
 
 ### მოდელის id-ის პრეფიქსები (`?prefix=`)
 
-მოდელების უმეტესობა წარმოდგენილია **პროვაიდერის პრეფიქსით**. მიღებულ პრეფიქსს აკონტროლებს
+მოდელების უმეტესობა წარმოდგენილია **პროვაიდერის პრეფიქსით**. მიღებულ პრეფიქსს მართავს
 `MODELS_CATALOG_PREFIX_MODE` ფუნქციური ალამი და მისი ჩანაცვლება შესაძლებელია **თითოეული მოთხოვნისთვის**
-query-პარამეტრით — ეს სასარგებლოა კლიენტისთვის, რომელსაც სუფთა სია სურს სერვერის საერთო
-პარამეტრის ყველა დანარჩენისთვის შეცვლის გარეშე:
+query-პარამეტრის მეშვეობით — ეს სასარგებლოა კლიენტისთვის, რომელსაც სუფთა სია სურს ისე, რომ
+ყველა დანარჩენისთვის სერვერის საერთო პარამეტრი არ შეიცვალოს:
 
 ```bash
 GET /v1/models?prefix=alias        # თითო id თითო მოდელზე — მოკლე alias-პრეფიქსი
 GET /v1/models?prefix=dual         # ორივე ფორმა (სერვერის ნაგულისხმევი პარამეტრი)
-GET /v1/models?prefix=canonical    # მხოლოდ სრული provider-id პრეფიქსი
+GET /v1/models?prefix=canonical    # მხოლოდ პროვაიდერის სრული id-ის პრეფიქსი
 ```
 
-| რეჟიმი      | აბრუნებს                                                 | შენიშვნები                                                                                                                                                                                                 |
-| ----------- | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dual`      | `cc/claude-sonnet-4-6` **და** `claude/claude-sonnet-4-6` | **ნაგულისხმევი.** ორივე id ერთსა და იმავე მოდელზე მარშრუტდება; შენარჩუნებულია, რათა იმუშაოს კლიენტების კონფიგურაციებმა, რომლებშიც რომელიმე ფორმაა პირდაპირ გაწერილი. კატალოგის ზომას დაახლოებით აორმაგებს. |
-| `alias`     | `cc/claude-sonnet-4-6`                                   | თითო ჩანაწერი თითო მოდელზე. განსხვავებული alias-ის არმქონე პროვაიდერებიც მაინც აბრუნებენ თავიანთ ჩანაწერს, ამიტომ არაფერი იკარგება.                                                                        |
-| `canonical` | `claude/claude-sonnet-4-6`                               | თითო ჩანაწერი თითო მოდელზე, სრული provider-id პრეფიქსით. განსხვავებული alias-ის არმქონე პროვაიდერებიც (მაგ., `antigravity/…`, `agy/…`) აქაც აბრუნებენ თავიანთ ერთადერთ id-ს, ამიტომ არაფერი იკარგება.      |
+| რეჟიმი      | აბრუნებს                                                 | შენიშვნები                                                                                                                                                                                                              |
+| ----------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dual`      | `cc/claude-sonnet-4-6` **და** `claude/claude-sonnet-4-6` | **ნაგულისხმევი.** ორივე id ერთსა და იმავე მოდელთან მარშრუტდება; შენარჩუნებულია, რათა კლიენტების კონფიგურაციებმა, რომლებშიც რომელიმე ფორმა პირდაპირაა გაწერილი, მუშაობა განაგრძოს. კატალოგის ზომას დაახლოებით აორმაგებს. |
+| `alias`     | `cc/claude-sonnet-4-6`                                   | თითო ჩანაწერი თითო მოდელზე. განსხვავებული alias-ის არმქონე პროვაიდერებიც მაინც აბრუნებენ საკუთარ ჩანაწერს, ამიტომ არაფერი იკარგება.                                                                                     |
+| `canonical` | `claude/claude-sonnet-4-6`                               | თითო ჩანაწერი თითო მოდელზე, პროვაიდერის სრული id-ის პრეფიქსით. განსხვავებული alias-ის არმქონე პროვაიდერებიც (მაგ., `antigravity/…`, `agy/…`) აქაც აბრუნებენ საკუთარ ერთადერთ id-ს, ამიტომ არაფერი იკარგება.             |
 
-`dual` რეჟიმის სარკისებრი ჩანაწერის ამოცნობა query-პარამეტრის გარეშეც შეიძლება: მას აქვს `parent`
+`dual` რეჟიმის სარკის ამოცნობა query-პარამეტრის გარეშეც შესაძლებელია: მას აქვს `parent`
 ველი, რომელიც ძირითად id-ზე მიუთითებს.
 
 კლიენტებმა, რომლებიც მოდელის ასარჩევ ინტერფეისს აჩვენებენ, უნდა მოითხოვონ `?prefix=alias` — სწორედ ასე იქცევა
 [OmniCopilot VS Code გაფართოება](../guides/VSCODE-COPILOT.md).
 
-### მოდელების no-thinking ვარიანტები
+### ინდივიდუალურად დამალული ჩატის მოდელები
 
-აზროვნების უნარის მქონე Claude მოდელებისთვის `/v1/models` ასევე წარმოადგენს **no-thinking** ვარიანტს, რომლის id-ს აქვს პრეფიქსი `claude-3-omniroute-no-thinking/`:
+მოდელი, რომელიც მისი პროვაიდერის გვერდზე მონიშნულია როგორც **Hidden**, კატალოგიდან გამოირიცხება და მისი
+პირდაპირ მოთხოვნისას ბრუნდება HTTP `404` / `model_not_found`. შემოწმება იყენებს განსაზღვრულ
+პროვაიდერსა და მოდელს, მათ შორის პროვაიდერის alias-ებს, თავსებადი პროვაიდერის node-პრეფიქსებსა და
+კავშირის ნაგულისხმევ პარამეტრებს. კომბინაცია გამოტოვებს დამალულ სამიზნეებს და შეუძლია გამოიყენოს ხილული მონათესავე მოდელი; როდესაც არცერთი
+შესრულებადი სამიზნე აღარ რჩება, ის იმავე შეცდომის კოდს აბრუნებს. დამალვის გაუქმება მომდევნო
+მოთხოვნიდან ამოქმედდება. მხოლოდ გამოსახულებისთვის განკუთვნილი ხილვადობის ჩანაცვლებები არ მალავს იმავე ID-ის მქონე ჩატის მოდელს.
+
+მოდელის ეს ინდივიდუალური პარამეტრი განცალკევებულია
+[მოდელების გამოჩენის დაშვების/აკრძალვის სიებისგან](../routing/MODEL_EXPOSURE_LIST.md), რომლებიც ფილტრავს კატალოგში
+ჩვენებასა და ავტომატური მარშრუტიზაციის კანდიდატებს, თუმცა ინარჩუნებს პირდაპირ dispatch-ს. API-გასაღების მოდელზე
+წვდომის უფლებები დამოუკიდებლად კვლავ მოქმედებს. კატალოგის პრეფიქსის ნაგულისხმევ რეჟიმად რჩება `dual`.
+
+### აზროვნების გარეშე მოდელების ვარიანტები
+
+აზროვნების შესაძლებლობის მქონე Claude-ის მოდელებისთვის `/v1/models` ასევე აჩვენებს **აზროვნების გარეშე** ვარიანტს, რომლის id იწყება პრეფიქსით `claude-3-omniroute-no-thinking/`:
 
 ```
 claude-3-omniroute-no-thinking/<provider>/<model>
 ```
 
-ამ id-ის არჩევისას (მაგ., Claude Code-ის კონფიგურაციაში, რომელიც ყოველთვის ურთავს `thinking` ბლოკს), ის კვლავ რეალურ `<provider>/<model>`-ად გარდაიქმნება, თუმცა მსჯელობა ჩახშობილია — `/v1/messages` მარშრუტზე გამოიყენება `thinking:{type:"disabled"}`, ხოლო `/v1/chat/completions` მარშრუტზე `reasoning`/`reasoning_effort` ველები გამოიტოვება. ვარიანტი ჩამონათვალში შედის მხოლოდ Claude-ის ოჯახის იმ მოდელებისთვის, რომლებსაც აქვთ აზროვნების მხარდაჭერა **და** ითვალისწინებენ `disabled`-ს (ამიტომ, მაგალითად, adaptive-only მოდელები, რომლებიც `disabled`-ს უარყოფენ, გამორიცხულია). ოპერატორებს შეუძლიათ თითოეული მოდელისთვის ამ ვარიანტის იძულებით ჩართვა ან გამორთვა `ModelSpec.noThinkingAlias`-ის მეშვეობით.
+ამ id-ის არჩევისას (მაგ., Claude Code-ის კონფიგურაციაში, რომელიც ყოველთვის ურთავს `thinking` ბლოკს), ის კვლავ რეალურ `<provider>/<model>`-ზე განისაზღვრება, თუმცა reasoning გამორთულია — `/v1/messages` მარშრუტზე გამოიყენება `thinking:{type:"disabled"}`, ხოლო `/v1/chat/completions` მარშრუტზე `reasoning`/`reasoning_effort` ველები ამოიშლება. ვარიანტი ჩამონათვალში შედის მხოლოდ Claude-ის ოჯახის იმ მოდელებისთვის, რომლებიც მხარს უჭერენ thinking-ს **და** ითვალისწინებენ `disabled`-ს (ამიტომ, მაგალითად, adaptive-only მოდელები, რომლებიც `disabled`-ს უარყოფენ, გამორიცხულია). ოპერატორებს შეუძლიათ თითოეული მოდელისთვის ამ ვარიანტის იძულებით ჩართვა ან გამორთვა `ModelSpec.noThinkingAlias`-ის მეშვეობით.
 
 ---
 
@@ -408,42 +465,42 @@ GET /api/v1/provider-plugin-manifest
 
 ---
 
-## თავსებადობის საბოლოო წერტილები
+## თავსებადობის ენდპოინტები
 
-| მეთოდი | გზა                                       | ფორმატი                                     |
-| ------ | ----------------------------------------- | ------------------------------------------- |
-| POST   | `/v1/chat/completions`                    | OpenAI                                      |
-| POST   | `/v1/messages`                            | Anthropic                                   |
-| POST   | `/v1/responses`                           | OpenAI Responses                            |
-| POST   | `/v1/embeddings`                          | OpenAI                                      |
-| POST   | `/v1/images/generations`                  | OpenAI Images                               |
-| POST   | `/v1/images/edits`                        | OpenAI Images (რედაქტირება/inpaint)         |
-| POST   | `/v1/videos/generations`                  | OpenAI-ის სტილის ვიდეოს გენერაცია           |
-| POST   | `/v1/music/generations`                   | OpenAI-ის სტილის მუსიკის გენერაცია          |
-| POST   | `/v1/audio/transcriptions`                | OpenAI Audio (STT)                          |
-| POST   | `/v1/audio/speech`                        | OpenAI TTS (აბრუნებს აუდიოს სხეულს)         |
-| POST   | `/v1/rerank`                              | Cohere/Voyage-ის სტილის რერანჟირება         |
-| POST   | `/v1/classify`                            | Jina-ს კლასიფიკაცია (`api.jina.ai`)         |
-| POST   | `/v1/segment`                             | Jina-ს სეგმენტატორი (`segment.jina.ai`)     |
-| POST   | `/v1/moderations`                         | OpenAI Moderations                          |
-| GET    | `/v1/models`                              | OpenAI                                      |
-| POST   | `/v1/messages/count_tokens`               | Anthropic                                   |
-| GET    | `/v1beta/models`                          | Gemini                                      |
-| POST   | `/v1beta/models/{...path}`                | Gemini generateContent                      |
-| POST   | `/v1/api/chat`                            | Ollama                                      |
-| GET    | `/api/v1/vscode/{token}/`                 | OpenAI კატალოგის ფსევდონიმი                 |
-| GET    | `/api/v1/vscode/{token}/models`           | OpenAI მოდელების ფსევდონიმი                 |
-| POST   | `/api/v1/vscode/{token}/chat/completions` | OpenAI-ის ტოკენიზებული ფსევდონიმი           |
-| POST   | `/api/v1/vscode/{token}/responses`        | OpenAI Responses-ის ტოკენიზებული ფსევდონიმი |
-| POST   | `/api/v1/vscode/{token}/api/chat`         | Ollama-ს ტოკენიზებული ფსევდონიმი            |
-| GET    | `/api/v1/vscode/{token}/api/tags`         | Ollama tags-ის ტოკენიზებული ფსევდონიმი      |
+| მეთოდი | გზა                                       | ფორმატი                                 |
+| ------ | ----------------------------------------- | --------------------------------------- |
+| POST   | `/v1/chat/completions`                    | OpenAI                                  |
+| POST   | `/v1/messages`                            | Anthropic                               |
+| POST   | `/v1/responses`                           | OpenAI Responses                        |
+| POST   | `/v1/embeddings`                          | OpenAI                                  |
+| POST   | `/v1/images/generations`                  | OpenAI Images                           |
+| POST   | `/v1/images/edits`                        | OpenAI Images (რედაქტირება/შევსება)     |
+| POST   | `/v1/videos/generations`                  | OpenAI-ის სტილის ვიდეოს გენერაცია       |
+| POST   | `/v1/music/generations`                   | OpenAI-ის სტილის მუსიკის გენერაცია      |
+| POST   | `/v1/audio/transcriptions`                | OpenAI Audio (STT)                      |
+| POST   | `/v1/audio/speech`                        | OpenAI TTS (აბრუნებს აუდიოს სხეულს)     |
+| POST   | `/v1/rerank`                              | Cohere/Voyage-ის სტილის რერანჟირება     |
+| POST   | `/v1/classify`                            | Jina-ს კლასიფიკაცია (`api.jina.ai`)     |
+| POST   | `/v1/segment`                             | Jina-ს სეგმენტატორი (`segment.jina.ai`) |
+| POST   | `/v1/moderations`                         | OpenAI Moderations                      |
+| GET    | `/v1/models`                              | OpenAI                                  |
+| POST   | `/v1/messages/count_tokens`               | Anthropic                               |
+| GET    | `/v1beta/models`                          | Gemini                                  |
+| POST   | `/v1beta/models/{...path}`                | Gemini generateContent                  |
+| POST   | `/v1/api/chat`                            | Ollama                                  |
+| GET    | `/api/v1/vscode/{token}/`                 | OpenAI-ის კატალოგის ალიასი              |
+| GET    | `/api/v1/vscode/{token}/models`           | OpenAI-ის მოდელების ალიასი              |
+| POST   | `/api/v1/vscode/{token}/chat/completions` | OpenAI-ის ტოკენიზებული ალიასი           |
+| POST   | `/api/v1/vscode/{token}/responses`        | OpenAI Responses-ის ტოკენიზებული ალიასი |
+| POST   | `/api/v1/vscode/{token}/api/chat`         | Ollama-ს ტოკენიზებული ალიასი            |
+| GET    | `/api/v1/vscode/{token}/api/tags`         | Ollama-ს ტეგების ტოკენიზებული ალიასი    |
 
-ყველა POST მარშრუტი ერთსა და იმავე სტრუქტურას იყენებს: `Bearer your-api-key` + Zod-ით ვალიდირებული JSON სხეული (`v1RerankSchema`, `v1ModerationSchema`, `v1AudioSpeechSchema` და ა.შ.; იხილეთ `src/shared/validation/schemas.ts`). სქემის ვალიდაციის წარუმატებლობისას ბრუნდება 4xx.
+ყველა POST მარშრუტი ერთსა და იმავე სტრუქტურას იყენებს: `Bearer your-api-key` + Zod-ით ვალიდირებული JSON სხეული (`v1RerankSchema`, `v1ModerationSchema`, `v1AudioSpeechSchema` და სხვ.; იხილეთ `src/shared/validation/schemas.ts`). სქემის ვალიდაციის წარუმატებლობისას ბრუნდება 4xx.
 
-კლიენტებისთვის, რომლებსაც `Authorization: Bearer ...`-ის მიმაგრება არ შეუძლიათ, OmniRoute ასევე იღებს API გასაღებებს URL-ში — ან მოთხოვნის სტრიქონთან თავსებადობის საშუალებით (`?token=...`, `?apiKey=...`, `?api_key=...`, `?key=...`), ან ქვემოთ დოკუმენტირებული სპეციალური `/api/v1/vscode/{token}/...` საბოლოო წერტილების საშუალებით.
+კლიენტებისთვის, რომლებსაც `Authorization: Bearer ...`-ის მიმაგრება არ შეუძლიათ, OmniRoute ასევე იღებს API გასაღებებს URL-ში — ან მოთხოვნის სტრიქონთან თავსებადობის მეშვეობით (`?token=...`, `?apiKey=...`, `?api_key=...`, `?key=...`), ან ქვემოთ დოკუმენტირებული სპეციალური `/api/v1/vscode/{token}/...` ენდპოინტების მეშვეობით.
 
 ```bash
-# რერანჟირება (ღრუბლოვანი რეესტრის პროვაიდერი ან OpenAI-სთან თავსებადი პროვაიდერის კვანძი ფორმატით "<prefix>/<model>")
+# რერანჟირება (ღრუბლოვანი რეესტრის პროვაიდერი ან OpenAI-თან თავსებადი პროვაიდერის კვანძი ფორმატით "<prefix>/<model>")
 POST /v1/rerank      { "model": "jina-ai/jina-reranker-v3.5", "query": "...", "documents": ["..."] }
 
 # Jina-ს კლასიფიკაცია (Foundation API-ის ავტორიზაციის მონაცემები)
@@ -452,46 +509,53 @@ POST /v1/classify    { "model": "jina-embeddings-v5-text-small", "input": ["..."
 # Jina-ს სეგმენტატორი
 POST /v1/segment     { "content": "...", "return_chunks": true }
 
-# Jina-ს ძიება (s.jina.ai; პროვაიდერის ფსევდონიმები: jina-search, jina-ai, jina)
+# Jina-ს ძიება (s.jina.ai; პროვაიდერის ალიასები: jina-search, jina-ai, jina)
 POST /v1/search      { "query": "...", "provider": "jina-search" }
 
 # მოდერაცია
 POST /v1/moderations { "model": "omni-moderation-latest", "input": "..." }
 
-# TTS — აბრუნებს audio/mpeg (ან მოთხოვნილი ფორმატის) სხეულს
+# TTS — აბრუნებს audio/mpeg-ის (ან მოთხოვნილი ფორმატის) სხეულს
 POST /v1/audio/speech { "model": "openai/tts-1", "input": "Hello", "voice": "alloy" }
+
+# Soniox TTS მოითხოვს ენასა და ხმას: `language`-ის ნაგულისხმევი მნიშვნელობაა "en"; თუ
+# ხმა გამოტოვებულია ან მითითებულია OpenAI-ის სტანდარტული ხმის სახელი (alloy, nova, …), გამოიყენება "Adrian"
+POST /v1/audio/speech { "model": "soniox/tts-rt-v1", "input": "Xin chào", "voice": "Adrian", "language": "vi" }
 
 # სურათის რედაქტირება (multipart)
 POST /v1/images/edits  -F image=@input.png -F prompt="..." -F mask=@mask.png
 
 # ვიდეოს / მუსიკის გენერაცია (პროვაიდერის პრეფიქსიანი მოდელის ID)
 POST /v1/videos/generations { "model": "runway/gen-3", "prompt": "..." }
-POST /v1/music/generations  { "model": "suno/v3.5",   "prompt": "..." }
+POST /v1/music/generations  { "model": "kie/suno-v4.0",   "prompt": "..." }
 ```
 
-> **რერანჟირების პროვაიდერის კვანძები:** `POST /v1/rerank` მოთხოვნებს ასევე მიმართავს OpenAI-სთან თავსებადი პროვაიდერის კვანძებისკენ
-> (oMLX, vLLM, Infinity, TEI გეითვეის უკან, …), რომლებიც მისამართდება ფორმატით `<node-prefix>/<model>`. უკუმარყუჟის
-> კვანძები (`localhost`, `127.0.0.1`, `172.16.0.0/12`) ყოველთვის დაშვებულია. ნებისმიერ სხვა
-> ჰოსტზე განთავსებული კვანძები — LAN კომპიუტერი ან Tailscale-ის პირი — დაშვებულია მხოლოდ მაშინ, როდესაც ოპერატორი ჩართავს
-> `RERANK_REMOTE_PROVIDER_NODES` ფუნქციის ალამს **და** კვანძის საბაზო URL აკმაყოფილებს პროვაიდერის
-> გამავალი URL-ების პოლიტიკას (`OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS` / `OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS`);
-> ღრუბლოვანი მეტამონაცემების ჰოსტებზე მოთხოვნები არასოდეს გადაიმისამართება. მეხსიერების ძრავის რერანჟირების ეტაპი ამ მარშრუტს
-> უკუმარყუჟის საშუალებით იძახებს, ამიტომ იგივე წესი მართავს `rerankProviderModel`-ს Memory-ის პარამეტრებში.
+> **რერანჟირების პროვაიდერის კვანძები:** `POST /v1/rerank` მოთხოვნებს ასევე მარშრუტიზებს OpenAI-თან თავსებად პროვაიდერის კვანძებზე
+> (oMLX, vLLM, Infinity, TEI გეითვეის მიღმა, …), რომლებიც მიეთითება როგორც `<node-prefix>/<model>`. უკუმარყუჟის
+> კვანძები (`localhost`, `127.0.0.1`, `172.16.0.0/12`) ყოველთვის დაშვებულია; ასევე დაშვებულია ჰოსტების სახელები, რომლებსაც
+> ოპერატორი `OMNIROUTE_LOCAL_PROVIDER_NODE_HOSTS`-ში ჩამოთვლის (მაგალითად, Docker/Compose სერვისის სახელი,
+> როგორიცაა `http://reranker:8080/v1`; მათთან დაკავშირება პირდაპირ ხდება და არასოდეს — `HTTP(S)_PROXY`-ის ან
+> კავშირის დამაგრებული პროქსის მეშვეობით). ნებისმიერ სხვა
+> ჰოსტზე განთავსებული კვანძები — LAN-ში არსებული მოწყობილობა ან Tailscale-ის პირი — დაშვებულია მხოლოდ მაშინ, როდესაც ოპერატორი ჩართავს
+> `RERANK_REMOTE_PROVIDER_NODES` ფუნქციის ალამს **და** კვანძის საბაზისო URL გაივლის პროვაიდერის
+> გამავალი URL-ების პოლიტიკას (`OMNIROUTE_ALLOW_LOCAL_PROVIDER_URLS` / `OMNIROUTE_ALLOW_PRIVATE_PROVIDER_URLS`).
+> მეხსიერების ძრავის რერანჟირების ეტაპი ამ მარშრუტს
+> უკუმარყუჟის მეშვეობით იძახებს, ამიტომ იგივე წესი ვრცელდება მეხსიერების პარამეტრებში არსებულ `rerankProviderModel`-ზე.
 >
 > **ლოკალური სერვერის სტრუქტურები:** კვანძი გამოიძახება მისამართზე `<base>/v1/rerank`, ხოლო 404-ის შემთხვევაში — მისამართზე `<base>/rerank`
-> (Infinity, TEI). ზემდგომი მოთხოვნის სხეული შეიცავს როგორც Cohere/OpenAI-ის ველების სახელებს (`documents`,
-> `return_documents`), ისე TEI-ის ველების სახელებს (`texts`, `return_text`), ხოლო ზემდგომი პასუხი
-> ნორმალიზდება Cohere-ის გარსში: TEI-ის შიშველი `[{index, score, text}]`, მსუბუქი გეითვეებიდან მიღებული
-> `{results: [{index, score}]}` და Voyage-ის სტილის `{data: [...]}` — ყველა მათგანი კლიენტს უბრუნდება ფორმატით
+> (Infinity, TEI). ზედა დონის მოთხოვნის სხეული შეიცავს როგორც Cohere/OpenAI-ის მართლწერას (`documents`,
+> `return_documents`), ისე TEI-ის მართლწერას (`texts`, `return_text`), ხოლო ზედა დონის პასუხი
+> ნორმალიზდება Cohere-ის გარსის ფორმატში: TEI-ის დაუფუთავი `[{index, score, text}]`, მსუბუქი გეითვეებიდან მიღებული
+> `{results: [{index, score}]}` და Voyage-ის სტილის `{data: [...]}` კლიენტს უბრუნდება ფორმატით
 > `{results: [{index, relevance_score, document?}]}`, ქულის მიხედვით დალაგებული და `top_n`-ით შეზღუდული.
 
-> **პროვაიდერის კვანძების აღმოჩენა:** OpenAI-სთან თავსებადი პროვაიდერის კვანძზე არსებული მოდელები `GET /v1/models`-ში
-> კვანძის პრეფიქსით ჩნდება. სტრიქონები, რომლებიც საბოლოო წერტილის მეტამონაცემებს არ შეიცავს (რაც ტიპურია ლოკალური `/v1/models` ჩამონათვალებისთვის),
-> მემკვიდრეობით იღებს კვანძის `apiType`-ს, ამიტომ `embeddings` კვანძის მოდელებს ენიჭებათ `type: "embedding"`, ხოლო
-> `rerank` კვანძის მოდელებს — `type: "rerank"`, ნაცვლად იმისა, რომ ნაგულისხმევად ჩატად განისაზღვროს; სინქრონიზებულ ან ხელით დამატებულ სტრიქონში აშკარად მითითებულ
-> `supportedEndpoints`-ს კვლავ ენიჭება უპირატესობა.
+> **პროვაიდერ-კვანძის აღმოჩენა:** OpenAI-თან თავსებად პროვაიდერ-კვანძზე არსებული მოდელები გამოჩნდება `GET /v1/models`-ში
+> კვანძის პრეფიქსის ქვეშ. ჩანაწერები, რომლებიც endpoint-ის მეტამონაცემებს არ შეიცავს (რაც ტიპურია ლოკალური `/v1/models` სიებისთვის),
+> მემკვიდრეობით იღებს კვანძის `apiType`-ს, ამიტომ `embeddings` კვანძის მოდელებს აქვთ `type: "embedding"`, ხოლო
+> `rerank` კვანძის მოდელებს — `type: "rerank"`, ნაცვლად იმისა, რომ ნაგულისხმევად chat ტიპი მიენიჭოთ; სინქრონიზებულ ან ხელით დამატებულ ჩანაწერში ცხადად მითითებულ
+> `supportedEndpoints`-ს კვლავ უპირატესობა ენიჭება.
 
-### პროვაიდერის სპეციალური მარშრუტები
+### პროვაიდერის გამოყოფილი მარშრუტები
 
 ```bash
 POST /v1/providers/{provider}/chat/completions
@@ -499,7 +563,7 @@ POST /v1/providers/{provider}/embeddings
 POST /v1/providers/{provider}/images/generations
 ```
 
-პროვაიდერის პრეფიქსი ავტომატურად ემატება, თუ ის მითითებული არ არის. შეუსაბამო მოდელების შემთხვევაში ბრუნდება `400`.
+თუ პროვაიდერის პრეფიქსი არ არის მითითებული, ის ავტომატურად ემატება. შეუსაბამო მოდელები აბრუნებს `400`-ს.
 
 ---
 
@@ -666,21 +730,24 @@ CLI `base_url + /responses`-ს WebSocket-მდე აახლებს, ხ�
 
 ## თვითმომსახურების გამოყენება (`/api/usage/om-usage`)
 
-ნებისმიერ API-გასაღებს შეუძლია ნახოს **საკუთარი** გამოყენება და კვოტები — მართვის ავთენტიფიკაცია საჭირო არ არის. ამ საბოლოო წერტილს კლიენტი (CLI, OmniCopilot-ის პანელი) იყენებს, რათა გასაღების მფლობელს აჩვენოს მისი დანახარჯი.
+ნებისმიერ API გასაღებს შეუძლია წაიკითხოს **საკუთარი** გამოყენებისა და კვოტების მონაცემები — მართვის ავტორიზაცია საჭირო არ არის. ეს არის endpoint, რომელსაც
+კლიენტი (CLI, OmniCopilot-ის პანელი) იყენებს გასაღების მფლობელისთვის მისი დანახარჯების საჩვენებლად.
 
 ```bash
 # ტექსტური ფორმა (ისტორიული კონტრაქტი — უბრალო ტექსტი ტერმინალისთვის)
 curl -H "Authorization: Bearer <your-api-key>" \
   http://localhost:20128/api/usage/om-usage
 
-# სტრუქტურირებული ფორმა — რომელსაც UI მოიხმარს
+# სტრუქტურირებული ფორმა — რომელსაც UI იყენებს
 curl -H "Authorization: Bearer <your-api-key>" \
   "http://localhost:20128/api/usage/om-usage?format=json"
 ```
 
-გასაღებისთვის **`allowUsageCommand`** ჩართული უნდა იყოს (ნაგულისხმევად გამორთულია — მართვის პანელის API-გასაღებების მენეჯერი მას თითოეული გასაღებისთვის ცალ-ცალკე რთავს ან თიშავს). მის გარეშე საბოლოო წერტილი პასუხობს `403`-ით.
+გასაღებისთვის **`allowUsageCommand`** ჩართული უნდა იყოს (ნაგულისხმევად გამორთულია — dashboard-ის API-გასაღებების
+მენეჯერი მას თითოეული გასაღებისთვის ცალ-ცალკე რთავს ან თიშავს). მის გარეშე endpoint პასუხობს `403`-ით.
 
-`?format=json` აბრუნებს განმასხვავებელი ნიშნით სტრუქტურირებულ ფორმას, რათა გამომძახებელმა უარყოფის პასუხიდან მონაცემთა ველი არასდროს წაიკითხოს. წარმატების შემთხვევაში:
+`?format=json` აბრუნებს განმასხვავებელი ნიშნით აღჭურვილ სტრუქტურას, რათა გამომძახებელმა უარყოფის
+შემთხვევაში მონაცემთა ველი არასდროს წაიკითხოს. წარმატების შემთხვევაში:
 
 ```jsonc
 {
@@ -694,14 +761,14 @@ curl -H "Authorization: Bearer <your-api-key>" \
     "weeklyLimitUsd": 20,
     "weeklyResetAtIso": "…" /* … */,
   },
-  // არჩეული პროვაიდერის კვოტის მყისიერი სურათი, ან null, როდესაც ქეშში ჯერ არაფერია:
+  // არჩეული პროვაიდერის კვოტის snapshot, ან null, როდესაც ქეშში ჯერ არაფერია:
   "provider": {
     "connectionId": "…",
     "provider": "claude",
     "plan": "…",
     "quotas": {/* … */},
   },
-  // ყველა კავშირის მყისიერი სურათი, რათა UI-მ რამდენიმე პროვაიდერი ერთმანეთის გვერდით გამოსახოს:
+  // ყველა კავშირის snapshot, რათა UI-მ რამდენიმე პროვაიდერი გვერდიგვერდ წარმოადგინოს:
   "providers": [
     { "connectionId": "…", "provider": "claude" /* … */ },
     { "provider": "codex" /* … */ },
@@ -709,12 +776,64 @@ curl -H "Authorization: Bearer <your-api-key>" \
 }
 ```
 
-უარყოფის შემთხვევაში (`401` არასწორი გასაღები / `403` ნებართვა არ არის) იგივე მარშრუტი აბრუნებს
+უარყოფის შემთხვევაში (`401` არასწორი გასაღები / `403` წვდომა დაუშვებელია) იგივე route აბრუნებს
 `{ "allowed": false, "error": { "message": "…" } }`-ს — არსებული, მაგრამ ცარიელი `personal`/`provider`
-(გასაღები დაშვებულია, თუმცა ჯერ არაფერია მიღებული) უარყოფისგან განსხვავებული მდგომარეობაა და მათ მხოლოდ JSON-ფორმა განასხვავებს.
+(გასაღები დაშვებულია, თუმცა მონაცემები ჯერ მიღებული არ არის) უარყოფისგან განსხვავებული მდგომარეობაა და მათ მხოლოდ JSON ფორმა
+განასხვავებს.
 
-**ავთენტიფიკაცია:** გამომძახებლის საკუთარი Bearer API-გასაღები, რომელიც მოწმდება `isValidApiKey`-ით — ეს _არ არის_
-მართვის ინტერფეისი (`/api/keys/…`), რომელიც კვლავ `requireManagementAuth`-ით არის დაცული.
+**ავტორიზაცია:** გამომძახებლის საკუთარი Bearer API გასაღები, რომელიც მოწმდება `isValidApiKey`-ით — ეს _არ არის_
+მართვის ინტერფეისი (`/api/keys/…`), რომელიც კვლავ `requireManagementAuth`-ითაა დაცული.
+
+### დაუმუშავებელი და ზღვრის მიხედვით კორექტირებული კვოტის პროცენტები
+
+`/api/usage/om-usage`-ის გამოყენებისას გამომძახებლებმა უნდა გაითვალისწინონ განსხვავება **უბრალო ტექსტის გამომავალში**
+და სტრუქტურირებულ **JSON გამომავალში** წარმოდგენილ პროცენტებს შორის:
+
+| ასპექტი                   | უბრალო ტექსტის ფორმატი (`/api/usage/om-usage` / `@@om-usage`)                                             | JSON ფორმატი (`?format=json`)                                                                                 |
+| :------------------------ | :-------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------ |
+| **გამომავალი ველი**       | `NN% დარჩა` (მაგ., `20% დარჩა`)                                                                           | `provider.quotas` / `providers[].quotas`                                                                      |
+| **გაზომვა**               | **ზღვრის მიხედვით კორექტირებული გამოსაყენებელი რესურსი**: ზღვრულ მნიშვნელობაზე მეტი დარჩენილი მოცულობა    | **დაუმუშავებელი upstream-კვოტა**: პროვაიდერის არაკორექტირებული გაზომვა                                        |
+| **ზღვრის მასშტაბირება**   | მასშტაბირდება `effectiveRemainingPercent()`-ის მეშვეობით, რათა დაცული რეზერვი გამოჩნდეს როგორც `0% დარჩა` | არ გამოიყენება (დაუმუშავებელი snapshot-ის მნიშვნელობები, როგორც პროვაიდერმა წარმოადგინა)                      |
+| **ზღვრული მონაცემები**    | გათვალისწინებულია ნაჩვენებ პროცენტში                                                                      | ინახება `quotaWindowThresholds`-ში თითოეული კავშირისთვის (ან გამოიყენება სერვერის ნაგულისხმევი მნიშვნელობები) |
+| **ძირითადი მომხმარებელი** | ინტერაქციული CLI-ები, ტერმინალის მოთხოვნები, ოპერატორები                                                  | პროგრამული ინტეგრაციები, dashboard-ები, ანალიტიკა, ბილინგის ტრეკერები                                         |
+
+#### ზღვრის კორექტირების ფორმულა
+
+OmniRoute მხარს უჭერს კვოტის პროაქტიულ შეზღუდვებს upstream-რესურსის ამოწურვის თავიდან ასაცილებლად (კონფიგურირდება კავშირის
+`quotaWindowThresholds`-ის, პროვაიდერის ნაგულისხმევი მნიშვნელობების ან მდგრადობის გლობალური პარამეტრების მეშვეობით). როდესაც კვოტის ფანჯარაზე აქტიურია ზღვრული მნიშვნელობა
+(მაგ., `cutoff = 25%`), ტექსტის renderer დარჩენილ რესურსს შემდეგნაირად ითვლის:
+
+- თუ `remaining <= cutoff`: აბრუნებს `0%`-ს.
+- თუ `remaining > cutoff`: აბრუნებს `((remaining - cutoff) / (100 - cutoff)) * 100`-ს.
+
+დაფორმატებული ტექსტური გამომავალი მნიშვნელობას უახლოეს მთელ რიცხვამდე ამრგვალებს (`Math.round(...)`).
+
+#### საილუსტრაციო მაგალითი
+
+განვიხილოთ პროვაიდერის ფანჯარა **60% დაუმუშავებელი გამოყენებით** (შესაბამისად, **40% დაუმუშავებელი დარჩენილი კვოტით**) და კონფიგურირებული
+**დარჩენილი კვოტის 25%-იანი ზღვრული მნიშვნელობით**:
+
+| წარმოდგენა                              | გამოთვლა                                           | დარჩენილი |         ნაგულისხმევი გამოყენებული ნაწილი          |
+| :-------------------------------------- | :------------------------------------------------- | :-------: | :-----------------------------------------------: |
+| **დაუმუშავებელი JSON (`?format=json`)** | Upstream snapshot (`quotas[window]`)               |  **40%**  |                      **60%**                      |
+| **ტექსტური ფორმატი (`NN% დარჩა`)**      | `((40 - 25) / (100 - 25)) * 100 = (15 / 75) * 100` |  **20%**  | **80%** (თუ გამოითვლება როგორც `100 - remaining`) |
+
+- **რატომ აჩვენებს ტექსტი, რომ 20% დარჩა:** ანგარიშზე ფიზიკურად დარჩენილი 40%-იანი კვოტიდან 25% დაცულია
+  ზღვრული პოლიტიკით. გამომძახებელს მხოლოდ 15% აქვს დარჩენილი 75%-იანი გამოსაყენებელი მარაგიდან, სანამ router
+  ამ კავშირზე მარშრუტიზაციას შეწყვეტს. მასშტაბირება უზრუნველყოფს, რომ კავშირმა ამოწურვის შესახებ (`0% დარჩა`) ზუსტად მაშინ მიანიშნოს,
+  როდესაც მარშრუტიზაცია შეწყდება.
+- **რატომ ინარჩუნებს JSON დაუმუშავებელ მნიშვნელობებს:** JSON payload აბრუნებს პროვაიდერის ზუსტ snapshot-ს (`UsageSnapshot`),
+  რათა გარე ხელსაწყოებს ჰქონდეთ წვდომა upstream-ის რეალურ გამოყენებასა და კავშირის დონის
+  `quotaWindowThresholds`-ზე სერვერის მხრიდან დანაკარგიანი მასშტაბირების გარეშე.
+
+#### მომხმარებლების მიგრაციის სახელმძღვანელო
+
+თუ გარე ინტეგრაცია (მაგალითად, რედაქტორის plugin ან აგენტის extension) ადრე ტექსტური
+endpoint-იდან (`NN% დარჩა`) აგროვებდა მონაცემებს და გამოყენებულ პროცენტს `100 - NN`-ის სახით ითვლიდა, `?format=json`-ზე მიგრაცია ნიშნავს:
+
+- დაუმუშავებელი JSON მნიშვნელობების წაკითხვა ასახავს **რეალურ upstream-მოხმარებას** (ზემოთ მოცემულ მაგალითში გამოყენებულია 60%).
+- თუ ინტეგრაციას სურს შეინარჩუნოს ტექსტური endpoint-ის გამოსაყენებელი რესურსის სემანტიკა, შეუძლია
+  ეფექტურად დარჩენილი რესურსის ფორმულა კლიენტის მხარეს გამოთვალოს, კავშირის დონის გადაფარვებისთვის `quotaWindowThresholds`-ის გამოყენებით.
 
 ---
 
@@ -783,44 +902,81 @@ X-OmniRoute-No-Cache: true
 
 ---
 
-## საინფორმაციო პანელი და მართვა
+## დაფა და მართვა
 
-მართვის მარშრუტები (`/api/*`, საჯარო ავთენტიფიკაციის/შესვლის გარდა) ჩვეულებრივი ინფერენსის API გასაღებებით **არ** ავტორიზდება. ავტორიზაციის მონაცემების ოჯახები, წვდომის სფეროები და curl-ის მაგალითები:
-[მართვის ავთენტიფიკაცია](../guides/MANAGEMENT-AUTH.md).
+მართვის მარშრუტები (`/api/*`, საჯარო ავტორიზაციის/შესვლის მარშრუტების გარდა) ჩვეულებრივი ინფერენსის API გასაღებებით **არ** ავტორიზდება. ავტორიზაციის მონაცემების ტიპები, მოქმედების ფარგლები და curl-ის მაგალითები იხილეთ აქ:
+[მართვის ავტორიზაცია](../guides/MANAGEMENT-AUTH.md).
 
 ### ავთენტიფიკაცია
 
-| საბოლოო წერტილი               | მეთოდი  | აღწერა                     |
-| ----------------------------- | ------- | -------------------------- |
-| `/api/auth/login`             | POST    | შესვლა                     |
-| `/api/auth/logout`            | POST    | გამოსვლა                   |
-| `/api/settings/require-login` | GET/PUT | შესვლის მოთხოვნის გადართვა |
+| Endpoint                      | მეთოდი  | აღწერა                            |
+| ----------------------------- | ------- | --------------------------------- |
+| `/api/auth/login`             | POST    | სისტემაში შესვლა                  |
+| `/api/auth/logout`            | POST    | სისტემიდან გამოსვლა               |
+| `/api/settings/require-login` | GET/PUT | შესვლის მოთხოვნის ჩართვა/გამორთვა |
 
 ### პროვაიდერების მართვა
 
-| საბოლოო წერტილი              | მეთოდი                | აღწერა                                                                                                                                |
-| ---------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/providers`             | GET/POST              | პროვაიდერების ჩამონათვალი / შექმნა                                                                                                    |
-| `/api/providers/[id]`        | GET/PUT/DELETE        | პროვაიდერის მართვა                                                                                                                    |
-| `/api/providers/[id]/test`   | POST                  | პროვაიდერთან კავშირის შემოწმება                                                                                                       |
-| `/api/providers/[id]/models` | GET                   | პროვაიდერის მოდელების ჩამონათვალი                                                                                                     |
-| `/api/providers/validate`    | POST                  | პროვაიდერის კონფიგურაციის ვალიდაცია                                                                                                   |
-| `/api/providers/bulk`        | POST                  | ერთი პროვაიდერისთვის API გასაღებების მასობრივად დამატება                                                                              |
-| `/api/providers/import`      | POST                  | ჰეტეროგენული პროვაიდერების სიის იმპორტი დამუშავებული CSV/JSON ფაილიდან (#6836); ნაწილობრივი შეცდომების შედეგები თითოეული მწკრივისთვის |
-| `/api/provider-nodes*`       | სხვადასხვა            | პროვაიდერის კვანძების მართვა                                                                                                          |
-| `/api/provider-models`       | GET/POST/PATCH/DELETE | მორგებული მოდელები (დამატება, განახლება, დამალვა/ჩვენება, წაშლა)                                                                      |
+| Endpoint                                | მეთოდი                    | აღწერა                                                                                                                                                                            |
+| --------------------------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/providers`                        | GET/POST                  | პროვაიდერების სიის მიღება / შექმნა                                                                                                                                                |
+| `/api/providers/[id]`                   | GET/PUT/DELETE            | პროვაიდერის მართვა                                                                                                                                                                |
+| `/api/providers/[id]/test`              | POST                      | პროვაიდერთან კავშირის შემოწმება                                                                                                                                                   |
+| `/api/providers/[id]/models`            | GET                       | პროვაიდერის მოდელების სიის მიღება                                                                                                                                                 |
+| `/api/providers/validate`               | POST                      | პროვაიდერის კონფიგურაციის ვალიდაცია                                                                                                                                               |
+| `/api/providers/bulk`                   | POST                      | ერთი პროვაიდერისთვის API გასაღებების მასობრივად დამატება                                                                                                                          |
+| `/api/providers/import`                 | POST                      | ჰეტეროგენული პროვაიდერების სიის იმპორტი დამუშავებული CSV/JSON ფაილიდან (#6836); ნაწილობრივი შეცდომების შედეგები თითოეული სტრიქონისთვის                                            |
+| `/api/provider-nodes*`                  | სხვადასხვა                | პროვაიდერის კვანძების მართვა                                                                                                                                                      |
+| `/api/provider-models`                  | GET/POST/PUT/PATCH/DELETE | მორგებული მოდელები და თითოეული მოდელის გადაფარვები (დამატება, განახლება, დამალვა/ჩვენება, წაშლა)                                                                                  |
+| `/api/provider-models/validate-and-add` | POST                      | მართვის ავთენტიფიკაციით დაცული, არჩევითად ჩასართავი კავშირის მკაცრი ვალიდაცია და მორგებული მოდელის ატომური რეგისტრაცია; იხილეთ [მოდელის ვალიდაცია](../guides/MODEL-VALIDATION.md) |
 
-### OAuth პროცესები
+სინქრონიზებული/იმპორტირებული მოდელებისთვის `PUT /api/provider-models` იღებს `provider`, `modelId` და
+`maxOutputTokenOverride` ველებს: დადებითი მთელი რიცხვი ადგენს გამომავალი ტოკენების ხელით განსაზღვრულ ზღვარს, ხოლო `null`
+ასუფთავებს მას და აღადგენს ნაგულისხმევ მნიშვნელობას. `GET /api/provider-models?provider=<provider>` ამ
+მნიშვნელობებს აბრუნებს `modelOutputOverrides`-ში, მათ შორის იმ მოდელებისთვისაც, რომლებსაც მორგებული მოდელის ჩანაწერი არ გააჩნიათ. გადაფარვა
+იყენებს შესრულების დროის `max_output_tokens` შესაძლებლობას და მოდელის ხელახალ სინქრონიზაციასაც უძლებს. OpenAI-სთან თავსებადი
+პროვაიდერის გვერდი იმავე რედაქტირების/გასუფთავების მართვის საშუალებებს გთავაზობთ და მკაფიოდ განსაზღვრული ვიზუალური მხარდაჭერის მქონე მოდელებს აღნიშნავს.
 
-| საბოლოო წერტილი                  | მეთოდი     | აღწერა                            |
+მორგებული Chat Completions კვანძები მსჯელობის აშკარა გამორთვის პარამეტრებს ზემდგომ ბექენდს უსადაგებენ.
+კავშირის წარმატებული შემოწმება ავტომატურად ირჩევს ჩატის შაბლონის მართვის პარამეტრებს თითოეული ზუსტი მოდელის ID-სთვის,
+რომლის `/models` ჩანაწერიც ადასტურებს ამოცნობილ `owned_by` მნიშვნელობას: `vllm`, `sglang` ან `llamacpp`.
+OpenAI-სთან თავსებადმა გამჭვირვალე გარსებმა შესაძლოა მოდელის საწყისი ჩანაწერი ჩადგმულ
+`openai` ობიექტში შეინარჩუნონ; ამოცნობა მიჰყვება მაქსიმუმ სამ ასეთ გარსს. მოდელები, რომელთა მფლობელობაც არ არის მითითებული, უცნობია ან
+ურთიერთსაწინააღმდეგოა, ინარჩუნებენ OpenAI-ის ჩვეულებრივ ქცევას. ამოცნობა ხელახლა იყენებს კატალოგის არსებულ მოთხოვნას,
+არ წარმოქმნის დასრულების ტოკენებს და ძალას კარგავს კავშირის endpoint-ის ცვლილებისას.
+
+იმ ბექენდისთვის, რომელიც ამ მეტამონაცემებს არ აქვეყნებს, ქცევის დასაფიქსირებლად გამოიყენეთ პროვაიდერის ნაწილობრივი განახლების
+არსებული API:
+
+```json
+{
+  "providerSpecificData": {
+    "reasoningControl": "chat-template"
+  }
+}
+```
+
+ეს body გააგზავნეთ `PUT /api/providers/<connection-id>`-თან ერთად. ამ კავშირზე მსჯელობის ძალისხმევის აშკარა
+`none` მნიშვნელობა იგზავნება როგორც `chat_template_kwargs.thinking=false` და
+`chat_template_kwargs.enable_thinking=false`. შაბლონის მკაფიოდ განსაზღვრული ნატიური მნიშვნელობები პრიორიტეტული რჩება,
+თუ სერვერის მხარეს არსებული მსჯელობის წესი კონკრეტულ ძალისხმევას არ აიძულებს. ეს პარამეტრი მოქმედებს მხოლოდ მაშინ, როდესაც მორგებული
+OpenAI-სთან თავსებადი კავშირი Chat Completions body-ს აგზავნის; Responses მოთხოვნები და ჩვეულებრივი
+პროვაიდერები მოთხოვნის ნატიურ სტრუქტურას ინარჩუნებენ. OpenAI-ის ჩვეულებრივი
+`reasoning_effort`-ის უცვლელად გადასაცემად `reasoningControl`-ს მიანიჭეთ `openai`, ხოლო ავტომატური ამოცნობის გამოსაყენებლად გამოტოვეთ იგი ან მიანიჭეთ `null`.
+
+Claude Code-ის ავტომატური რეჟიმის კლასიფიკატორის მოთხოვნებისთვის, თუ ისინი მსჯელობის აშკარა მართვის პარამეტრებს არ შეიცავს, ნაგულისხმევი native thinking ითიშება. ამოცნობა ეფუძნება Claude-ფორმატის მოთხოვნებში კლასიფიკატორის სისტემურ მარკერს და არა მოდელების სახელებს ან დასრულების ლიმიტებს. სხეულის აშკარა მართვის პარამეტრები, მხარდაჭერილი effort/thinking სათაურები, მარშრუტიზაციის წესები და მოდელისთვის განსაზღვრული effort ინარჩუნებს არსებულ პრიორიტეტს. კლასიფიკატორის ორივე ეტაპი ინარჩუნებს საკუთარ prompt-ებს, დასრულების ლიმიტებს, გაჩერების მიმდევრობებსა და რეალურ upstream ნებართვის ვერდიქტებს; მეორე ეტაპს კვლავ შეუძლია მოთხოვნილი ხილული მსჯელობა ჩვეულებრივი ტექსტის სახით დააბრუნოს.
+
+### OAuth ნაკადები
+
+| Endpoint                         | მეთოდი     | აღწერა                            |
 | -------------------------------- | ---------- | --------------------------------- |
 | `/api/oauth/[provider]/[action]` | სხვადასხვა | პროვაიდერისთვის სპეციფიკური OAuth |
 
 ### მარშრუტიზაცია და კონფიგურაცია
 
-| საბოლოო წერტილი       | მეთოდი     | აღწერა                                      |
+| Endpoint              | მეთოდი     | აღწერა                                      |
 | --------------------- | ---------- | ------------------------------------------- |
-| `/api/models/alias`   | GET/POST   | მოდელების ფსევდონიმები                      |
+| `/api/models/alias`   | GET/POST   | მოდელების მეტსახელები                       |
 | `/api/models/catalog` | GET        | ყველა მოდელი პროვაიდერისა და ტიპის მიხედვით |
 | `/api/combos*`        | სხვადასხვა | კომბინაციების მართვა                        |
 | `/api/keys*`          | სხვადასხვა | API გასაღებების მართვა                      |
@@ -828,159 +984,202 @@ X-OmniRoute-No-Cache: true
 
 ### გამოყენება და ანალიტიკა
 
-| საბოლოო წერტილი                  | მეთოდი          | აღწერა                                                                                                                                                                                                                                                                                                                                                                        |
+| Endpoint                         | მეთოდი          | აღწერა                                                                                                                                                                                                                                                                                                                                                                        |
 | -------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/api/usage/history`             | GET             | გამოყენების ისტორია                                                                                                                                                                                                                                                                                                                                                           |
 | `/api/usage/logs`                | GET             | გამოყენების ჟურნალები                                                                                                                                                                                                                                                                                                                                                         |
 | `/api/usage/request-logs`        | GET             | მოთხოვნის დონის ჟურნალები                                                                                                                                                                                                                                                                                                                                                     |
-| `/api/usage/[connectionId]`      | GET             | გამოყენება თითოეული კავშირისთვის                                                                                                                                                                                                                                                                                                                                              |
+| `/api/usage/[connectionId]`      | GET             | გამოყენება თითოეული კავშირის მიხედვით                                                                                                                                                                                                                                                                                                                                         |
 | `/api/usage/token-limits`        | GET/POST/DELETE | ტოკენების ლიმიტის ბიუჯეტები თითოეული API გასაღებისთვის                                                                                                                                                                                                                                                                                                                        |
-| `/api/usage/model-latency-stats` | GET             | მოძრავი დაყოვნების აგრეგატი თითოეული პროვაიდერისა და მოდელისთვის (საშუალო/p50/p95/p99, წარმატების მაჩვენებელი); ფილტრები: `windowHours`/`minSamples`/`maxRows`/`provider`/`model` (#6873)                                                                                                                                                                                     |
-| `/api/usage/cache-health`        | GET             | `call_logs`-ზე დაფუძნებული მოთხოვნის ქეშის მდგომარეობის შეჯამება — ჩაწერა/წაკითხვის თანაფარდობა, ჩაწერის ზომის p50/p90/p99 განაწილება, დიდი მოცულობის ჩაწერების კონცენტრაცია, დაყოფა მოდელების მიხედვით და `healthy`/`degraded`/`thrash`/`no-data` შეფასება; მოთხოვნის პარამეტრები: `range` (`1h`\|`24h`\|`7d`\|`30d`, ნაგულისხმევია `24h`) და არასავალდებულო `model` (#8827) |
+| `/api/usage/model-latency-stats` | GET             | მოძრავი აგრეგირებული დაყოვნება თითოეული პროვაიდერის/მოდელის მიხედვით (avg/p50/p95/p99, წარმატების მაჩვენებელი); ფილტრები: `windowHours`/`minSamples`/`maxRows`/`provider`/`model` (#6873)                                                                                                                                                                                     |
+| `/api/usage/cache-health`        | GET             | prompt-ის ქეშის მდგომარეობის შეჯამება `call_logs`-ის საფუძველზე — ჩაწერის/წაკითხვის თანაფარდობა, ჩაწერის ზომის p50/p90/p99 განაწილება, დიდი მოცულობის ჩაწერების კონცენტრაცია, მოდელების მიხედვით დაყოფა და `healthy`/`degraded`/`thrash`/`no-data` ვერდიქტი; მოთხოვნის პარამეტრებია `range` (`1h`\|`24h`\|`7d`\|`30d`, ნაგულისხმევად `24h`) და არასავალდებულო `model` (#8827) |
+
+### API გასაღების ნებართვები
+
+`PATCH /api/keys/{id}` განაახლებს არსებული გასაღების ნებართვებს. როგორც ყველა `/api/keys*` მარშრუტს, მასაც სჭირდება მართვის ავტორიზაცია (იხილეთ [მართვის ავთენტიფიკაცია](../guides/MANAGEMENT-AUTH.md)) და არა inference გასაღები. გაგზავნეთ მხოლოდ ის ველები, რომელთა შეცვლაც გსურთ; მოთხოვნა, რომელიც არცერთ მათგანს არ შეიცავს, უარყოფილი იქნება შეტყობინებით `No valid fields to update`. მიღებული ველები განსაზღვრულია `updateKeyPermissionsSchema`-ით ფაილში `src/shared/validation/schemas/keys.ts`.
+
+| ველი                                        | ტიპი                                                                           | შენიშვნები                                                                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `name`                                      | სტრიქონი, 1-200 სიმბოლო                                                        |                                                                                                                                |
+| `isActive`                                  | ლოგიკური მნიშვნელობა                                                           |                                                                                                                                |
+| `isBanned`                                  | ლოგიკური მნიშვნელობა                                                           |                                                                                                                                |
+| `expiresAt`                                 | ISO 8601 თარიღი და დრო ან `null`                                               | `null` აუქმებს ვადის გასვლის თარიღს                                                                                            |
+| `modelAccessMode`                           | `all` \| `restricted`                                                          | `allowedModels` ცარიელი უნდა იყოს, როდესაც რეჟიმია `all`                                                                       |
+| `allowedModels`, `blockedModels`            | სტრიქონების მასივი, მაქსიმუმ 1000                                              |                                                                                                                                |
+| `allowedCombos`                             | სტრიქონების მასივი, მაქსიმუმ 500                                               | განსაზღვრავს, რომელი კომბოების გამოძახება შეუძლია გასაღებს; პირდაპირი მოდელები იმართება `modelAccessMode` / `allowedModels`-ით |
+| `connectionAccessMode`                      | `all` \| `restricted`                                                          | `allowedConnections` არ უნდა იყოს ცარიელი `restricted` რეჟიმში და ცარიელი უნდა იყოს `all` რეჟიმში                              |
+| `allowedConnections`                        | UUID-ების მასივი, მაქსიმუმ 100                                                 |                                                                                                                                |
+| `allowAutoCombos`                           | ლოგიკური მნიშვნელობა                                                           | `false` უარყოფს ამ გასაღებით `auto/*` მოდელების მოთხოვნებს; გასაღებები, რომლებზეც ის არასოდეს დაყენებულა, დაშვებულია           |
+| `catalogScope`                              | `all` \| `combos` \| `models`                                                  | რას ჩამოთვლის `GET /v1/models` ამ გასაღებისთვის (მხოლოდ კომბოებს, მხოლოდ მოდელებს ან ორივეს); ეს არ ცვლის გასაღების უფლებებს   |
+| `noLog`, `autoResolve`                      | ლოგიკური მნიშვნელობა                                                           |                                                                                                                                |
+| `throttleDelayMs`                           | მთელი რიცხვი, 0-300000                                                         |                                                                                                                                |
+| `maxSessions`                               | მთელი რიცხვი, 0-10000                                                          |                                                                                                                                |
+| `rateLimits`                                | `{ limit, window }`-ის მასივი (დადებითი მთელი რიცხვები, მაქსიმუმ 50) ან `null` | `null` აუქმებს ლიმიტებს                                                                                                        |
+| `accessSchedule`                            | განრიგის ობიექტი ან `null`                                                     | `null` აუქმებს განრიგს                                                                                                         |
+| `scopes`                                    | სტრიქონების მასივი, მაქსიმუმ 32                                                |                                                                                                                                |
+| `allowedEndpoints`                          | სტრიქონების მასივი, მაქსიმუმ 20                                                |                                                                                                                                |
+| `streamDefaultMode`                         | `legacy` \| `json`                                                             |                                                                                                                                |
+| `cacheDefaultMode`                          | `legacy` \| `bypass`                                                           | იხილეთ [ქეშის გვერდის ავლა თითოეული გასაღებისთვის](#per-key-cache-bypass)                                                      |
+| `compressionEnabled`                        | ლოგიკური მნიშვნელობა                                                           |                                                                                                                                |
+| `codexServiceMode`                          | Codex-ის სერვისის ერთ-ერთი რეჟიმი                                              |                                                                                                                                |
+| `disableNonPublicModels`                    | ლოგიკური მნიშვნელობა                                                           |                                                                                                                                |
+| `allowUsageCommand`                         | boolean                                                                        |                                                                                                                                |
+| `usageLimitEnabled`                         | boolean                                                                        |                                                                                                                                |
+| `dailyUsageLimitUsd`, `weeklyUsageLimitUsd` | number >= 0 ან `null`                                                          |                                                                                                                                |
+| `chaosModeEnabled`                          | boolean                                                                        |                                                                                                                                |
+
+```bash
+curl -X PATCH "$OMNIROUTE_URL/api/keys/$KEY_ID" \
+  -H "Authorization: Bearer <management-credential>" \
+  -H "Content-Type: application/json" \
+  -d '{ "allowAutoCombos": false, "catalogScope": "combos" }'
+```
 
 ### პარამეტრები
 
-| საბოლოო წერტილი                       | მეთოდი        | აღწერა                                                                                                                                                                                                         |
+| Endpoint                              | Method        | აღწერა                                                                                                                                                                                                         |
 | ------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/api/settings`                       | GET/PUT/PATCH | ზოგადი პარამეტრები                                                                                                                                                                                             |
 | `/api/settings/proxy`                 | GET/PUT       | ქსელური პროქსის კონფიგურაცია                                                                                                                                                                                   |
 | `/api/settings/proxy/test`            | POST          | პროქსი-კავშირის შემოწმება                                                                                                                                                                                      |
-| `/api/settings/ip-filter`             | GET/PUT       | IP მისამართების ნებადართული/დაბლოკილი სია                                                                                                                                                                      |
+| `/api/settings/ip-filter`             | GET/PUT       | IP დაშვებული მისამართების სია/დაბლოკილი მისამართების სია                                                                                                                                                       |
 | `/api/settings/thinking-budget`       | GET/PUT       | აზროვნების/მსჯელობის **მოთხოვნის** გადაწერის რეჟიმი (უცვლელად გადაცემა / ავტომატური მოცილება / მორგებული / ადაპტიური). შეკუმშვისგან დამოუკიდებელია. იხილეთ [THINKING_BUDGET.md](../guides/THINKING_BUDGET.md). |
 | `/api/settings/system-prompt`         | GET/PUT       | გლობალური სისტემური პრომპტი                                                                                                                                                                                    |
-| `/api/settings/compression`           | GET/PUT       | გლობალური შეკუმშვის კონფიგურაცია                                                                                                                                                                               |
-| `/api/settings/purge-request-history` | POST          | მოთხოვნების ჟურნალის ჩანაწერებისა და ლოკალური გამოძახებების ჟურნალის არტეფაქტების გასუფთავება                                                                                                                  |
+| `/api/settings/compression`           | GET/PUT       | შეკუმშვის გლობალური კონფიგურაცია                                                                                                                                                                               |
+| `/api/settings/purge-request-history` | POST          | მოთხოვნების ჟურნალის სტრიქონებისა და ლოკალური გამოძახებების ჟურნალის არტეფაქტების გასუფთავება                                                                                                                  |
 
 ### კონტექსტი და შეკუმშვა
 
-| Endpoint                               | მეთოდი         | აღწერა                                                                                                       |
-| -------------------------------------- | -------------- | ------------------------------------------------------------------------------------------------------------ |
-| `/api/compression/preview`             | POST           | off/lite/standard/aggressive/ultra/RTK/stacked შეკუმშვის წინასწარი ნახვა                                     |
-| `/api/compression/language-packs`      | GET            | ხელმისაწვდომი Caveman ენის პაკეტების სია                                                                     |
-| `/api/compression/rules`               | GET            | Caveman-ის წესების მეტამონაცემების სია                                                                       |
-| `/api/context/caveman/config`          | GET/PUT        | Caveman-ის სპეციფიკური პარამეტრების ფსევდონიმი                                                               |
-| `/api/context/rtk/config`              | GET/PUT        | RTK-ის სპეციფიკური პარამეტრები, მათ შორის მორგებული ფილტრები და დაუმუშავებელი გამომავალი მონაცემების შენახვა |
-| `/api/context/rtk/filters`             | GET            | RTK-ის ფილტრების კატალოგი და მორგებული ფილტრების დიაგნოსტიკა                                                 |
-| `/api/context/rtk/test`                | POST           | RTK-ის წინასწარი ნახვის/ტესტის გაშვება ტექსტურ მონაცემებზე                                                   |
-| `/api/context/rtk/raw-output/[id]`     | GET            | მაჩვენებლის id-ის მიხედვით შენახული, რედაქტირებული დაუმუშავებელი გამომავალი მონაცემების წაკითხვა             |
-| `/api/context/combos`                  | GET/POST       | შეკუმშვის კომბინაციების სია/შექმნა                                                                           |
-| `/api/context/combos/[id]`             | GET/PUT/DELETE | შეკუმშვის კომბინაციის დეტალები/განახლება/წაშლა                                                               |
-| `/api/context/combos/[id]/assignments` | GET/PUT        | შეკუმშვის კომბინაციების მარშრუტიზაციის კომბინაციებზე მინიჭება                                                |
-| `/api/context/analytics`               | GET            | შეკუმშვის ანალიტიკის ფსევდონიმი                                                                              |
+| Endpoint                               | Method         | აღწერა                                                                                       |
+| -------------------------------------- | -------------- | -------------------------------------------------------------------------------------------- |
+| `/api/compression/preview`             | POST           | off/lite/standard/aggressive/ultra/RTK/stacked შეკუმშვის წინასწარი ნახვა                     |
+| `/api/compression/language-packs`      | GET            | ხელმისაწვდომი Caveman ენობრივი პაკეტების ჩამონათვალი                                         |
+| `/api/compression/rules`               | GET            | Caveman წესების მეტამონაცემების ჩამონათვალი                                                  |
+| `/api/context/caveman/config`          | GET/PUT        | Caveman-სპეციფიკური პარამეტრების ალიასი                                                      |
+| `/api/context/rtk/config`              | GET/PUT        | RTK-სპეციფიკური პარამეტრები, მათ შორის მორგებული ფილტრები და დაუმუშავებელი გამოტანის შენახვა |
+| `/api/context/rtk/filters`             | GET            | RTK ფილტრების კატალოგი და მორგებული ფილტრების დიაგნოსტიკა                                    |
+| `/api/context/rtk/test`                | POST           | RTK წინასწარი ნახვის/ტესტის გაშვება ტექსტურ მონაცემებზე                                      |
+| `/api/context/rtk/raw-output/[id]`     | GET            | მითითების id-ით შენახული, რედაქტირებული დაუმუშავებელი გამოტანის წაკითხვა                     |
+| `/api/context/combos`                  | GET/POST       | შეკუმშვის კომბინაციების ჩამონათვალი/შექმნა                                                   |
+| `/api/context/combos/[id]`             | GET/PUT/DELETE | შეკუმშვის კომბინაციის დეტალები/განახლება/წაშლა                                               |
+| `/api/context/combos/[id]/assignments` | GET/PUT        | შეკუმშვის კომბინაციების მარშრუტიზაციის კომბინაციებთან დაკავშირება                            |
+| `/api/context/analytics`               | GET            | შეკუმშვის ანალიტიკის ალიასი                                                                  |
 
 ### მონიტორინგი
 
-| Endpoint                             | მეთოდი     | აღწერა                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------ | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/sessions`                      | GET        | აქტიური სესიების თვალყურის დევნება                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `/api/rate-limits`                   | GET        | თითოეული ანგარიშის მოთხოვნათა სიხშირის ლიმიტები                                                                                                                                                                                                                                                                                                                                                                                                 |
-| `/api/monitoring/health`             | GET        | სიჯანსაღის შემოწმება + პროვაიდერების შეჯამება (`catalogCount`, `configuredCount`, `activeCount`, `monitoredCount`). მართვის ხედი შეიცავს `credentialHealth`-ს: შემოწმების ქეშის სკალარულ მნიშვნელობებს, `failedConnections`-ს, როდესაც `failed>0`, და `staleDbNonOkCount`-ს (SQLite-ის მუდმივი `test_status`, და არა მაჩვენებელი). იხილეთ [MONITORING_GUIDE.md](../ops/MONITORING_GUIDE.md#credentialhealth-probe-cache-vs-sqlite-test_status). |
-| `/api/cache/stats`                   | GET/DELETE | ქეშის სტატისტიკა / გასუფთავება                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `/api/modality-bridge/stats`         | GET        | მეხსიერებაში არსებული `attempts`, წარმატებული მცდელობები/`bridged`, წარუმატებელი მცდელობები, ქეშის დამთხვევები, `totalLatencyMs`, `latencySamples`, ნიმუშების რაოდენობაზე დაფუძნებული `averageLatencyMs` და ბოლო გამოყენების დრო (ნულდება ხელახლა გაშვებისას; მართვის ავტორიზაცია)                                                                                                                                                              |
-| `/api/modality-bridge/video/runtime` | GET        | მკაცრი სანდო loopback-შემოწმება მართვის ავტორიზაციამდე/შემოწმებამდე; FFmpeg/ffprobe-ის ხელმისაწვდომობისა და ვერსიების გასუფთავებული მონაცემები (შენახვის გარეშე)                                                                                                                                                                                                                                                                                |
-| `/api/modality-bridge/video/extract` | POST       | შიდა, ავტორიზებული, სანდო loopback ბაიტების ბროკერი; 50 MiB შემავალი მონაცემები, შეზღუდული რიგი/32 MiB გამომავალი მონაცემები, `503` სიმძლავრის ამოწურვისას, `499` კავშირის გაწყვეტისას, `504` ვადის ამოწურვისას; არ წარმოადგენს საჯარო ატვირთვის API-ს                                                                                                                                                                                          |
+| საბოლოო წერტილი                      | მეთოდი     | აღწერა                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/sessions`                      | GET        | აქტიური სესიების მონიტორინგი                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `/api/rate-limits`                   | GET        | სიჩქარის ლიმიტები თითოეული ანგარიშისთვის                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `/api/monitoring/health`             | GET        | სიჯანსაღის შემოწმება + პროვაიდერების შეჯამება (`catalogCount`, `configuredCount`, `activeCount`, `monitoredCount`). მართვის ხედი მოიცავს `credentialHealth`-ს: შემოწმების ქეშის სკალარულ მნიშვნელობებს, `failedConnections`-ს, როდესაც `failed>0`, და `staleDbNonOkCount`-ს (SQLite-ის მუდმივი `test_status`, და არა საზომი). იხილეთ [MONITORING_GUIDE.md](../ops/MONITORING_GUIDE.md#credentialhealth-probe-cache-vs-sqlite-test_status). |
+| `/api/cache/stats`                   | GET/DELETE | ქეშის სტატისტიკა / გასუფთავება                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `/api/modality-bridge/stats`         | GET        | მეხსიერებაში არსებული `attempts`, წარმატებული მცდელობები/`bridged`, წარუმატებელი მცდელობები, ქეშში მოხვედრები, `totalLatencyMs`, `latencySamples`, ნიმუშების რაოდენობაზე დაფუძნებული `averageLatencyMs` და ბოლო გამოყენების დრო (ნულდება ხელახლა გაშვებისას; მართვის ავტორიზაცია)                                                                                                                                                          |
+| `/api/modality-bridge/video/runtime` | GET        | მართვის ავტორიზაციამდე/შემოწმებამდე სანდო loopback-ის მკაცრი შემოწმება; FFmpeg/ffprobe-ის ხელმისაწვდომობისა და ვერსიების გასუფთავებული მონაცემები (შენახვის გარეშე)                                                                                                                                                                                                                                                                        |
+| `/api/modality-bridge/video/extract` | POST       | შიდა, ავტორიზებული, სანდო loopback-ის ბაიტების შუამავალი; 50 MiB შემავალი მონაცემები, შეზღუდული რიგი/32 MiB გამომავალი მონაცემები, `503` სიმძლავრის ამოწურვისას, `499` კავშირის გაწყვეტისას, `504` ვადის ამოწურვისას; არ წარმოადგენს საჯარო ატვირთვის API-ს                                                                                                                                                                                |
 
-### სარეზერვო ასლი და ექსპორტი/იმპორტი
+### სარეზერვო ასლები და ექსპორტი/იმპორტი
 
-| Endpoint                    | მეთოდი | აღწერა                                                 |
+| საბოლოო წერტილი             | მეთოდი | აღწერა                                                 |
 | --------------------------- | ------ | ------------------------------------------------------ |
-| `/api/db-backups`           | GET    | ხელმისაწვდომი სარეზერვო ასლების ჩამონათვალი            |
+| `/api/db-backups`           | GET    | ხელმისაწვდომი სარეზერვო ასლების სია                    |
 | `/api/db-backups`           | PUT    | სარეზერვო ასლის ხელით შექმნა                           |
 | `/api/db-backups`           | POST   | კონკრეტული სარეზერვო ასლიდან აღდგენა                   |
 | `/api/db-backups/export`    | GET    | მონაცემთა ბაზის .sqlite ფაილად ჩამოტვირთვა             |
 | `/api/db-backups/import`    | POST   | მონაცემთა ბაზის ჩასანაცვლებლად .sqlite ფაილის ატვირთვა |
 | `/api/db-backups/exportAll` | GET    | სრული სარეზერვო ასლის .tar.gz არქივად ჩამოტვირთვა      |
 
-### ღრუბლოვანი სინქრონიზაცია
+### ღრუბელთან სინქრონიზაცია
 
-| Endpoint               | მეთოდი     | აღწერა                               |
-| ---------------------- | ---------- | ------------------------------------ |
-| `/api/sync/cloud`      | სხვადასხვა | ღრუბლოვანი სინქრონიზაციის ოპერაციები |
-| `/api/sync/initialize` | POST       | სინქრონიზაციის ინიციალიზაცია         |
-| `/api/cloud/*`         | სხვადასხვა | ღრუბლის მართვა                       |
+| საბოლოო წერტილი        | მეთოდი     | აღწერა                              |
+| ---------------------- | ---------- | ----------------------------------- |
+| `/api/sync/cloud`      | სხვადასხვა | ღრუბელთან სინქრონიზაციის ოპერაციები |
+| `/api/sync/initialize` | POST       | სინქრონიზაციის ინიციალიზაცია        |
+| `/api/cloud/*`         | სხვადასხვა | ღრუბლის მართვა                      |
 
 ### გვირაბები
 
-| Endpoint                   | მეთოდი | აღწერა                                                                                   |
-| -------------------------- | ------ | ---------------------------------------------------------------------------------------- |
-| `/api/tunnels/cloudflared` | GET    | საინფორმაციო დაფისთვის Cloudflare Quick Tunnel-ის ინსტალაციის/გაშვების სტატუსის წაკითხვა |
-| `/api/tunnels/cloudflared` | POST   | Cloudflare Quick Tunnel-ის ჩართვა ან გამორთვა (`action=enable/disable`)                  |
-| `/api/tunnels/ngrok`       | GET    | საინფორმაციო დაფისთვის ngrok Tunnel-ის გაშვების სტატუსის წაკითხვა                        |
-| `/api/tunnels/ngrok`       | POST   | ngrok Tunnel-ის ჩართვა ან გამორთვა (`action=enable/disable`)                             |
+| საბოლოო წერტილი            | მეთოდი | აღწერა                                                                                |
+| -------------------------- | ------ | ------------------------------------------------------------------------------------- |
+| `/api/tunnels/cloudflared` | GET    | მართვის პანელისთვის Cloudflare Quick Tunnel-ის ინსტალაციის/გაშვების სტატუსის წაკითხვა |
+| `/api/tunnels/cloudflared` | POST   | Cloudflare Quick Tunnel-ის ჩართვა ან გამორთვა (`action=enable/disable`)               |
+| `/api/tunnels/ngrok`       | GET    | მართვის პანელისთვის ngrok Tunnel-ის გაშვების სტატუსის წაკითხვა                        |
+| `/api/tunnels/ngrok`       | POST   | ngrok Tunnel-ის ჩართვა ან გამორთვა (`action=enable/disable`)                          |
 
 ### CLI ხელსაწყოები
 
-| Endpoint                           | მეთოდი | აღწერა                        |
-| ---------------------------------- | ------ | ----------------------------- |
-| `/api/cli-tools/claude-settings`   | GET    | Claude CLI-ის სტატუსი         |
-| `/api/cli-tools/codex-settings`    | GET    | Codex CLI-ის სტატუსი          |
-| `/api/cli-tools/droid-settings`    | GET    | Droid CLI-ის სტატუსი          |
-| `/api/cli-tools/openclaw-settings` | GET    | OpenClaw CLI-ის სტატუსი       |
-| `/api/cli-tools/runtime/[toolId]`  | GET    | ზოგადი CLI-ის გაშვების გარემო |
+| საბოლოო წერტილი                    | მეთოდი | აღწერა                          |
+| ---------------------------------- | ------ | ------------------------------- |
+| `/api/cli-tools/claude-settings`   | GET    | Claude CLI-ის სტატუსი           |
+| `/api/cli-tools/codex-settings`    | GET    | Codex CLI-ის სტატუსი            |
+| `/api/cli-tools/droid-settings`    | GET    | Droid CLI-ის სტატუსი            |
+| `/api/cli-tools/openclaw-settings` | GET    | OpenClaw CLI-ის სტატუსი         |
+| `/api/cli-tools/runtime/[toolId]`  | GET    | ზოგადი CLI-ის შესრულების გარემო |
 
-CLI-ის პასუხები შეიცავს: `installed`, `runnable`, `command`, `commandPath`, `runtimeMode`, `reason`.
+CLI-ის პასუხები მოიცავს: `installed`, `runnable`, `command`, `commandPath`, `runtimeMode`, `reason`.
 
 ### ACP აგენტები
 
-| Endpoint          | მეთოდი | აღწერა                                                                 |
-| ----------------- | ------ | ---------------------------------------------------------------------- |
-| `/api/acp/agents` | GET    | ყველა აღმოჩენილი აგენტის (ჩაშენებული + მორგებული) სტატუსით ჩამონათვალი |
-| `/api/acp/agents` | POST   | მორგებული აგენტის დამატება ან აღმოჩენის კეშის განახლება                |
-| `/api/acp/agents` | DELETE | მორგებული აგენტის წაშლა `id` მოთხოვნის პარამეტრის მიხედვით             |
+| საბოლოო წერტილი   | მეთოდი | აღწერა                                                          |
+| ----------------- | ------ | --------------------------------------------------------------- |
+| `/api/acp/agents` | GET    | ყველა აღმოჩენილი აგენტის სია (ჩაშენებული + მორგებული), სტატუსით |
+| `/api/acp/agents` | POST   | მორგებული აგენტის დამატება ან აღმოჩენის კეშის განახლება         |
+| `/api/acp/agents` | DELETE | მორგებული აგენტის წაშლა `id` მოთხოვნის პარამეტრით               |
 
-GET პასუხი შეიცავს `agents[]`-ს (id, name, binary, version, installed, protocol, isCustom) და `summary`-ს (total, installed, notFound, builtIn, custom).
+GET პასუხი მოიცავს `agents[]`-ს (id, name, binary, version, installed, protocol, isCustom) და `summary`-ს (total, installed, notFound, builtIn, custom).
 
 ### მდგრადობა და სიხშირის ლიმიტები
 
-| Endpoint                          | მეთოდი    | აღწერა                                                                                                    |
+| საბოლოო წერტილი                   | მეთოდი    | აღწერა                                                                                                    |
 | --------------------------------- | --------- | --------------------------------------------------------------------------------------------------------- |
 | `/api/resilience`                 | GET/PATCH | მოთხოვნების რიგის, კავშირის დაყოვნების, პროვაიდერის ამომრთველისა და ლოდინის პარამეტრების მიღება/განახლება |
-| `/api/resilience/reset`           | POST      | პროვაიდერის წრედის ამომრთველების საწყის მდგომარეობაში დაბრუნება                                           |
-| `/api/resilience/model-cooldowns` | GET       | აქტიური (პროვაიდერი, კავშირი, მოდელი) ბლოკირებების ჩამონათვალი, დარჩენილი დროის მიხედვით დალაგებული       |
-| `/api/resilience/model-cooldowns` | DELETE    | მოდელის ბლოკირების გაუქმება — ყველაფერი გასასუფთავებლად სხეული `{provider, model}` ან `{all: true}`       |
-| `/api/rate-limits`                | GET       | თითოეული ანგარიშის სიხშირის ლიმიტის სტატუსი                                                               |
+| `/api/resilience/reset`           | POST      | პროვაიდერის წრედის ამომრთველების განულება                                                                 |
+| `/api/resilience/model-cooldowns` | GET       | აქტიური (პროვაიდერი, კავშირი, მოდელი) ბლოკირებების სია, დარჩენილი დროის მიხედვით დალაგებული               |
+| `/api/resilience/model-cooldowns` | DELETE    | მოდელის ბლოკირების გაუქმება — ტანი `{provider, model}`, ან ყველაფრის გასასუფთავებლად `{all: true}`        |
+| `/api/rate-limits`                | GET       | სიხშირის ლიმიტის სტატუსი თითოეული ანგარიშისთვის                                                           |
 | `/api/rate-limit`                 | GET       | სიხშირის ლიმიტის გლობალური კონფიგურაცია                                                                   |
 
-> ოთხივე `/api/resilience/*` მარშრუტი საჭიროებს **მართვის ავტორიზაციას** (`requireManagementAuth`). პროვაიდერის ამომრთველს, კავშირის დაყოვნებასა და მოდელის ბლოკირებას შორის განსხვავებების სრული მიმოხილვისთვის იხილეთ [მდგრადობა (გაფართოებული)](#resilience-extended).
+> ოთხივე `/api/resilience/*` მარშრუტი მოითხოვს **მართვის ავტორიზაციას** (`requireManagementAuth`). პროვაიდერის ამომრთველის, კავშირის დაყოვნებისა და მოდელის ბლოკირების სრული განმარტებისთვის იხილეთ [მდგრადობა (გაფართოებული)](#resilience-extended).
 
 ### შეფასებები
 
-| Endpoint     | მეთოდი   | აღწერა                                                 |
-| ------------ | -------- | ------------------------------------------------------ |
-| `/api/evals` | GET/POST | შეფასების კომპლექტების ჩამონათვალი / შეფასების გაშვება |
+| საბოლოო წერტილი | მეთოდი   | აღწერა                                         |
+| --------------- | -------- | ---------------------------------------------- |
+| `/api/evals`    | GET/POST | შეფასებების ნაკრებების სია / შეფასების გაშვება |
 
 ### პოლიტიკები
 
-| Endpoint        | მეთოდი          | აღწერა                            |
+| საბოლოო წერტილი | მეთოდი          | აღწერა                            |
 | --------------- | --------------- | --------------------------------- |
 | `/api/policies` | GET/POST/DELETE | მარშრუტიზაციის პოლიტიკების მართვა |
 
 ### შესაბამისობა
 
-| Endpoint                    | მეთოდი | აღწერა                                 |
+| საბოლოო წერტილი             | მეთოდი | აღწერა                                 |
 | --------------------------- | ------ | -------------------------------------- |
 | `/api/compliance/audit-log` | GET    | შესაბამისობის აუდიტის ჟურნალი (ბოლო N) |
 
-### v1beta (Gemini-სთან თავსებადი)
+### v1beta (Gemini-თან თავსებადი)
 
-| Endpoint                   | მეთოდი | აღწერა                                   |
-| -------------------------- | ------ | ---------------------------------------- |
-| `/v1beta/models`           | GET    | მოდელების ჩამონათვალი Gemini-ის ფორმატში |
-| `/v1beta/models/{...path}` | POST   | Gemini-ის `generateContent` endpoint     |
+| საბოლოო წერტილი            | მეთოდი | აღწერა                                      |
+| -------------------------- | ------ | ------------------------------------------- |
+| `/v1beta/models`           | GET    | მოდელების სია Gemini-ის ფორმატში            |
+| `/v1beta/models/{...path}` | POST   | Gemini-ის `generateContent` საბოლოო წერტილი |
 
-ეს endpoint-ები იმეორებს Gemini-ის API ფორმატს იმ კლიენტებისთვის, რომლებიც Gemini-ის მშობლიურ SDK-სთან თავსებადობას მოელიან.
+ეს საბოლოო წერტილები იმეორებს Gemini-ის API ფორმატს იმ კლიენტებისთვის, რომლებსაც Gemini-ის მშობლიურ SDK-სთან თავსებადობა სჭირდებათ.
 
 ### შიდა / სისტემური API-ები
 
 | საბოლოო წერტილი          | მეთოდი | აღწერა                                                               |
 | ------------------------ | ------ | -------------------------------------------------------------------- |
 | `/api/init`              | GET    | აპლიკაციის ინიციალიზაციის შემოწმება (გამოიყენება პირველი გაშვებისას) |
-| `/api/tags`              | GET    | Ollama-სთან თავსებადი მოდელის ტეგები (Ollama-ს კლიენტებისთვის)       |
+| `/api/tags`              | GET    | Ollama-თან თავსებადი მოდელის ტეგები (Ollama კლიენტებისთვის)          |
 | `/api/restart`           | POST   | სერვერის კორექტული გადატვირთვის ინიციირება                           |
 | `/api/shutdown`          | POST   | სერვერის კორექტული გამორთვის ინიციირება                              |
 | `/api/system/env/repair` | POST   | OAuth პროვაიდერის გარემოს ცვლადების აღდგენა                          |
+| `/api/system/version`    | GET    | მიმდინარე/უახლესი ვერსია, განახლების სტატუსი, გამოშვების არხი        |
+| `/api/system/version`    | POST   | უახლეს ვერსიაზე განთავსების ტიპის გათვალისწინებით განახლების დაწყება |
 
-> **შენიშვნა:** ეს საბოლოო წერტილები გამოიყენება სისტემის შიდა მიზნებისთვის ან Ollama-ს კლიენტებთან თავსებადობისთვის. ჩვეულებრივ, საბოლოო მომხმარებლები მათ პირდაპირ არ იძახებენ.
+> **შენიშვნა:** ამ საბოლოო წერტილებს სისტემა შიდა მიზნებისთვის ან Ollama კლიენტებთან თავსებადობისთვის იყენებს. ჩვეულებრივ, საბოლოო მომხმარებლები მათ არ იძახებენ.
 
 ### OAuth გარემოს აღდგენა _(v3.6.1+)_
 
@@ -1002,6 +1201,44 @@ Content-Type: application/json
   "backupPath": "/home/user/.omniroute/backups/env-repair-2026-04-11.bak"
 }
 ```
+
+### ვერსია და გამოშვების არხი
+
+```bash
+GET /api/system/version
+```
+
+მხოლოდ loopback-ზე ხელმისაწვდომი მართვის მარშრუტი (ადმინისტრატორის ავტორიზაცია). აბრუნებს გაშვებულ ვერსიას, უახლეს
+გამოქვეყნებულ ვერსიასა და ავტომატური განახლების სტატუსს. `releaseChannel` და `channels` დამატებითი
+ველებია (rail 3.8.54); `channel` ინარჩუნებს თავის მნიშვნელობას — განთავსების რეჟიმს, რომელსაც მართვის პანელის განახლების საშუალება
+იყენებს (`npm`, `source` ან `docker-compose`).
+
+```json
+{
+  "current": "3.8.52",
+  "latest": "3.8.52",
+  "updateAvailable": false,
+  "channel": "npm",
+  "autoUpdateSupported": true,
+  "autoUpdateError": null,
+  "news": null,
+  "releaseChannel": "latest",
+  "channels": { "latest": "3.8.52", "next": "3.8.53-rc.1" }
+}
+```
+
+- `releaseChannel` — გაშვებული build-ის npm არხი: `nightly` — `-nightly.*` ვერსიებისთვის,
+  `next` — სხვა წინასწარი გამოშვებებისთვის (`-rc.*`, `-beta.*`, `-alpha.*`), `lts` — `channels.latest`-ზე
+  ძველი ძირითადი ვერსიის სტაბილური გამოშვებისთვის, სხვა შემთხვევაში — `latest`. მოქმედებს იგივე წესები, რაც
+  `scripts/release/dist-tag.mjs`-ში, რომელიც გამოქვეყნებისას npm dist-tag-ს ირჩევს.
+- `channels` — თითოეული dist-tag-ის უახლესი გამოქვეყნებული ვერსია, მიღებული `npm view omniroute dist-tags`-დან
+  (სარეზერვო ვარიანტად გამოიყენება registry-ის HTTP), რომელიც `latest`-ის მსგავსად 10-წუთიანი TTL-ით ქეშირდება.
+  `latest` ყოველთვის წარმოდგენილია (სარეზერვო ვარიანტად გამოიყენება `latest` ველი, შემდეგ კი `"unavailable"`);
+  `next`, `nightly` და `lts` მხოლოდ მაშინ გამოჩნდება, როდესაც შესაბამისი dist-tag არსებობს.
+  `Cache-Control: no-cache` მოთხოვნა ორივე მოძიების შედეგს განაახლებს.
+
+არხების მოდელი (`latest` = v3 4.0 GA-მდე, `next` = rc, `nightly` = `develop` build-ები,
+`lts` = v3-ის პატჩები 4.0 GA-ის შემდეგ) აღწერილია `docs/ops/RELEASE_STRATEGY.md`-ში.
 
 ---
 
@@ -1420,22 +1657,22 @@ GET /.well-known/agent.json
 
 ---
 
-## ღრუბელი, შეფასებითი ტესტები და შეფასება
+## ღრუბელი, შეფასებები და ანალიზი
 
 | მეთოდი | მისამართი | აღწერა |
 | ------ | ------------------------------- | ------------------------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------- |
-| POST | `/api/cloud/auth` | ამოწმებს Bearer გასაღებს და ღრუბელთან სინქრონიზაციის კლიენტებისთვის აბრუნებს პროვაიდერების შენიღბულ კავშირებსა და მოდელების ფსევდონიმებს |
-| POST | `/api/cloud/credentials/update` | აახლებს დაშიფრულ ავტორიზაციის მონაცემებს ღრუბელთან სინქრონიზებული პროვაიდერისთვის |
-| POST | `/api/cloud/model/resolve` | ადგილობრივი მარშრუტიზაციის ცხრილის გამოყენებით ლოგიკურ მოდელის ID-ს კონკრეტულ პროვაიდერად/მოდელად გარდაქმნის |
-| GET | `/api/cloud/models/alias` | ჩამოთვლის მოდელების ფსევდონიმებს, რომლებიც ხელმისაწვდომია ღრუბელთან სინქრონიზაციისთვის |
-| GET | `/api/assess` | კითხულობს უახლესი შეფასების კატეგორიზაციებს (თითოეული პროვაიდერის/მოდელის მიხედვით) |
-| POST | `/api/assess` | ასრულებს შეფასებას — მოთხოვნის სხეული: `{scope: {type:"all"}                                                   | {type:"provider", providerId} | {type:"model", modelId}, trigger?}` |
-| GET | `/api/evals` | ჩამოთვლის ჩაშენებულ შეფასებითი ტესტების კომპლექტებსა და უახლეს გაშვებებს |
-| POST | `/api/evals` | იწყებს შეფასებითი ტესტის გაშვებას |
-| POST | `/api/evals/suites` | ქმნის მორგებულ შეფასებითი ტესტების კომპლექტს — მოთხოვნის სხეული მოწმდება `evalSuiteSaveSchema`-ით |
-| GET | `/api/evals/suites/[id]` | იღებს მორგებულ შეფასებითი ტესტების კომპლექტს |
+| POST | `/api/cloud/auth` | Bearer გასაღების შემოწმება და ღრუბლოვანი სინქრონიზაციის კლიენტებისთვის შენიღბული პროვაიდერის კავშირებისა და მოდელის ფსევდონიმების დაბრუნება |
+| POST | `/api/cloud/credentials/update` | ღრუბელთან სინქრონიზებული პროვაიდერის დაშიფრული ავტორიზაციის მონაცემების განახლება |
+| POST | `/api/cloud/model/resolve` | ლოგიკური მოდელის ID-ის კონკრეტულ პროვაიდერად/მოდელად გარდაქმნა ლოკალური მარშრუტიზაციის ცხრილის გამოყენებით |
+| GET | `/api/cloud/models/alias` | ღრუბლოვანი სინქრონიზაციისთვის ხელმისაწვდომი მოდელის ფსევდონიმების ჩამონათვალი |
+| GET | `/api/assess` | უახლესი შეფასების კატეგორიზაციების წაკითხვა (თითოეული პროვაიდერის/მოდელისთვის) |
+| POST | `/api/assess` | შეფასების გაშვება — მოთხოვნის სხეული: `{scope: {type:"all"}                                                   | {type:"provider", providerId} | {type:"model", modelId}, trigger?}` |
+| GET | `/api/evals` | ჩაშენებული შეფასების ნაკრებებისა და უახლესი გაშვებების ჩამონათვალი |
+| POST | `/api/evals` | შეფასების გაშვების ინიცირება |
+| POST | `/api/evals/suites` | მორგებული შეფასების ნაკრების შექმნა — მოთხოვნის სხეული მოწმდება `evalSuiteSaveSchema`-ით |
+| GET | `/api/evals/suites/[id]` | მორგებული შეფასების ნაკრების მიღება |
 
-**ავთენტიფიკაცია:** `/api/cloud/auth` პირდაპირ ამოწმებს Bearer გასაღებს; დანარჩენი `/api/cloud/*`, `/api/evals/*` და `/api/assess` მარშრუტები მოითხოვს მართვის სესიას/API გასაღებს. `/api/assess` POST იყენებს `validateBody`-ს დისკრიმინირებული გაერთიანების ტიპის მოქმედების არეალის სქემასთან ერთად.
+**ავთენტიფიკაცია:** `/api/cloud/auth` უშუალოდ ამოწმებს Bearer გასაღებს და თითოეული კავშირის შენიღბულ გასაღებსა და `projectId`-ს მხოლოდ `manage` / `admin` მოქმედების არეალის მქონე გასაღებისთვის აბრუნებს; დანარჩენი `/api/cloud/*`, `/api/evals/*` და `/api/assess` მარშრუტები მართვის სესიას/API გასაღებს საჭიროებს. `/api/assess` POST იყენებს `validateBody`-ს დისკრიმინირებული გაერთიანების მოქმედების არეალის სქემასთან ერთად.
 
 ---
 

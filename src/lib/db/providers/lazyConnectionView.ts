@@ -11,6 +11,7 @@
 
 import { decrypt, decryptQuiet, looksEncrypted } from "../encryption";
 import { toNumber, toNumberOrNull } from "@/shared/utils/numeric";
+import type { ConnectionRateLimitOverrides } from "./columns";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -20,6 +21,15 @@ function asRecord(value: unknown): JsonRecord {
 
 function toStringOrNull(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+/**
+ * Upstream's null-preserving coercion, kept under its upstream name for the
+ * columns upstream touched. Delegates to the shared numeric module so the
+ * coercion logic exists in exactly one place.
+ */
+function toNullableNumber(value: unknown): number | null {
+  return toNumberOrNull(value);
 }
 
 export interface ProviderConnectionView {
@@ -47,9 +57,16 @@ export interface ProviderConnectionView {
   errorCode: string | number | null;
   backoffLevel: number;
   maxConcurrent: number | null;
+  rateLimitMaxConcurrent: number | null;
   quotaWindowThresholds: Record<string, number> | null;
   /** #6148 — true when a stored credential is ciphertext that no longer decrypts. */
   credentialDecryptFailed?: boolean;
+  /**
+   * Per-connection rate limit overrides as parsed from the JSON column.
+   * Carries the optional nested `modelConcurrency` map; the chat core
+   * normalizes that map (fail-open) onto credentials at selection time.
+   */
+  rateLimitOverrides: ConnectionRateLimitOverrides | null;
 }
 
 /**
@@ -58,10 +75,16 @@ export interface ProviderConnectionView {
  */
 export function toProviderConnection(value: unknown): ProviderConnectionView {
   const row = asRecord(value);
+  const rateLimitMaxConcurrent = toNullableNumber(asRecord(row.rateLimitOverrides).maxConcurrent);
   const rawThresholds = row.quotaWindowThresholds;
   const quotaWindowThresholds: Record<string, number> | null =
     rawThresholds && typeof rawThresholds === "object" && !Array.isArray(rawThresholds)
       ? (rawThresholds as Record<string, number>)
+      : null;
+  const rawOverrides = row.rateLimitOverrides;
+  const rateLimitOverrides: ConnectionRateLimitOverrides | null =
+    rawOverrides && typeof rawOverrides === "object" && !Array.isArray(rawOverrides)
+      ? (rawOverrides as ConnectionRateLimitOverrides)
       : null;
   return {
     id: toStringOrNull(row.id) || "",
@@ -88,8 +111,11 @@ export function toProviderConnection(value: unknown): ProviderConnectionView {
     errorCode:
       typeof row.errorCode === "string" || typeof row.errorCode === "number" ? row.errorCode : null,
     backoffLevel: toNumber(row.backoffLevel, 0),
-    maxConcurrent: toNumberOrNull(row.maxConcurrent),
+    maxConcurrent: toNullableNumber(row.maxConcurrent),
+    rateLimitMaxConcurrent:
+      rateLimitMaxConcurrent !== null && rateLimitMaxConcurrent > 0 ? rateLimitMaxConcurrent : null,
     quotaWindowThresholds,
+    rateLimitOverrides,
   };
 }
 

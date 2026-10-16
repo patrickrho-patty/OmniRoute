@@ -45,9 +45,9 @@ ACP Agents (αντίστροφη ροή εκκίνησης):
 
 ## Αυτόματη διαμόρφωση με `setup-*`
 
-Δεν χρειάζεται να γράψετε χειροκίνητα τη διαμόρφωση κάθε εργαλείου. Το OmniRoute διαθέτει μια εντολή `setup-*`
-ανά υποστηριζόμενο CLI που διαβάζει τον **ενεργό** κατάλογο μοντέλων από ένα τρέχον
-OmniRoute (τοπικό ή απομακρυσμένο) και γράφει τη δική του διαμόρφωση στον υπολογιστή σας:
+Δεν χρειάζεται να γράφετε τη διαμόρφωση κάθε εργαλείου χειροκίνητα. Το OmniRoute παρέχει μια εντολή `setup-*`
+ανά υποστηριζόμενο CLI που διαβάζει τον **ζωντανό** κατάλογο μοντέλων από ένα τρέχον
+OmniRoute (τοπικό ή απομακρυσμένο) και γράφει τη δική του διαμόρφωση του εργαλείου στον υπολογιστή σας:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
@@ -57,47 +57,51 @@ omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
 omniroute setup-5dive
 ```
 
-Κάθε εντολή δέχεται `--remote <url> --api-key <key>` (διαμόρφωση τοπικού εργαλείου έναντι
-απομακρυσμένου OmniRoute), `--dry-run` (προεπισκόπηση χωρίς εγγραφή) και `--port`. Τα εργαλεία
+Κάθε εντολή δέχεται `--remote <url> --api-key <key>` (διαμόρφωση ενός τοπικού εργαλείου έναντι ενός
+απομακρυσμένου OmniRoute), `--dry-run` (προεπισκόπηση χωρίς εγγραφή) και `--port`. Εργαλεία
 χωρίς αυτόματη ανακάλυψη μοντέλων (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) δέχονται
-`--model <id>` (και `--yes` για μη διαδραστικές εκτελέσεις). Η `setup-5dive` είναι η μόνη
-συνταγή που δεν γράφει κάτω από το `$HOME`: διαμορφώνει μια fleet πρακτόρων 5dive
-γράφοντας ένα προφίλ πιστοποίησης που ανήκει στον root στον κεντρικό υπολογιστή fleet, οπότε επανεκτελείται μέσω `sudo`
-και δεν έχει δική της απομακρυσμένη λειτουργία. Για να εκκινήσετε ένα CLI με
-το σωστό env injected χωρίς καμία εγγραφή διαμόρφωσης, χρησιμοποιήστε τον γενικό
+`--model <id>` (και `--yes` για μη διαδραστικές εκτελέσεις). Το `setup-5dive` είναι η
+μοναδική συνταγή που δεν γράφει κάτω από το `$HOME`: διαμορφώνει έναν στόλο πρακτόρων 5dive
+γράφοντας ένα προφίλ ελέγχου ταυτότητας που ανήκει στον root στον κεντρικό υπολογιστή του στόλου,
+οπότε επανεκτελείται μέσω `sudo` και δεν έχει δική του απομακρυσμένη λειτουργία. Για να εκκινήσετε ένα CLI με το
+σωστό περιβάλλον ενσωματωμένο και χωρίς καμία διαμόρφωση γραμμένη, χρησιμοποιήστε τον γενικό
 εκκινητή `omniroute run <target>` (claude, codex, aider, goose, opencode, qwen,
-gemini — οι στόχοι και τα ψευδώνυμα προέρχονται από το `bin/cli/cli-manifest.mjs`). Οι παλαιοί
+gemini — οι στόχοι και τα ψευδώνυμα προέρχονται από το `bin/cli/cli-manifest.mjs`); οι παλαιότεροι
 εκκινητές ανά εργαλείο `omniroute launch` (Claude Code) και `omniroute launch-codex`
-(Codex) παραμένουν διαθέσιμοι. Το Gemini CLI είναι μόνο για εκκίνηση: είναι στόχος `omniroute run`
-αλλά δεν έχει συνταγή `setup-*`/`configure`.
+(Codex) παραμένουν διαθέσιμοι. Το Gemini CLI είναι μόνο για εκκίνηση: είναι ένας στόχος
+`omniroute run` αλλά δεν έχει συνταγή `setup-*`/`configure`.
 
-> **Πλήρης αναφορά:** ο κύριος πίνακας — τι γράφει κάθε εντολή, κάθε flag,
-> τοπική vs απομακρυσμένη λειτουργία, και ποια εργαλεία χρειάζονται πρόθεμα `/v1` — βρίσκεται στο
+> **Πλήρης αναφορά:** ο κύριος πίνακας — τι γράφει κάθε εντολή, κάθε σημαία,
+> τοπικό έναντι απομακρυσμένου, και ποια εργαλεία θέλουν ένα επίθημα `/v1` — βρίσκεται στο
 > **[CLI Integrations](../guides/CLI-INTEGRATIONS.md)**.
 
-### Εκτέλεση εντός container
+### Εκτέλεση αυτών μέσα σε ένα κοντέινερ
 
-Μια εντολή `setup-*` που εκτελείται εντός του container του OmniRoute γράφει στο
-home directory του container, το οποίο κανένα CLI του κεντρικού υπολογιστή δεν διαβάζει και εξαφανίζεται μαζί με
-το container. Το OmniRoute το ανιχνεύει και τερματίζει με κωδικό `2` παρέχοντας οδηγίες αντί να
-γράψει. Δύο υποστηριζόμενοι τρόποι αντιμετώπισης — εγκατάσταση του CLI στον κεντρικό υπολογιστή και
-`omniroute connect` στο container, ή bind-mount των φακέλων διαμόρφωσης και ορισμός
+Μια εντολή `setup-*` που εκτελείται μέσα στο κοντέινερ του OmniRoute γράφει στον
+δικό του οικιακό κατάλογο του κοντέινερ, τον οποίο κανένα CLI του κεντρικού υπολογιστή δεν διαβάζει και ο οποίος
+εξαφανίζεται με το κοντέινερ. Το OmniRoute το ανιχνεύει αυτό και τερματίζει με κωδικό `2` με οδηγίες
+αντί να γράψει. Δύο υποστηριζόμενοι τρόποι προώθησης — εγκαταστήστε το CLI στον κεντρικό υπολογιστή και
+`omniroute connect` στο κοντέινερ, ή συνδέστε τους καταλόγους διαμόρφωσης και ορίστε το
 `CLI_CONFIG_HOME` (το προφίλ `host` του compose). Κάθε εντολή `setup-*`, καθώς και
-η `omniroute configure` και η `omniroute config set`, δέχονται
-`--allow-container-write` όταν αυτό που πραγματικά θέλετε είναι η διαμόρφωση των CLIs του ίδιου του container. Το `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` επιτυγχάνει το ίδιο για
+`omniroute configure` και `omniroute config set`, δέχεται
+`--allow-container-write` όταν η διαμόρφωση των δικών του CLIs του κοντέινερ είναι αυτό που
+πραγματικά εννοούσατε· το `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` κάνει το ίδιο για
 τον διακομιστή. Δείτε
 [Docker Guide → Configuring host CLI tools](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-Το **apply endpoint** του dashboard (`POST /api/cli-tools/apply`) εφαρμόζει την
-ίδια προστασία: σε container, μια εγγραφή της οποίας ο στόχος δεν είναι bind-mounted από τον
-κεντρικό υπολογιστή απαντά με **`422`** και `containerEphemeralTarget: true`, το ασφαλές κείμενο σφάλματος
-και — για τα εργαλεία με συνταγή κεντρικού υπολογιστή (claude, codex, opencode, cline,
-kilo, continue) — ένα `hostSetupCommand` (π.χ. `omniroute setup-opencode`) για εκτέλεση
-στον κεντρικό υπολογιστή. Δεν γράφεται τίποτα. Το `dryRun: true` συνεχίζει να λειτουργεί σε
-λειτουργία container και επιστρέφει το παραγόμενο περιεχόμενο + διαδρομή στόχου χωρίς να αγγίζει τον δίσκο, ώστε
-να μπορείτε να κάνετε προεπισκόπηση από το dashboard και να εφαρμόσετε στον κεντρικό υπολογιστή. Αυτή η συμπεριφορά είναι
-σκόπιμη και προστατεύεται από παλινδρόμηση μέσω
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — μην «διορθώσετε» ποτέ ένα 422
+Το **apply endpoint** του πίνακα ελέγχου (`POST /api/cli-tools/apply`) επιβάλλει την
+ίδια προστασία: σε ένα κοντέινερ, μια εγγραφή του οποίου ο στόχος δεν είναι συνδεδεμένος από τον
+κεντρικό υπολογιστή απαντά **`422`** με `containerEphemeralTarget: true`, το ασφαλές κείμενο σφάλματος και —
+για τα εργαλεία με συνταγή κεντρικού υπολογιστή (claude, codex, opencode, cline,
+kilo, continue) — μια `hostSetupCommand` (π.χ. `omniroute setup-opencode`) για εκτέλεση
+στον κεντρικό υπολογιστή αντ' αυτού· τίποτα δεν γράφεται. Το `dryRun: true` συνεχίζει να λειτουργεί σε
+λειτουργία κοντέινερ και επιστρέφει μια επεξεργασμένη προεπισκόπηση + διαδρομή στόχου χωρίς να αγγίξει τον δίσκο.
+Το περιεχόμενο προεπισκόπησης δεν είναι μια διαμόρφωση που φέρει διαπιστευτήρια για αντιγραφή ή εισαγωγή.
+Εφαρμόστε με το αρχικό εργαλείο/βασική διεύθυνση URL/κλειδί API/εισόδους μοντέλου στον κεντρικό υπολογιστή,
+ή χρησιμοποιήστε την υποδεικνυόμενη εντολή ρύθμισης από την πλευρά του κεντρικού υπολογιστή. Δείτε
+[CLI configuration security](../security/CLI-CONFIGURATION.md) για την κεφαλίδα προεπισκόπησης και το συμβόλαιο αιτήματος.
+Αυτή η συμπεριφορά είναι σκόπιμη και προστατεύεται από παλινδρόμηση από το
+`tests/unit/api/cli-tools/apply-container-guard.test.ts` — ποτέ μην "διορθώσετε" ένα 422
 αφαιρώντας την προστασία.
 
 ---
@@ -140,49 +144,49 @@ kilo, continue) — ένα `hostSetupCommand` (π.χ. `omniroute setup-opencode`
 
 ---
 
-## 1. Κατάλογος του CLI Code (26 εργαλεία)
+## 1. Κατάλογος Κώδικα CLI (26 εργαλεία)
 
-Όλα τα εργαλεία που εμφανίζονται στο `/dashboard/cli-code`. Όσα έχουν `baseUrlSupport: none` δρομολογούνται μέσω MITM ή μέσω χειροκίνητου οδηγού αντί για προσαρμοσμένο βασικό URL:
+Όλα τα εργαλεία που εμφανίζονται στο `/dashboard/cli-code`. Όσα έχουν `baseUrlSupport: none` συνδέονται μέσω MITM ή χειροκίνητου οδηγού αντί για προσαρμοσμένη βασική διεύθυνση URL:
 
-| id           | name                    | vendor              | baseUrlSupport | configType     | acpSpawnable |
-| ------------ | ----------------------- | ------------------- | -------------- | -------------- | ------------ |
-| claude       | Claude Code             | Anthropic           | full           | env            | true         |
-| codex        | OpenAI Codex CLI        | OpenAI              | full           | custom         | true         |
-| zcode        | ZCode (GLM Coding Plan) | Z.ai                | none           | custom         | false        |
-| cline        | Cline                   | OSS (ex-Claude Dev) | full           | custom         | true         |
-| kilo         | Kilo Code               | Kilo-Org            | full           | custom         | false        |
-| roo          | Roo Code                | Roo (OSS)           | full           | guide          | false        |
-| continue     | Continue                | continue.dev        | full           | guide          | false        |
-| aider        | Aider                   | OSS (P. Gauthier)   | full           | guide          | true         |
-| forge        | ForgeCode               | Antinomy HQ         | full           | custom         | true         |
-| jcode        | jcode                   | 1jehuang (OSS)      | full           | custom         | false        |
-| deepseek-tui | DeepSeek TUI            | Hunter Bown (OSS)   | full           | custom         | false        |
-| codewhale    | CodeWhale               | Hmbown (OSS)        | full           | custom         | false        |
-| opencode     | OpenCode                | Anomaly (ex-SST)    | full           | guide          | true         |
-| droid        | Factory Droid           | Factory AI          | partial        | guide          | false        |
-| copilot      | GitHub Copilot CLI      | GitHub/MS           | full           | custom         | false        |
-| cursor-cli   | Cursor CLI              | Anysphere           | partial        | guide          | true         |
-| smelt        | Smelt                   | leonardcser (OSS)   | full           | custom         | false        |
-| pi           | Pi (pi-coding-agent)    | M. Zechner (OSS)    | full           | custom         | false        |
-| grok-build   | Grok Build              | xAI                 | full           | custom         | false        |
-| crush        | Crush                   | OSS (Charm)         | full           | custom         | false        |
-| qwen         | Qwen Code               | Alibaba             | full           | guide          | true         |
-| cursor       | Cursor                  | Anysphere           | none           | guide          | false        |
-| antigravity  | Antigravity             | Google              | none           | mitm           | false        |
-| hermes       | Hermes                  | Nous Research       | none           | guide          | false        |
-| kiro         | Kiro AI                 | Amazon              | none           | mitm           | false        |
-| custom       | Custom CLI              | —                   | full           | custom-builder | false        |
+| id           | name                    | vendor                 | baseUrlSupport | configType     | acpSpawnable |
+| :----------- | :---------------------- | :--------------------- | :------------- | :------------- | :----------- |
+| claude       | Claude Code             | Anthropic              | full           | env            | true         |
+| codex        | OpenAI Codex CLI        | OpenAI                 | full           | custom         | true         |
+| zcode        | ZCode (GLM Coding Plan) | Z.ai                   | none           | custom         | false        |
+| cline        | Cline                   | OSS (πρώην Claude Dev) | full           | custom         | true         |
+| kilo         | Kilo Code               | Kilo-Org               | full           | custom         | false        |
+| roo          | Roo Code                | Roo (OSS)              | full           | guide          | false        |
+| continue     | Continue                | continue.dev           | full           | guide          | false        |
+| aider        | Aider                   | OSS (Π. Γκοτιέ)        | full           | guide          | true         |
+| forge        | ForgeCode               | Antinomy HQ            | full           | custom         | true         |
+| jcode        | jcode                   | 1jehuang (OSS)         | full           | custom         | false        |
+| deepseek-tui | DeepSeek TUI            | Hunter Bown (OSS)      | full           | custom         | false        |
+| codewhale    | CodeWhale               | Hmbown (OSS)           | full           | custom         | false        |
+| opencode     | OpenCode                | Anomaly (πρώην SST)    | full           | guide          | true         |
+| droid        | Factory Droid           | Factory AI             | partial        | guide          | false        |
+| copilot      | GitHub Copilot CLI      | GitHub/MS              | full           | custom         | false        |
+| cursor-cli   | Cursor CLI              | Anysphere              | partial        | guide          | true         |
+| smelt        | Smelt                   | leonardcser (OSS)      | full           | custom         | false        |
+| pi           | Pi (pi-coding-agent)    | M. Zechner (OSS)       | full           | custom         | false        |
+| grok-build   | Grok Build              | xAI                    | full           | custom         | false        |
+| crush        | Crush                   | OSS (Charm)            | full           | custom         | false        |
+| qwen         | Qwen Code               | Alibaba                | full           | guide          | true         |
+| cursor       | Cursor                  | Anysphere              | none           | guide          | false        |
+| antigravity  | Antigravity             | Google                 | none           | mitm           | false        |
+| hermes       | Hermes                  | Nous Research          | none           | guide          | false        |
+| kiro         | Kiro AI                 | Amazon                 | none           | mitm           | false        |
+| custom       | Custom CLI              | —                      | full           | custom-builder | false        |
 
-Τα εργαλεία με `baseUrlSupport: "partial"` εμφανίζουν μια ένδειξη "⚠ Μερικό βασικό URL" στην κάρτα του πίνακα ελέγχου.
+Εργαλεία με `baseUrlSupport: "partial"` εμφανίζουν ένα σήμα "⚠ Μερική Βασική Διεύθυνση URL" στην κάρτα του πίνακα ελέγχου.
 ---
 
-## 2. Κατάλογος πρακτόρων CLI (10 εργαλεία)
+## 2. Κατάλογος Πρακτόρων CLI (10 εργαλεία)
 
 Αυτόνομοι πράκτορες που εμφανίζονται στο `/dashboard/cli-agents`:
 
-| id           | name             | vendor                   | baseUrlSupport | acpSpawnable |
+| id           | όνομα            | προμηθευτής              | baseUrlSupport | acpSpawnable |
 | ------------ | ---------------- | ------------------------ | -------------- | ------------ |
-| hermes-agent | Hermes Agent     | Nous Research            | full           | false        |
+| hermes-agent | Πράκτορας Hermes | Nous Research            | full           | false        |
 | openclaw     | OpenClaw         | OSS (P. Steinberger)     | full           | true         |
 | goose        | Goose            | Block / Linux Foundation | full           | true         |
 | interpreter  | Open Interpreter | OSS                      | full           | true         |
@@ -607,12 +611,12 @@ kiro-cli status
 ```bash
 omniroute                              # Εκκίνηση διακομιστή (προεπιλεγμένη θύρα 20128)
 omniroute setup                        # Διαδραστικός οδηγός αρχικής ρύθμισης
-omniroute doctor                       # Έλεγχος ρυθμίσεων, βάσης δεδομένων, θυρών και περιβάλλοντος εκτέλεσης
+omniroute doctor                       # Έλεγχος ρυθμίσεων, ΒΔ, θυρών και περιβάλλοντος εκτέλεσης
 omniroute providers list               # Διαμορφωμένες συνδέσεις παρόχων
 omniroute providers test-all           # Δοκιμή κάθε ενεργής σύνδεσης
 omniroute reset-password               # Επαναφορά του κωδικού πρόσβασης διαχειριστή
 omniroute logs                         # Συνεχής ροή αρχείων καταγραφής αιτημάτων
-omniroute health                       # Αναλυτική κατάσταση εύρυθμης λειτουργίας (breakers, cache, μνήμη)
+omniroute health                       # Αναλυτική κατάσταση εύρυθμης λειτουργίας (διακόπτες κυκλώματος, κρυφή μνήμη, μνήμη)
 omniroute --version                    # Εμφάνιση έκδοσης
 omniroute --help                       # Εμφάνιση όλων των εντολών
 ```
@@ -621,7 +625,7 @@ omniroute --help                       # Εμφάνιση όλων των εντ
 
 ```bash
 omniroute setup                        # Διαδραστικός οδηγός αρχικής ρύθμισης
-omniroute setup --non-interactive      # Λειτουργία CI/αυτοματισμού (διαβάζει μεταβλητές περιβάλλοντος + flags)
+omniroute setup --non-interactive      # Λειτουργία CI/αυτοματοποίησης (διαβάζει μεταβλητές περιβάλλοντος + σημαίες)
 omniroute setup --password '<value>'   # Άμεσος ορισμός κωδικού πρόσβασης διαχειριστή
 omniroute setup --add-provider \
   --provider openai \
@@ -631,35 +635,35 @@ omniroute setup --add-provider \
 
 Αναγνωρισμένες μεταβλητές περιβάλλοντος για μη διαδραστική αρχική ρύθμιση:
 
-| Μεταβλητή           | Σκοπός                                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | Κλειδί API παρόχου (συνδέεται με το `--api-key` μέσω της μεθόδου `.env()` του Commander) |
-| `DATA_DIR`          | Παράκαμψη του καταλόγου δεδομένων του OmniRoute                                          |
+| Μεταβλητή           | Σκοπός                                                                         |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `OMNIROUTE_API_KEY` | Κλειδί API παρόχου (συνδεδεμένο με το `--api-key` μέσω του Commander `.env()`) |
+| `DATA_DIR`          | Παράκαμψη του καταλόγου δεδομένων του OmniRoute                                |
 
-Όλες οι άλλες μη διαδραστικές είσοδοι μεταβιβάζονται ως flags και όχι ως μεταβλητές περιβάλλοντος:
+Όλες οι άλλες μη διαδραστικές είσοδοι μεταβιβάζονται ως σημαίες και όχι ως μεταβλητές περιβάλλοντος:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
 (δείτε τις επιλογές του `omniroute setup` παραπάνω).
 
 ### Διαγνωστικά
 
 ```bash
-omniroute doctor                       # Έλεγχος ρυθμίσεων, βάσης δεδομένων, θυρών, περιβάλλοντος εκτέλεσης, μνήμης και διαθεσιμότητας
+omniroute doctor                       # Έλεγχος ρυθμίσεων, ΒΔ, θυρών, περιβάλλοντος εκτέλεσης, μνήμης και λειτουργίας
 omniroute doctor --json                # JSON αναγνώσιμο από μηχανή
-omniroute doctor --no-liveness         # Παράλειψη του ελέγχου εύρυθμης λειτουργίας μέσω HTTP
-omniroute doctor --host 0.0.0.0        # Παράκαμψη του host ελέγχου διαθεσιμότητας
-omniroute doctor --liveness-url <url>  # Παράκαμψη με πλήρες URL του endpoint εύρυθμης λειτουργίας
+omniroute doctor --no-liveness         # Παράλειψη του ελέγχου εύρυθμης λειτουργίας HTTP
+omniroute doctor --host 0.0.0.0        # Παράκαμψη κεντρικού υπολογιστή για τον έλεγχο λειτουργίας
+omniroute doctor --liveness-url <url>  # Παράκαμψη πλήρους URL τελικού σημείου εύρυθμης λειτουργίας
 ```
 
-Το doctor εκτελεί τους εξής ελέγχους: `Config`, `Database`, `Storage/encryption`,
+Η εντολή doctor εκτελεί τους εξής ελέγχους: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` και `Server liveness`. Τερματίζεται με μη μηδενικό κωδικό εξόδου εάν οποιοσδήποτε έλεγχος έχει τιμή `fail`.
+`Memory` και `Server liveness`. Τερματίζεται με μη μηδενικό κωδικό, εάν οποιοσδήποτε έλεγχος έχει αποτέλεσμα `fail`.
 
 ### Διαχείριση παρόχων
 
 ```bash
 omniroute providers available                       # Κατάλογος παρόχων του OmniRoute
-omniroute providers available --search openai       # Φιλτράρισμα καταλόγου κατά id/όνομα/ψευδώνυμο/κατηγορία
-omniroute providers available --category api-key    # Φιλτράρισμα κατά κατηγορία (api-key, oauth, free, ...)
+omniroute providers available --search openai       # Φιλτράρισμα καταλόγου βάσει αναγνωριστικού/ονόματος/ψευδωνύμου/κατηγορίας
+omniroute providers available --category api-key    # Φιλτράρισμα βάσει κατηγορίας (api-key, oauth, free, ...)
 omniroute providers available --json                # JSON αναγνώσιμο από μηχανή
 
 omniroute providers list                            # Διαμορφωμένες συνδέσεις παρόχων
@@ -667,7 +671,7 @@ omniroute providers list --json
 
 omniroute providers test <id|name>                  # Δοκιμή μίας διαμορφωμένης σύνδεσης
 omniroute providers test-all                        # Δοκιμή κάθε ενεργής σύνδεσης
-omniroute providers validate                        # Δομική επικύρωση μόνο τοπικά
+omniroute providers validate                        # Τοπική μόνο δομική επικύρωση
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
 omniroute providers auth <provider>                 # Υπάρχουσα ροή OAuth
@@ -675,45 +679,57 @@ omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-Οι εντολές `providers add/import/auth/edit/remove` χρησιμοποιούν κατά προτεραιότητα το API και επομένως λειτουργούν με βάση
-το ενεργό τοπικό ή απομακρυσμένο context. Για την εισαγωγή διαπιστευτηρίων πρέπει να χρησιμοποιούνται
-τα `--credential-stdin` ή `--credential-env`· το `--dry-run --json` αναφέρει μόνο
-την παρουσία/μορφή με απόκρυψη ευαίσθητων δεδομένων. Το `providers available` διαβάζει τον κατάλογο του OmniRoute·
-τα `providers list/test/test-all/validate` διατηρούν την τοπική συμπεριφορά SQLite και
+Οι εντολές `providers add/import/auth/edit/remove` χρησιμοποιούν κατά προτεραιότητα το API και, επομένως, λειτουργούν με το
+ενεργό τοπικό ή απομακρυσμένο περιβάλλον. Για την εισαγωγή διαπιστευτηρίων πρέπει να χρησιμοποιείται το
+`--credential-stdin` ή το `--credential-env`· το `--dry-run --json` αναφέρει μόνο
+αποκρυμμένες πληροφορίες παρουσίας/δομής. Η εντολή `providers available` διαβάζει τον κατάλογο του OmniRoute·
+οι εντολές `providers list/test/test-all/validate` διατηρούν την τοπική συμπεριφορά SQLite και
 δεν απαιτούν την εκτέλεση του διακομιστή.
+
+Για έναν προσαρμοσμένο κόμβο συμβατό με OpenAI ή Anthropic, συσχετίστε τα διαπιστευτήρια με
+το αναγνωριστικό κόμβου που επιστρέφεται από την εντολή `omniroute nodes add`, χρησιμοποιώντας την εντολή `omniroute keys add "$NODE_ID" --stdin`.
+Αυτό απαιτεί διακομιστή σε λειτουργία και έλεγχο ταυτότητας διαχείρισης για το ενεργό περιβάλλον.
+Το CLI χρησιμοποιεί το `POST /api/providers`, το οποίο επικυρώνει τον κόμβο και αντιγράφει τις ρυθμίσεις
+τελικού σημείου του στη σύνδεση. Ένας κόμβος που λείπει, μια αποτυχία εξουσιοδότησης ή ένας μη διαθέσιμος
+διακομιστής επιστρέφει σφάλμα χωρίς τη δημιουργία τοπικού εφεδρικού διαπιστευτηρίου.
+
+Η επιλογή `nodes add --base-url` ορίζει το τελικό σημείο του κόμβου· διαφέρει από τη διεύθυνση διακομιστή
+στο `OMNIROUTE_BASE_URL`. Για αρχεία OpenAPI, χρησιμοποιήστε την εντολή
+`omniroute openapi dump --format json --out ./openapi.json`· η καθολική επιλογή `--output`
+επιλέγει τη μορφοποίηση εμφάνισης του CLI και όχι ένα όνομα αρχείου προορισμού.
 
 ### Ανάκτηση και επαναφορά
 
 ```bash
 omniroute reset-password                # Επαναφορά του κωδικού πρόσβασης διαχειριστή (επίσης: omniroute-reset-password)
-omniroute reset-encrypted-columns       # Εμφάνιση προειδοποίησης + dry-run για επαναφορά κρυπτογραφημένων διαπιστευτηρίων
-omniroute reset-encrypted-columns --force  # Πραγματικός μηδενισμός των κρυπτογραφημένων διαπιστευτηρίων στο SQLite
+omniroute reset-encrypted-columns       # Εμφάνιση προειδοποίησης + δοκιμαστική εκτέλεση για επαναφορά κρυπτογραφημένων διαπιστευτηρίων
+omniroute reset-encrypted-columns --force  # Πραγματική εκκαθάριση κρυπτογραφημένων διαπιστευτηρίων στο SQLite
 ```
 
 ### Εξαγωγή διαπιστευτηρίων (⚠ χειριστείτε με προσοχή)
 
 ```bash
-omniroute auth export                                 # Εμφάνιση προειδοποίησης + αίτημα επιβεβαίωσης — χωρίς πρόσβαση στη βάση δεδομένων
+omniroute auth export                                 # Εμφάνιση προειδοποίησης + αίτημα επιβεβαίωσης — χωρίς πρόσβαση στη ΒΔ
 omniroute auth export --force                          # Εξαγωγή των ΑΠΟΚΡΥΠΤΟΓΡΑΦΗΜΕΝΩΝ διαπιστευτηρίων ΟΛΩΝ των συνδέσεων στο stdout ως JSON
 omniroute auth export --force --id <id>                 # Εξαγωγή μόνο της σύνδεσης που αντιστοιχεί
 omniroute auth export --force --format env               # Παραγωγή γραμμών OMNIROUTE_<PROVIDER>_<FIELD>=<value>
 omniroute auth export --force --out creds.json           # Εγγραφή σε αρχείο (δημιουργείται με δικαιώματα 0600)
 ```
 
-Το `auth export` εκτελείται **μόνο τοπικά** (άμεση ανάγνωση SQLite, χωρίς διαδρομή HTTP) και σκοπίμως εμφανίζει/εγγράφει
-τιμές `apiKey`/`accessToken`/`refreshToken`/`idToken` σε **απλό κείμενο** — αυτό αποτελεί λειτουργία και όχι
-σφάλμα. Χωρίς το `--force`, δεν διαβάζεται τίποτα από τη βάση δεδομένων και δεν αποκρυπτογραφείται τίποτα. Ένα banner
-προειδοποίησης εμφανίζεται πάντοτε στο stderr πριν από την έξοδο οποιουδήποτε απλού κειμένου. Απαιτεί να έχει
-οριστεί το `STORAGE_ENCRYPTION_KEY`. Ένα πεδίο που αποτυγχάνει να αποκρυπτογραφηθεί (παρωχημένο κλειδί, κατεστραμμένο κρυπτοκείμενο) αναφέρεται ως
-`<field>DecryptFailed: true`, αντί να διακόπτεται ολόκληρη η εξαγωγή ή να αποκαλύπτεται το υποκείμενο σφάλμα.
+Η εντολή `auth export` είναι **μόνο τοπική** (άμεση ανάγνωση SQLite, χωρίς διαδρομή HTTP) και σκόπιμα εκτυπώνει/εγγράφει
+τιμές `apiKey`/`accessToken`/`refreshToken`/`idToken` σε **απλό κείμενο** — αυτό είναι το χαρακτηριστικό, όχι
+σφάλμα. Δεν διαβάζεται τίποτα από τη βάση δεδομένων και δεν αποκρυπτογραφείται τίποτα χωρίς το `--force`. Ένα προειδοποιητικό
+πλαίσιο εκτυπώνεται πάντα στο stderr πριν από την έξοδο οποιουδήποτε απλού κειμένου. Απαιτεί να έχει οριστεί το
+`STORAGE_ENCRYPTION_KEY`. Ένα πεδίο που αποτυγχάνει να αποκρυπτογραφηθεί (παρωχημένο κλειδί, κατεστραμμένο κρυπτοκείμενο) αναφέρεται ως
+`<field>DecryptFailed: true` αντί να ακυρώνεται ολόκληρη η εξαγωγή ή να διαρρέει το υποκείμενο σφάλμα.
 
 ### Άλλες υποεντολές
 
-Αυτές προϋποθέτουν ότι εκτελείται ένας διακομιστής OmniRoute, εκτός εάν αναφέρεται διαφορετικά:
+Αυτές προϋποθέτουν ότι εκτελείται ένας διακομιστής OmniRoute, εκτός αν αναφέρεται διαφορετικά:
 
 ```bash
 omniroute status                       # Αναλυτική κατάσταση χρόνου εκτέλεσης
-omniroute logs                         # Ροή καταγραφών αιτημάτων (--json, --search, --follow)
+omniroute logs                         # Ροή αρχείων καταγραφής αιτημάτων (--json, --search, --follow)
 omniroute config list                  # Εμφάνιση διαμορφωμένων εργαλείων CLI
 
 omniroute provider list                # Παράθεση διαθέσιμων παρόχων (ψευδώνυμο του providers list)
@@ -725,7 +741,7 @@ omniroute combo list | switch | create | delete
 omniroute backup                       # Στιγμιότυπο διαμόρφωσης + βάσης δεδομένων
 omniroute restore                      # Επαναφορά από προηγούμενο στιγμιότυπο
 
-omniroute health                       # Αναλυτική κατάσταση εύρυθμης λειτουργίας (διακόπτες, κρυφή μνήμη, μνήμη)
+omniroute health                       # Λεπτομερής κατάσταση εύρυθμης λειτουργίας (διακόπτες κυκλώματος, κρυφή μνήμη, μνήμη)
 omniroute quota                        # Χρήση ορίου παρόχου
 omniroute cache                        # Κατάσταση κρυφής μνήμης
 omniroute cache clear                  # Εκκαθάριση σημασιολογικής κρυφής μνήμης + κρυφής μνήμης υπογραφών
@@ -734,7 +750,7 @@ omniroute mcp status | restart         # Κατάσταση / επανεκκίν
 omniroute a2a status | card            # Κατάσταση διακομιστή A2A / κάρτα πράκτορα
 
 omniroute tunnel list | create | stop  # Διαχείριση σηράγγων (cloudflare/tailscale/ngrok)
-omniroute env show | get <k> | set <k> <v>  # Προβολή / ορισμός μεταβλητών περιβάλλοντος (προσωρινά)
+omniroute env show | get <k> | set <k> <v>  # Επιθεώρηση / ορισμός μεταβλητών περιβάλλοντος (προσωρινά)
 
 omniroute test                         # Γρήγορος έλεγχος συνδεσιμότητας παρόχου
 omniroute update                       # Έλεγχος για ενημερώσεις
@@ -749,8 +765,8 @@ omniroute completion                   # Δημιουργία συμπλήρωσ
 | `--port <n>`        | Παράκαμψη της θύρας API (προεπιλογή 20128)                                     |
 | `--mcp`             | Εκτέλεση ως διακομιστής MCP μέσω stdio (για IDE)                               |
 | `--non-interactive` | Λειτουργία CI (χωρίς προτροπές· ανάγνωση από μεταβλητές περιβάλλοντος/σημαίες) |
-| `--json`            | Έξοδος JSON αναγνώσιμη από μηχανή (doctor, providers κ.λπ.)                    |
-| `--help`, `-h`      | Εμφάνιση βοήθειας για τη συγκεκριμένη εντολή                                   |
+| `--json`            | Έξοδος JSON αναγνώσιμη από μηχανές (doctor, providers κ.λπ.)                   |
+| `--help`, `-h`      | Εμφάνιση βοήθειας ειδικά για την εντολή                                        |
 | `--version`, `-v`   | Εκτύπωση της εγκατεστημένης έκδοσης                                            |
 
 ---

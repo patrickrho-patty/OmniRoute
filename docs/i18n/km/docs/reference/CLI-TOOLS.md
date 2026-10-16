@@ -45,9 +45,7 @@ ACP Agents (លំហូរបង្កើតបញ្ច្រាស):
 
 ## កំណត់រចនាសម្ព័ន្ធដោយស្វ័យប្រវត្តិជាមួយ `setup-*`
 
-អ្នកមិនចាំបាច់សរសេរឯកសារកំណត់រចនាសម្ព័ន្ធរបស់ឧបករណ៍នីមួយៗដោយដៃទេ។ OmniRoute ភ្ជាប់មកជាមួយពាក្យបញ្ជា `setup-*`
-មួយសម្រាប់ CLI នីមួយៗដែលគាំទ្រ ដែលអានកាតាឡុកម៉ូដែល **កំពុងដំណើរការផ្ទាល់** ពី
-OmniRoute ដែលកំពុងដំណើរការ (ក្នុងម៉ាស៊ីនមូលដ្ឋាន ឬពីចម្ងាយ) ហើយសរសេរឯកសារកំណត់រចនាសម្ព័ន្ធផ្ទាល់របស់ឧបករណ៍នៅលើម៉ាស៊ីនរបស់អ្នក៖
+អ្នកមិនចាំបាច់សរសេរការកំណត់រចនាសម្ព័ន្ធរបស់ឧបករណ៍នីមួយៗដោយដៃនោះទេ។ OmniRoute ភ្ជាប់មកជាមួយពាក្យបញ្ជា `setup-*` សម្រាប់ CLI ដែលគាំទ្រនីមួយៗ ដែលអានកាតាឡុកម៉ូដែល **ផ្ទាល់** ពី OmniRoute ដែលកំពុងដំណើរការ (ក្នុងស្រុក ឬពីចម្ងាយ) ហើយសរសេរការកំណត់រចនាសម្ព័ន្ធផ្ទាល់ខ្លួនរបស់ឧបករណ៍នោះនៅលើម៉ាស៊ីនរបស់អ្នក៖
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
@@ -57,49 +55,15 @@ omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
 omniroute setup-5dive
 ```
 
-ពាក្យបញ្ជានីមួយៗទទួលយក `--remote <url> --api-key <key>` (កំណត់រចនាសម្ព័ន្ធឧបករណ៍ក្នុងម៉ាស៊ីនមូលដ្ឋានឱ្យប្រើជាមួយ
-OmniRoute ពីចម្ងាយ), `--dry-run` (មើលជាមុនដោយមិនសរសេរ) និង `--port`។ ឧបករណ៍
-ដែលមិនមានការរកឃើញម៉ូដែលដោយស្វ័យប្រវត្តិ (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) ទទួលយក
-`--model <id>` (និង `--yes` សម្រាប់ការដំណើរការដែលមិនមានអន្តរកម្ម)។ `setup-5dive` គឺជា
-រូបមន្តតែមួយគត់ដែលមិនសរសេរក្រោម `$HOME`៖ វាកំណត់រចនាសម្ព័ន្ធក្រុម agent របស់ 5dive ដោយ
-សរសេរប្រូហ្វាល់ផ្ទៀងផ្ទាត់ដែលគ្រប់គ្រងដោយ root នៅលើម៉ាស៊ីនមេរបស់ក្រុម ដូច្នេះវាដំណើរការខ្លួនឯងឡើងវិញតាម `sudo`
-ហើយមិនមានរបៀបពីចម្ងាយផ្ទាល់ខ្លួនទេ។ ដើម្បីបើកដំណើរការ CLI ដោយបញ្ចូល env
-ដែលត្រឹមត្រូវ និងមិនសរសេរឯកសារកំណត់រចនាសម្ព័ន្ធអ្វីទាំងអស់ សូមប្រើកម្មវិធីបើកដំណើរការទូទៅ
-`omniroute run <target>` (claude, codex, aider, goose, opencode, qwen,
-gemini — target និង alias មកពី `bin/cli/cli-manifest.mjs`)។ កម្មវិធីបើកដំណើរការចាស់
-សម្រាប់ឧបករណ៍នីមួយៗ `omniroute launch` (Claude Code) និង `omniroute launch-codex`
-(Codex) នៅតែអាចប្រើបាន។ Gemini CLI អាចបើកដំណើរការបានតែប៉ុណ្ណោះ៖ វាជា target របស់ `omniroute run`
-ប៉ុន្តែមិនមានរូបមន្ត `setup-*`/`configure` ទេ។
+នីមួយៗទទួលយក `--remote <url> --api-key <key>` (កំណត់រចនាសម្ព័ន្ធឧបករណ៍ក្នុងស្រុកប្រឆាំងនឹង OmniRoute ពីចម្ងាយ), `--dry-run` (មើលជាមុនដោយមិនសរសេរ), និង `--port`។ ឧបករណ៍ដែលគ្មានការរកឃើញម៉ូដែលដោយស្វ័យប្រវត្តិ (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) យក `--model <id>` (និង `--yes` សម្រាប់ការដំណើរការដែលមិនអន្តរកម្ម)។ `setup-5dive` គឺជាវិធីសាស្ត្រតែមួយគត់ដែលមិនសរសេរនៅក្រោម `$HOME`: វាកំណត់រចនាសម្ព័ន្ធកងភ្នាក់ងារ 5dive ដោយសរសេរទម្រង់ការផ្ទៀងផ្ទាត់ដែលគ្រប់គ្រងដោយ root នៅលើម៉ាស៊ីនកងភ្នាក់ងារ ដូច្នេះវាដំណើរការឡើងវិញតាមរយៈ `sudo` ហើយមិនមានរបៀបពីចម្ងាយផ្ទាល់ខ្លួនរបស់វាទេ។ ដើម្បីចាប់ផ្តើម CLI ជាមួយនឹង env ដែលបានបញ្ចូលត្រឹមត្រូវ ហើយគ្មានការកំណត់រចនាសម្ព័ន្ធត្រូវបានសរសេរទាល់តែសោះ សូមប្រើកម្មវិធីចាប់ផ្តើមទូទៅ `omniroute run <target>` (claude, codex, aider, goose, opencode, qwen, gemini — គោលដៅ និងឈ្មោះហៅក្រៅបានមកពី `bin/cli/cli-manifest.mjs`); កម្មវិធីចាប់ផ្តើមចាស់សម្រាប់ឧបករណ៍នីមួយៗ `omniroute launch` (Claude Code) និង `omniroute launch-codex` (Codex) នៅតែមាន។ Gemini CLI គឺសម្រាប់តែការចាប់ផ្តើមប៉ុណ្ណោះ៖ វាគឺជាគោលដៅ `omniroute run` ប៉ុន្តែមិនមានរូបមន្ត `setup-*`/`configure` ទេ។
 
-> **ឯកសារយោងពេញលេញ៖** តារាងមេ — អ្វីដែលពាក្យបញ្ជានីមួយៗសរសេរ flag ទាំងអស់
-> ការប្រើក្នុងម៉ាស៊ីនមូលដ្ឋានធៀបនឹងពីចម្ងាយ និងឧបករណ៍ណាខ្លះដែលត្រូវការបច្ច័យ `/v1` — មាននៅក្នុង
-> **[ការរួមបញ្ចូល CLI](../guides/CLI-INTEGRATIONS.md)**។
+> **ឯកសារយោងពេញលេញ:** តារាងមេ — អ្វីដែលពាក្យបញ្ជានីមួយៗសរសេរ, ទង់នីមួយៗ, ក្នុងស្រុកធៀបនឹងពីចម្ងាយ, និងឧបករណ៍ណាដែលត្រូវការបច្ច័យ `/v1` — មាននៅក្នុង **[CLI Integrations](../guides/CLI-INTEGRATIONS.md)**។
 
-### ការដំណើរការពាក្យបញ្ជាទាំងនេះនៅក្នុង container
+### ការដំណើរការទាំងនេះនៅក្នុង container
 
-ពាក្យបញ្ជា `setup-*` ដែលត្រូវបានប្រតិបត្តិនៅក្នុង container របស់ OmniRoute នឹងសរសេរទៅក្នុង
-home ផ្ទាល់របស់ container ដែល CLI ណាមួយនៅលើ host មិនអាន ហើយវានឹងបាត់នៅពេល
-container បាត់។ OmniRoute រកឃើញស្ថានភាពនេះ ហើយបិទដំណើរការជាមួយលេខកូដ `2` ព្រមទាំងបង្ហាញការណែនាំ ជំនួសឱ្យ
-ការសរសេរ។ មានវិធីដែលគាំទ្រចំនួនពីរដើម្បីបន្ត — ដំឡើង CLI នៅលើ host ហើយ
-ប្រើ `omniroute connect` ដើម្បីភ្ជាប់ទៅ container ឬ bind-mount ថតឯកសារកំណត់រចនាសម្ព័ន្ធ ហើយកំណត់
-`CLI_CONFIG_HOME` (ប្រូហ្វាល់ `host` របស់ compose)។ រាល់ពាក្យបញ្ជា `setup-*` រួមទាំង
-`omniroute configure` និង `omniroute config set` ទទួលយក
-`--allow-container-write` នៅពេលការកំណត់រចនាសម្ព័ន្ធ CLI ផ្ទាល់របស់ container គឺជាអ្វីដែលអ្នក
-ពិតជាចង់ធ្វើ។ `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` ក៏ធ្វើដូចគ្នាសម្រាប់
-ម៉ាស៊ីនមេផងដែរ។ សូមមើល
-[មគ្គុទ្ទេសក៍ Docker → ការកំណត់រចនាសម្ព័ន្ធឧបករណ៍ CLI របស់ host](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker)។
+ពាក្យបញ្ជា `setup-*` ដែលត្រូវបានប្រតិបត្តិនៅក្នុង container របស់ OmniRoute សរសេរទៅកាន់ home ផ្ទាល់ខ្លួនរបស់ container ដែលគ្មាន CLI របស់ host ណាមួយអាន ហើយដែលបាត់ទៅវិញជាមួយ container។ OmniRoute រកឃើញរឿងនោះ ហើយចេញ `2` ជាមួយនឹងការណែនាំជាជាងការសរសេរ។ វិធីសាស្រ្តពីរដែលគាំទ្រ — ដំឡើង CLI នៅលើ host ហើយ `omniroute connect` ទៅកាន់ container, ឬ bind-mount ថត config ហើយកំណត់ `CLI_CONFIG_HOME` (ទម្រង់ `host` របស់ compose)។ រាល់ពាក្យបញ្ជា `setup-*` បូកនឹង `omniroute configure` និង `omniroute config set` ទទួលយក `--allow-container-write` នៅពេលដែលការកំណត់រចនាសម្ព័ន្ធ CLIs ផ្ទាល់ខ្លួនរបស់ container គឺជាអ្វីដែលអ្នកចង់បានពិតប្រាកដ; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` ធ្វើដូចគ្នាសម្រាប់ server។ សូមមើល [Docker Guide → Configuring host CLI tools](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker)។
 
-**apply endpoint** របស់ផ្ទាំងគ្រប់គ្រង (`POST /api/cli-tools/apply`) អនុវត្ត
-ការការពារដូចគ្នា៖ នៅក្នុង container ប្រតិបត្តិការសរសេរដែល target របស់វាមិនត្រូវបាន bind-mount ពី
-host នឹងឆ្លើយតបដោយ **`422`** ជាមួយ `containerEphemeralTarget: true` អត្ថបទកំហុស
-ដែលមានសុវត្ថិភាព និង — សម្រាប់ឧបករណ៍ដែលមានរូបមន្តសម្រាប់ host (claude, codex, opencode, cline,
-kilo, continue) — `hostSetupCommand` មួយ (ឧ. `omniroute setup-opencode`) ដើម្បីដំណើរការ
-នៅលើ host ជំនួសវិញ។ គ្មានអ្វីត្រូវបានសរសេរទេ។ `dryRun: true` នៅតែដំណើរការនៅក្នុងរបៀប container
-ហើយត្រឡប់មាតិកាដែលបានបង្កើត + ផ្លូវ target ដោយមិនប៉ះពាល់ដល់ថាស ដូច្នេះ
-អ្នកអាចមើលជាមុនពីផ្ទាំងគ្រប់គ្រង ហើយអនុវត្តនៅលើ host។ ឥរិយាបថនេះត្រូវបាន
-បង្កើតឡើងដោយចេតនា និងត្រូវបានការពារពី regression ដោយ
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — កុំ "ជួសជុល" 422
-ដោយដកការការពារចេញ។
+**endpoint សម្រាប់អនុវត្ត** របស់ dashboard (`POST /api/cli-tools/apply`) អនុវត្តការការពារដូចគ្នា៖ នៅក្នុង container ការសរសេរដែលគោលដៅមិនត្រូវបាន bind-mounted ពី host ឆ្លើយតប **`422`** ជាមួយនឹង `containerEphemeralTarget: true`, អត្ថបទកំហុសសុវត្ថិភាព និង — សម្រាប់ឧបករណ៍ដែលមានរូបមន្ត host (claude, codex, opencode, cline, kilo, continue) — `hostSetupCommand` (ឧទាហរណ៍ `omniroute setup-opencode`) ដើម្បីដំណើរការនៅលើ host ជំនួសវិញ; គ្មានអ្វីត្រូវបានសរសេរទេ។ `dryRun: true` នៅតែដំណើរការក្នុងរបៀប container ហើយប្រគល់ការមើលជាមុនដែលបានកែសម្រួល + ផ្លូវគោលដៅដោយមិនប៉ះថាស។ ខ្លឹមសារមើលជាមុនមិនមែនជាការកំណត់រចនាសម្ព័ន្ធដែលមានព័ត៌មានសម្ងាត់ដើម្បីចម្លង ឬនាំចូលនោះទេ។ អនុវត្តជាមួយឧបករណ៍ដើម/URL មូលដ្ឋាន/API key/model inputs នៅលើ host, ឬប្រើពាក្យបញ្ជា setup ខាង host ដែលបានបង្ហាញ។ សូមមើល [CLI configuration security](../security/CLI-CONFIGURATION.md) សម្រាប់ header មើលជាមុន និងកិច្ចសន្យាសំណើ។ អាកប្បកិរិយានេះគឺមានចេតនា ហើយត្រូវបានការពារដោយ `tests/unit/api/cli-tools/apply-container-guard.test.ts` — កុំ "ជួសជុល" 422 ដោយការដកការការពារចេញ។
 
 ---
 
@@ -603,71 +567,71 @@ kiro-cli status
 
 ## 10. OmniRoute CLI ផ្ទៃក្នុង
 
-ឯកសារប្រតិបត្តិ `omniroute` ផ្តល់ពាក្យបញ្ជាសម្រាប់វដ្តជីវិតរបស់ម៉ាស៊ីនមេ ការរៀបចំ ការធ្វើរោគវិនិច្ឆ័យ និងការគ្រប់គ្រងអ្នកផ្តល់សេវា។ ចំណុចចាប់ផ្តើម៖ `bin/omniroute.mjs`។
+ឯកសារប្រតិបត្តិ `omniroute` ផ្ដល់ពាក្យបញ្ជាសម្រាប់វដ្ដជីវិតរបស់ម៉ាស៊ីនមេ ការដំឡើង ការវិនិច្ឆ័យ និងការគ្រប់គ្រងអ្នកផ្ដល់សេវា។ ចំណុចចូល៖ `bin/omniroute.mjs`។
 
 ```bash
-omniroute                              # ចាប់ផ្តើមម៉ាស៊ីនមេ (ច្រកលំនាំដើម 20128)
-omniroute setup                        # អ្នកជំនួយការរៀបចំអន្តរកម្ម
+omniroute                              # ចាប់ផ្ដើមម៉ាស៊ីនមេ (ច្រកលំនាំដើម 20128)
+omniroute setup                        # អ្នកជំនួយការដំឡើងអន្តរកម្ម
 omniroute doctor                       # ពិនិត្យការកំណត់រចនាសម្ព័ន្ធ DB ច្រក និងបរិស្ថានពេលដំណើរការ
-omniroute providers list               # ការតភ្ជាប់អ្នកផ្តល់សេវាដែលបានកំណត់រចនាសម្ព័ន្ធ
-omniroute providers test-all           # សាកល្បងរាល់ការតភ្ជាប់ដែលសកម្ម
+omniroute providers list               # ការតភ្ជាប់អ្នកផ្ដល់សេវាដែលបានកំណត់រចនាសម្ព័ន្ធ
+omniroute providers test-all           # សាកល្បងរាល់ការតភ្ជាប់សកម្ម
 omniroute reset-password               # កំណត់ពាក្យសម្ងាត់អ្នកគ្រប់គ្រងឡើងវិញ
-omniroute logs                         # ស្ទ្រីមកំណត់ហេតុសំណើ
-omniroute health                       # ស្ថានភាពសុខភាពលម្អិត (breakers, cache, memory)
+omniroute logs                         # ផ្សាយបន្តផ្ទាល់កំណត់ហេតុសំណើ
+omniroute health                       # ស្ថានភាពលម្អិត (ឧបករណ៍ផ្ដាច់សៀគ្វី ឃ្លាំងសម្ងាត់ អង្គចងចាំ)
 omniroute --version                    # បង្ហាញកំណែ
 omniroute --help                       # បង្ហាញពាក្យបញ្ជាទាំងអស់
 ```
 
-### ការរៀបចំ និងការចាប់ផ្តើម
+### ការដំឡើង និងការចាប់ផ្ដើម
 
 ```bash
-omniroute setup                        # អ្នកជំនួយការរៀបចំអន្តរកម្ម
-omniroute setup --non-interactive      # របៀប CI/ស្វ័យប្រវត្តិកម្ម (អានអថេរបរិស្ថាន + flags)
+omniroute setup                        # អ្នកជំនួយការដំឡើងអន្តរកម្ម
+omniroute setup --non-interactive      # របៀប CI/ស្វ័យប្រវត្តិកម្ម (អានអថេរបរិស្ថាន + ទង់ជម្រើស)
 omniroute setup --password '<value>'   # កំណត់ពាក្យសម្ងាត់អ្នកគ្រប់គ្រងដោយផ្ទាល់
 omniroute setup --add-provider \
   --provider openai \
   --api-key '<value>' \
-  --test-provider                      # បន្ថែម និងសាកល្បងអ្នកផ្តល់សេវាក្នុងពេលតែមួយ
+  --test-provider                      # បន្ថែម និងសាកល្បងអ្នកផ្ដល់សេវាក្នុងជំហានតែមួយ
 ```
 
-អថេរបរិស្ថានដែលត្រូវបានទទួលស្គាល់សម្រាប់ការរៀបចំដោយគ្មានអន្តរកម្ម៖
+អថេរបរិស្ថានដែលត្រូវបានទទួលស្គាល់សម្រាប់ការដំឡើងដែលមិនមានអន្តរកម្ម៖
 
 | អថេរ                | គោលបំណង                                                                    |
 | ------------------- | -------------------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | API key របស់អ្នកផ្តល់សេវា (ភ្ជាប់ទៅ `--api-key` តាមរយៈ Commander `.env()`) |
+| `OMNIROUTE_API_KEY` | API key របស់អ្នកផ្ដល់សេវា (ភ្ជាប់ទៅ `--api-key` តាមរយៈ Commander `.env()`) |
 | `DATA_DIR`          | កំណត់ជំនួសថតទិន្នន័យ OmniRoute                                             |
 
-ធាតុបញ្ចូលដោយគ្មានអន្តរកម្មផ្សេងទៀតទាំងអស់ត្រូវបានបញ្ជូនជា flags មិនមែនជាអថេរបរិស្ថានទេ៖
+ធាតុបញ្ចូលដែលមិនមានអន្តរកម្មផ្សេងទៀតទាំងអស់ត្រូវបានបញ្ជូនជាទង់ជម្រើស មិនមែនជាអថេរបរិស្ថានទេ៖
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
 (សូមមើលជម្រើស `omniroute setup` ខាងលើ)។
 
-### ការធ្វើរោគវិនិច្ឆ័យ
+### ការវិនិច្ឆ័យ
 
 ```bash
-omniroute doctor                       # ពិនិត្យការកំណត់រចនាសម្ព័ន្ធ DB ច្រក បរិស្ថានពេលដំណើរការ អង្គចងចាំ និងស្ថានភាពនៅរស់
+omniroute doctor                       # ពិនិត្យការកំណត់រចនាសម្ព័ន្ធ DB ច្រក បរិស្ថានពេលដំណើរការ អង្គចងចាំ និងភាពនៅរស់
 omniroute doctor --json                # JSON ដែលម៉ាស៊ីនអាចអានបាន
-omniroute doctor --no-liveness         # រំលងការស្ទង់ពិនិត្យសុខភាពតាម HTTP
-omniroute doctor --host 0.0.0.0        # កំណត់ជំនួស host សម្រាប់ការពិនិត្យស្ថានភាពនៅរស់
-omniroute doctor --liveness-url <url>  # កំណត់ជំនួស URL ពេញលេញរបស់ endpoint សុខភាព
+omniroute doctor --no-liveness         # រំលងការស្ទង់ពិនិត្យស្ថានភាព HTTP
+omniroute doctor --host 0.0.0.0        # កំណត់ជំនួសម៉ាស៊ីនសម្រាប់ពិនិត្យភាពនៅរស់
+omniroute doctor --liveness-url <url>  # កំណត់ជំនួស URL ពេញលេញនៃចំណុចបញ្ចប់ស្ថានភាព
 ```
 
-doctor ដំណើរការការត្រួតពិនិត្យទាំងនេះ៖ `Config`, `Database`, `Storage/encryption`,
+ពាក្យបញ្ជា doctor ដំណើរការការត្រួតពិនិត្យទាំងនេះ៖ `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` និង `Server liveness`។ វាបញ្ចប់ដោយលេខកូដមិនស្មើសូន្យ ប្រសិនបើការត្រួតពិនិត្យណាមួយមានស្ថានភាព `fail`។
+`Memory` និង `Server liveness`។ វាបញ្ចប់ដោយលេខកូដមិនមែនសូន្យ ប្រសិនបើការត្រួតពិនិត្យណាមួយមានស្ថានភាព `fail`។
 
-### ការគ្រប់គ្រងអ្នកផ្តល់សេវា
+### ការគ្រប់គ្រងអ្នកផ្ដល់សេវា
 
 ```bash
-omniroute providers available                       # កាតាឡុកអ្នកផ្តល់សេវា OmniRoute
-omniroute providers available --search openai       # ត្រងកាតាឡុកតាម id/name/alias/category
-omniroute providers available --category api-key    # ត្រងតាមប្រភេទ (api-key, oauth, free, ...)
+omniroute providers available                       # កាតាឡុកអ្នកផ្ដល់សេវា OmniRoute
+omniroute providers available --search openai       # ច្រោះកាតាឡុកតាម id/ឈ្មោះ/ឈ្មោះក្លែងក្លាយ/ប្រភេទ
+omniroute providers available --category api-key    # ច្រោះតាមប្រភេទ (api-key, oauth, free, ...)
 omniroute providers available --json                # JSON ដែលម៉ាស៊ីនអាចអានបាន
 
-omniroute providers list                            # ការតភ្ជាប់អ្នកផ្តល់សេវាដែលបានកំណត់រចនាសម្ព័ន្ធ
+omniroute providers list                            # ការតភ្ជាប់អ្នកផ្ដល់សេវាដែលបានកំណត់រចនាសម្ព័ន្ធ
 omniroute providers list --json
 
-omniroute providers test <id|name>                  # សាកល្បងការតភ្ជាប់មួយដែលបានកំណត់រចនាសម្ព័ន្ធ
-omniroute providers test-all                        # សាកល្បងរាល់ការតភ្ជាប់ដែលសកម្ម
+omniroute providers test <id|name>                  # សាកល្បងការតភ្ជាប់ដែលបានកំណត់រចនាសម្ព័ន្ធមួយ
+omniroute providers test-all                        # សាកល្បងរាល់ការតភ្ជាប់សកម្ម
 omniroute providers validate                        # ការផ្ទៀងផ្ទាត់រចនាសម្ព័ន្ធក្នុងមូលដ្ឋានតែប៉ុណ្ណោះ
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
@@ -676,80 +640,92 @@ omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-`providers add/import/auth/edit/remove` ផ្តោតលើ API ជាចម្បង ហេតុនេះវាដំណើរការជាមួយ
-បរិបទក្នុងមូលដ្ឋាន ឬពីចម្ងាយដែលកំពុងសកម្ម។ ការបញ្ចូលព័ត៌មានសម្ងាត់គួរប្រើ
+`providers add/import/auth/edit/remove` ប្រើ API ជាចម្បង ដូច្នេះពួកវាដំណើរការជាមួយ
+បរិបទក្នុងមូលដ្ឋាន ឬពីចម្ងាយដែលកំពុងសកម្ម។ សម្រាប់ធាតុបញ្ចូលព័ត៌មានសម្ងាត់ គួរប្រើ
 `--credential-stdin` ឬ `--credential-env`; `--dry-run --json` រាយការណ៍តែ
-វត្តមាន/ទម្រង់ដែលបានលាក់ព័ត៌មានរសើបប៉ុណ្ណោះ។ `providers available` អានកាតាឡុក OmniRoute;
-`providers list/test/test-all/validate` រក្សាឥរិយាបថ SQLite ក្នុងមូលដ្ឋានរបស់វា ហើយ
+វត្តមាន/ទម្រង់ដែលបានលាក់បាំង។ `providers available` អានកាតាឡុក OmniRoute;
+`providers list/test/test-all/validate` រក្សាឥរិយាបថ SQLite ក្នុងមូលដ្ឋានរបស់ពួកវា ហើយ
 មិនតម្រូវឱ្យម៉ាស៊ីនមេកំពុងដំណើរការទេ។
+
+សម្រាប់ node ផ្ទាល់ខ្លួនដែលត្រូវគ្នាជាមួយ OpenAI ឬ Anthropic សូមភ្ជាប់ព័ត៌មានសម្ងាត់ទៅ
+node ID ដែលបានត្រឡប់ពី `omniroute nodes add` ដោយប្រើ `omniroute keys add "$NODE_ID" --stdin`។
+វាតម្រូវឱ្យមានម៉ាស៊ីនមេកំពុងដំណើរការ និងការផ្ទៀងផ្ទាត់សិទ្ធិគ្រប់គ្រងសម្រាប់បរិបទសកម្ម។
+CLI ប្រើ `POST /api/providers` ដែលផ្ទៀងផ្ទាត់ node និងចម្លងការកំណត់ចំណុចបញ្ចប់របស់វា
+ទៅក្នុងការតភ្ជាប់។ ប្រសិនបើបាត់ node ការផ្ដល់សិទ្ធិបរាជ័យ ឬម៉ាស៊ីនមេមិនអាចប្រើបាន
+វានឹងត្រឡប់កំហុសដោយមិនបង្កើតព័ត៌មានសម្ងាត់បម្រុងក្នុងមូលដ្ឋានឡើយ។
+
+`nodes add --base-url` កំណត់ចំណុចបញ្ចប់របស់ node; វាខុសពីអាសយដ្ឋានម៉ាស៊ីនមេ
+នៅក្នុង `OMNIROUTE_BASE_URL`។ សម្រាប់ឯកសារ OpenAPI សូមប្រើ
+`omniroute openapi dump --format json --out ./openapi.json`; `--output` សកល
+ជ្រើសរើសទ្រង់ទ្រាយបង្ហាញរបស់ CLI មិនមែនឈ្មោះឯកសារគោលដៅទេ។
 
 ### ការសង្គ្រោះ និងការកំណត់ឡើងវិញ
 
 ```bash
 omniroute reset-password                # កំណត់ពាក្យសម្ងាត់អ្នកគ្រប់គ្រងឡើងវិញ (ក៏អាចប្រើ៖ omniroute-reset-password)
-omniroute reset-encrypted-columns       # បង្ហាញការព្រមាន + dry-run សម្រាប់ការកំណត់ព័ត៌មានសម្ងាត់ដែលបានអ៊ិនគ្រីបឡើងវិញ
+omniroute reset-encrypted-columns       # បង្ហាញការព្រមាន + ការសាកល្បងដោយមិនកែប្រែ សម្រាប់ការកំណត់ព័ត៌មានសម្ងាត់ដែលបានអ៊ិនគ្រីបឡើងវិញ
 omniroute reset-encrypted-columns --force  # កំណត់ព័ត៌មានសម្ងាត់ដែលបានអ៊ិនគ្រីបក្នុង SQLite ទៅជា null ពិតប្រាកដ
 ```
 
-### ការនាំចេញព័ត៌មានសម្ងាត់ (⚠ ប្រើប្រាស់ដោយប្រុងប្រយ័ត្ន)
+### ការនាំចេញព័ត៌មានសម្ងាត់ (⚠ ដោះស្រាយដោយប្រុងប្រយ័ត្ន)
 
 ```bash
-omniroute auth export                                 # បង្ហាញការព្រមាន + ទាមទារការបញ្ជាក់ — មិនចូលប្រើ DB
+omniroute auth export                                 # បង្ហាញការព្រមាន + ជំហានបញ្ជាក់ — មិនចូលប្រើ DB
 omniroute auth export --force                          # នាំចេញព័ត៌មានសម្ងាត់ដែលបានឌិគ្រីបរបស់ការតភ្ជាប់ទាំងអស់ទៅ stdout ជា JSON
 omniroute auth export --force --id <id>                 # នាំចេញតែការតភ្ជាប់ដែលត្រូវគ្នា
 omniroute auth export --force --format env               # បញ្ចេញបន្ទាត់ OMNIROUTE_<PROVIDER>_<FIELD>=<value>
-omniroute auth export --force --out creds.json           # សរសេរទៅឯកសារ (បង្កើតដោយមានសិទ្ធិ 0600)
+omniroute auth export --force --out creds.json           # សរសេរទៅឯកសារ (បានបង្កើតដោយមានសិទ្ធិ 0600)
 ```
 
-`auth export` ដំណើរការ **ក្នុងមូលដ្ឋានតែប៉ុណ្ណោះ** (អាន SQLite ដោយផ្ទាល់ គ្មាន HTTP route) ហើយដោយចេតនា វាបង្ហាញ/សរសេរ
-តម្លៃ **អត្ថបទធម្មតា** `apiKey`/`accessToken`/`refreshToken`/`idToken` — នេះគឺជាមុខងារ មិនមែនជា
-កំហុសទេ។ គ្មានអ្វីត្រូវបានអានពីមូលដ្ឋានទិន្នន័យ ហើយក៏គ្មានអ្វីត្រូវបានឌិគ្រីបទេ បើគ្មាន `--force`។ ផ្ទាំង
-ព្រមានតាម stderr តែងតែត្រូវបានបង្ហាញ មុនពេលអត្ថបទធម្មតាណាមួយត្រូវបានបញ្ចេញ។ តម្រូវឱ្យកំណត់ `STORAGE_ENCRYPTION_KEY`។
-វាលដែលឌិគ្រីបបរាជ័យ (សោហួសសុពលភាព អត្ថបទសម្ងាត់ខូច) ត្រូវបានរាយការណ៍ជា
-`<field>DecryptFailed: true` ជំនួសឱ្យការបញ្ឈប់ការនាំចេញទាំងមូល ឬការបង្ហាញកំហុសមូលដ្ឋាន។
+`auth export` គឺ**ដំណើរការតែក្នុងម៉ាស៊ីនមូលដ្ឋានប៉ុណ្ណោះ** (អាន SQLite ដោយផ្ទាល់ ដោយគ្មាន HTTP route) ហើយត្រូវបានរចនាឡើងដោយចេតនា ដើម្បីបង្ហាញ/សរសេរតម្លៃ
+**អត្ថបទធម្មតា** `apiKey`/`accessToken`/`refreshToken`/`idToken` — នេះគឺជាមុខងារ មិនមែនជា
+កំហុសទេ។ គ្មានអ្វីត្រូវបានអានពីមូលដ្ឋានទិន្នន័យ ហើយគ្មានអ្វីត្រូវបានឌិគ្រីបទេ ប្រសិនបើគ្មាន `--force`។ បដាព្រមានតាម stderr
+តែងតែបង្ហាញមុនពេលអត្ថបទធម្មតាណាមួយត្រូវបានបញ្ចេញ។ តម្រូវឱ្យកំណត់
+`STORAGE_ENCRYPTION_KEY`។ វាលដែលមិនអាចឌិគ្រីបបាន (សោចាស់ លេខសម្ងាត់ដែលខូច) នឹងត្រូវបានរាយការណ៍ជា
+`<field>DecryptFailed: true` ជំនួសឱ្យការបញ្ឈប់ការនាំចេញទាំងមូល ឬបញ្ចេញកំហុសមូលដ្ឋាន។
 
 ### ពាក្យបញ្ជារងផ្សេងទៀត
 
-ពាក្យបញ្ជាទាំងនេះសន្មតថាម៉ាស៊ីនមេ OmniRoute កំពុងដំណើរការ លើកលែងតែមានការកត់សម្គាល់ផ្សេង៖
+ពាក្យបញ្ជាទាំងនេះសន្មតថាម៉ាស៊ីនមេ OmniRoute កំពុងដំណើរការ លុះត្រាតែមានការបញ្ជាក់ផ្សេងពីនេះ៖
 
 ```bash
-omniroute status                       # ស្ថានភាពពេលដំណើរការលម្អិត
-omniroute logs                         # បង្ហាញកំណត់ហេតុសំណើជាបន្តបន្ទាប់ (--json, --search, --follow)
+omniroute status                       # ស្ថានភាពពេលដំណើរការដ៏ទូលំទូលាយ
+omniroute logs                         # ផ្សាយបន្តផ្ទាល់កំណត់ហេតុសំណើ (--json, --search, --follow)
 omniroute config list                  # បង្ហាញឧបករណ៍ CLI ដែលបានកំណត់រចនាសម្ព័ន្ធ
 
-omniroute provider list                # រាយបញ្ជីអ្នកផ្តល់សេវាដែលអាចប្រើបាន (ឈ្មោះក្លែងកាត់របស់ providers list)
+omniroute provider list                # រាយបញ្ជីអ្នកផ្តល់សេវាដែលមាន (ឈ្មោះក្លែងក្លាយរបស់ providers list)
 omniroute provider add                 # ចុះឈ្មោះ OmniRoute ជាអ្នកផ្តល់សេវានៅលើឧបករណ៍មួយ
-omniroute keys add | list | remove     # គ្រប់គ្រង API keys
+omniroute keys add | list | remove     # គ្រប់គ្រងសោ API
 omniroute models [provider]            # រាយបញ្ជីម៉ូដែល (--json, --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # ថតចម្លងរូបភាពនៃការកំណត់រចនាសម្ព័ន្ធ + មូលដ្ឋានទិន្នន័យ
-omniroute restore                      # ស្ដារពីរូបភាពថតចម្លងពីមុន
+omniroute backup                       # ថតចម្លង config + DB
+omniroute restore                      # ស្ដារពីការថតចម្លងពីមុន
 
-omniroute health                       # ស្ថានភាពលម្អិត (ឧបករណ៍ផ្ដាច់សៀគ្វី, ឃ្លាំងសម្ងាត់, អង្គចងចាំ)
+omniroute health                       # ស្ថានភាពប្រព័ន្ធលម្អិត (ឧបករណ៍ផ្ដាច់សៀគ្វី ឃ្លាំងសម្ងាត់ អង្គចងចាំ)
 omniroute quota                        # ការប្រើប្រាស់កូតារបស់អ្នកផ្តល់សេវា
 omniroute cache                        # ស្ថានភាពឃ្លាំងសម្ងាត់
-omniroute cache clear                  # សម្អាតឃ្លាំងសម្ងាត់ semantic + signature
+omniroute cache clear                  # សម្អាតឃ្លាំងសម្ងាត់បែប semantic + signature
 
 omniroute mcp status | restart         # ស្ថានភាព / ចាប់ផ្ដើមម៉ាស៊ីនមេ MCP ឡើងវិញ
-omniroute a2a status | card            # ស្ថានភាពម៉ាស៊ីនមេ A2A / កាតភ្នាក់ងារ
+omniroute a2a status | card            # ស្ថានភាពម៉ាស៊ីនមេ A2A / កាត agent
 
 omniroute tunnel list | create | stop  # គ្រប់គ្រង tunnel (cloudflare/tailscale/ngrok)
-omniroute env show | get <k> | set <k> <v>  # ពិនិត្យមើល / កំណត់អថេរបរិស្ថាន (បណ្ដោះអាសន្ន)
+omniroute env show | get <k> | set <k> <v>  # ពិនិត្យ / កំណត់អថេរបរិស្ថាន (បណ្ដោះអាសន្ន)
 
-omniroute test                         # ការធ្វើតេស្តរហ័សលើការតភ្ជាប់ទៅអ្នកផ្តល់សេវា
-omniroute update                       # ពិនិត្យរកបច្ចុប្បន្នភាព
-omniroute completion                   # បង្កើតការបំពេញពាក្យបញ្ជា shell ដោយស្វ័យប្រវត្តិ
+omniroute test                         # ការធ្វើតេស្តរហ័សលើការតភ្ជាប់អ្នកផ្តល់សេវា
+omniroute update                       # ពិនិត្យមើលបច្ចុប្បន្នភាព
+omniroute completion                   # បង្កើតការបំពេញ shell ដោយស្វ័យប្រវត្តិ
 ```
 
-### ជម្រើសទូទៅ
+### ទង់ដែលប្រើជាទូទៅ
 
-| ជម្រើស              | សេចក្ដីពិពណ៌នា                                            |
+| ទង់                 | សេចក្ដីពិពណ៌នា                                            |
 | ------------------- | --------------------------------------------------------- |
-| `--no-open`         | កុំបើកកម្មវិធីរុករកដោយស្វ័យប្រវត្តិនៅពេលចាប់ផ្ដើម         |
-| `--port <n>`        | ប្រើ API port ផ្សេងពីលំនាំដើម (លំនាំដើម 20128)            |
-| `--mcp`             | ដំណើរការជាម៉ាស៊ីនមេ MCP តាមរយៈ stdio (សម្រាប់ IDEs)       |
-| `--non-interactive` | របៀប CI (គ្មានការសួរ; អានពីអថេរបរិស្ថាន/ជម្រើស)           |
+| `--no-open`         | កុំបើកកម្មវិធីរុករកដោយស្វ័យប្រវត្តិពេលចាប់ផ្ដើម           |
+| `--port <n>`        | កំណត់ជំនួសច្រក API (លំនាំដើម 20128)                       |
+| `--mcp`             | ដំណើរការជាម៉ាស៊ីនមេ MCP តាម stdio (សម្រាប់ IDEs)          |
+| `--non-interactive` | របៀប CI (គ្មានសំណួរ; អានពី env/flags)                     |
 | `--json`            | លទ្ធផល JSON ដែលម៉ាស៊ីនអាចអានបាន (doctor, providers ជាដើម) |
 | `--help`, `-h`      | បង្ហាញជំនួយជាក់លាក់សម្រាប់ពាក្យបញ្ជា                      |
 | `--version`, `-v`   | បង្ហាញកំណែដែលបានដំឡើង                                     |

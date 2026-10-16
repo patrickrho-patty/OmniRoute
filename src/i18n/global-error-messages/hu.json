@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Váratlan hiba történt. Ezt rögzítettük, és csapatunk kivizsgálja.",
+      "detailsAriaLabel": "Hiba részletei",
+      "retryAriaLabel": "Próbálja meg újra betölteni az oldalt",
+      "statusAriaLabel": "Rendszerállapot megnyitása",
+      "systemStatus": "Rendszerállapot",
+      "title": "Valami hiba történt",
+      "tryAgain": "Próbáld újra"
+    }
+  }
+}

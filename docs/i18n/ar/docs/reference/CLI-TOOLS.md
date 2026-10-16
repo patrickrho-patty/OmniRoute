@@ -43,47 +43,27 @@ Claude / Codex / OpenCode / Cline / KiloCode / Continue / Hermes Agent / Goose /
 
 ---
 
-## التكوين التلقائي مع `setup-*`
+## التكوين التلقائي باستخدام `setup-*`
 
-لا تحتاج إلى كتابة تكوين كل أداة يدويًا. يقوم OmniRoute بتوفير أمر `setup-*`
-لكل CLI مدعوم يقرأ كتالوج النموذج **الحالي** من OmniRoute قيد التشغيل (محلي أو بعيد) ويكتب تكوين الأداة الخاصة بك على جهازك:
+ليس عليك كتابة تكوين كل أداة يدويًا. يشحن OmniRoute أمر `setup-*` لكل واجهة سطر أوامر مدعومة تقرأ كتالوج النموذج **المباشر** من OmniRoute قيد التشغيل (محلي أو بعيد) وتكتب تكوين الأداة الخاص بها على جهازك:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
 omniroute setup-cline        omniroute setup-kilo         omniroute setup-continue
 omniroute setup-cursor       omniroute setup-roo          omniroute setup-crush
 omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
+omniroute setup-5dive
 ```
 
-كل منها يقبل `--remote <url> --api-key <key>` (تكوين أداة محلية ضد OmniRoute بعيد)، `--dry-run` (معاينة دون كتابة)، و `--port`. الأدوات التي لا تحتوي على اكتشاف تلقائي للنموذج (Cline، Kilo، Roo، Goose، Aider، Qwen) تأخذ `--model <id>` (و `--yes` للتشغيل غير التفاعلي). لإطلاق CLI مع البيئة الصحيحة المدخلة ودون كتابة أي تكوين على الإطلاق، استخدم المشغل العام
-`omniroute run <target>` (claude، codex، aider، goose، opencode، qwen،
-gemini — الأهداف والأسماء المستعارة تأتي من `bin/cli/cli-manifest.mjs`); تظل المشغلات القديمة لكل أداة `omniroute launch` (Claude Code) و `omniroute launch-codex`
-(Codex) متاحة. CLI Gemini هو فقط للإطلاق: إنه هدف `omniroute run`
-ولكن ليس له وصفة `setup-*`/`configure`.
+يقبل كل منها `--remote <url> --api-key <key>` (تكوين أداة محلية مقابل OmniRoute بعيد)، و`--dry-run` (معاينة بدون كتابة)، و`--port`. الأدوات التي لا تحتوي على اكتشاف تلقائي للنموذج (Cline، Kilo، Roo، Goose، Aider، Qwen، 5dive) تأخذ `--model <id>` (و`--yes` للتشغيل غير التفاعلي). `setup-5dive` هي الوصفة الوحيدة التي لا تكتب تحت `$HOME`: فهي تقوم بتكوين أسطول وكلاء 5dive عن طريق كتابة ملف تعريف مصادقة يملكه الجذر على مضيف الأسطول، لذلك يتم إعادة تنفيذه عبر `sudo` وليس لديه وضع بعيد خاص به. لتشغيل واجهة سطر أوامر مع البيئة الصحيحة المحقونة وعدم كتابة أي تكوين على الإطلاق، استخدم المشغل العام `omniroute run <target>` (claude، codex، aider، goose، opencode، qwen، gemini - الأهداف والأسماء المستعارة تأتي من `bin/cli/cli-manifest.mjs`)؛ لا تزال المشغلات القديمة لكل أداة `omniroute launch` (Claude Code) و`omniroute launch-codex` (Codex) متاحة. واجهة سطر أوامر Gemini هي للتشغيل فقط: إنها هدف `omniroute run` ولكن ليس لديها وصفة `setup-*`/`configure`.
 
-> **المرجع الكامل:** الجدول الرئيسي — ما يكتبه كل أمر، كل علامة،
-> محلي مقابل بعيد، وأي الأدوات تحتاج إلى لاحقة `/v1` — موجود في
-> **[تكاملات CLI](../guides/CLI-INTEGRATIONS.md)**.
+> **مرجع كامل:** الجدول الرئيسي - ما يكتبه كل أمر، كل علامة، محلي مقابل بعيد، وأي الأدوات تريد لاحقة `/v1` - موجود في **[تكاملات CLI](../guides/CLI-INTEGRATIONS.md)**.
 
 ### تشغيل هذه داخل حاوية
 
-أمر `setup-*` المنفذ داخل حاوية OmniRoute يكتب في
-المنزل الخاص بالحاوية، والذي لا تقرأه أي CLI مضيف والذي يختفي مع
-الحاوية. يكتشف OmniRoute ذلك ويخرج `2` مع تعليمات بدلاً من
-الكتابة. هناك طريقتان مدعومتان للمضي قدمًا — تثبيت CLI على المضيف و
-`omniroute connect` إلى الحاوية، أو ربط مجلدات التكوين وتعيين
-`CLI_CONFIG_HOME` (ملف تعريف المضيف في التكوين). كل أمر `setup-*`، بالإضافة إلى
-`omniroute configure` و `omniroute config set`، يقبل
-`--allow-container-write` عندما يكون تكوين CLIs الخاصة بالحاوية هو ما كنت تعنيه بالفعل؛ `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` يفعل نفس الشيء للخادم. انظر
-[دليل Docker → تكوين أدوات CLI المضيف](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+يكتب أمر `setup-*` الذي يتم تنفيذه داخل حاوية OmniRoute في مجلد المنزل الخاص بالحاوية، والذي لا تقرأه أي واجهة سطر أوامر مضيفة ويختفي مع الحاوية. يكتشف OmniRoute ذلك ويخرج `2` مع تعليمات بدلاً من الكتابة. طريقتان مدعومتان للمضي قدمًا - تثبيت واجهة سطر الأوامر على المضيف و`omniroute connect` إلى الحاوية، أو ربط مجلدات التكوين وتعيين `CLI_CONFIG_HOME` (ملف تعريف `host` الخاص بالتركيب). يقبل كل أمر `setup-*`، بالإضافة إلى `omniroute configure` و`omniroute config set`، `--allow-container-write` عندما يكون تكوين واجهات سطر الأوامر الخاصة بالحاوية هو ما قصدته بالفعل؛ `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` يفعل الشيء نفسه للخادم. راجع [دليل Docker ← تكوين أدوات CLI المضيفة](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-نقطة النهاية **apply** في لوحة المعلومات (`POST /api/cli-tools/apply`) تفرض نفس الحماية: في حاوية، كتابة الهدف الذي لم يتم ربطه من المضيف يجيب **`422`** مع `containerEphemeralTarget: true`، نص الخطأ الآمن و — للأدوات التي لديها وصفة مضيف (claude، codex، opencode، cline،
-kilo، continue) — أمر `hostSetupCommand` (مثل `omniroute setup-opencode`) للتشغيل
-على المضيف بدلاً من ذلك؛ لا يتم كتابة أي شيء. `dryRun: true` يستمر في العمل في وضع الحاوية
-ويعيد المحتوى الناتج + مسار الهدف دون لمس القرص، لذا يمكنك المعاينة من لوحة المعلومات وتطبيقها على المضيف. هذا السلوك
-مقصود ومحمى من التراجع بواسطة
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — لا "تصلح" 422
-عن طريق إزالة الحماية.
+تفرض **نقطة نهاية التطبيق** في لوحة المعلومات (`POST /api/cli-tools/apply`) نفس الحماية: في حاوية، الكتابة التي لا يتم ربط هدفها من المضيف تجيب بـ **`422`** مع `containerEphemeralTarget: true`، ونص الخطأ الآمن و - للأدوات التي تحتوي على وصفة مضيفة (claude، codex، opencode، cline، kilo، continue) - `hostSetupCommand` (على سبيل المثال `omniroute setup-opencode`) للتشغيل على المضيف بدلاً من ذلك؛ لا يتم كتابة أي شيء. يستمر `dryRun: true` في العمل في وضع الحاوية ويعيد معاينة منقحة + مسار الهدف دون لمس القرص. محتوى المعاينة ليس تكوينًا يحمل بيانات اعتماد لنسخه أو استيراده. طبق باستخدام الأداة الأصلية/عنوان URL الأساسي/مفتاح API/مدخلات النموذج على المضيف، أو استخدم أمر الإعداد المحدد على جانب المضيف. راجع [أمان تكوين CLI](../security/CLI-CONFIGURATION.md) لرأس المعاينة وعقد الطلب. هذا السلوك مقصود ومحمي من الانحدار بواسطة `tests/unit/api/cli-tools/apply-container-guard.test.ts` - لا "تصلح" أبدًا 422 عن طريق إزالة الحماية.
 
 ---
 
@@ -573,17 +553,17 @@ kiro-cli status
 
 ## 10. واجهة سطر الأوامر الداخلية لـ OmniRoute
 
-يوفّر الملف التنفيذي `omniroute` أوامر لإدارة دورة حياة الخادم والإعداد والتشخيص وإدارة المزوّدين. نقطة الدخول: `bin/omniroute.mjs`.
+يوفّر الملف التنفيذي `omniroute` أوامر لإدارة دورة حياة الخادم، والإعداد، والتشخيص، وإدارة المزوّدين. نقطة الدخول: `bin/omniroute.mjs`.
 
 ```bash
 omniroute                              # تشغيل الخادم (المنفذ الافتراضي 20128)
 omniroute setup                        # معالج إعداد تفاعلي
 omniroute doctor                       # فحص الإعدادات وقاعدة البيانات والمنافذ وبيئة التشغيل
-omniroute providers list               # اتصالات المزوّدين المُعدّة
+omniroute providers list               # اتصالات المزوّدين المهيّأة
 omniroute providers test-all           # اختبار كل اتصال نشط
 omniroute reset-password               # إعادة تعيين كلمة مرور المسؤول
 omniroute logs                         # بث سجلات الطلبات
-omniroute health                       # حالة تفصيلية (قواطع الدارات، ذاكرة التخزين المؤقت، الذاكرة)
+omniroute health                       # حالة تفصيلية (قواطع الدائرة، وذاكرة التخزين المؤقت، والذاكرة)
 omniroute --version                    # طباعة الإصدار
 omniroute --help                       # عرض جميع الأوامر
 ```
@@ -607,41 +587,41 @@ omniroute setup --add-provider \
 | `OMNIROUTE_API_KEY` | مفتاح API للمزوّد (مرتبط بـ `--api-key` عبر Commander `.env()`) |
 | `DATA_DIR`          | تجاوز دليل بيانات OmniRoute                                     |
 
-تُمرّر جميع مُدخلات الإعداد غير التفاعلي الأخرى كخيارات، وليس كمتغيرات بيئة:
+تُمرَّر جميع مدخلات الإعداد غير التفاعلي الأخرى كخيارات، وليس كمتغيرات بيئة:
 `--password`، و`--provider`، و`--provider-name`، و`--provider-base-url`، و`--default-model`
 (راجع خيارات `omniroute setup` أعلاه).
 
 ### التشخيص
 
 ```bash
-omniroute doctor                       # فحص الإعدادات وقاعدة البيانات والمنافذ وبيئة التشغيل والذاكرة وحيوية الخادم
+omniroute doctor                       # فحص الإعدادات وقاعدة البيانات والمنافذ وبيئة التشغيل والذاكرة والتشغيل الفعلي
 omniroute doctor --json                # JSON قابل للقراءة آليًا
-omniroute doctor --no-liveness         # تخطي مسبار صحة HTTP
-omniroute doctor --host 0.0.0.0        # تجاوز مضيف فحص الحيوية
-omniroute doctor --liveness-url <url>  # تجاوز عنوان URL الكامل لنقطة نهاية الصحة
+omniroute doctor --no-liveness         # تخطي مسبار سلامة HTTP
+omniroute doctor --host 0.0.0.0        # تجاوز مضيف فحص التشغيل الفعلي
+omniroute doctor --liveness-url <url>  # تجاوز URL الكامل لنقطة نهاية السلامة
 ```
 
-يشغّل أمر الفحص هذه الاختبارات: `Config`، و`Database`، و`Storage/encryption`،
-و`Port availability`، و`Node runtime`، و`Native binary`‏ (better-sqlite3)،
+ينفّذ أمر التشخيص عمليات الفحص التالية: `Config`، و`Database`، و`Storage/encryption`،
+و`Port availability`، و`Node runtime`، و`Native binary` ‏(better-sqlite3)،
 و`Memory`، و`Server liveness`. وينتهي برمز خروج غير صفري إذا كانت نتيجة أي فحص هي `fail`.
 
 ### إدارة المزوّدين
 
 ```bash
 omniroute providers available                       # كتالوج مزوّدي OmniRoute
-omniroute providers available --search openai       # تصفية الكتالوج حسب المعرّف/الاسم/الاسم المستعار/الفئة
+omniroute providers available --search openai       # تصفية الكتالوج حسب المعرّف/الاسم/الاسم البديل/الفئة
 omniroute providers available --category api-key    # التصفية حسب الفئة (api-key، oauth، free، ...)
 omniroute providers available --json                # JSON قابل للقراءة آليًا
 
-omniroute providers list                            # اتصالات المزوّدين المُعدّة
+omniroute providers list                            # اتصالات المزوّدين المهيّأة
 omniroute providers list --json
 
-omniroute providers test <id|name>                  # اختبار اتصال مُعدّ واحد
+omniroute providers test <id|name>                  # اختبار اتصال مهيّأ واحد
 omniroute providers test-all                        # اختبار كل اتصال نشط
 omniroute providers validate                        # تحقق بنيوي محلي فقط
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
-omniroute providers auth <provider>                 # تدفق OAuth الحالي
+omniroute providers auth <provider>                 # مسار OAuth الحالي
 omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
@@ -649,57 +629,69 @@ omniroute providers remove <id|name> --yes
 تعتمد `providers add/import/auth/edit/remove` على API أولًا، ولذلك تعمل مع
 السياق المحلي أو البعيد النشط. ينبغي إدخال بيانات الاعتماد باستخدام
 `--credential-stdin` أو `--credential-env`؛ ولا يعرض `--dry-run --json` سوى
-حالة الوجود/البنية بعد تنقيحها. يقرأ `providers available` كتالوج OmniRoute؛
-بينما تحتفظ `providers list/test/test-all/validate` بسلوك SQLite المحلي
+معلومات منقّحة عن وجود البيانات وبنيتها. يقرأ `providers available` كتالوج OmniRoute؛
+بينما تحتفظ `providers list/test/test-all/validate` بسلوك SQLite المحلي الخاص بها
 ولا تتطلب تشغيل الخادم.
+
+بالنسبة إلى عقدة مخصّصة متوافقة مع OpenAI أو Anthropic، أرفق بيانات الاعتماد
+بمعرّف العقدة الذي يعيده `omniroute nodes add`، باستخدام `omniroute keys add "$NODE_ID" --stdin`.
+يتطلب ذلك خادمًا قيد التشغيل ومصادقة إدارية للسياق النشط.
+تستخدم واجهة سطر الأوامر `POST /api/providers`، التي تتحقق من العقدة وتنسخ إعدادات
+نقطة نهايتها إلى الاتصال. يؤدي فقدان العقدة أو فشل التفويض أو عدم توفر
+الخادم إلى إرجاع خطأ دون إنشاء بيانات اعتماد محلية احتياطية.
+
+يضبط `nodes add --base-url` نقطة نهاية العقدة؛ وهي تختلف عن عنوان الخادم
+في `OMNIROUTE_BASE_URL`. بالنسبة إلى ملفات OpenAPI، استخدم
+`omniroute openapi dump --format json --out ./openapi.json`؛ إذ يحدد الخيار العام `--output`
+تنسيق عرض واجهة سطر الأوامر، وليس اسم ملف الوجهة.
 
 ### الاسترداد وإعادة التعيين
 
 ```bash
 omniroute reset-password                # إعادة تعيين كلمة مرور المسؤول (أيضًا: omniroute-reset-password)
-omniroute reset-encrypted-columns       # عرض تحذير + تشغيل تجريبي لإعادة تعيين بيانات الاعتماد المشفرة
-omniroute reset-encrypted-columns --force  # تعيين بيانات الاعتماد المشفرة فعليًا إلى null في SQLite
+omniroute reset-encrypted-columns       # عرض تحذير وتشغيل تجريبي لإعادة تعيين بيانات الاعتماد المشفّرة
+omniroute reset-encrypted-columns --force  # تعيين بيانات الاعتماد المشفّرة فعليًا إلى null في SQLite
 ```
 
 ### تصدير بيانات الاعتماد (⚠ تعامل معها بحذر)
 
 ```bash
-omniroute auth export                                 # عرض تحذير + بوابة تأكيد — دون الوصول إلى قاعدة البيانات
+omniroute auth export                                 # عرض تحذير وطلب تأكيد — دون الوصول إلى قاعدة البيانات
 omniroute auth export --force                          # تصدير بيانات الاعتماد المفكوكة التشفير لجميع الاتصالات إلى stdout بصيغة JSON
 omniroute auth export --force --id <id>                 # تصدير الاتصال المطابق فقط
 omniroute auth export --force --format env               # إخراج أسطر OMNIROUTE_<PROVIDER>_<FIELD>=<value>
-omniroute auth export --force --out creds.json           # الكتابة إلى ملف (يُنشأ بصلاحيات 0600)
+omniroute auth export --force --out creds.json           # الكتابة إلى ملف (يُنشأ بأذونات 0600)
 ```
 
-الأمر `auth export` **محلي فقط** (قراءة مباشرة من SQLite، دون مسار HTTP)، ويطبع/يكتب عمدًا
-قيم `apiKey`/`accessToken`/`refreshToken`/`idToken` **بنص صريح** — وهذه ميزة وليست
-خطأ. لا تُقرأ أي بيانات من قاعدة البيانات، ولا يُفك تشفير أي شيء، دون `--force`. يظهر دائمًا
-شريط تحذير على stderr قبل إخراج أي نص صريح. يتطلب تعيين `STORAGE_ENCRYPTION_KEY`.
-يُبلّغ عن الحقل الذي يفشل فك تشفيره (مفتاح قديم أو نص مُشفّر تالف) بالصيغة
-`<field>DecryptFailed: true` بدلًا من إيقاف عملية التصدير بأكملها أو كشف الخطأ الأساسي.
+الأمر `auth export` **محلي فقط** (قراءة مباشرة من SQLite، من دون مسار HTTP) ويطبع/يكتب عمدًا
+قيم `apiKey`/`accessToken`/`refreshToken`/`idToken` **كنص صريح** — وهذه ميزة وليست
+خللًا. لا تتم قراءة أي شيء من قاعدة البيانات، ولا يُفك تشفير أي شيء، من دون `--force`. تظهر دائمًا
+لافتة تحذير على stderr قبل إخراج أي نص صريح. يتطلب تعيين `STORAGE_ENCRYPTION_KEY`.
+يُبلّغ عن الحقل الذي يفشل فك تشفيره (مفتاح قديم، أو نص مُشفّر تالف) بالشكل
+`<field>DecryptFailed: true` بدلًا من إلغاء عملية التصدير بأكملها أو كشف الخطأ الأساسي.
 
-### أوامر فرعية أخرى
+### الأوامر الفرعية الأخرى
 
 تفترض هذه الأوامر وجود خادم OmniRoute قيد التشغيل، ما لم يُذكر خلاف ذلك:
 
 ```bash
-omniroute status                       # حالة تشغيل شاملة
+omniroute status                       # حالة شاملة لوقت التشغيل
 omniroute logs                         # بث سجلات الطلبات (--json، --search، --follow)
-omniroute config list                  # عرض أدوات CLI التي تم تكوينها
+omniroute config list                  # عرض أدوات CLI المُهيّأة
 
-omniroute provider list                # سرد المزوّدين المتاحين (اسم بديل لـ providers list)
+omniroute provider list                # سرد المزوّدين المتاحين (اسم مستعار للأمر providers list)
 omniroute provider add                 # تسجيل OmniRoute كمزوّد في أداة
 omniroute keys add | list | remove     # إدارة مفاتيح API
 omniroute models [provider]            # سرد النماذج (--json، --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # أخذ لقطة من الإعدادات + قاعدة البيانات
+omniroute backup                       # أخذ لقطة للإعدادات + قاعدة البيانات
 omniroute restore                      # الاستعادة من لقطة سابقة
 
-omniroute health                       # حالة تفصيلية (قواطع الدارة، ذاكرة التخزين المؤقت، الذاكرة)
+omniroute health                       # حالة صحية مفصّلة (قواطع الدارات، ذاكرة التخزين المؤقت، الذاكرة)
 omniroute quota                        # استخدام حصة المزوّد
 omniroute cache                        # حالة ذاكرة التخزين المؤقت
-omniroute cache clear                  # مسح ذاكرات التخزين المؤقت الدلالية + ذاكرات التوقيعات
+omniroute cache clear                  # مسح ذاكرات التخزين المؤقت الدلالية والخاصة بالتوقيعات
 
 omniroute mcp status | restart         # حالة خادم MCP / إعادة تشغيله
 omniroute a2a status | card            # حالة خادم A2A / بطاقة الوكيل
@@ -707,22 +699,22 @@ omniroute a2a status | card            # حالة خادم A2A / بطاقة ال
 omniroute tunnel list | create | stop  # إدارة الأنفاق (cloudflare/tailscale/ngrok)
 omniroute env show | get <k> | set <k> <v>  # فحص / تعيين متغيرات البيئة (مؤقتًا)
 
-omniroute test                         # اختبار أولي للاتصال بالمزوّد
+omniroute test                         # اختبار أولي لاتصال المزوّد
 omniroute update                       # التحقق من وجود تحديثات
-omniroute completion                   # إنشاء إكمال الصدفة
+omniroute completion                   # إنشاء إكمال أوامر الصدفة
 ```
 
 ### الخيارات الشائعة
 
-| الخيار              | الوصف                                                    |
-| ------------------- | -------------------------------------------------------- |
-| `--no-open`         | عدم فتح المتصفح تلقائيًا عند البدء                       |
-| `--port <n>`        | تجاوز منفذ API (القيمة الافتراضية 20128)                 |
-| `--mcp`             | التشغيل كخادم MCP عبر stdio (لبيئات IDE)                 |
-| `--non-interactive` | وضع CI (من دون مطالبات؛ يقرأ من البيئة/الخيارات)         |
-| `--json`            | مخرجات JSON قابلة للقراءة آليًا (doctor، providers، إلخ) |
-| `--help`, `-h`      | عرض المساعدة الخاصة بالأمر                               |
-| `--version`, `-v`   | طباعة الإصدار المثبّت                                    |
+| الخيار              | الوصف                                                   |
+| ------------------- | ------------------------------------------------------- |
+| `--no-open`         | عدم فتح المتصفح تلقائيًا عند بدء التشغيل                |
+| `--port <n>`        | تجاوز منفذ API (الافتراضي 20128)                        |
+| `--mcp`             | التشغيل كخادم MCP عبر stdio (لبيئات IDE)                |
+| `--non-interactive` | وضع CI (من دون مطالبات؛ يقرأ من البيئة/الخيارات)        |
+| `--json`            | إخراج JSON قابل للقراءة آليًا (doctor، providers، إلخ.) |
+| `--help`, `-h`      | عرض المساعدة الخاصة بالأمر                              |
+| `--version`, `-v`   | طباعة الإصدار المثبّت                                   |
 
 ---
 

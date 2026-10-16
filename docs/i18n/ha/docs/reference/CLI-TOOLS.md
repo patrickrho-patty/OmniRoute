@@ -43,11 +43,10 @@ ACP Agents (gudanar ƙaddamarwa ta akasin hanya):
 
 ---
 
-## Saita ta atomatik da `setup-*`
+## Saita kai da kansa tare da `setup-*`
 
-Ba sai ka rubuta config na kowane kayan aiki da hannu ba. OmniRoute yana zuwa da umarnin `setup-*`
-ga kowane CLI da ake tallafawa, wanda ke karanta kundin model na **kai tsaye** daga OmniRoute
-mai gudana (na gida ko na nesa), sannan ya rubuta config na kayan aikin a kan na'urarka:
+Ba lallai ne ku rubuta kowane tsarin kayan aiki da hannu ba. OmniRoute yana jigilar umarnin `setup-*`
+ga kowane CLI mai goyan baya wanda ke karanta kundin samfurin **rayuwa** daga OmniRoute mai gudana (na gida ko na nesa) kuma yana rubuta tsarin kayan aikin a kan injin ku:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
@@ -57,52 +56,52 @@ omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
 omniroute setup-5dive
 ```
 
-Kowannensu yana karɓar `--remote <url> --api-key <key>` (saita kayan aiki na gida
-don amfani da OmniRoute na nesa), `--dry-run` (duba abin da zai faru ba tare da
-rubutawa ba), da `--port`. Kayan aikin da ba su da gano model ta atomatik (Cline,
-Kilo, Roo, Goose, Aider, Qwen, 5dive) suna karɓar `--model <id>` (da `--yes` don
-gudanarwa mara hulɗa). `setup-5dive` ne kaɗai tsarin da ba ya rubutawa ƙarƙashin
-`$HOME`: yana saita rundunar wakilan 5dive ta hanyar rubuta auth profile mallakin
-root a kan host na rundunar, don haka yana sake aiwatar da kansa ta `sudo`
-kuma ba shi da nasa yanayin nesa. Don ƙaddamar da CLI tare da shigar da
-env da ya dace ba tare da rubuta wani config kwata-kwata ba, yi amfani da
-babban mai ƙaddamarwa `omniroute run <target>` (claude, codex, aider, goose,
-opencode, qwen, gemini — targets da aliases suna fitowa daga
-`bin/cli/cli-manifest.mjs`); tsofaffin masu ƙaddamarwa na kowane kayan aiki,
-`omniroute launch` (Claude Code) da `omniroute launch-codex` (Codex), har yanzu
-suna samuwa. Gemini CLI na ƙaddamarwa kaɗai ne: yana cikin targets na
-`omniroute run`, amma ba shi da tsarin `setup-*`/`configure`.
+Kowane yana karɓar `--remote <url> --api-key <key>` (saita kayan aiki na gida akan
+OmniRoute mai nisa), `--dry-run` (duba ba tare da rubutawa ba), da `--port`. Kayan aiki
+ba tare da gano samfurin kai tsaye ba (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) suna ɗaukar
+`--model <id>` (da `--yes` don gudanarwa mara mu'amala). `setup-5dive` shine kawai
+girke-girke wanda baya rubutawa a ƙarƙashin `$HOME`: yana saita rundunar wakili na 5dive ta
+rubuta bayanin martaba na mallakar tushen akan mai masaukin rundunar, don haka yana sake aiwatarwa ta hanyar `sudo`
+kuma bashi da yanayin nesa na kansa. Don ƙaddamar da CLI tare da
+ingantaccen yanayin da aka saka kuma ba a rubuta tsari ba kwata-kwata, yi amfani da mai ƙaddamarwa na gabaɗaya
+`omniroute run <target>` (claude, codex, aider, goose, opencode, qwen,
+gemini — manufofin da sunaye na zuwa daga `bin/cli/cli-manifest.mjs`); tsofaffin
+masu ƙaddamarwa na kowane kayan aiki `omniroute launch` (Claude Code) da `omniroute launch-codex`
+(Codex) suna nan. Gemini CLI yana ƙaddamarwa ne kawai: manufa ce ta `omniroute run`
+amma bashi da girke-girke na `setup-*`/`configure`.
 
-> **Cikakken bayani:** babban tebur — abin da kowane umarni ke rubutawa, dukkan flags,
-> na gida da na nesa, da waɗanne kayan aiki ke buƙatar ƙarin `/v1` — yana cikin
-> **[Haɗe-haɗen CLI](../guides/CLI-INTEGRATIONS.md)**.
+> **Cikakken bayani:** babban tebur — abin da kowane umarni ke rubutawa, kowane tuta,
+> na gida vs na nesa, da kuma waɗanne kayan aiki ke buƙatar kari na `/v1` — yana cikin
+> **[Haɗin CLI](../guides/CLI-INTEGRATIONS.md)**.
 
-### Gudanar da waɗannan a cikin container
+### Gudanar da waɗannan a cikin akwati
 
-Umarnin `setup-*` da aka aiwatar a cikin container na OmniRoute yana rubutawa cikin
-home na container ɗin kansa, wanda babu wani CLI na host da ke karantawa kuma wanda
-ke ɓacewa tare da container ɗin. OmniRoute yana gano hakan kuma ya fita da `2` tare
-da umarni maimakon yin rubutu. Akwai hanyoyi biyu da ake tallafawa — shigar da CLI
-a kan host sannan a yi `omniroute connect` zuwa container, ko a bind-mount
-config dirs sannan a saita `CLI_CONFIG_HOME` (compose profile na `host`). Kowane
-umarnin `setup-*`, tare da `omniroute configure` da `omniroute config set`, yana
-karɓar `--allow-container-write` idan abin da kake nufi a zahiri shi ne saita CLI
-na container ɗin kansa; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` yana yin
-haka ga server. Duba
-[Jagorar Docker → Saita kayan aikin CLI na host](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+Umarnin `setup-*` da aka aiwatar a cikin akwati na OmniRoute yana rubutawa cikin
+gidan akwatin, wanda babu wani CLI mai masaukin baki da ke karantawa kuma wanda ke ɓacewa tare da
+akwatin. OmniRoute yana gano hakan kuma yana fita `2` tare da umarni maimakon
+rubutawa. Hanyoyi biyu masu goyan baya gaba — shigar da CLI akan mai masaukin baki kuma
+`omniroute connect` zuwa akwatin, ko haɗa-haɗa kundin tsarin kuma saita
+`CLI_CONFIG_HOME` (tsarin `host` na haɗawa). Kowane umarnin `setup-*`, da kuma
+`omniroute configure` da `omniroute config set`, yana karɓar
+`--allow-container-write` lokacin da saita CLIs na akwatin shine abin da kuke
+nufi; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` yana yin daidai ga
+sabar. Duba
+[Jagorar Docker → Saita kayan aikin CLI na mai masaukin baki](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-**apply endpoint** na dashboard (`POST /api/cli-tools/apply`) yana aiwatar da
-wannan kariyar iri ɗaya: a cikin container, rubutun da target ɗinsa ba a bind-mount
-daga host ba yana amsawa da **`422`** tare da `containerEphemeralTarget: true`,
-saƙon kuskure mai aminci da kuma — ga kayan aikin da suke da tsarin host (claude,
-codex, opencode, cline, kilo, continue) — `hostSetupCommand` (misali
-`omniroute setup-opencode`) da za a gudanar a kan host maimakon haka; ba a rubuta
-komai. `dryRun: true` yana ci gaba da aiki a yanayin container kuma yana mayar da
-abubuwan da aka samar + target path ba tare da taɓa disk ba, don haka za ka iya
-yin samfoti daga dashboard sannan ka aiwatar a kan host. Wannan halayyar ganganci
-ce kuma regression guard na
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` yana kare ta — kada a taɓa
-"gyara" 422 ta hanyar cire kariyar.
+**Ma'aunin aikace-aikacen** na dashboard (`POST /api/cli-tools/apply`) yana aiwatar da
+daidai kariya: a cikin akwati, rubutu wanda manufarsa ba a haɗa-haɗa daga
+mai masaukin baki ba yana amsa **`422`** tare da `containerEphemeralTarget: true`, kuskuren
+lafiya da — ga kayan aikin da ke da girke-girke na mai masaukin baki (claude, codex, opencode, cline,
+kilo, ci gaba) — `hostSetupCommand` (misali `omniroute setup-opencode`) don gudanarwa
+akan mai masaukin baki maimakon; ba a rubuta komai ba. `dryRun: true` yana ci gaba da aiki a yanayin akwati
+kuma yana dawo da samfoti da aka gyara + hanyar manufa ba tare da taɓa diski ba. Abun ciki na samfoti
+ba tsari ne mai ɗauke da takardun shaida don kwafa ko shigo da shi ba. Aiwatar da
+asalin kayan aiki/tushen URL/API key/samfurin shigarwa akan mai masaukin baki, ko amfani da umarnin
+saitawa na gefen mai masaukin baki da aka nuna. Duba [tsaron tsarin CLI](../security/CLI-CONFIGURATION.md)
+don kanun samfoti da kwangilar buƙata. Wannan hali
+yana da niyya kuma an kiyaye shi daga koma baya ta
+`tests/unit/api/cli-tools/apply-container-guard.test.ts` — kada ku taɓa "gyara" 422
+ta hanyar cire kariya.
 
 ---
 
@@ -607,72 +606,72 @@ a ƙarƙashin `/dashboard/cli-tools → Kiro`.
 
 ## 10. CLI na Cikin Gida na OmniRoute
 
-Binary ɗin `omniroute` yana samar da umarni don tafiyar da zagayen rayuwar sabar, saitawa, binciken matsaloli, da sarrafa masu samarwa. Mahadar farawa: `bin/omniroute.mjs`.
+Fayil ɗin binary na `omniroute` yana samar da umarni don tafiyar da sabar, saiti, bincike, da sarrafa masu samarwa. Wurin farawa: `bin/omniroute.mjs`.
 
 ```bash
-omniroute                              # Fara sabar (tsohuwar tashar jiragen ruwa ita ce 20128)
-omniroute setup                        # Mayen saitawa mai hulɗa
-omniroute doctor                       # Duba tsari, DB, tashoshin jiragen ruwa, da lokacin gudanarwa
-omniroute providers list               # Haɗin masu samarwa da aka tsara
+omniroute                              # Fara saba (tsohon port 20128)
+omniroute setup                        # Mayen saiti mai mu'amala
+omniroute doctor                       # Duba daidaitawa, DB, ports, runtime
+omniroute providers list               # Haɗin masu samarwa da aka daidaita
 omniroute providers test-all           # Gwada kowane haɗi mai aiki
 omniroute reset-password               # Sake saita kalmar sirrin mai gudanarwa
-omniroute logs                         # Yaɗa rajistan buƙatu kai tsaye
-omniroute health                       # Cikakken bayani kan lafiya (breakers, cache, ƙwaƙwalwa)
+omniroute logs                         # Watsa rajistan buƙatu
+omniroute health                       # Cikakken lafiyar tsarin (breakers, cache, memory)
 omniroute --version                    # Nuna sigar
 omniroute --help                       # Nuna duk umarni
 ```
 
-### Saitawa da Farawa
+### Saiti & Farawa
 
 ```bash
-omniroute setup                        # Mayen saitawa mai hulɗa
+omniroute setup                        # Mayen saiti mai mu'amala
 omniroute setup --non-interactive      # Yanayin CI/aiki ta atomatik (yana karanta env vars + flags)
 omniroute setup --password '<value>'   # Saita kalmar sirrin mai gudanarwa kai tsaye
 omniroute setup --add-provider \
   --provider openai \
   --api-key '<value>' \
-  --test-provider                      # Ƙara kuma gwada mai samarwa a mataki ɗaya
+  --test-provider                      # Ƙara kuma gwada mai samarwa lokaci guda
 ```
 
-Sauye-sauyen mahalli da ake ganewa don saitawa marar hulɗa:
+Sanannun environment variables don saiti marar mu'amala:
 
-| Sauyi               | Manufa                                                                                 |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | Maɓallin API na mai samarwa (an ɗaura shi da `--api-key` ta hanyar Commander `.env()`) |
-| `DATA_DIR`          | Sauya kundin bayanan OmniRoute                                                         |
+| Var                 | Manufa                                                                         |
+| ------------------- | ------------------------------------------------------------------------------ |
+| `OMNIROUTE_API_KEY` | Maɓallin API na mai samarwa (an haɗa shi da `--api-key` ta Commander `.env()`) |
+| `DATA_DIR`          | Maye gurbin kundin bayanai na OmniRoute                                        |
 
-Duk sauran bayanan shigarwa marasa hulɗa ana wuce su a matsayin flags, ba sauye-sauyen mahalli ba:
+Duk sauran bayanan shigar da ba na mu'amala ba ana tura su a matsayin flags, ba environment variables ba:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
 (duba zaɓuɓɓukan `omniroute setup` da ke sama).
 
-### Binciken Matsaloli
+### Bincike
 
 ```bash
-omniroute doctor                       # Duba tsari, DB, tashoshin jiragen ruwa, lokacin gudanarwa, ƙwaƙwalwa, da kasancewar sabar a raye
+omniroute doctor                       # Duba daidaitawa, DB, ports, runtime, memory, da rayuwar saba
 omniroute doctor --json                # JSON da na'ura za ta iya karantawa
-omniroute doctor --no-liveness         # Tsallake binciken lafiyar HTTP
-omniroute doctor --host 0.0.0.0        # Sauya host na binciken kasancewa a raye
-omniroute doctor --liveness-url <url>  # Sauya cikakken URL na endpoint na lafiya
+omniroute doctor --no-liveness         # Tsallake gwajin lafiyar HTTP
+omniroute doctor --host 0.0.0.0        # Maye gurbin host na gwajin rayuwa
+omniroute doctor --liveness-url <url>  # Maye gurbin cikakken URL na endpoint ɗin lafiya
 ```
 
-Doctor yana gudanar da waɗannan bincike: `Config`, `Database`, `Storage/encryption`,
+Doctor yana gudanar da waɗannan gwaje-gwaje: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory`, da `Server liveness`. Yana fita da lamba marar sifili idan wani bincike ya kasance `fail`.
+`Memory`, da `Server liveness`. Yana fita da lamba marar sifili idan wani gwaji ya kasance `fail`.
 
 ### Sarrafa Masu Samarwa
 
 ```bash
 omniroute providers available                       # Kundin masu samarwa na OmniRoute
-omniroute providers available --search openai       # Tace kundin bisa id/name/alias/category
-omniroute providers available --category api-key    # Tace bisa category (api-key, oauth, free, ...)
+omniroute providers available --search openai       # Tace kundin ta id/name/alias/category
+omniroute providers available --category api-key    # Tace ta rukuni (api-key, oauth, free, ...)
 omniroute providers available --json                # JSON da na'ura za ta iya karantawa
 
-omniroute providers list                            # Haɗin masu samarwa da aka tsara
+omniroute providers list                            # Haɗin masu samarwa da aka daidaita
 omniroute providers list --json
 
-omniroute providers test <id|name>                  # Gwada haɗi ɗaya da aka tsara
+omniroute providers test <id|name>                  # Gwada haɗi ɗaya da aka daidaita
 omniroute providers test-all                        # Gwada kowane haɗi mai aiki
-omniroute providers validate                        # Tantance tsarin da ake yi a gida kawai
+omniroute providers validate                        # Tabbatar da tsari a cikin gida kawai
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
 omniroute providers auth <provider>                 # Tsarin OAuth da yake akwai
@@ -680,45 +679,57 @@ omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-`providers add/import/auth/edit/remove` suna fara aiki ta API, saboda haka suna aiki da
-mahallin gida ko na nesa da ke aiki. Ya kamata a shigar da bayanan shaidarka ta amfani da
+`providers add/import/auth/edit/remove` suna amfani da API da farko, saboda haka suna aiki da
+mahallin cikin gida ko na nesa da yake aiki. Ya kamata a shigar da bayanan izini ta amfani da
 `--credential-stdin` ko `--credential-env`; `--dry-run --json` yana bayar da rahoton
-kasancewa/tsari da aka ɓoye kawai. `providers available` yana karanta kundin OmniRoute;
-`providers list/test/test-all/validate` suna ci gaba da amfani da halayensu na SQLite na gida kuma
+kasancewa/siffa da aka ɓoye kawai. `providers available` yana karanta kundin OmniRoute;
+`providers list/test/test-all/validate` suna ci gaba da amfani da halayensu na SQLite na cikin gida kuma
 ba sa buƙatar sabar ta kasance tana aiki.
 
-### Maidowa da Sake Saitawa
+Don node na musamman mai dacewa da OpenAI ko Anthropic, haɗa bayanan izini da
+ID na node da `omniroute nodes add` ya mayar, ta amfani da `omniroute keys add "$NODE_ID" --stdin`.
+Wannan yana buƙatar saba mai aiki da tantancewar gudanarwa don mahallin da yake aiki.
+CLI yana amfani da `POST /api/providers`, wanda yake tabbatar da node kuma yake kwafe saitunan endpoint
+ɗinsa zuwa haɗin. Rashin node, gazawar izini, ko rashin samuwar
+saba yana mayar da kuskure ba tare da ƙirƙirar madadin bayanan izini na cikin gida ba.
+
+`nodes add --base-url` yana saita endpoint na node; ya bambanta da adireshin saba
+da ke cikin `OMNIROUTE_BASE_URL`. Don fayilolin OpenAPI, yi amfani da
+`omniroute openapi dump --format json --out ./openapi.json`; `--output` na gaba ɗaya
+yana zaɓar tsarin nunin CLI, ba sunan fayil ɗin inda za a ajiye ba.
+
+### Maidowa & Sake Saiti
 
 ```bash
 omniroute reset-password                # Sake saita kalmar sirrin mai gudanarwa (kuma: omniroute-reset-password)
-omniroute reset-encrypted-columns       # Nuna gargaɗi + dry-run don sake saitin bayanan shaidarka masu ɓoyewa
-omniroute reset-encrypted-columns --force  # A zahiri mayar da bayanan shaidarka masu ɓoyewa zuwa null a cikin SQLite
+omniroute reset-encrypted-columns       # Nuna gargaɗi + dry-run don sake saitin bayanan izini da aka ɓoye
+omniroute reset-encrypted-columns --force  # A zahiri mayar da bayanan izini da aka ɓoye zuwa null a cikin SQLite
 ```
 
-### Fitar da Bayanan Shaidarka (⚠ a kula sosai)
+### Fitar da Bayanan Izini (⚠ yi taka-tsantsan)
 
 ```bash
 omniroute auth export                                 # Nuna gargaɗi + matakin tabbatarwa — babu shiga DB
-omniroute auth export --force                          # Fitar da bayanan shaidarka da aka CIRE ƁOYUWAR duk haɗin zuwa stdout a matsayin JSON
+omniroute auth export --force                          # Fitar da bayanan izini da aka CIRE ƁOYAYYENSU na DUK haɗi zuwa stdout a matsayin JSON
 omniroute auth export --force --id <id>                 # Fitar da haɗin da ya dace kawai
 omniroute auth export --force --format env               # Fitar da layukan OMNIROUTE_<PROVIDER>_<FIELD>=<value>
 omniroute auth export --force --out creds.json           # Rubuta zuwa fayil (wanda aka ƙirƙira da izinin 0600)
 ```
 
-`auth export` na **gida-kawai** ne (karatun SQLite kai tsaye, babu hanyar HTTP) kuma da gangan yake bugawa/rubuta
-ƙimomin **rubutu bayyananne** na `apiKey`/`accessToken`/`refreshToken`/`idToken` — wannan ita ce manufar fasalin, ba
-bug ba ne. Ba a karanta komai daga ma'ajiyar bayanai, kuma ba a cire ɓoyuwar komai, ba tare da `--force` ba. Kullum ana
-buga tutar gargaɗi zuwa stderr kafin a fitar da kowane rubutu bayyananne. Yana buƙatar a saita `STORAGE_ENCRYPTION_KEY`.
-Filin da aka kasa cire ɓoyuwarsa (tsohon maɓalli, rubutun ɓoyewa da ya lalace) ana bayar da rahotonsa a matsayin
-`<field>DecryptFailed: true` maimakon dakatar da duk aikin fitarwa ko fallasa kuskuren da ya jawo matsalar.
+`auth export` na aiki ne **a cikin na’ura kawai** (karanta SQLite kai tsaye, babu hanyar HTTP) kuma da gangan yake bugawa/rubutawa
+ƙimomin **rubutu bayyananne** na `apiKey`/`accessToken`/`refreshToken`/`idToken` — wannan fasali ne, ba
+matsala ba. Ba a karanta komai daga ma’ajiyar bayanai, kuma ba a warware ɓoyayyen komai, ba tare da `--force` ba. A koyaushe ana
+buga tutar gargaɗi zuwa stderr kafin a fitar da kowane rubutu bayyananne. Ana buƙatar a saita `STORAGE_ENCRYPTION_KEY`.
+Filin da aka kasa warware ɓoyewarsa (tsohuwar maɓalli, gurɓataccen rubutun sirri) ana bayar da rahotonsa a matsayin
+`<field>DecryptFailed: true` maimakon dakatar da dukkan fitarwar ko fallasa kuskuren da ke ƙarƙashinsa.
 
 ### Sauran ƙananan umarni
 
-Waɗannan suna ɗauka cewa sabar OmniRoute tana aiki, sai dai idan an bayyana akasin haka:
+Waɗannan suna ɗauka cewa sabar OmniRoute tana gudana, sai dai idan an ambata akasin haka:
 
 ```bash
 omniroute status                       # Cikakken matsayin lokacin aiki
-omniroute logs                         # Nuna rajistan buƙatu kai tsaye (--json, --search, --follow)
+omniroute logs                         # Yaɗa rajistan buƙatu kai tsaye (--json, --search, --follow)
 omniroute config list                  # Nuna kayan aikin CLI da aka saita
 
 omniroute provider list                # Jera masu samarwa da ake da su (wani suna na providers list)
@@ -728,35 +739,35 @@ omniroute models [provider]            # Jera samfura (--json, --search)
 omniroute combo list | switch | create | delete
 
 omniroute backup                       # Ɗauki hoton config + DB
-omniroute restore                      # Mayar daga hoton da aka ɗauka a baya
+omniroute restore                      # Maidowa daga hoton baya
 
-omniroute health                       # Cikakken bayanin lafiya (breakers, cache, memory)
-omniroute quota                        # Amfanin ƙason mai samarwa
+omniroute health                       # Cikakken bayani kan lafiya (breakers, cache, ƙwaƙwalwa)
+omniroute quota                        # Amfani da ƙason mai samarwa
 omniroute cache                        # Matsayin cache
-omniroute cache clear                  # Goge semantic + signature caches
+omniroute cache clear                  # Share semantic + signature caches
 
-omniroute mcp status | restart         # Matsayin uwar garken MCP / sake farawa
-omniroute a2a status | card            # Matsayin uwar garken A2A / katin wakili
+omniroute mcp status | restart         # Matsayin sabar MCP / sake kunnawa
+omniroute a2a status | card            # Matsayin sabar A2A / katin wakili
 
 omniroute tunnel list | create | stop  # Sarrafa tunnels (cloudflare/tailscale/ngrok)
-omniroute env show | get <k> | set <k> <v>  # Duba / saita env vars (na ɗan lokaci)
+omniroute env show | get <k> | set <k> <v>  # Dubawa / saita env vars (na ɗan lokaci)
 
-omniroute test                         # Gwajin haɗin mai samarwa na gaggawa
-omniroute update                       # Bincika sabuntawa
-omniroute completion                   # Samar da cikar umarnin shell
+omniroute test                         # Gwajin farko na haɗin mai samarwa
+omniroute update                       # Duba sabuntawa
+omniroute completion                   # Samar da shell completion
 ```
 
-### Tutoci na gama gari
+### Alamomin zaɓi na gama-gari
 
-| Tuta                | Bayani                                                                      |
-| ------------------- | --------------------------------------------------------------------------- |
-| `--no-open`         | Kada a buɗe burauza ta atomatik lokacin farawa                              |
-| `--port <n>`        | Sauya tashar API (tsoho 20128)                                              |
-| `--mcp`             | Gudanar a matsayin uwar garken MCP ta stdio (don IDEs)                      |
-| `--non-interactive` | Yanayin CI (babu tambayoyi; yana karantawa daga env/flags)                  |
-| `--json`            | Fitowar JSON da na'ura za ta iya karantawa (doctor, providers, da sauransu) |
-| `--help`, `-h`      | Nuna taimako na musamman ga umarni                                          |
-| `--version`, `-v`   | Buga sigar da aka shigar                                                    |
+| Alamar zaɓi         | Bayani                                                                       |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `--no-open`         | Kada a buɗe burauza ta atomatik yayin farawa                                 |
+| `--port <n>`        | Sauya tashar API (tsoho 20128)                                               |
+| `--mcp`             | Gudanar a matsayin sabar MCP ta stdio (don IDEs)                             |
+| `--non-interactive` | Yanayin CI (babu tambayoyi; yana karantawa daga env/flags)                   |
+| `--json`            | Fitowar JSON mai sauƙin karantawa ga na’ura (doctor, providers, da sauransu) |
+| `--help`, `-h`      | Nuna taimako na musamman ga umarni                                           |
+| `--version`, `-v`   | Buga sigar da aka girka                                                      |
 
 ---
 

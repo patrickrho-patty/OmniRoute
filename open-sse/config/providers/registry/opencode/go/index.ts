@@ -59,6 +59,14 @@ export const opencode_goProvider: RegistryEntry = {
     },
     { id: "mimo-v2.5-high", name: "MiMo-V2.5 (high effort)", supportsReasoning: true },
     { id: "mimo-v2.5-max", name: "MiMo-V2.5 (max effort)", supportsReasoning: true },
+    // MiMo V2.6 Flash Free ships a 1M window upstream; without this row it
+    // falls through to the 200000 provider default and clients compact early.
+    {
+      id: "mimo-v2.6-flash-free",
+      name: "MiMo V2.6 Flash Free",
+      contextLength: 1048576,
+      maxOutputTokens: 131072,
+    },
     // #3110: MiniMax M3 via OpenCode Go tier
     {
       id: "minimax-m3",
@@ -102,6 +110,8 @@ export const opencode_goProvider: RegistryEntry = {
     {
       id: "qwen3.7-plus",
       name: "Qwen3.7 Plus",
+      contextLength: 1000000,
+      maxOutputTokens: 65536,
       targetFormat: "claude",
       supportsVision: false,
       supportsReasoning: true,
@@ -179,12 +189,20 @@ export const opencode_goProvider: RegistryEntry = {
     // Muse Spark 1.2 Contributor — base + effort-tier aliases from the OpenCode Go
     // registry (`opencode models opencode-go --verbose`; exact suffix set:
     // minimal/low/medium/high/xhigh, no max).
+    // supportedThinkingEfforts was missing from this base row even though
+    // executors/opencode.ts's EFFORT_TIERS already declares the identical
+    // tier set for it (#10788's own pattern: "declared on the base row so the
+    // catalog's variant synthesis (#9485) and the effort sanitizer share one
+    // source of truth with OpencodeExecutor's EFFORT_TIERS") — every sibling
+    // base row above (glm-5.2, kimi-k3, mimo-v2.5, hy3, qwen3.6-plus/3.7-max/3.7-plus)
+    // already carries it.
     {
       id: "muse-spark-1.2-contributor",
       name: "Muse Spark 1.2 Contributor",
       contextLength: 1048576,
       maxOutputTokens: 131072,
       supportsReasoning: true,
+      supportedThinkingEfforts: ["minimal", "low", "medium", "high", "xhigh"],
       supportsVision: true,
       supportsAudio: true,
       supportsVideo: true,
@@ -257,6 +275,7 @@ export const opencode_goProvider: RegistryEntry = {
       contextLength: 1048576,
       maxOutputTokens: 131072,
       supportsReasoning: true,
+      supportedThinkingEfforts: ["minimal", "low", "medium", "high", "xhigh"],
       supportsVision: true,
       supportsAudio: true,
       supportsVideo: true,
@@ -318,28 +337,52 @@ export const opencode_goProvider: RegistryEntry = {
       targetFormat: "openai-responses",
     },
     // #8353: Grok 4.5 + effort tiers from the OpenCode Go registry.
+    // The Go endpoint table (opencode.ai/docs/go) serves the Grok family on
+    // /responses only; without targetFormat:"openai-responses" these rows fall
+    // through to /chat/completions, which the upstream rejects ("Model grok-4.6
+    // is not supported for format oa-compat") — same class as #12196. The effort
+    // aliases need the declaration too: resolveOpencodeTargetFormat() looks the
+    // requested id up verbatim.
     {
       id: "grok-4.5",
       name: "Grok 4.5",
       supportsReasoning: true,
       supportedThinkingEfforts: ["low", "medium", "high"],
+      targetFormat: "openai-responses",
     },
-    { id: "grok-4.5-low", name: "Grok 4.5 (low effort)", supportsReasoning: true },
-    { id: "grok-4.5-medium", name: "Grok 4.5 (medium effort)", supportsReasoning: true },
-    { id: "grok-4.5-high", name: "Grok 4.5 (high effort)", supportsReasoning: true },
-    // The gateway serves the DeepSeek V4 family at a 1M window. Without a
-    // per-model contextLength these ids fall through to the provider-wide
-    // defaultContextLength (200000) and the final context gate rejects large
-    // requests with context_length_exceeded while clients advertise 1M.
     {
-      id: "deepseek-v4.1-flash",
-      name: "DeepSeek V4.1 Flash",
-      contextLength: 1000000,
+      id: "grok-4.5-low",
+      name: "Grok 4.5 (low effort)",
+      supportsReasoning: true,
+      targetFormat: "openai-responses",
+    },
+    {
+      id: "grok-4.5-medium",
+      name: "Grok 4.5 (medium effort)",
+      supportsReasoning: true,
+      targetFormat: "openai-responses",
+    },
+    {
+      id: "grok-4.5-high",
+      name: "Grok 4.5 (high effort)",
+      supportsReasoning: true,
+      targetFormat: "openai-responses",
+    },
+    // Grok 4.6: effort vocabulary from the models.dev catalog OpenCode reads
+    // (reasoning_options low/medium/high/xhigh), declared on the base row like
+    // gpt-6-luna so sanitizeReasoningEffortForProvider clamps off-vocabulary values.
+    {
+      id: "grok-4.6",
+      name: "Grok 4.6",
+      contextLength: 500000,
+      maxOutputTokens: 500000,
+      supportsReasoning: true,
+      supportedThinkingEfforts: ["low", "medium", "high", "xhigh"],
+      targetFormat: "openai-responses",
     },
     {
       id: "deepseek-v4-pro",
       name: "DeepSeek V4 Pro",
-      contextLength: 1000000,
       supportsReasoning: true,
       supportedThinkingEfforts: ["none", "low", "high", "max"],
       targetFormat: "openai-responses",
@@ -347,7 +390,6 @@ export const opencode_goProvider: RegistryEntry = {
     {
       id: "deepseek-v4-flash",
       name: "DeepSeek V4 Flash",
-      contextLength: 1000000,
       supportsReasoning: true,
       supportedThinkingEfforts: ["none", "low", "high", "max"],
       targetFormat: "openai-responses",
@@ -359,8 +401,93 @@ export const opencode_goProvider: RegistryEntry = {
       id: "gpt-5.6-luna",
       name: "GPT-5.6 Luna",
       supportsReasoning: true,
+      supportedThinkingEfforts: ["low", "medium", "high", "xhigh", "max"],
       targetFormat: "openai-responses",
       maxOutputTokens: 128000,
+    },
+    // OpenCode Zen Go serves gpt-6-luna ONLY on /responses: live-verified
+    // 2026-10-02, POST /chat/completions returns 400
+    // `{"type":"error","error":{"type":"ModelProtocolUnsupported","message":
+    // "Model does not support this protocol."}}` while POST /responses returns
+    // 200 with a normal completion. Same failure mode as #12196 (gpt-5.6-luna):
+    // without a registry entry getModelTargetFormat() returns null,
+    // resolveOpencodeTargetFormat() falls back to "openai" and
+    // OpencodeExecutor.buildUrl() posts to /chat/completions.
+    // Effort vocabulary also live-verified against the go upstream: none/low/
+    // medium/high/xhigh/max -> 200, "ultra" -> 400 (so declaring the exact set
+    // lets sanitizeReasoningEffortForProvider clamp instead of forwarding a
+    // 400). max_output_tokens 128000 accepted; the provider's
+    // requestDefaults.maxTokens is 16384 without an explicit value.
+    {
+      id: "gpt-6-luna",
+      name: "GPT-6 Luna",
+      contextLength: 1050000,
+      maxInputTokens: 922000,
+      supportsReasoning: true,
+      supportedThinkingEfforts: ["none", "low", "medium", "high", "xhigh", "max"],
+      targetFormat: "openai-responses",
+      maxOutputTokens: 128000,
+    },
+    // #16579: exact Go limits from anomalyco/models.dev at
+    // 26d4dc7b66c93470f4e5337708e794b62a589620, including base_model inheritance.
+    // Keep these provider-scoped so synced data and operator overrides retain precedence.
+    {
+      id: "deepseek-v4.1-flash",
+      name: "DeepSeek V4.1 Flash",
+      contextLength: 1000000,
+      maxOutputTokens: 384000,
+    },
+    {
+      id: "claude-haiku-5-5",
+      name: "Claude Haiku 5.5",
+      contextLength: 1000000,
+      maxOutputTokens: 128000,
+      targetFormat: "claude",
+    },
+    {
+      id: "grok-4.7",
+      name: "Grok 4.7",
+      contextLength: 500000,
+      maxOutputTokens: 500000,
+      targetFormat: "openai-responses",
+    },
+    {
+      id: "hy4-preview",
+      name: "HY4 Preview",
+      contextLength: 1024000,
+      maxOutputTokens: 64000,
+    },
+    {
+      id: "longcat-2.0",
+      name: "LongCat 2.0",
+      contextLength: 1000000,
+      maxOutputTokens: 131072,
+    },
+    {
+      id: "mimo-v2.6-flash",
+      name: "MiMo V2.6 Flash",
+      contextLength: 1048576,
+      maxOutputTokens: 131072,
+    },
+    {
+      id: "mimo-v2.6-pro",
+      name: "MiMo V2.6 Pro",
+      contextLength: 1048576,
+      maxOutputTokens: 131072,
+    },
+    {
+      id: "qwen3.8-flash",
+      name: "Qwen3.8 Flash",
+      contextLength: 1000000,
+      maxOutputTokens: 131072,
+      targetFormat: "claude",
+    },
+    {
+      id: "space-bunny",
+      name: "Space Bunny",
+      contextLength: 1048576,
+      maxInputTokens: 524288,
+      maxOutputTokens: 524288,
     },
     // Console Go free GLM-tier model (live-verified 2026-08-23): the upstream
     // rejects every reasoning_effort outside {low, high, max} whenever tools

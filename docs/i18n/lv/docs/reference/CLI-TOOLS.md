@@ -45,9 +45,9 @@ ACP Agents (apgrieztā izveidošanas plūsma):
 
 ## Automātiskā konfigurēšana ar `setup-*`
 
-Jums nav jāraksta katra rīka konfigurācija ar roku. OmniRoute piegādā `setup-*`
-komandu katrai atbalstītai CLI, kas nolasa **dzīvo** modeļu katalogu no darbojošās
-OmniRoute (vietējās vai attālās) un raksta rīka paša konfigurāciju jūsu datorā:
+Jums nav jāraksta katra rīka konfigurācija ar roku. OmniRoute nodrošina `setup-*`
+komandu katram atbalstītajam CLI, kas nolasa **tiešraides** modeļu katalogu no darbojošās
+OmniRoute (lokālas vai attālinātas) un uzraksta rīka paša konfigurāciju jūsu mašīnā:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
@@ -57,47 +57,53 @@ omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
 omniroute setup-5dive
 ```
 
-Katra pieņem `--remote <url> --api-key <key>` (konfigurēt vietēju rīku pret
-attālu OmniRoute), `--dry-run` (priekšskatījums bez rakstīšanas) un `--port`. Rīki
-bez modeļa automātiskās noteikšanas (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) pieņem
-`--model <id>` (un `--yes` neinteraktīviem braucieniem). `setup-5dive` ir vienīgais
-recepšu risinājums, kas neraksta zem `$HOME`: tas konfigurē 5dive aģenta floti, rakstot
-root-owned autentifikācijas profilu flozes saimniekdatorā, tāpēc tas atkārtoti izpilda caur `sudo`
-un tam pašam nav attālā režīma. Lai palaiž CLI ar
-pareizo injicēto vidi un vispār bez rakstītas konfigurācijas, izmantojiet vispārējo
-`omniroute run <mērķis>` startētāju (claude, codex, aider, goose, opencode, qwen,
-gemini — mērķi un aliāši nāk no `bin/cli/cli-manifest.mjs`); vecie
-par instrumentiem startētāji `omniroute launch` (Claude Code) un `omniroute launch-codex`
-(Codex) paliek pieejami. Gemini CLI ir tikai palaižams: tas ir `omniroute run`
+Katrs pieņem `--remote <url> --api-key <key>` (konfigurē lokālu rīku pret
+attālinātu OmniRoute), `--dry-run` (priekšskatījums bez rakstīšanas) un `--port`.
+Rīki bez modeļa automātiskās atklāšanas (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive)
+pieņem `--model <id>` (un `--yes` neinteraktīvām palaišanām). `setup-5dive` ir vienīgā
+recepte, kas neraksta zem `$HOME`: tā konfigurē 5dive aģentu floti, uzrakstot saknes
+īpašumā esošu autentifikācijas profilu flotes resursdatorā, tāpēc tā atkārtoti izpildās
+caur `sudo` un tai nav sava attālā režīma. Lai palaistu CLI ar
+pareizi injicētu vidi un bez konfigurācijas rakstīšanas, izmantojiet vispārīgo
+`omniroute run <target>` palaidēju (claude, codex, aider, goose, opencode, qwen,
+gemini — mērķi un aizstājvārdi nāk no `bin/cli/cli-manifest.mjs`); mantotie
+rīku palaidēji `omniroute launch` (Claude Code) un `omniroute launch-codex`
+(Codex) joprojām ir pieejami. Gemini CLI ir tikai palaižams: tas ir `omniroute run`
 mērķis, bet tam nav `setup-*`/`configure` receptes.
 
-> **Pilna atsauce:** galvenā tabula — ko raksta katra komanda, katra karodziņa,
-> vietējais pret attālo, un kuri rīki vēlas `/v1` pēcdēli — atrodas
-> **[CLI integrācijas](../guides/CLI-INTEGRATIONS.md)**.
+> **Pilna atsauce:** galvenā tabula — ko katra komanda raksta, katrs karogs,
+> lokāls pret attālinātu, un kuri rīki vēlas `/v1` sufiksu — atrodas
+> **[CLI Integrācijas](../guides/CLI-INTEGRATIONS.md)**.
 
-### Šo komandu palaišana konteinerī
+### To palaišana konteinerā
 
-`setup-*` komanda, kas izpildīta OmniRoute konteinerī, raksta konteinera
-paša mājas direktorijā, kuru neviens saimniekdatora CLI nelasa un kas pazūd līdz ar
-konteineri. OmniRoute to atklāj un iziet ar kodu `2` ar instrukcijām, nevis
-rakstot. Divas atbalstītas iespējas — instalēt CLI saimniekdatorā un
-`omniroute connect` uz konteineri, vai bin-montēt konfigurācijas direktorijus un iestatīt
-`CLI_CONFIG_HOME` (compose `host` profils). Katra `setup-*` komanda, plus
-`omniroute configure` un `omniroute config set`, pieņem
-`--allow-container-write`, kad faktiski bija domāts konfigurēt konteinera paša CLI; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` nodrošina to pašu serverim. Skat.
-[Docker rokasgrāmata → Host CLI rīku konfigurēšana](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+`setup-*` komanda, kas izpildīta OmniRoute konteinerā, raksta konteinera paša
+mājas direktorijā, ko neviens resursdatora CLI nelasa un kas pazūd kopā ar
+konteineru. OmniRoute to atklāj un iziet ar kodu `2` ar instrukcijām, nevis
+raksta. Divi atbalstīti veidi, kā rīkoties — instalējiet CLI resursdatorā un
+`omniroute connect` uz konteineru, vai piesaistiet konfigurācijas direktorijus un
+iestatiet `CLI_CONFIG_HOME` (compose `host` profils). Katra `setup-*` komanda,
+plus `omniroute configure` un `omniroute config set`, pieņem
+`--allow-container-write`, ja konteinera pašu CLI konfigurēšana ir tas, ko jūs
+patiešām domājāt; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` dara to pašu
+serverim. Skatīt
+[Docker ceļvedis → Resursdatora CLI rīku konfigurēšana](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-Informācijas paneļa **pielietojuma galapunkts** (`POST /api/cli-tools/apply`) ievieš
-tādu pašu sargu: konteinerī, rakstīšana, kuras mērķis nav bin-montēts no
-saimniekdatora, atbild ar **`422`** ar `containerEphemeralTarget: true`, drošo
-kļūdas tekstun — rīkiem ar saimniekdatora recepti (claude, codex, opencode, cline,
-kilo, continue) — ar `hostSetupCommand` (piem., `omniroute setup-opencode`), ko palaist
-saimniekdatorā tā vietā; nekas netiek rakstīts. `dryRun: true` turpina strādāt konteinera
-režīmā un atgriež ģenerēto saturu + mērķa ceļu, nesaskaroties ar disku, tāpēc
-jūs varat priekšskatīt no informācijas paneļa un pielietot saimniekdatorā. Šāda uzvedība ir
-apsvērta un regresijas aizsargāta ar
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — nekad "neizlabojiet" 422
-noņemot sargu.
+Informācijas paneļa **piemērošanas galapunkts** (`POST /api/cli-tools/apply`)
+piemēro to pašu aizsardzību: konteinerā rakstīšana, kuras mērķis nav piesaistīts
+no resursdatora, atbild ar **`422`** ar `containerEphemeralTarget: true`, drošu
+kļūdas tekstu un — rīkiem ar resursdatora recepti (claude, codex, opencode,
+cline, kilo, continue) — `hostSetupCommand` (piemēram, `omniroute setup-opencode`),
+kas jāpalaiž resursdatorā; nekas netiek rakstīts. `dryRun: true` turpina darboties
+konteinera režīmā un atgriež rediģētu priekšskatījumu + mērķa ceļu, nepieskaroties
+diskam. Priekšskatījuma saturs nav akreditācijas datus saturoša konfigurācija, ko
+kopēt vai importēt. Lietojiet ar oriģinālo rīku/bāzes URL/API atslēgu/modeļa
+ievadēm resursdatorā, vai izmantojiet norādīto resursdatora puses iestatīšanas
+komandu. Skatīt [CLI konfigurācijas drošība](../security/CLI-CONFIGURATION.md)
+priekšskatījuma galvenei un pieprasījuma līgumam. Šī uzvedība ir
+apzināta un regresijas aizsargāta ar
+`tests/unit/api/cli-tools/apply-container-guard.test.ts` — nekad "nelabojiet" 422
+ar aizsardzības noņemšanu.
 
 ---
 
@@ -623,11 +629,11 @@ omniroute setup --add-provider \
   --test-provider                      # Pievienot un pārbaudīt pakalpojumu sniedzēju vienā darbībā
 ```
 
-Neinteraktīvajā iestatīšanā atpazītie vides mainīgie:
+Atpazītie vides mainīgie neinteraktīvai iestatīšanai:
 
 | Mainīgais           | Nolūks                                                                                     |
 | ------------------- | ------------------------------------------------------------------------------------------ |
-| `OMNIROUTE_API_KEY` | Pakalpojumu sniedzēja API atslēga (piesaistīta `--api-key`, izmantojot Commander `.env()`) |
+| `OMNIROUTE_API_KEY` | Pakalpojumu sniedzēja API atslēga (saistīta ar `--api-key`, izmantojot Commander `.env()`) |
 | `DATA_DIR`          | Aizstāt OmniRoute datu direktoriju                                                         |
 
 Visas pārējās neinteraktīvās ievades tiek nodotas kā karogi, nevis vides mainīgie:
@@ -637,16 +643,16 @@ Visas pārējās neinteraktīvās ievades tiek nodotas kā karogi, nevis vides m
 ### Diagnostika
 
 ```bash
-omniroute doctor                       # Pārbaudīt konfigurāciju, DB, portus, izpildvidi, atmiņu un darbspēju
+omniroute doctor                       # Pārbaudīt konfigurāciju, DB, portus, izpildvidi, atmiņu un darbīgumu
 omniroute doctor --json                # Mašīnlasāms JSON
 omniroute doctor --no-liveness         # Izlaist HTTP darbspējas pārbaudi
-omniroute doctor --host 0.0.0.0        # Aizstāt darbspējas pārbaudes resursdatoru
+omniroute doctor --host 0.0.0.0        # Aizstāt darbīguma pārbaudes resursdatoru
 omniroute doctor --liveness-url <url>  # Aizstāt pilno darbspējas galapunkta URL
 ```
 
 Komanda doctor veic šādas pārbaudes: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` un `Server liveness`. Ja kādas pārbaudes rezultāts ir `fail`, tā pabeidz darbu ar statusu, kas nav nulle.
+`Memory` un `Server liveness`. Tā beidz darbu ar kodu, kas nav nulle, ja kādas pārbaudes rezultāts ir `fail`.
 
 ### Pakalpojumu sniedzēju pārvaldība
 
@@ -672,80 +678,92 @@ omniroute providers remove <id|name> --yes
 `providers add/import/auth/edit/remove` primāri izmanto API un tādēļ darbojas ar
 aktīvo lokālo vai attālo kontekstu. Akreditācijas datu ievadei jāizmanto
 `--credential-stdin` vai `--credential-env`; `--dry-run --json` ziņo tikai par
-rediģētu esamību/struktūru. `providers available` nolasa OmniRoute katalogu;
+aizklātu datu esamību un struktūru. `providers available` nolasa OmniRoute katalogu;
 `providers list/test/test-all/validate` saglabā savu lokālo SQLite darbību, un
 to izmantošanai serverim nav jādarbojas.
+
+Pielāgotam ar OpenAI vai Anthropic saderīgam mezglam piesaistiet akreditācijas datus
+mezgla ID, ko atgriež `omniroute nodes add`, izmantojot `omniroute keys add "$NODE_ID" --stdin`.
+Tam nepieciešams darbojošs serveris un pārvaldības autentifikācija aktīvajam kontekstam.
+CLI izmanto `POST /api/providers`, kas validē mezglu un kopē tā galapunkta
+iestatījumus savienojumā. Ja mezgls nav atrasts, autorizācija neizdodas vai serveris
+nav pieejams, tiek atgriezta kļūda, neizveidojot lokālus rezerves akreditācijas datus.
+
+`nodes add --base-url` iestata mezgla galapunktu; tas atšķiras no servera adreses
+mainīgajā `OMNIROUTE_BASE_URL`. OpenAPI failiem izmantojiet
+`omniroute openapi dump --format json --out ./openapi.json`; globālā opcija `--output`
+atlasa CLI attēlojuma formatējumu, nevis mērķa faila nosaukumu.
 
 ### Atkopšana un atiestatīšana
 
 ```bash
 omniroute reset-password                # Atiestatīt administratora paroli (arī: omniroute-reset-password)
 omniroute reset-encrypted-columns       # Parādīt brīdinājumu un izmēģinājuma izpildi šifrēto akreditācijas datu atiestatīšanai
-omniroute reset-encrypted-columns --force  # Faktiski iestatīt šifrētos akreditācijas datus SQLite datubāzē uz nulli
+omniroute reset-encrypted-columns --force  # Faktiski iestatīt šifrētos akreditācijas datus SQLite vērtībā null
 ```
 
-### Akreditācijas datu eksportēšana (⚠ rīkojieties uzmanīgi)
+### Akreditācijas datu eksportēšana (⚠ rīkojieties piesardzīgi)
 
 ```bash
 omniroute auth export                                 # Parādīt brīdinājumu un pieprasīt apstiprinājumu — bez piekļuves DB
-omniroute auth export --force                          # Eksportēt VISU savienojumu ATŠIFRĒTOS akreditācijas datus uz stdout JSON formātā
+omniroute auth export --force                          # Eksportēt VISU savienojumu ATŠIFRĒTOS akreditācijas datus uz standarta izvadi JSON formātā
 omniroute auth export --force --id <id>                 # Eksportēt tikai atbilstošo savienojumu
-omniroute auth export --force --format env               # Izvadīt OMNIROUTE_<PROVIDER>_<FIELD>=<value> rindas
-omniroute auth export --force --out creds.json           # Ierakstīt failā (izveidots ar 0600 atļaujām)
+omniroute auth export --force --format env               # Izvadīt rindas OMNIROUTE_<PROVIDER>_<FIELD>=<value>
+omniroute auth export --force --out creds.json           # Ierakstīt failā (izveidots ar atļaujām 0600)
 ```
 
-`auth export` darbojas **tikai lokāli** (tieša SQLite lasīšana, bez HTTP maršruta) un apzināti izvada/ieraksta
-**vienkārša teksta** `apiKey`/`accessToken`/`refreshToken`/`idToken` vērtības — tā ir funkcija, nevis
-kļūda. Bez `--force` no datubāzes nekas netiek nolasīts un nekas netiek atšifrēts. Pirms jebkāda vienkārša teksta
-izvades stderr vienmēr tiek parādīts brīdinājuma reklāmkarogs. Nepieciešams iestatīt `STORAGE_ENCRYPTION_KEY`.
-Lauks, kuru neizdodas atšifrēt (novecojusi atslēga, bojāts šifrētais teksts), tiek norādīts kā
+`auth export` darbojas **tikai lokāli** (tieša SQLite lasīšana, bez HTTP maršruta) un apzināti izvada/raksta
+**vienkārša teksta** `apiKey`/`accessToken`/`refreshToken`/`idToken` vērtības — tā ir paredzēta funkcionalitāte, nevis
+kļūda. Bez `--force` nekas netiek nolasīts no datubāzes un nekas netiek atšifrēts. Pirms jebkādu vienkārša teksta datu izvades stderr
+vienmēr tiek parādīts brīdinājuma reklāmkarogs. Nepieciešams, lai būtu iestatīts `STORAGE_ENCRYPTION_KEY`.
+Lauks, kuru neizdodas atšifrēt (novecojusi atslēga, bojāts šifrteksts), tiek uzrādīts kā
 `<field>DecryptFailed: true`, nevis tiek pārtraukta visa eksportēšana vai atklāta pamatā esošā kļūda.
 
 ### Citas apakškomandas
 
-Ja nav norādīts citādi, tās pieņem, ka darbojas OmniRoute serveris:
+Ja nav norādīts citādi, šīm komandām nepieciešams darbojošs OmniRoute serveris:
 
 ```bash
 omniroute status                       # Visaptverošs izpildlaika statuss
-omniroute logs                         # Straumēt pieprasījumu žurnālus (--json, --search, --follow)
-omniroute config list                  # Parādīt konfigurētos CLI rīkus
+omniroute logs                         # Pieprasījumu žurnālu straumēšana (--json, --search, --follow)
+omniroute config list                  # Konfigurēto CLI rīku attēlošana
 
-omniroute provider list                # Uzskaitīt pieejamos nodrošinātājus (komandas providers list aizstājvārds)
-omniroute provider add                 # Reģistrēt OmniRoute kā nodrošinātāju rīkā
-omniroute keys add | list | remove     # Pārvaldīt API atslēgas
-omniroute models [provider]            # Uzskaitīt modeļus (--json, --search)
+omniroute provider list                # Pieejamo nodrošinātāju saraksts (providers list aizstājvārds)
+omniroute provider add                 # OmniRoute reģistrēšana rīkā kā nodrošinātāju
+omniroute keys add | list | remove     # API atslēgu pārvaldība
+omniroute models [provider]            # Modeļu saraksts (--json, --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # Izveidot konfigurācijas un DB momentuzņēmumu
-omniroute restore                      # Atjaunot no iepriekšēja momentuzņēmuma
+omniroute backup                       # Konfigurācijas un DB momentuzņēmums
+omniroute restore                      # Atjaunošana no iepriekšēja momentuzņēmuma
 
-omniroute health                       # Detalizēts darbspējas stāvoklis (drošinātāji, kešatmiņa, atmiņa)
+omniroute health                       # Detalizēts darbspējas stāvoklis (slēdži, kešatmiņa, atmiņa)
 omniroute quota                        # Nodrošinātāja kvotas lietojums
 omniroute cache                        # Kešatmiņas statuss
-omniroute cache clear                  # Notīrīt semantisko un parakstu kešatmiņu
+omniroute cache clear                  # Semantiskās un parakstu kešatmiņas notīrīšana
 
 omniroute mcp status | restart         # MCP servera statuss / restartēšana
 omniroute a2a status | card            # A2A servera statuss / aģenta kartīte
 
-omniroute tunnel list | create | stop  # Pārvaldīt tuneļus (cloudflare/tailscale/ngrok)
-omniroute env show | get <k> | set <k> <v>  # Pārbaudīt / iestatīt vides mainīgos (īslaicīgi)
+omniroute tunnel list | create | stop  # Tuneļu pārvaldība (cloudflare/tailscale/ngrok)
+omniroute env show | get <k> | set <k> <v>  # Vides mainīgo pārbaude / iestatīšana (īslaicīgi)
 
-omniroute test                         # Nodrošinātāja savienojamības pamatpārbaude
-omniroute update                       # Pārbaudīt atjauninājumus
-omniroute completion                   # Ģenerēt čaulas automātisko pabeigšanu
+omniroute test                         # Nodrošinātāja savienojamības ātrā pārbaude
+omniroute update                       # Atjauninājumu pārbaude
+omniroute completion                   # Čaulas automātiskās pabeigšanas ģenerēšana
 ```
 
-### Biežāk lietotie karodziņi
+### Biežāk lietotie karogi
 
-| Karodziņš           | Apraksts                                                   |
+| Karogs              | Apraksts                                                   |
 | ------------------- | ---------------------------------------------------------- |
-| `--no-open`         | Startējot automātiski neatvērt pārlūkprogrammu             |
-| `--port <n>`        | Aizstāt API portu (noklusējums: 20128)                     |
+| `--no-open`         | Startēšanas laikā automātiski neatvērt pārlūkprogrammu     |
+| `--port <n>`        | Ignorēt API porta iestatījumu (noklusējums: 20128)         |
 | `--mcp`             | Darbināt kā MCP serveri, izmantojot stdio (IDE vajadzībām) |
-| `--non-interactive` | CI režīms (bez uzvednēm; nolasa no vides/karodziņiem)      |
+| `--non-interactive` | CI režīms (bez uzvednēm; nolasa no vides/karogiem)         |
 | `--json`            | Mašīnlasāma JSON izvade (doctor, providers u.c.)           |
 | `--help`, `-h`      | Parādīt konkrētās komandas palīdzību                       |
-| `--version`, `-v`   | Izdrukāt instalēto versiju                                 |
+| `--version`, `-v`   | Izvadīt instalēto versiju                                  |
 
 ---
 

@@ -37,13 +37,15 @@ Cookie: auth_token=<JWT signed with JWT_SECRET>
 
 A cookie is a session only when the JWT verifies **and** carries `authenticated: true`
 (`src/shared/utils/dashboardSessionToken.ts` → `verifyDashboardSessionToken`). Every
-consumer of the cookie (route guard, authz pipeline refresh, WebSocket handshake, live
+consumer of the cookie (dashboard route guard (`isDashboardSessionAuthenticated()`), authz pipeline refresh, WebSocket handshake, live
 server, `/api/settings/require-login`, `/api/auth/status`) goes through that helper.
 Other JWTs signed with `JWT_SECRET` exist — the Cursor CLI passthrough mints
 `iss "omniroute" / aud "cursor-cli"` tokens for key holders — and are never sessions
 (#13298).
 
 Verified by `isDashboardSessionAuthenticated()` in `src/shared/utils/apiAuth.ts`. The pipeline auto-refreshes the JWT when it has fewer than 7 days left in its 30-day lifetime.
+
+A session can also end before its 30 days are up, because every minter goes through `mintDashboardSessionToken` (an issue time `iat` and an id `jti`) and the verifier checks two settings: `sessionsValidAfter`, set by a password change so every session issued before it stops verifying (the browser that changed the password gets a fresh cookie), and `revokedDashboardSessions`, to which `POST /api/auth/logout` adds the signed-out session's `jti`. Sessions minted by an older release carry neither claim and stay valid until the first password change. If the settings cannot be read, the session is not trusted.
 
 Some management routes accept **either** mode: cookie OR `Bearer <key>` when the API key has the `manage` (or `admin`) scope. This is what enables the "configurable via API calls" workflow added in v3.8.
 
@@ -64,14 +66,30 @@ supplemented:
 - `GET /api/auth/oidc/callback` validates `state`, exchanges the authorization
   code, and verifies the ID token's signature via the issuer's JWKS
   (`jose`'s `createRemoteJWKSet`, cached per JWKS URI) with `issuer`/`audience`
-  checks. An optional `oidcAllowedSubjects` allowlist matches the token's
-  `sub` claim or its `email` claim — the email claim is only honored when
-  `email_verified === true`, so an unverified email at the IdP can never pass
-  the gate.
+  checks. The `oidcAllowedSubjects` allowlist is required: it matches the
+  token's `sub` claim or its `email` claim — the email claim is only honored
+  when `email_verified === true`, so an unverified email at the IdP can never
+  pass the gate — and with no entries the callback refuses every login
+  (`not_configured`).
 - On success it mints the **exact same** 30-day `auth_token` JWT the password
   login issues (`src/app/api/auth/login/route.ts`), so the rest of the
   dashboard session pipeline (auto-refresh, cookie flags) is unchanged —
   OIDC only replaces how the cookie gets minted, not what it grants.
+- Every `oidc*` setting (`oidcEnabled`, `oidcDisablePasswordLogin`,
+  `oidcIssuer`, `oidcClientId`, `oidcClientSecret`, `oidcAllowedSubjects`,
+  `oidcRedirectPath`, `oidcScopes`) is in `SECURITY_IMPACTING_SETTINGS_KEYS`
+  (`src/shared/constants/securityImpactingSettings.ts`): `PATCH /api/settings`
+  answers `400 PASSWORD_REQUIRED` unless the body carries the management
+  password as `currentPassword` (`401 PASSWORD_MISMATCH` when it is wrong).
+  `oidcDisablePasswordLogin` refuses password _login_ (`POST /api/auth/login`)
+  but keeps the stored password hash, and re-auth still checks
+  `currentPassword` against it.
+- `POST /api/settings/import-json` skips that re-auth, so it drops every key in
+  `IMPORT_STRIPPED_SETTINGS_KEYS` (same file) before writing: the password and
+  `currentPassword`, every `SECURITY_IMPACTING_SETTINGS_KEYS` entry, and the
+  dashboard session state (`sessionsValidAfter`, `revokedDashboardSessions`).
+  Importing an older backup therefore cannot revive a session that a password
+  change or a sign-out already ended.
 
 ## Route Classes
 
@@ -82,6 +100,14 @@ supplemented:
 | `PUBLIC`     | Explicitly safe routes — login, logout, status, init, health, onboarding bootstrap.                                                                  | None                                                                    |
 | `CLIENT_API` | Model-serving endpoints — `/api/v1/*`, `/api/v1beta/*`, plus aliases `/v1/*`, `/v1beta/*`, `/chat/completions`, `/responses`, `/models`, `/codex/*`. | Bearer key when the effective `REQUIRE_API_KEY` feature flag is enabled |
 | `MANAGEMENT` | Dashboard pages, settings, providers, keys, admin and diagnostics endpoints.                                                                         | Dashboard session OR Bearer with `manage` scope                         |
+
+A few `MANAGEMENT` actions are **operator-only**: a `manage` key is not enough. Exporting stored
+credentials (`GET /api/settings/export-json`, `GET /api/db-backups/export`,
+`GET /api/db-backups/exportAll`), issuing a sync token (`POST /api/sync/tokens`) and minting an
+`admin` CLI access token (`POST /api/cli/tokens`) require a dashboard session, the local CLI
+subject, or login disabled; API keys of any scope and `oma_` access tokens get `403`. The check
+lives in `src/lib/api/operatorCredential.ts` (`resolveOperatorCredential()` /
+`requireOperatorCredential()`).
 
 ## Pipeline
 

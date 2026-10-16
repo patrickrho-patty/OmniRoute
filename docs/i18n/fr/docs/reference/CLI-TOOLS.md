@@ -43,56 +43,69 @@ Agents ACP (flux de génération inverse) :
 
 ---
 
-## Auto-configuration avec `setup-*`
+## Configuration automatique avec `setup-*`
 
-Vous n'avez pas à écrire la configuration de chaque outil à la main. OmniRoute fournit une commande `setup-*`
-par CLI supporté qui lit le catalogue de modèles **en direct** d'un OmniRoute en cours d'exécution
-(local ou distant) et écrit la configuration propre de l'outil sur votre machine :
+Vous n'avez pas à écrire la configuration de chaque outil à la main. OmniRoute
+fournit une commande `setup-*` par CLI prise en charge qui lit le catalogue de
+modèles **en direct** à partir d'un OmniRoute en cours d'exécution (local ou
+distant) et écrit la propre configuration de l'outil sur votre machine :
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
 omniroute setup-cline        omniroute setup-kilo         omniroute setup-continue
 omniroute setup-cursor       omniroute setup-roo          omniroute setup-crush
 omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
+omniroute setup-5dive
 ```
 
-Chacune accepte `--remote <url> --api-key <key>` (configurer un outil local contre un
-OmniRoute distant), `--dry-run` (aperçu sans écriture), et `--port`. Les outils
-sans découverte automatique de modèle (Cline, Kilo, Roo, Goose, Aider, Qwen) prennent
-`--model <id>` (et `--yes` pour des exécutions non interactives). Pour lancer un CLI avec le
-bon environnement injecté et aucune configuration écrite, utilisez le lanceur générique
-`omniroute run <target>` (claude, codex, aider, goose, opencode, qwen,
-gemini — cibles et alias proviennent de `bin/cli/cli-manifest.mjs`); les lanceurs par outil hérités `omniroute launch` (Claude Code) et `omniroute launch-codex`
-(Codex) restent disponibles. Le CLI Gemini est uniquement pour le lancement : c'est une cible `omniroute run`
-mais n'a pas de recette `setup-*`/`configure`.
+Chacune accepte `--remote <url> --api-key <key>` (configure un outil local
+contre un OmniRoute distant), `--dry-run` (aperçu sans écriture) et `--port`.
+Les outils sans auto-découverte de modèle (Cline, Kilo, Roo, Goose, Aider, Qwen,
+5dive) prennent `--model <id>` (et `--yes` pour les exécutions non
+interactives). `setup-5dive` est la seule recette qui n'écrit pas sous `$HOME` :
+elle configure une flotte d'agents 5dive en écrivant un profil d'authentification
+appartenant à la racine sur l'hôte de la flotte, elle se ré-exécute donc via
+`sudo` et n'a pas de mode distant propre. Pour lancer une CLI avec l'environnement
+correct injecté et sans aucune configuration écrite, utilisez le lanceur générique
+`omniroute run <target>` (claude, codex, aider, goose, opencode, qwen, gemini —
+les cibles et alias proviennent de `bin/cli/cli-manifest.mjs`) ; les lanceurs
+hérités par outil `omniroute launch` (Claude Code) et `omniroute launch-codex`
+(Codex) restent disponibles. Gemini CLI est uniquement en mode lancement : c'est
+une cible `omniroute run` mais n'a pas de recette `setup-*`/`configure`.
 
-> **Référence complète :** le tableau maître — ce que chaque commande écrit, chaque drapeau,
-> local vs distant, et quels outils veulent un suffixe `/v1` — se trouve dans
-> **[Intégrations CLI](../guides/CLI-INTEGRATIONS.md)**.
+> **Référence complète :** le tableau principal — ce que chaque commande écrit,
+> chaque drapeau, local vs distant, et quels outils nécessitent un suffixe `/v1`
+> — se trouve dans **[Intégrations CLI](../guides/CLI-INTEGRATIONS.md)**.
 
-### Exécution de ces commandes à l'intérieur d'un conteneur
+### Exécution de ces commandes dans un conteneur
 
-Une commande `setup-*` exécutée à l'intérieur du conteneur OmniRoute écrit dans le
-dossier personnel du conteneur, que aucun CLI hôte ne lit et qui disparaît avec le
-conteneur. OmniRoute détecte cela et sort avec `2` avec des instructions plutôt que
-d'écrire. Deux façons prises en charge — installer le CLI sur l'hôte et
-`omniroute connect` au conteneur, ou monter les répertoires de configuration et définir
-`CLI_CONFIG_HOME` (le profil `host` de compose). Chaque commande `setup-*`, plus
-`omniroute configure` et `omniroute config set`, accepte
-`--allow-container-write` lorsque la configuration des CLIs propres au conteneur est ce que vous
-vouliez réellement ; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` fait la même chose pour
-le serveur. Voir
-[Guide Docker → Configuration des outils CLI hôtes](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+Une commande `setup-*` exécutée à l'intérieur du conteneur OmniRoute écrit dans
+le propre répertoire personnel du conteneur, qu'aucune CLI hôte ne lit et qui
+disparaît avec le conteneur. OmniRoute détecte cela et quitte avec le code `2`
+et des instructions plutôt que d'écrire. Deux méthodes prises en charge :
+installer la CLI sur l'hôte et `omniroute connect` au conteneur, ou monter les
+répertoires de configuration et définir `CLI_CONFIG_HOME` (le profil `host` de
+compose). Chaque commande `setup-*`, plus `omniroute configure` et
+`omniroute config set`, accepte `--allow-container-write` lorsque la
+configuration des propres CLI du conteneur est ce que vous vouliez réellement ;
+`OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` fait de même pour le serveur.
+Voir [Guide Docker → Configuration des outils CLI hôtes](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-Le **point de terminaison d'application** du tableau de bord (`POST /api/cli-tools/apply`) impose la
-même protection : dans un conteneur, une écriture dont la cible n'est pas montée à partir de
-l'hôte répond **`422`** avec `containerEphemeralTarget: true`, le texte d'erreur sécurisé et — pour les outils avec une recette hôte (claude, codex, opencode, cline,
-kilo, continue) — une `hostSetupCommand` (par exemple `omniroute setup-opencode`) à exécuter
-sur l'hôte à la place ; rien n'est écrit. `dryRun: true` continue de fonctionner en mode conteneur
-et retourne le contenu généré + le chemin cible sans toucher au disque, vous permettant de prévisualiser depuis le tableau de bord et d'appliquer sur l'hôte. Ce comportement est
-intentionnel et protégé contre les régressions par
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — ne "réparez" jamais un 422
-en supprimant la protection.
+Le **point de terminaison d'application** du tableau de bord (`POST /api/cli-tools/apply`)
+applique la même protection : dans un conteneur, une écriture dont la cible n'est
+pas montée depuis l'hôte répond **`422`** avec `containerEphemeralTarget: true`,
+le texte d'erreur sécurisé et — pour les outils avec une recette hôte (claude,
+codex, opencode, cline, kilo, continue) — une `hostSetupCommand` (par exemple
+`omniroute setup-opencode`) à exécuter sur l'hôte à la place ; rien n'est écrit.
+`dryRun: true` continue de fonctionner en mode conteneur et renvoie un aperçu
+expurgé + chemin cible sans toucher le disque. Le contenu de l'aperçu n'est pas
+une configuration contenant des informations d'identification à copier ou à
+importer. Appliquez avec l'outil d'origine/l'URL de base/la clé API/les entrées
+de modèle sur l'hôte, ou utilisez la commande de configuration côté hôte indiquée.
+Voir [Sécurité de la configuration CLI](../security/CLI-CONFIGURATION.md) pour
+l'en-tête d'aperçu et le contrat de requête. Ce comportement est intentionnel et
+protégé contre les régressions par `tests/unit/api/cli-tools/apply-container-guard.test.ts`
+— ne "corrigez" jamais une 422 en supprimant la protection.
 
 ---
 
@@ -611,28 +624,28 @@ omniroute setup --add-provider \
 
 Variables d’environnement reconnues pour la configuration non interactive :
 
-| Variable            | Objectif                                                              |
+| Variable            | Rôle                                                                  |
 | ------------------- | --------------------------------------------------------------------- |
 | `OMNIROUTE_API_KEY` | Clé API du fournisseur (liée à `--api-key` via `.env()` de Commander) |
 | `DATA_DIR`          | Remplacer le répertoire de données d’OmniRoute                        |
 
-Toutes les autres entrées non interactives sont transmises sous forme d’options et non de variables d’environnement :
+Toutes les autres entrées non interactives sont transmises sous forme d’options, et non de variables d’environnement :
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
-(voir les options de `omniroute setup` ci-dessus).
+(consultez les options de `omniroute setup` ci-dessus).
 
 ### Diagnostics
 
 ```bash
-omniroute doctor                       # Vérifier la configuration, la BDD, les ports, l’environnement d’exécution, la mémoire et la disponibilité
+omniroute doctor                       # Vérifier la configuration, la BDD, les ports, l’environnement d’exécution, la mémoire et l’activité
 omniroute doctor --json                # JSON lisible par une machine
-omniroute doctor --no-liveness         # Ignorer la sonde de santé HTTP
-omniroute doctor --host 0.0.0.0        # Remplacer l’hôte utilisé pour la vérification de disponibilité
+omniroute doctor --no-liveness         # Ignorer la vérification HTTP de l’état de santé
+omniroute doctor --host 0.0.0.0        # Remplacer l’hôte utilisé pour la vérification d’activité
 omniroute doctor --liveness-url <url>  # Remplacer l’URL complète du point de terminaison de santé
 ```
 
 La commande doctor exécute les vérifications suivantes : `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` et `Server liveness`. Elle se termine avec un code différent de zéro si une vérification est en état `fail`.
+`Memory` et `Server liveness`. Elle se termine avec un code différent de zéro si une vérification a l’état `fail`.
 
 ### Gestion des fournisseurs
 
@@ -656,43 +669,55 @@ omniroute providers remove <id|name> --yes
 ```
 
 `providers add/import/auth/edit/remove` utilisent l’API en priorité et fonctionnent donc avec
-le contexte actif, qu’il soit local ou distant. Les identifiants doivent être fournis via
-`--credential-stdin` ou `--credential-env` ; `--dry-run --json` indique uniquement
-leur présence et leur structure sous une forme expurgée. `providers available` lit le catalogue OmniRoute ;
+le contexte local ou distant actif. Les identifiants doivent être fournis avec
+`--credential-stdin` ou `--credential-env` ; `--dry-run --json` ne rapporte que
+leur présence et leur structure sous forme expurgée. `providers available` lit le catalogue OmniRoute ;
 `providers list/test/test-all/validate` conservent leur comportement SQLite local et
 ne nécessitent pas que le serveur soit en cours d’exécution.
+
+Pour un nœud personnalisé compatible avec OpenAI ou Anthropic, associez les identifiants à
+l’identifiant du nœud renvoyé par `omniroute nodes add`, à l’aide de `omniroute keys add "$NODE_ID" --stdin`.
+Cela nécessite un serveur en cours d’exécution et une authentification de gestion pour le contexte actif.
+La CLI utilise `POST /api/providers`, qui valide le nœud et copie les paramètres de son point de terminaison
+dans la connexion. Si le nœud est introuvable, si l’autorisation échoue ou si le serveur est indisponible,
+une erreur est renvoyée sans créer d’identifiant local de secours.
+
+`nodes add --base-url` définit le point de terminaison du nœud ; il est distinct de l’adresse du serveur
+dans `OMNIROUTE_BASE_URL`. Pour les fichiers OpenAPI, utilisez
+`omniroute openapi dump --format json --out ./openapi.json` ; l’option globale `--output`
+sélectionne le format d’affichage de la CLI, et non un nom de fichier de destination.
 
 ### Récupération et réinitialisation
 
 ```bash
 omniroute reset-password                # Réinitialiser le mot de passe administrateur (également : omniroute-reset-password)
 omniroute reset-encrypted-columns       # Afficher un avertissement et simuler la réinitialisation des identifiants chiffrés
-omniroute reset-encrypted-columns --force  # Définir réellement les identifiants chiffrés sur null dans SQLite
+omniroute reset-encrypted-columns --force  # Remplacer effectivement par null les identifiants chiffrés dans SQLite
 ```
 
 ### Exportation des identifiants (⚠ à manipuler avec précaution)
 
 ```bash
 omniroute auth export                                 # Afficher un avertissement et demander confirmation — aucun accès à la BDD
-omniroute auth export --force                          # Exporter les identifiants DÉCHIFFRÉS de TOUTES les connexions vers stdout au format JSON
+omniroute auth export --force                          # Exporter vers stdout les identifiants DÉCHIFFRÉS de TOUTES les connexions au format JSON
 omniroute auth export --force --id <id>                 # Exporter uniquement la connexion correspondante
 omniroute auth export --force --format env               # Émettre des lignes OMNIROUTE_<PROVIDER>_<FIELD>=<value>
 omniroute auth export --force --out creds.json           # Écrire dans un fichier (créé avec les permissions 0600)
 ```
 
-`auth export` fonctionne **uniquement en local** (lecture directe de SQLite, sans route HTTP) et affiche/écrit intentionnellement
-les valeurs `apiKey`/`accessToken`/`refreshToken`/`idToken` **en clair** — il s’agit d’une fonctionnalité, pas d’un
-bogue. Aucune donnée n’est lue depuis la base de données et rien n’est déchiffré sans `--force`. Une bannière
-d’avertissement est toujours affichée sur stderr avant l’émission de toute donnée en clair. Nécessite que
+`auth export` est **exclusivement local** (lecture directe de SQLite, aucune route HTTP) et affiche/écrit intentionnellement
+les valeurs `apiKey`/`accessToken`/`refreshToken`/`idToken` **en clair** — c’est une fonctionnalité, pas un
+bug. Rien n’est lu depuis la base de données et rien n’est déchiffré sans `--force`. Une bannière
+d’avertissement est toujours affichée sur stderr avant toute émission de données en clair. Nécessite que
 `STORAGE_ENCRYPTION_KEY` soit définie. Un champ dont le déchiffrement échoue (clé obsolète, texte chiffré corrompu) est signalé par
-`<field>DecryptFailed: true` au lieu d’interrompre toute l’exportation ou de divulguer l’erreur sous-jacente.
+`<field>DecryptFailed: true` au lieu d’interrompre l’intégralité de l’exportation ou de divulguer l’erreur sous-jacente.
 
 ### Autres sous-commandes
 
 Celles-ci supposent qu’un serveur OmniRoute est en cours d’exécution, sauf indication contraire :
 
 ```bash
-omniroute status                       # État d’exécution complet
+omniroute status                       # État complet de l’exécution
 omniroute logs                         # Diffuser les journaux de requêtes (--json, --search, --follow)
 omniroute config list                  # Afficher les outils CLI configurés
 
@@ -703,7 +728,7 @@ omniroute models [provider]            # Répertorier les modèles (--json, --se
 omniroute combo list | switch | create | delete
 
 omniroute backup                       # Créer un instantané de la configuration et de la BDD
-omniroute restore                      # Restaurer un instantané précédent
+omniroute restore                      # Restaurer à partir d’un instantané précédent
 
 omniroute health                       # État de santé détaillé (disjoncteurs, cache, mémoire)
 omniroute quota                        # Utilisation des quotas des fournisseurs
@@ -717,21 +742,21 @@ omniroute tunnel list | create | stop  # Gérer les tunnels (cloudflare/tailscal
 omniroute env show | get <k> | set <k> <v>  # Consulter / définir les variables d’environnement (temporaire)
 
 omniroute test                         # Test rapide de connectivité des fournisseurs
-omniroute update                       # Rechercher les mises à jour
+omniroute update                       # Rechercher des mises à jour
 omniroute completion                   # Générer l’autocomplétion du shell
 ```
 
 ### Options courantes
 
-| Option              | Description                                                         |
-| ------------------- | ------------------------------------------------------------------- |
-| `--no-open`         | Ne pas ouvrir automatiquement le navigateur au démarrage            |
-| `--port <n>`        | Remplacer le port de l’API (20128 par défaut)                       |
-| `--mcp`             | Exécuter comme serveur MCP via stdio (pour les IDE)                 |
-| `--non-interactive` | Mode CI (aucune invite ; lit les variables d’environnement/options) |
-| `--json`            | Sortie JSON lisible par machine (doctor, providers, etc.)           |
-| `--help`, `-h`      | Afficher l’aide propre à la commande                                |
-| `--version`, `-v`   | Afficher la version installée                                       |
+| Option              | Description                                                          |
+| ------------------- | -------------------------------------------------------------------- |
+| `--no-open`         | Ne pas ouvrir automatiquement le navigateur au démarrage             |
+| `--port <n>`        | Remplacer le port de l’API (20128 par défaut)                        |
+| `--mcp`             | Exécuter comme serveur MCP via stdio (pour les IDE)                  |
+| `--non-interactive` | Mode CI (aucune invite ; lecture depuis l’environnement/les options) |
+| `--json`            | Sortie JSON lisible par une machine (doctor, providers, etc.)        |
+| `--help`, `-h`      | Afficher l’aide propre à la commande                                 |
+| `--version`, `-v`   | Afficher la version installée                                        |
 
 ---
 

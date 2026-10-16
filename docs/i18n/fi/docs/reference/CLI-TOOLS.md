@@ -43,56 +43,27 @@ ACP Agentit (käänteinen luontivirta):
 
 ---
 
-## Automaattinen konfigurointi `setup-*` avulla
+## Automaattinen konfigurointi `setup-*`-komennoilla
 
-Sinun ei tarvitse kirjoittaa jokaisen työkalun konfiguraatiota käsin. OmniRoute toimittaa `setup-*`
-komennon jokaiselle tuetulle CLI:lle, joka lukee **live** malliluettelon käynnissä olevasta
-OmniRoute:sta (paikallinen tai etä) ja kirjoittaa työkalun oman konfiguraation koneellesi:
+Sinun ei tarvitse kirjoittaa jokaisen työkalun konfiguraatiota käsin. OmniRoute sisältää `setup-*`-komennon jokaista tuettua komentorivityökalua (CLI) varten, joka lukee **reaaliaikaisen** malliluettelon käynnissä olevasta OmniRoutesta (paikallinen tai etä) ja kirjoittaa työkalun oman konfiguraation koneellesi:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
 omniroute setup-cline        omniroute setup-kilo         omniroute setup-continue
 omniroute setup-cursor       omniroute setup-roo          omniroute setup-crush
 omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
+omniroute setup-5dive
 ```
 
-Jokainen hyväksyy `--remote <url> --api-key <key>` (konfiguroi paikallinen työkalu etä
-OmniRoutea vastaan), `--dry-run` (esikatselu ilman kirjoittamista) ja `--port`. Työkalut,
-joilla ei ole mallin automaattista löytämistä (Cline, Kilo, Roo, Goose, Aider, Qwen) ottavat
-`--model <id>` (ja `--yes` ei-interaktiivisiin suorituksiin). Käynnistääksesi CLI:n
-oikealla ympäristöllä injektoituna ja ilman konfiguraatiota kirjoitettuna, käytä yleistä
-`omniroute run <target>` käynnistintä (claude, codex, aider, goose, opencode, qwen,
-gemini — kohteet ja aliasit tulevat `bin/cli/cli-manifest.mjs`); perintö
-per-työkalu käynnistimet `omniroute launch` (Claude Code) ja `omniroute launch-codex`
-(Codex) pysyvät saatavilla. Gemini CLI on vain käynnistettävä: se on `omniroute run`
-kohde, mutta sillä ei ole `setup-*`/`configure` reseptiä.
+Jokainen hyväksyy `--remote <url> --api-key <key>` (konfiguroi paikallisen työkalun etä-OmniRoutea vastaan), `--dry-run` (esikatselu ilman kirjoitusta) ja `--port`. Työkalut, joissa ei ole mallin automaattista tunnistusta (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive), ottavat `--model <id>` (ja `--yes` ei-interaktiivisia ajoja varten). `setup-5dive` on ainoa resepti, joka ei kirjoita `$HOME`-hakemiston alle: se konfiguroi 5dive-agenttilaivaston kirjoittamalla pääkäyttäjän omistaman todennusprofiilin laivaston isäntäkoneelle, joten se suorittaa uudelleen `sudo`-komennolla eikä sillä ole omaa etätilaa. Käynnistääksesi komentorivityökalun oikealla ympäristöllä injektoituna ja ilman konfiguraation kirjoittamista, käytä yleistä `omniroute run <target>` -käynnistintä (claude, codex, aider, goose, opencode, qwen, gemini — kohteet ja aliakset tulevat tiedostosta `bin/cli/cli-manifest.mjs`); vanhat työkalukohtaiset käynnistimet `omniroute launch` (Claude Code) ja `omniroute launch-codex` (Codex) ovat edelleen saatavilla. Gemini CLI on vain käynnistettävä: se on `omniroute run` -kohde, mutta sillä ei ole `setup-*`/`configure`-reseptiä.
 
-> **Täydellinen viite:** päätaulukko — mitä kukin komento kirjoittaa, jokainen lippu,
-> paikallinen vs etä, ja mitkä työkalut haluavat `/v1` päätteet — löytyy
-> **[CLI Integraatiot](../guides/CLI-INTEGRATIONS.md)**.
+> **Täydellinen viite:** päätaulukko – mitä kukin komento kirjoittaa, jokainen lippu, paikallinen vs. etä, ja mitkä työkalut haluavat `/v1`-suffiksin – löytyy kohdasta **[CLI-integraatiot](../guides/CLI-INTEGRATIONS.md)**.
 
-### Näiden suorittaminen säiliössä
+### Näiden ajaminen kontissa
 
-`setup-*` komento, joka suoritetaan OmniRoute säiliössä, kirjoittaa säiliön omaan kotiin,
-jota mikään isäntä CLI ei lue ja joka katoaa säiliön mukana. OmniRoute havaitsee tämän ja
-poistuu `2` ohjeiden kanssa sen sijaan, että kirjoittaisi. Kaksi tuettua tapaa edetä —
-asenna CLI isäntään ja `omniroute connect` säiliöön, tai bind-mountaa konfiguraatiokansiot ja
-asettaa `CLI_CONFIG_HOME` (compose `host` profiili). Jokainen `setup-*` komento, plus
-`omniroute configure` ja `omniroute config set`, hyväksyy
-`--allow-container-write`, kun säiliön omien CLI:den konfigurointi on se, mitä todella
-tarkoitit; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` tekee saman palvelimelle. Katso
-[Docker Opas → Isäntä CLI työkalujen konfigurointi](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+OmniRoute-kontin sisällä suoritettu `setup-*`-komento kirjoittaa kontin omaan kotihakemistoon, jota isäntäkoneen komentorivityökalut eivät lue ja joka katoaa kontin mukana. OmniRoute havaitsee tämän ja poistuu tilakoodilla `2` ohjeiden kera kirjoittamisen sijaan. Kaksi tuettua tapaa edetä – asenna komentorivityökalu isäntäkoneelle ja `omniroute connect` konttiin, tai liitä konfiguraatiohakemistot ja aseta `CLI_CONFIG_HOME` (compose `host`-profiili). Jokainen `setup-*`-komento, sekä `omniroute configure` ja `omniroute config set`, hyväksyy `--allow-container-write`, kun kontin omien komentorivityökalujen konfigurointi on se, mitä todella tarkoitit; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` tekee saman palvelimelle. Katso [Docker-opas → Isäntäkoneen komentorivityökalujen konfigurointi, kun OmniRoute toimii Dockerissa](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-Hallintapaneelin **apply endpoint** (`POST /api/cli-tools/apply`) valvoo
-samaa suojaa: säiliössä, kirjoitus, jonka kohde ei ole bind-mounted isännästä, vastaa
-**`422`** `containerEphemeralTarget: true`, turvallinen virheteksti ja — työkaluille,
-joilla on isäntäresepti (claude, codex, opencode, cline,
-kilo, continue) — `hostSetupCommand` (esim. `omniroute setup-opencode`), joka suoritetaan
-isännällä sen sijaan; mitään ei kirjoiteta. `dryRun: true` toimii edelleen säiliötilassa
-ja palauttaa luodun sisällön + kohdepolun ilman levyn koskettamista, joten voit esikatsella
-hallintapaneelista ja soveltaa isännällä. Tämä käyttäytyminen on tarkoituksellista ja
-regressiosuojattu `tests/unit/api/cli-tools/apply-container-guard.test.ts` — älä koskaan
-"korjaa" 422:ta poistamalla suojaa.
+Hallintapaneelin **sovelluspäätepiste** (`POST /api/cli-tools/apply`) valvoo samaa suojaa: kontissa kirjoitus, jonka kohde ei ole isäntäkoneelta liitetty, vastaa **`422`**-virheellä ja `containerEphemeralTarget: true` -tekstillä, turvallisella virhetekstillä ja – työkaluille, joilla on isäntäkoneen resepti (claude, codex, opencode, cline, kilo, continue) – `hostSetupCommand`-komennolla (esim. `omniroute setup-opencode`) suoritettavaksi isäntäkoneella; mitään ei kirjoiteta. `dryRun: true` toimii edelleen konttitilassa ja palauttaa muokatun esikatselun + kohdepolun koskematta levyyn. Esikatselun sisältö ei ole tunnistetietoja sisältävä konfiguraatio kopioitavaksi tai tuotavaksi. Suorita sovellus alkuperäisellä työkalulla/perus-URL-osoitteella/API-avaimella/mallisyötteillä isäntäkoneella tai käytä ilmoitettua isäntäkoneen puoleista asennuskomentoa. Katso [CLI-konfiguraation turvallisuus](../security/CLI-CONFIGURATION.md) esikatselun otsikosta ja pyyntösopimuksesta. Tämä käyttäytyminen on tarkoituksellista ja regressiosuojattu tiedostolla `tests/unit/api/cli-tools/apply-container-guard.test.ts` – älä koskaan "korjaa" 422-virhettä poistamalla suojaa.
 
 ---
 
@@ -587,12 +558,12 @@ osoitteessa `/dashboard/cli-tools → Kiro`.
 
 ## 10. Sisäinen OmniRoute CLI
 
-`omniroute`-binääritiedosto tarjoaa komentoja palvelimen elinkaaren hallintaan, käyttöönottoon, diagnostiikkaan ja palveluntarjoajien hallintaan. Aloituspiste: `bin/omniroute.mjs`.
+`omniroute`-binääri tarjoaa komennot palvelimen elinkaaren hallintaan, käyttöönottoon, diagnostiikkaan ja palveluntarjoajien hallintaan. Aloituspiste: `bin/omniroute.mjs`.
 
 ```bash
 omniroute                              # Käynnistä palvelin (oletusportti 20128)
 omniroute setup                        # Vuorovaikutteinen ohjattu käyttöönotto
-omniroute doctor                       # Tarkista määritykset, tietokanta, portit ja suoritusympäristö
+omniroute doctor                       # Tarkista asetukset, tietokanta, portit ja ajoympäristö
 omniroute providers list               # Määritetyt palveluntarjoajayhteydet
 omniroute providers test-all           # Testaa kaikki aktiiviset yhteydet
 omniroute reset-password               # Nollaa ylläpitäjän salasana
@@ -614,37 +585,37 @@ omniroute setup --add-provider \
   --test-provider                      # Lisää ja testaa palveluntarjoaja yhdellä kertaa
 ```
 
-Ei-vuorovaikutteisen käyttöönoton tunnistamat ympäristömuuttujat:
+Ei-vuorovaikutteisessa käyttöönotossa tunnistetut ympäristömuuttujat:
 
 | Muuttuja            | Tarkoitus                                                                                     |
 | ------------------- | --------------------------------------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | Palveluntarjoajan API-avain (sidottu valitsimeen `--api-key` Commander `.env()` -toiminnolla) |
+| `OMNIROUTE_API_KEY` | Palveluntarjoajan API-avain (sidottu `--api-key`-valitsimeen Commander `.env()` -toiminnolla) |
 | `DATA_DIR`          | Ohita OmniRouten datahakemisto                                                                |
 
-Kaikki muut ei-vuorovaikutteiset syötteet annetaan valitsimina, eivät ympäristömuuttujina:
+Kaikki muut ei-vuorovaikutteiset syötteet annetaan valitsimina, ei ympäristömuuttujina:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
 (katso edellä olevat `omniroute setup` -valinnat).
 
 ### Diagnostiikka
 
 ```bash
-omniroute doctor                       # Tarkista määritykset, tietokanta, portit, suoritusympäristö, muisti ja toimivuus
+omniroute doctor                       # Tarkista asetukset, tietokanta, portit, ajoympäristö, muisti ja palvelun toimivuus
 omniroute doctor --json                # Koneluettava JSON
 omniroute doctor --no-liveness         # Ohita HTTP-terveystarkistus
 omniroute doctor --host 0.0.0.0        # Ohita toimivuustarkistuksen isäntä
-omniroute doctor --liveness-url <url>  # Ohita terveystilan päätepisteen täydellinen URL-osoite
+omniroute doctor --liveness-url <url>  # Ohita terveystilan päätepisteen URL kokonaan
 ```
 
-Diagnostiikkakomento suorittaa seuraavat tarkistukset: `Config`, `Database`, `Storage/encryption`,
+Doctor suorittaa seuraavat tarkistukset: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` ja `Server liveness`. Se poistuu nollasta poikkeavalla tilakoodilla, jos minkä tahansa tarkistuksen tulos on `fail`.
+`Memory` ja `Server liveness`. Se palauttaa nollasta poikkeavan lopetuskoodin, jos minkä tahansa tarkistuksen tulos on `fail`.
 
 ### Palveluntarjoajien hallinta
 
 ```bash
 omniroute providers available                       # OmniRouten palveluntarjoajaluettelo
-omniroute providers available --search openai       # Suodata luetteloa tunnuksen/nimen/aliaksen/luokan mukaan
-omniroute providers available --category api-key    # Suodata luokan mukaan (api-key, oauth, free, ...)
+omniroute providers available --search openai       # Suodata luetteloa tunnuksen, nimen, aliaksen tai luokan perusteella
+omniroute providers available --category api-key    # Suodata luokan perusteella (api-key, oauth, free, ...)
 omniroute providers available --json                # Koneluettava JSON
 
 omniroute providers list                            # Määritetyt palveluntarjoajayhteydet
@@ -655,54 +626,67 @@ omniroute providers test-all                        # Testaa kaikki aktiiviset y
 omniroute providers validate                        # Vain paikallinen rakenteellinen validointi
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
-omniroute providers auth <provider>                 # Olemassa oleva OAuth-työnkulku
+omniroute providers auth <provider>                 # Nykyinen OAuth-prosessi
 omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
 `providers add/import/auth/edit/remove` käyttävät ensisijaisesti APIa ja toimivat siksi
-aktiivisessa paikallisessa tai etäkontekstissa. Tunnistetiedot tulee antaa käyttämällä
-valitsinta `--credential-stdin` tai `--credential-env`; `--dry-run --json` ilmoittaa vain
-peitetyn olemassaolon/rakenteen. `providers available` lukee OmniRouten luetteloa;
+aktiivista paikallista tai etäkontekstia vasten. Tunnistetiedot tulee antaa valitsimella
+`--credential-stdin` tai `--credential-env`; `--dry-run --json` raportoi vain
+peitetyt tiedot niiden olemassaolosta ja muodosta. `providers available` lukee OmniRouten luetteloa;
 `providers list/test/test-all/validate` säilyttävät paikallisen SQLite-toimintatapansa
 eivätkä edellytä palvelimen olevan käynnissä.
+
+Mukautetussa OpenAI- tai Anthropic-yhteensopivassa solmussa tunnistetiedot liitetään
+komennon `omniroute nodes add` palauttamaan solmutunnukseen komennolla `omniroute keys add "$NODE_ID" --stdin`.
+Tämä edellyttää käynnissä olevaa palvelinta ja aktiivisen kontekstin hallintatodennusta.
+CLI käyttää päätepistettä `POST /api/providers`, joka validoi solmun ja kopioi sen päätepisteasetukset
+yhteyteen. Puuttuva solmu, valtuutusvirhe tai palvelimen tavoittamattomuus palauttaa virheen
+luomatta paikallista varatunnistetietoa.
+
+`nodes add --base-url` määrittää solmun päätepisteen; se on eri asia kuin palvelimen osoite
+muuttujassa `OMNIROUTE_BASE_URL`. Käytä OpenAPI-tiedostoille komentoa
+`omniroute openapi dump --format json --out ./openapi.json`; yleinen `--output`
+valitsee CLI:n näyttömuodon, ei kohdetiedoston nimeä.
 
 ### Palautus ja nollaus
 
 ```bash
 omniroute reset-password                # Nollaa ylläpitäjän salasana (myös: omniroute-reset-password)
 omniroute reset-encrypted-columns       # Näytä varoitus ja kuivaharjoittelu salattujen tunnistetietojen nollausta varten
-omniroute reset-encrypted-columns --force  # Aseta salatut tunnistetiedot SQLite-tietokannassa null-arvoiksi
+omniroute reset-encrypted-columns --force  # Aseta salatut tunnistetiedot SQLite-tietokannassa NULL-arvoiksi
 ```
 
 ### Tunnistetietojen vienti (⚠ käsittele varoen)
 
 ```bash
-omniroute auth export                                 # Näytä varoitus ja vahvistuspyyntö — ei tietokannan käyttöä
-omniroute auth export --force                          # Vie KAIKKIEN yhteyksien SALAAMATTOMAT tunnistetiedot stdout-virtaan JSON-muodossa
+omniroute auth export                                 # Näytä varoitus ja vahvistuspyyntö — ei tietokantakäyttöä
+omniroute auth export --force                          # Vie KAIKKIEN yhteyksien SALAAMATTOMAT tunnistetiedot vakiotulosteeseen JSON-muodossa
 omniroute auth export --force --id <id>                 # Vie vain vastaava yhteys
 omniroute auth export --force --format env               # Tulosta OMNIROUTE_<PROVIDER>_<FIELD>=<value>-rivit
-omniroute auth export --force --out creds.json           # Kirjoita tiedostoon (luodaan käyttöoikeuksilla 0600)
+omniroute auth export --force --out creds.json           # Kirjoita tiedostoon (luodaan 0600-oikeuksilla)
 ```
 
-`auth export` toimii **vain paikallisesti** (suora SQLite-luku, ei HTTP-reittiä) ja tulostaa/kirjoittaa tarkoituksellisesti
+`auth export` toimii **vain paikallisesti** (suora SQLite-luku, ei HTTP-reittiä) ja tulostaa/kirjoittaa tarkoituksella
 **selväkieliset** `apiKey`-/`accessToken`-/`refreshToken`-/`idToken`-arvot — tämä on ominaisuus, ei
-virhe. Tietokannasta ei lueta mitään eikä mitään pureta ilman valitsinta `--force`. Stderr-virtaan
-tulostetaan aina varoitusotsake ennen minkään selväkielisen tiedon tulostamista. Edellyttää, että
-`STORAGE_ENCRYPTION_KEY` on asetettu. Kenttä, jonka salauksen purku epäonnistuu (vanhentunut avain tai vioittunut salateksti), ilmoitetaan muodossa
-`<field>DecryptFailed: true` sen sijaan, että koko vienti keskeytettäisiin tai taustalla oleva virhe paljastettaisiin.
+virhe. Tietokannasta ei lueta mitään eikä mitään pureta ilman `--force`-valitsinta. Varoitusbanneri
+tulostetaan aina stderr-virtaan ennen selväkielisten tietojen lähettämistä. Edellyttää, että
+`STORAGE_ENCRYPTION_KEY` on asetettu. Kenttä, jonka salauksen purkaminen epäonnistuu (vanhentunut avain,
+vioittunut salausteksti), ilmoitetaan muodossa `<field>DecryptFailed: true` sen sijaan, että koko vienti
+keskeytettäisiin tai taustalla oleva virhe paljastettaisiin.
 
 ### Muut alikomennot
 
 Nämä edellyttävät käynnissä olevaa OmniRoute-palvelinta, ellei toisin mainita:
 
 ```bash
-omniroute status                       # Kattava ajonaikainen tila
-omniroute logs                         # Suoratoista pyyntölokeja (--json, --search, --follow)
-omniroute config list                  # Näytä määritetyt CLI-työkalut
+omniroute status                       # Kattava suorituksenaikainen tila
+omniroute logs                         # Suoratoista pyyntölokit (--json, --search, --follow)
+omniroute config list                  # Näytä määritetyt komentorivityökalut
 
 omniroute provider list                # Luettele käytettävissä olevat palveluntarjoajat (providers list -komennon alias)
-omniroute provider add                 # Rekisteröi OmniRoute palveluntarjoajaksi työkalussa
+omniroute provider add                 # Rekisteröi OmniRoute työkalun palveluntarjoajaksi
 omniroute keys add | list | remove     # Hallitse API-avaimia
 omniroute models [provider]            # Luettele mallit (--json, --search)
 omniroute combo list | switch | create | delete
@@ -710,7 +694,7 @@ omniroute combo list | switch | create | delete
 omniroute backup                       # Luo tilannevedos määrityksistä ja tietokannasta
 omniroute restore                      # Palauta aiemmasta tilannevedoksesta
 
-omniroute health                       # Yksityiskohtainen toimintakunto (katkaisimet, välimuisti, muisti)
+omniroute health                       # Yksityiskohtainen kuntotila (katkaisimet, välimuisti, muisti)
 omniroute quota                        # Palveluntarjoajan kiintiön käyttö
 omniroute cache                        # Välimuistin tila
 omniroute cache clear                  # Tyhjennä semanttiset ja allekirjoitusvälimuistit
@@ -719,24 +703,24 @@ omniroute mcp status | restart         # MCP-palvelimen tila / uudelleenkäynnis
 omniroute a2a status | card            # A2A-palvelimen tila / agenttikortti
 
 omniroute tunnel list | create | stop  # Hallitse tunneleita (cloudflare/tailscale/ngrok)
-omniroute env show | get <k> | set <k> <v>  # Tarkastele / aseta ympäristömuuttujia (väliaikaisesti)
+omniroute env show | get <k> | set <k> <v>  # Tarkastele / aseta ympäristömuuttujia (tilapäisesti)
 
-omniroute test                         # Palveluntarjoajan yhteyksien pikatesti
+omniroute test                         # Palveluntarjoajan yhteyden nopea toimivuustesti
 omniroute update                       # Tarkista päivitykset
 omniroute completion                   # Luo komentotulkin täydennysmääritykset
 ```
 
 ### Yleiset valitsimet
 
-| Valitsin            | Kuvaus                                                   |
-| ------------------- | -------------------------------------------------------- |
-| `--no-open`         | Älä avaa selainta automaattisesti käynnistettäessä       |
-| `--port <n>`        | Ohita API-portti (oletus 20128)                          |
-| `--mcp`             | Suorita MCP-palvelimena stdio-yhteydellä (IDE:ille)      |
-| `--non-interactive` | CI-tila (ei kehotteita; lukee ympäristöstä/valitsimista) |
-| `--json`            | Koneluettava JSON-tuloste (doctor, providers jne.)       |
-| `--help`, `-h`      | Näytä komentokohtainen ohje                              |
-| `--version`, `-v`   | Tulosta asennettu versio                                 |
+| Valitsin            | Kuvaus                                                    |
+| ------------------- | --------------------------------------------------------- |
+| `--no-open`         | Älä avaa selainta automaattisesti käynnistettäessä        |
+| `--port <n>`        | Ohita API-portti (oletus 20128)                           |
+| `--mcp`             | Suorita MCP-palvelimena stdion kautta (IDE-ympäristöille) |
+| `--non-interactive` | CI-tila (ei kehotteita; lukee ympäristöstä/valitsimista)  |
+| `--json`            | Koneluettava JSON-tuloste (doctor, providers jne.)        |
+| `--help`, `-h`      | Näytä komentokohtainen ohje                               |
+| `--version`, `-v`   | Tulosta asennettu versio                                  |
 
 ---
 

@@ -43,58 +43,27 @@ ACP Agents (mchakato wa kuzalisha kinyume):
 
 ---
 
-## Auto-configure na `setup-*`
+## Kusanidi Kiotomatiki kwa `setup-*`
 
-Huna haja ya kuandika usanidi wa kila zana kwa mkono. OmniRoute inatoa amri ya `setup-*`
-kila CLI inayoungwa mkono ambayo inasoma katalogi ya mifano **hai** kutoka kwa OmniRoute inayofanya kazi
-(ya ndani au ya mbali) na kuandika usanidi wa zana mwenyewe kwenye mashine yako:
+Sio lazima kuandika usanidi wa kila zana kwa mkono. OmniRoute inajumuisha amri ya `setup-*` kwa kila CLI inayotumika ambayo husoma katalogi ya modeli **hai** kutoka kwa OmniRoute inayoendesha (ya ndani au ya mbali) na kuandika usanidi wa zana hiyo kwenye mashine yako:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
 omniroute setup-cline        omniroute setup-kilo         omniroute setup-continue
 omniroute setup-cursor       omniroute setup-roo          omniroute setup-crush
 omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
+omniroute setup-5dive
 ```
 
-Kila moja inakubali `--remote <url> --api-key <key>` (kuunda zana ya ndani dhidi ya
-OmniRoute ya mbali), `--dry-run` (kuangalia bila kuandika), na `--port`. Zana
-bila ugunduzi wa mifano (Cline, Kilo, Roo, Goose, Aider, Qwen) zinahitaji
-`--model <id>` (na `--yes` kwa kazi zisizo za mwingiliano). Ili kuzindua CLI na
-muhimu sahihi iliyowekwa na hakuna usanidi ulioandikwa kabisa, tumia
-mwanzo wa jumla `omniroute run <target>` (claude, codex, aider, goose, opencode, qwen,
-gemini — malengo na majina yanatoka `bin/cli/cli-manifest.mjs`); mwanzo wa zamani
-wa kila zana `omniroute launch` (Claude Code) na `omniroute launch-codex`
-(Codex) bado zinapatikana. Gemini CLI ni ya kuzindua tu: ni lengo la `omniroute run`
-lakini haina mapishi ya `setup-*`/`configure`.
+Kila moja inakubali `--remote <url> --api-key <key>` (sanidi zana ya ndani dhidi ya OmniRoute ya mbali), `--dry-run` (hakiki bila kuandika), na `--port`. Zana zisizo na ugunduzi wa kiotomatiki wa modeli (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) huchukua `--model <id>` (na `--yes` kwa uendeshaji usioingiliana). `setup-5dive` ndiyo njia pekee ambayo haiandiki chini ya `$HOME`: inasanidi kundi la mawakala wa 5dive kwa kuandika wasifu wa uthibitishaji unaomilikiwa na root kwenye seva pangishi ya kundi, hivyo inatekeleza tena kupitia `sudo` na haina hali yake ya mbali. Ili kuzindua CLI na mazingira sahihi yaliyowekwa na bila usanidi wowote kuandikwa, tumia kizindua cha jumla cha `omniroute run <target>` (claude, codex, aider, goose, opencode, qwen, gemini — malengo na majina mbadala hutoka `bin/cli/cli-manifest.mjs`); vizindua vya zamani vya kila zana `omniroute launch` (Claude Code) na `omniroute launch-codex` (Codex) vinabaki kupatikana. Gemini CLI ni ya kuzindua tu: ni lengo la `omniroute run` lakini haina njia ya `setup-*`/`configure`.
 
-> **Rejeleo kamili:** jedwali kuu — kila amri inayoandika, kila bendera,
-> ya ndani dhidi ya ya mbali, na zana zipi zinahitaji kiambishi cha `/v1` — inapatikana katika
-> **[Ushirikiano wa CLI](../guides/CLI-INTEGRATIONS.md)**.
+> **Marejeleo Kamili:** jedwali kuu — kile kila amri inaandika, kila bendera, ya ndani dhidi ya ya mbali, na ni zana gani zinazohitaji kiambishi tamati cha `/v1` — kinapatikana katika **[Ujumuishaji wa CLI](../guides/CLI-INTEGRATIONS.md)**.
 
-### Kukimbia hizi ndani ya kontena
+### Kuendesha hizi ndani ya kontena
 
-Amri ya `setup-*` iliyotekelezwa ndani ya kontena la OmniRoute inaandika kwenye
-nyumba ya kontena yenyewe, ambayo hakuna CLI ya mwenyeji inayosoma na ambayo inatoweka na
-kontena. OmniRoute inagundua hilo na inatoka `2` na maagizo badala ya
-kuandika. Njia mbili zinazoungwa mkono — sakinisha CLI kwenye mwenyeji na
-`omniroute connect` kwa kontena, au bind-mount saraka za usanidi na kuweka
-`CLI_CONFIG_HOME` (profaili ya compose `host`). Kila amri ya `setup-*`, pamoja na
-`omniroute configure` na `omniroute config set`, inakubali
-`--allow-container-write` wakati usanidi wa CLIs za kontena mwenyewe ndio unachomaanisha; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` inafanya vivyo hivyo kwa
-seva. Tazama
-[Muongozo wa Docker → Kuweka zana za CLI za mwenyeji](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+Amri ya `setup-*` inayotekelezwa ndani ya kontena la OmniRoute huandika kwenye saraka ya nyumbani ya kontena yenyewe, ambayo hakuna CLI ya seva pangishi inayosoma na ambayo hupotea na kontena. OmniRoute hugundua hilo na huondoka `2` na maelekezo badala ya kuandika. Njia mbili zinazotumika mbele — sakinisha CLI kwenye seva pangishi na `omniroute connect` kwenye kontena, au funga saraka za usanidi na uweke `CLI_CONFIG_HOME` (wasifu wa `host` wa compose). Kila amri ya `setup-*`, pamoja na `omniroute configure` na `omniroute config set`, inakubali `--allow-container-write` wakati kusanidi CLIs za kontena ndicho ulichomaanisha; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` hufanya vivyo hivyo kwa seva. Tazama [Mwongozo wa Docker → Kusanidi zana za CLI za seva pangishi](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-**Kipengele cha kutekeleza** cha dashibodi (`POST /api/cli-tools/apply`) kinathibitisha
-mlinzi sawa: ndani ya kontena, kuandika ambako lengo lake halijabind-mount kutoka kwa
-mwenyeji kunajibu **`422`** na `containerEphemeralTarget: true`, maandiko salama ya kosa
-na — kwa zana zenye mapishi ya mwenyeji (claude, codex, opencode, cline,
-kilo, continue) — `hostSetupCommand` (mfano `omniroute setup-opencode`) ya kutekeleza
-kwenye mwenyeji badala yake; hakuna kitu kinachoandikwa. `dryRun: true` inaendelea kufanya kazi katika
-hali ya kontena na inarudisha yaliyomo yaliyoundwa + njia ya lengo bila kugusa diski, hivyo
-unaweza kuangalia kutoka kwenye dashibodi na kutekeleza kwenye mwenyeji. Tabia hii ni
-ya makusudi na inalindwa na
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — usijaribu "kurekebisha" 422
-kwa kuondoa mlinzi.
+Sehemu ya mwisho ya **apply** ya dashibodi (`POST /api/cli-tools/apply`) inatekeleza ulinzi huo huo: ndani ya kontena, uandishi ambao lengo lake halijafungwa kutoka kwa seva pangishi hujibu **`422`** na `containerEphemeralTarget: true`, maandishi salama ya hitilafu na — kwa zana zilizo na njia ya seva pangishi (claude, codex, opencode, cline, kilo, continue) — `hostSetupCommand` (k.m. `omniroute setup-opencode`) ya kuendesha kwenye seva pangishi badala yake; hakuna kinachoandikwa. `dryRun: true` inaendelea kufanya kazi katika hali ya kontena na inarudisha hakiki iliyofichwa + njia lengwa bila kugusa diski. Maudhui ya hakiki si usanidi unaobeba vitambulisho vya kunakili au kuingiza. Tumia zana asili/URL ya msingi/ufunguo wa API/pembejeo za modeli kwenye seva pangishi, au tumia amri ya usanidi iliyoonyeshwa upande wa seva pangishi. Tazama [usalama wa usanidi wa CLI](../security/CLI-CONFIGURATION.md) kwa kichwa cha hakiki na mkataba wa ombi. Tabia hii imekusudiwa na inalindwa dhidi ya kurudi nyuma na `tests/unit/api/cli-tools/apply-container-guard.test.ts` — kamwe "usirekebishe" 422 kwa kuondoa ulinzi.
 
 ---
 
@@ -589,18 +558,18 @@ chini ya `/dashboard/cli-tools → Kiro`.
 
 ## 10. CLI ya Ndani ya OmniRoute
 
-Faili tekelezi ya `omniroute` hutoa amri za mzunguko wa maisha ya seva, usanidi, uchunguzi na usimamizi wa watoa huduma. Sehemu ya kuanzia: `bin/omniroute.mjs`.
+Faili tekelezi ya `omniroute` hutoa amri za mzunguko wa maisha wa seva, usanidi, uchunguzi na usimamizi wa watoa huduma. Sehemu ya kuanzia: `bin/omniroute.mjs`.
 
 ```bash
-omniroute                              # Anzisha seva (port chaguomsingi 20128)
+omniroute                              # Anzisha seva (port chaguo-msingi 20128)
 omniroute setup                        # Msaidizi shirikishi wa usanidi
 omniroute doctor                       # Kagua usanidi, DB, port na mazingira ya utekelezaji
 omniroute providers list               # Miunganisho ya watoa huduma iliyosanidiwa
 omniroute providers test-all           # Jaribu kila muunganisho unaotumika
 omniroute reset-password               # Weka upya nenosiri la msimamizi
 omniroute logs                         # Tiririsha kumbukumbu za maombi
-omniroute health                       # Hali ya kina (vikatiza mzunguko, akiba, kumbukumbu)
-omniroute --version                    # Onyesha toleo
+omniroute health                       # Hali ya kina (vikatiza, akiba, kumbukumbu)
+omniroute --version                    # Chapisha toleo
 omniroute --help                       # Onyesha amri zote
 ```
 
@@ -608,7 +577,7 @@ omniroute --help                       # Onyesha amri zote
 
 ```bash
 omniroute setup                        # Msaidizi shirikishi wa usanidi
-omniroute setup --non-interactive      # Hali ya CI/otomatiki (husoma vigeu vya mazingira + bendera)
+omniroute setup --non-interactive      # Hali ya CI/otomatiki (husoma env vars + flags)
 omniroute setup --password '<value>'   # Weka nenosiri la msimamizi moja kwa moja
 omniroute setup --add-provider \
   --provider openai \
@@ -621,31 +590,31 @@ Vigeu vya mazingira vinavyotambuliwa kwa usanidi usio shirikishi:
 | Kigeu               | Madhumuni                                                                               |
 | ------------------- | --------------------------------------------------------------------------------------- |
 | `OMNIROUTE_API_KEY` | Ufunguo wa API wa mtoa huduma (umeunganishwa na `--api-key` kupitia Commander `.env()`) |
-| `DATA_DIR`          | Batilisha saraka ya data ya OmniRoute                                                   |
+| `DATA_DIR`          | Badilisha saraka ya data ya OmniRoute                                                   |
 
-Ingizo nyingine zote zisizo shirikishi hupitishwa kama bendera, si vigeu vya mazingira:
+Ingizo nyingine zote zisizo shirikishi hupitishwa kama flags, si vigeu vya mazingira:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
-(angalia chaguo za `omniroute setup` hapo juu).
+(tazama chaguo za `omniroute setup` hapo juu).
 
 ### Uchunguzi
 
 ```bash
 omniroute doctor                       # Kagua usanidi, DB, port, mazingira ya utekelezaji, kumbukumbu na uhai
 omniroute doctor --json                # JSON inayosomeka na mashine
-omniroute doctor --no-liveness         # Ruka uchunguzi wa afya wa HTTP
-omniroute doctor --host 0.0.0.0        # Batilisha host ya uchunguzi wa uhai
-omniroute doctor --liveness-url <url>  # Batilisha URL kamili ya endpoint ya afya
+omniroute doctor --no-liveness         # Ruka uchunguzi wa hali kupitia HTTP
+omniroute doctor --host 0.0.0.0        # Badilisha host ya ukaguzi wa uhai
+omniroute doctor --liveness-url <url>  # Badilisha URL kamili ya endpoint ya hali
 ```
 
-Amri ya doctor hufanya ukaguzi huu: `Config`, `Database`, `Storage/encryption`,
+Doctor huendesha ukaguzi huu: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory`, na `Server liveness`. Hutoka kwa msimbo usio sifuri ikiwa ukaguzi wowote una hali ya `fail`.
+`Memory`, na `Server liveness`. Hutoka kwa msimbo usio sifuri ikiwa ukaguzi wowote ni `fail`.
 
 ### Usimamizi wa Watoa Huduma
 
 ```bash
 omniroute providers available                       # Katalogi ya watoa huduma ya OmniRoute
-omniroute providers available --search openai       # Chuja katalogi kwa id/jina/jina mbadala/kategoria
+omniroute providers available --search openai       # Chuja katalogi kwa id/jina/alias/kategoria
 omniroute providers available --category api-key    # Chuja kwa kategoria (api-key, oauth, free, ...)
 omniroute providers available --json                # JSON inayosomeka na mashine
 
@@ -654,7 +623,7 @@ omniroute providers list --json
 
 omniroute providers test <id|name>                  # Jaribu muunganisho mmoja uliosanidiwa
 omniroute providers test-all                        # Jaribu kila muunganisho unaotumika
-omniroute providers validate                        # Uthibitishaji wa muundo wa ndani pekee
+omniroute providers validate                        # Uthibitishaji wa kimuundo wa ndani pekee
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
 omniroute providers auth <provider>                 # Mtiririko uliopo wa OAuth
@@ -662,44 +631,56 @@ omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-`providers add/import/auth/edit/remove` hutanguliza API na kwa hiyo hufanya kazi dhidi ya
-muktadha amilifu wa ndani au wa mbali. Ingizo la kitambulisho linapaswa kutumia
+`providers add/import/auth/edit/remove` hutanguliza API na kwa hivyo hufanya kazi dhidi ya
+muktadha wa ndani au wa mbali unaotumika. Ingizo la kitambulisho linapaswa kutumia
 `--credential-stdin` au `--credential-env`; `--dry-run --json` huripoti tu
-uwepo/umbo lililofichwa. `providers available` husoma katalogi ya OmniRoute;
-`providers list/test/test-all/validate` hudumisha tabia yake ya ndani ya SQLite na
-haihitaji seva iwe inaendesha.
+uwepo/muundo uliofichwa. `providers available` husoma katalogi ya OmniRoute;
+`providers list/test/test-all/validate` hudumisha utendaji wake wa ndani wa SQLite na
+hazihitaji seva iwe inaendeshwa.
+
+Kwa node maalum inayooana na OpenAI au Anthropic, ambatisha vitambulisho kwenye
+ID ya node iliyorudishwa na `omniroute nodes add`, kwa kutumia `omniroute keys add "$NODE_ID" --stdin`.
+Hili linahitaji seva inayofanya kazi na uthibitishaji wa usimamizi kwa muktadha unaotumika.
+CLI hutumia `POST /api/providers`, ambayo huthibitisha node na kunakili mipangilio yake ya endpoint
+kwenye muunganisho. Node inayokosekana, kutofaulu kwa uidhinishaji, au seva isiyopatikana
+hurejesha hitilafu bila kuunda kitambulisho mbadala cha ndani.
+
+`nodes add --base-url` huweka endpoint ya node; ni tofauti na anwani ya seva
+katika `OMNIROUTE_BASE_URL`. Kwa faili za OpenAPI, tumia
+`omniroute openapi dump --format json --out ./openapi.json`; `--output` ya kimataifa
+huchagua umbizo la uonyeshaji la CLI, si jina la faili lengwa.
 
 ### Urejeshaji na Uwekaji Upya
 
 ```bash
 omniroute reset-password                # Weka upya nenosiri la msimamizi (pia: omniroute-reset-password)
-omniroute reset-encrypted-columns       # Onyesha onyo + utekelezaji wa majaribio kwa uwekaji upya wa vitambulisho vilivyosimbwa
-omniroute reset-encrypted-columns --force  # Kwa hakika, weka vitambulisho vilivyosimbwa kuwa null katika SQLite
+omniroute reset-encrypted-columns       # Onyesha onyo + dry-run kwa uwekaji upya wa vitambulisho vilivyosimbwa
+omniroute reset-encrypted-columns --force  # Ondoa kwa kuweka null vitambulisho vilivyosimbwa katika SQLite
 ```
 
 ### Uhamishaji wa Vitambulisho (⚠ shughulikia kwa uangalifu)
 
 ```bash
-omniroute auth export                                 # Onyesha onyo + hatua ya uthibitishaji — hakuna ufikiaji wa DB
+omniroute auth export                                 # Onyesha onyo + lango la uthibitisho — hakuna ufikiaji wa DB
 omniroute auth export --force                          # Hamisha vitambulisho VILIVYOSIMBULIWA vya miunganisho YOTE kwenda stdout kama JSON
 omniroute auth export --force --id <id>                 # Hamisha muunganisho unaolingana pekee
 omniroute auth export --force --format env               # Toa mistari ya OMNIROUTE_<PROVIDER>_<FIELD>=<value>
 omniroute auth export --force --out creds.json           # Andika kwenye faili (iliyoundwa kwa ruhusa za 0600)
 ```
 
-`auth export` ni ya **ndani pekee** (usomaji wa moja kwa moja wa SQLite, hakuna route ya HTTP) na kwa makusudi huchapisha/huandika
-thamani za **maandishi wazi** za `apiKey`/`accessToken`/`refreshToken`/`idToken` — hiyo ni sifa, si
-hitilafu. Hakuna kinachosomwa kutoka kwenye hifadhidata, wala hakuna kinachosimbuliwa, bila `--force`. Bango la
-onyo huchapishwa kila wakati kwenye stderr kabla ya maandishi yoyote wazi kutolewa. Inahitaji `STORAGE_ENCRYPTION_KEY`
+`auth export` ni ya **ndani pekee** (husoma SQLite moja kwa moja, bila njia ya HTTP) na imekusudiwa kuchapisha/kuandika
+thamani za **maandishi wazi** za `apiKey`/`accessToken`/`refreshToken`/`idToken` — hicho ni kipengele, si
+hitilafu. Hakuna chochote kinachosomwa kutoka kwenye hifadhidata, wala kusimbuliwa, bila `--force`. Bango la
+onyo kwenye stderr huchapishwa kila wakati kabla ya maandishi yoyote wazi kutolewa. Inahitaji `STORAGE_ENCRYPTION_KEY`
 iwe imewekwa. Sehemu ambayo imeshindwa kusimbuliwa (ufunguo wa zamani, maandishi yaliyosimbwa yaliyoharibika) huripotiwa kama
 `<field>DecryptFailed: true` badala ya kusitisha uhamishaji wote au kufichua hitilafu ya msingi.
 
-### Amri Ndogo Nyingine
+### Amri nyingine ndogo
 
-Hizi hudhani kuwa seva ya OmniRoute inaendesha, isipokuwa pale ilipoelezwa vinginevyo:
+Hizi hudhani kuwa seva ya OmniRoute inaendeshwa, isipokuwa pale ilipoelezwa vinginevyo:
 
 ```bash
-omniroute status                       # Hali kamili ya wakati wa utekelezaji
+omniroute status                       # Hali ya kina ya wakati wa utekelezaji
 omniroute logs                         # Tiririsha kumbukumbu za maombi (--json, --search, --follow)
 omniroute config list                  # Onyesha zana za CLI zilizosanidiwa
 
@@ -709,35 +690,35 @@ omniroute keys add | list | remove     # Dhibiti funguo za API
 omniroute models [provider]            # Orodhesha modeli (--json, --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # Hifadhi nakala ya usanidi + DB
-omniroute restore                      # Rejesha kutoka kwenye nakala ya awali
+omniroute backup                       # Piga picha ya usanidi + DB
+omniroute restore                      # Rejesha kutoka kwenye picha ya awali
 
-omniroute health                       # Hali ya kina (vikatiza, akiba, kumbukumbu)
-omniroute quota                        # Matumizi ya mgao wa mtoa huduma
+omniroute health                       # Afya ya kina (vikatiza, akiba, kumbukumbu)
+omniroute quota                        # Matumizi ya kikomo cha mtoa huduma
 omniroute cache                        # Hali ya akiba
-omniroute cache clear                  # Futa akiba za kisemantiki + saini
+omniroute cache clear                  # Futa akiba za kisemantiki + sahihi
 
-omniroute mcp status | restart         # Hali ya seva ya MCP / iwashwe upya
+omniroute mcp status | restart         # Hali / kuwasha upya seva ya MCP
 omniroute a2a status | card            # Hali ya seva ya A2A / kadi ya wakala
 
-omniroute tunnel list | create | stop  # Dhibiti vichuguu (cloudflare/tailscale/ngrok)
+omniroute tunnel list | create | stop  # Dhibiti handaki (cloudflare/tailscale/ngrok)
 omniroute env show | get <k> | set <k> <v>  # Kagua / weka vigezo vya mazingira (kwa muda)
 
-omniroute test                         # Jaribio la msingi la muunganisho wa mtoa huduma
+omniroute test                         # Jaribio la haraka la muunganisho wa mtoa huduma
 omniroute update                       # Angalia masasisho
 omniroute completion                   # Tengeneza ukamilishaji wa shell
 ```
 
-### Vigezo vya kawaida
+### Bendera za kawaida
 
-| Kigezo              | Maelezo                                                         |
+| Bendera             | Maelezo                                                         |
 | ------------------- | --------------------------------------------------------------- |
 | `--no-open`         | Usifungue kivinjari kiotomatiki wakati wa kuanza                |
-| `--port <n>`        | Batilisha porti ya API (chaguomsingi 20128)                     |
+| `--port <n>`        | Badilisha port ya API (chaguo-msingi 20128)                     |
 | `--mcp`             | Endesha kama seva ya MCP kupitia stdio (kwa IDE)                |
-| `--non-interactive` | Hali ya CI (hakuna vidokezo; husoma kutoka env/vigezo)          |
+| `--non-interactive` | Modi ya CI (hakuna vidokezo; husoma kutoka env/bendera)         |
 | `--json`            | Toleo la JSON linalosomeka na mashine (doctor, providers, n.k.) |
-| `--help`, `-h`      | Onyesha usaidizi mahususi wa amri                               |
+| `--help`, `-h`      | Onyesha msaada mahususi wa amri                                 |
 | `--version`, `-v`   | Chapisha toleo lililosakinishwa                                 |
 
 ---

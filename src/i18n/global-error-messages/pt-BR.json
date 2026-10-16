@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Ocorreu um erro inesperado. Isso foi registrado e nossa equipe irá investigar.",
+      "detailsAriaLabel": "Detalhes do erro",
+      "retryAriaLabel": "Tente carregar a página novamente",
+      "statusAriaLabel": "Abrir status do sistema",
+      "systemStatus": "Status do Sistema",
+      "title": "Algo deu errado",
+      "tryAgain": "Tente Novamente"
+    }
+  }
+}

@@ -20,8 +20,14 @@
 import { useEffect, useRef } from "react";
 import MagicGrid from "magic-grid";
 import QuotaCard from "./QuotaCard";
-import { compareProviderGroups, worstStatus, type CardStatus } from "./utils";
+import {
+  compareProviderGroups,
+  worstStatus,
+  type CardStatus,
+  type QuotaVisibilityScope,
+} from "./utils";
 import { PROVIDER_ORDER } from "./constants";
+import { compareTr } from "@/shared/utils/turkishText";
 
 interface Props {
   connections: any[];
@@ -41,8 +47,8 @@ interface Props {
   loadingResetCreditsId?: string | null;
   /** Per-operator quota row visibility (upstream 9router#2371 port). */
   quotaVisibility?: Record<string, { hidden?: string[] }>;
-  onHideQuota?: (provider: string, quota: any) => void;
-  onShowQuota?: (provider: string, quota: any) => void;
+  onHideQuota?: (scope: QuotaVisibilityScope, quota: any) => void;
+  onShowQuota?: (scope: QuotaVisibilityScope, quota: any) => void;
   /** Compact home-widget density: narrower cards on the same board. */
   compact?: boolean;
 }
@@ -107,6 +113,7 @@ export function sortProviderConnectionsByPriority(
     const providerDiff = compareProviderGroups(a.provider, b.provider, {
       providerOrder: PROVIDER_ORDER,
       providerLabels,
+      compare: compareTr,
     });
     if (providerDiff !== 0) return providerDiff;
 
@@ -249,8 +256,16 @@ export default function QuotaCardGrid({
             redeemingResetCredit={redeemingResetCreditId === conn.id}
             loadingResetCredits={loadingResetCreditsId === conn.id}
             quotaVisibility={quotaVisibility}
-            onHideQuota={onHideQuota ? (q) => onHideQuota(conn.provider, q) : undefined}
-            onShowQuota={onShowQuota ? (q) => onShowQuota(conn.provider, q) : undefined}
+            onHideQuota={
+              onHideQuota
+                ? (q) => onHideQuota({ connectionId: conn.id, provider: conn.provider }, q)
+                : undefined
+            }
+            onShowQuota={
+              onShowQuota
+                ? (q) => onShowQuota({ connectionId: conn.id, provider: conn.provider }, q)
+                : undefined
+            }
           />
         </div>
       ))}

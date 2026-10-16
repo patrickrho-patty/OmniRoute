@@ -23,6 +23,7 @@ import {
 import QuotaCardHeader from "./parts/QuotaCardHeader";
 import QuotaCardExpanded from "./parts/QuotaCardExpanded";
 import ProviderUsdCostModal from "./ProviderUsdCostModal";
+import type { CodexPaidCredits } from "@/lib/providers/codexPaidCredits";
 
 const STATUS_BORDER: Record<CardStatus, string> = {
   critical: "#ef4444",
@@ -41,7 +42,11 @@ interface QuotaCardProps {
         plan?: string | null;
         message?: string | null;
         billing?: ProviderBillingStatus | null;
-        raw?: { billing?: ProviderBillingStatus | null };
+        raw?: {
+          billing?: ProviderBillingStatus | null;
+          quotaGroups?: Array<Record<string, unknown>>;
+          paidCredits?: CodexPaidCredits;
+        };
         stale?: { since?: string; reason?: string } | null;
       }
     | undefined;
@@ -85,13 +90,18 @@ export default function QuotaCard({
   const isActive = connection.isActive ?? true;
   const [costModalOpen, setCostModalOpen] = useState(false);
   const rawQuotas = quota?.quotas ?? EMPTY_QUOTAS;
+  // Per-account visibility (9router#4767); provider entry is a legacy fallback.
+  const visibilityScope = useMemo(
+    () => ({ connectionId: connection.id, provider: connection.provider }),
+    [connection.id, connection.provider]
+  );
   const quotas = useMemo(
-    () => filterQuotasByVisibility(connection.provider, rawQuotas, quotaVisibility),
-    [connection.provider, rawQuotas, quotaVisibility]
+    () => filterQuotasByVisibility(visibilityScope, rawQuotas, quotaVisibility),
+    [visibilityScope, rawQuotas, quotaVisibility]
   );
   const hiddenQuotaRows = useMemo(
-    () => getHiddenQuotaRows(connection.provider, rawQuotas, quotaVisibility),
-    [connection.provider, rawQuotas, quotaVisibility]
+    () => getHiddenQuotaRows(visibilityScope, rawQuotas, quotaVisibility),
+    [visibilityScope, rawQuotas, quotaVisibility]
   );
   const cardStatus = useMemo<CardStatus>(() => worstStatus(quotas), [quotas]);
   // Soonest future reset across the card's rows — surfaced as a header chip so
@@ -107,7 +117,8 @@ export default function QuotaCard({
           quota?.plan ?? null,
           connection.providerSpecificData ?? null,
           connection.provider
-        )
+        ),
+        connection.provider
       ),
     [quota?.plan, connection.providerSpecificData, connection.provider]
   );
@@ -155,13 +166,16 @@ export default function QuotaCard({
         hasStaleData={hasStaleData}
         onToggleActive={onToggleActive}
         togglingActive={togglingActive}
+        onTestSent={onRefresh}
       />
       <QuotaCardExpanded
         quotas={quotas}
+        quotaGroups={quota?.raw?.quotaGroups}
         providerId={connection.provider}
         loading={loading}
         error={error}
         message={quota?.message ?? null}
+        paidCredits={connection.provider === "codex" ? quota?.raw?.paidCredits : undefined}
         billing={
           isProviderBillingProvider(connection.provider)
             ? (quota?.billing ?? quota?.raw?.billing)

@@ -909,6 +909,150 @@ Follow-ups (not in this merge):
   with upstream's chatCore restructure — module still present, call sites not re-wired.
 - `pl/docs/guides/PWA_GUIDE.md` mentions `omniroute-pwa-v3` (translation lag; sw.js is v4).
 
+## v3.8.52 sync record (2026-10-16)
+
+Merged upstream `release/v3.8.52` tip `be1d878aab` (2026-10-16) into `patty` (191 conflicted
+paths; merge-base `6b8c5df66f` = the v3.8.51 sync point; 1,464 upstream commits / 170 fork
+commits). Same rulebook as v3.8.51 (R1–R7) plus the two verification instruments that paid for
+themselves: the whole-tree esbuild parse sweep and the pure-upstream worktree classifier
+(`/Volumes/nvme_2tb/upstream-check`).
+
+> **Preflight fact:** upstream `release/v3.8.52` was **base-red** on entry — typecheck:core has
+> 57 errors in `open-sse/translator/request/openai-to-claude.ts` that reproduce byte-identically
+> on the pristine upstream tip (an upstream fix was in flight). Those are inherited, never fixed
+> here.
+
+Key resolutions:
+
+- **chatCore.ts** (18 hunks): upstream completed the decomposition — the non-streaming tail now
+  lives in `chatCore/nonStreamingResponse.ts` + `chatCore/streamingTail.ts`, driven by
+  `runStreamingResponse` / `runNonStreamingResponse` / `executeProviderRequestDeps`. Took
+  upstream's structure, then **re-grafted** the fork's deltas into the modules that own the code:
+  patty settlement + publicModel echo in `nonStreamingResponse.ts` (~1087-1135),
+  `pattyHeaders` / settlement promise / `echoModel` in `streamingTail.ts` (~332-395, 774-789),
+  HIDE_UPSTREAM_METADATA malformed-502 message in `nonStreamingResponse.ts` (~883), and the
+  fork's chatgpt-web semantic-cache guard (`bf93454660`) re-applied on upstream's new
+  `isSemanticCacheEnabled` call. Keeping the fork's old inline blocks would have double-applied
+  the settlement — the exact trap the guide warns about.
+- **Fork-only strict web-tool layer survives**: `open-sse/services/webProvider/*` (802 lines,
+  added after the v3.8.51 sync) is kept and still used by the executors that call it. Upstream
+  deleted `decodeExplicitWebToolCalls` usage in `deepseekWebTools.ts`/`blackbox-web.ts` in favour
+  of its canonical `translator/webTools.ts` parser; the documented two-layer rule applies
+  (lenient canonical parser for tag-contract executors, strict decoder for the chatgpt-web
+  fenced-JSON envelope), and both layers' tests are retained in
+  `tests/unit/web-tools-translation-2820.test.ts`.
+- **compression/session-dedup**: fork's O(n) `suffixDedup` + incremental process-once + the
+  `msgIdx` composite-key namespace kept; upstream's **intra-message** dedup re-grafted (the
+  fork's O(n) rewrite had silently dropped it) and upstream's current-turn rule expressed in the
+  fork's key namespace (`withoutCurrentTurnReplacements`). Incremental ≡ full equivalence holds.
+- **compression/contextManager**: fork's stable saturated-conversation cache checkpoints and
+  upstream's newest-real-user-query anchor + binary search are combined through one `build(k)`,
+  so a checkpoint reuse is byte-identical to a fresh run.
+- **compression/languageDetector**: took upstream's `u`-flag + `\p{L}\p{N}` lookaround style and
+  re-added the fork-only `ko:` (Korean) pack in that style.
+- **Guardrails self-loop auth**: adopted upstream's `selfLoopBearer` mechanism (#14740) in
+  `visionBridgeHelpers.ts`, while `chatAdmissionIdentity.ts` keeps the fork-only
+  `ADMISSION_BYPASS_TOKEN_HEADER` / `resolveAdmissionBypassToken()` export — it is still imported
+  by `chatBodyAdmission.ts`, so dropping it would have broken the fork's authz.
+- **QuotaCardGrid**: kept the fork's unified MagicGrid board (the tree's own tests forbid
+  upstream's `buildProviderGroups`/`ProviderQuotaSection` layout) and grafted upstream #16638
+  (`QuotaVisibilityScope` + `{connectionId, provider}`) plus the `compareTr` comparator.
+- **EngineConfigPage / opencodeConfig / codex session-dedup config**: took upstream verbatim —
+  the fork's diffs there were stale (hardcoded English literals that
+  `dashboard-localization-contract.test.ts` rejects) and upstream's `forgetSentEdits` +
+  `detailConfig` preview supersede them.
+- **HIDE_UPSTREAM_METADATA doc row**: `docs/reference/FEATURE_FLAGS.md` is a union — upstream's
+  catalog (9 new flags) **plus** the fork's row. Taking upstream wholesale silently deleted the
+  fork row and turned `feature-flags-doc-sync-static.test.ts` red; counts corrected 86 → 87 and
+  Security 10 → 11.
+- **Migration collision #2**: upstream's `187_proxy_logs_attempts` took the slot the fork had
+  rehomed `patty_settlement_outbox` into. Second rehome `187 → 206`, ledger entry chained after
+  `164 → 187` in `RENAMED_MIGRATION_COMPATIBILITY` (33 → 34 entries, pinned test updated), and the
+  `isSchemaAlreadyApplied` case moved to `"206"`. A naive union had glued upstream's
+  `attempt_number` guard into the fork's `"187"` case, which would have skipped upstream's 187 on
+  every fork database and left `proxy_logs.attempt_number` missing.
+- **Quality baselines**: `config/quality/eslint-suppressions.json` pruned 980 → 665 entries
+  (dead files from upstream's sweeps); `--prune-suppressions` exits non-zero on success.
+- **Docs**: `AGENTS.md` = upstream's text + the fork's four blocks (lawsuit header, fork boundary,
+  preserve-during-sync, read-only upstream source). `llm.txt` = upstream's (the fork had no prose
+  delta, only a migration count) and all 66 `docs/i18n/*/llm.txt` mirrors regenerated via
+  `scripts/i18n/sync-llm-mirrors.mjs`. The 43 `src/i18n/messages/*.json` were deep-unioned
+  (2,753 fork-only keys kept, 15,330 upstream keys added, 0 value conflicts).
+
+### Defects the gates caught after the first resolution pass
+
+Each of these was found by a gate (parse sweep, typecheck, focused tests, doc-count gate), not by
+reading the diff — which is the point of running them before pushing:
+
+1. **Swapped parameters in `chat.ts`** — `handleChat` passed `(…, signal, runtimeOptions)` while
+   `handleChatImplementation` declared `(…, runtimeOptions, signal)`, so the admission controller
+   received `{}` as its abort signal. Symptoms: `503 !== 499` on the provider-pinned abort test and
+   `entry.payload.signal.removeEventListener is not a function`. Fixed by keeping upstream's
+   positional contract (`signal` before the fork's optional `runtimeOptions`).
+2. **Duplicate shadowing `contextLimit`** — fork residue left a second
+   `let contextLimit = getTokenLimit(...)` inside the compression block of `chatCore.ts`, so the
+   combo-limit resolution wrote the shadow while the context guard read the outer variable: an
+   uncatalogued combo member clamped the whole combo to the generic 128000 (#14931). Removed.
+3. **Dead `routingComboId`** — the parameter had been renamed `_routingComboId` and its two uses
+   (the `|| routingComboId` branch arm and the `routingComboIds` array) were dropped, which also
+   removed the `comboName?.startsWith` optional chaining that guarded the arm. Restored to
+   upstream's shape.
+4. **Two Polish doc mirrors staged with conflict markers** — `docs/i18n/pl/CLAUDE.md` and
+   `docs/i18n/pl/docs/guides/TIERS.md` are not `llm.txt` mirrors, so the bulk `git add` of the
+   `docs/i18n/` conflict set staged them unresolved. Both re-taken from upstream; the
+   marker sweep now runs over the whole index, not just the source directories.
+5. **Workflow re-additions and three union artefacts** — upstream re-added six workflow files
+   (removed again, R1), and the hunk-union pass damaged `next.config.mjs` (duplicate `dirname`),
+   `QuotaCardHeader.tsx` (unclosed `div`) and `chat-build-client-raw-request.test.ts` (unclosed
+   test); all three were caught by the whole-tree esbuild parse sweep.
+6. **Fork doc counts** — the fork ships one extra migration and one extra compression engine, so
+   the documented counts must be 203 migrations / 13 engines (upstream: 202 / 12). Updated in
+   `README.md`, `AGENTS.md`, `llm.txt` (+ the 66 regenerated mirrors) and every
+   `docs/i18n/<locale>/README.md` database row, in each locale's own digits.
+7. **`/api/restart` not classified local-only** — the fork's route spawns `systemd-run`/
+   `systemctl` via `execFile` (upstream's only signals its own pid), and upstream's new
+   `route-guard-local-only-sweep` test rejects any spawn-capable route that is not loopback-gated
+   (Hard Rules #15 + #17). Added to `LOCAL_ONLY_API_PREFIXES`.
+
+Fork-vs-upstream semantic conflict resolved in the fork's favour (the GOTCHAS §5 two-layer case):
+
+- **session-dedup tool results.** Upstream's new `session-dedup-current-turn.test.ts` expects the
+  FIRST occurrence kept plus a `[dedup:ref sha=…]` marker; the fork's DCP pass keeps the LAST
+  occurrence and marks the earlier one with `[dedup:duplicate-tool-result …]` (fork commit
+  `0a12e3a6d8`, pinned by `session-dedup.test.ts`, live in production). The fork policy is kept and
+  upstream's third case in that file was aligned to it with a pointer to this record. What DID come
+  from upstream is the current-turn invariant, now enforced for the DCP pass too: a tool result
+  inside the turn in progress is never rewritten _and_ never becomes the owner of a placeholder, so
+  an agent that re-reads a file mid-turn cannot receive a marker back.
+
+Inherited (base-red) after the merge, all verified against the pure-upstream worktree:
+
+- `typecheck:core`: 57 errors, identical set to the pristine upstream tip (0 merge regressions).
+- `lint`: 10 errors in upstream's own `AddApiKeyModal.tsx` (no suppression entry upstream either).
+- `tests/unit/compression/session-dedup-current-turn.test.ts` (2 cases): contradicts the fork's
+  DCP tool-result dedup (`0a12e3a6d8`); verified red on patty **before** this sync too.
+- **Workflow-assertion tests (~13 files)**: `admission-verdict`, `build/check-cycles-blind-spots`,
+  `build/gate-manifest`, `build/schemathesis-nightly-isolation`, `classify-pr-changes`,
+  `deploy-vps-reachability`, `docker-publish-runner-preflight-14560`,
+  `docker-publish-stale-digests-15184`, `path-literal-edges`, `preview-artifact-workflows`,
+  `quarantine-contract`, `release-channel-workflows`, `workflow-scanner-installer`. They assert
+  against `.github/workflows/*` files that R1 deletes on purpose (GOTCHAS §8); each sync adds more
+  as upstream grows its CI. No code change can satisfy them without undoing R1.
+
+Follow-ups recorded, deliberately not fixed in the sync branch:
+
+- `src/app/api/v1/messages/route.ts` adopted upstream's `handleChat(request, null, body,
+correlationId, streamSignal)` shape, so `runtimeOptions.claudeLargeMessagesApplied` can no
+  longer be set from that route (the second VCC pass is a no-op; oversized bodies are still
+  rejected by the guard). Pass it as an optional 6th argument if the flag must stay live.
+- `duckduckgo-web.ts` (fork's file) defines `cbIsOpen`/`cbRecordFailure`/`cbRecordSuccess` but no
+  longer calls them; upstream v3.8.52 still does. Decide whether the executor-level breaker should
+  be restored alongside the fork's global one.
+- Upstream's `tests/unit/settings-favicon-fallback.test.ts` asserts `/favicon.svg`, which the fork
+  deliberately does not ship (fork brands `/favicon.ico`). Needs a fork-by-design test alignment.
+
+---
+
 ## Rebase procedure for future upstream releases
 
 > **2026-09-25:** the authoritative, current playbook now lives in

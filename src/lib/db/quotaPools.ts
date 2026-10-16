@@ -10,7 +10,8 @@
 
 import { getDbInstance } from "./core";
 import { clearApiKeyCaches } from "./apiKeys";
-import { invalidateModelCatalogCache } from "./readCache";
+import { getCachedProviderConnectionById, invalidateModelCatalogCache } from "./readCache";
+import { deleteSchedulesForPool } from "./quotaSchedules";
 // Phase B2: auto-mint/prune quotaShared-* combos when pool allocations change.
 // Imported lazily (dynamic import in the hook) to avoid circular-dependency
 // risk between db/ and quota/ modules. Sync hooks are fire-and-forget; deletion
@@ -515,6 +516,10 @@ export function updatePool(id: string, input: PoolUpdate): QuotaPool | null {
       const newPrimary = input.connectionIds[0];
       // Replace join rows.
       database.prepare("DELETE FROM quota_pool_connections WHERE pool_id = ?").run(id);
+      // Time-aware windows have no FK cascade (same reason as the model-cap
+      // table): drop them here so a deleted pool leaves no orphan schedule that
+      // a recycled pool id could inherit.
+      deleteSchedulesForPool(id);
       const insertConn = database.prepare(
         "INSERT OR IGNORE INTO quota_pool_connections (pool_id, connection_id) VALUES (?, ?)"
       );
@@ -716,4 +721,36 @@ export function listAllocationsForApiKey(
     )
     .all(apiKeyId);
   return rows.map((row) => ({ poolId: row.pool_id, allocation: rowToAllocation(row) }));
+}
+
+/**
+ * Sync quota combos for all pools associated with a provider.
+ * Triggered when custom models or synced models change for that provider.
+ */
+export async function syncQuotaCombosForProvider(providerId: string): Promise<void> {
+  try {
+    const { items: pools } = listPools();
+    for (const pool of pools) {
+      let matches = false;
+      const connectionIds = pool.connectionIds?.length ? pool.connectionIds : [pool.connectionId];
+      for (const connId of connectionIds) {
+        if (!connId) continue;
+        const conn = (await getCachedProviderConnectionById(connId).catch(() => null)) as {
+          provider?: string;
+        } | null;
+        if (conn?.provider === providerId) {
+          matches = true;
+          break;
+        }
+      }
+      if (matches) {
+        void serializeQuotaComboMaintenance(pool.id, () => syncQuotaCombosGuarded(pool.id));
+      }
+    }
+  } catch (err) {
+    console.warn(
+      "[quota-pools] syncQuotaCombosForProvider failed (non-fatal):",
+      (err as Error)?.message
+    );
+  }
 }

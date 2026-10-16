@@ -50,6 +50,18 @@ export function clearArtifactReference(relativePath: string, nextState: CallLogD
 // under the limit so each DELETE/SELECT stays valid.
 const DELETE_ID_CHUNK_SIZE = 500;
 
+function takeOverflowArtifactSlot(relativePath: string, baseDir: string): boolean {
+  if (deleteCallArtifact(relativePath, baseDir)) {
+    clearArtifactReference(relativePath, "missing");
+    return true;
+  }
+  if (relativePath && fs.existsSync(path.join(baseDir, relativePath))) return false;
+  // Reference without a file: free it like a detail read does,
+  // so later passes select new rows instead of stalling.
+  clearArtifactReference(relativePath, "missing");
+  return true;
+}
+
 function deleteCallLogRowsByIds(ids: string[]): DeleteResult {
   if (ids.length === 0) {
     return { deletedRows: 0, deletedArtifacts: 0 };
@@ -238,12 +250,9 @@ export function cleanupOverflowCallLogFiles(
       if (paths.length === 0) break;
       let progress = 0;
       for (const relativePath of paths) {
-        if (deleteCallArtifact(relativePath, baseDir)) {
-          clearArtifactReference(relativePath, "missing");
-          deleted++;
-          progress++;
-        }
+        if (takeOverflowArtifactSlot(relativePath, baseDir)) progress++;
       }
+      deleted += progress;
       if (progress === 0) break;
     }
     return deleted;

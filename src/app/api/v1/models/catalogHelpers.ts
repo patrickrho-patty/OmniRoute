@@ -53,7 +53,34 @@ export type ComboTargetCatalogMetadata = {
   inputModalities?: string[];
   outputModalities?: string[];
   capabilities: Record<string, boolean | string[]>;
+  // false when the target's provider has no active connection it can be routed to.
+  routable?: boolean;
 };
+
+/** True when a combo target has an active connection it may use (all `connections` are active). */
+export function hasRoutableComboConnection(
+  target: ComboCatalogTarget,
+  connections: ReadonlyArray<{ id?: unknown }>
+): boolean {
+  const ids = new Set(connections.map((connection) => connection?.id));
+  if (target.connectionId) return ids.has(target.connectionId);
+  if (target.allowedConnectionIds?.length) {
+    return target.allowedConnectionIds.some((id) => ids.has(id));
+  }
+  return ids.size > 0;
+}
+
+/**
+ * Seats that bound a combo's advertised limits: a seat whose provider has no active connection
+ * is never routed to, so it must not shrink the window. Falls back to every seat when none is
+ * routable, so a fully disabled combo still advertises its conservative minimum.
+ */
+export function selectComboLimitPool(
+  metadata: ComboTargetCatalogMetadata[]
+): ComboTargetCatalogMetadata[] {
+  const routable = metadata.filter((entry) => entry.routable !== false);
+  return routable.length > 0 ? routable : metadata;
+}
 
 export function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -169,24 +196,31 @@ export function getThinkingCapabilityFields(
   /** When true, skip the canonical effort-tier fallback — used for static registry
    * models that declare `supportsReasoning` but no explicit tier list, so the
    * catalog does not synthesize unresolvable `<prefix>/<model>-{tier}` ids. */
-  skipCanonicalEffortFallback = false
+  skipCanonicalEffortFallback = false,
+  /** Already-loaded synced tiers. This helper must not open SQLite to fetch them. */
+  syncedReasoningEfforts?: readonly string[] | null
 ): Record<string, boolean | string[]> {
   const supportsThinking = resolvedThinking;
   if (typeof supportsThinking !== "boolean") return {};
   const hasDeclaredTiers = supportedThinkingEfforts && supportedThinkingEfforts.length > 0;
+  const syncedEfforts =
+    !hasDeclaredTiers && syncedReasoningEfforts && syncedReasoningEfforts.length > 0
+      ? [...syncedReasoningEfforts]
+      : null;
+  const tiers = hasDeclaredTiers
+    ? [...supportedThinkingEfforts!]
+    : syncedEfforts
+      ? syncedEfforts
+      : extendDeepSeekEffortValues(
+          providerId,
+          modelId,
+          extendCodexGpt56EffortValues(providerId, modelId, CANONICAL_EFFORT_VALUES)
+        );
   return {
     thinking: supportsThinking,
     supportsThinking,
-    ...(supportsThinking && (hasDeclaredTiers || !skipCanonicalEffortFallback)
-      ? {
-          effort_tiers: hasDeclaredTiers
-            ? [...supportedThinkingEfforts!]
-            : extendDeepSeekEffortValues(
-                providerId,
-                modelId,
-                extendCodexGpt56EffortValues(providerId, modelId, CANONICAL_EFFORT_VALUES)
-              ),
-        }
+    ...(supportsThinking && (hasDeclaredTiers || syncedEfforts || !skipCanonicalEffortFallback)
+      ? { effort_tiers: tiers }
       : {}),
   };
 }

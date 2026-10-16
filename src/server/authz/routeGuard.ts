@@ -25,6 +25,7 @@ import { getAuthzBypassSnapshot } from "@/lib/config/runtimeSettings";
 import {
   SPAWN_CAPABLE_PREFIXES,
   SPAWN_CAPABLE_PATTERNS,
+  isSpawnCapableBypassPrefix,
 } from "@/shared/constants/spawnCapablePrefixes";
 import { VNC_ROUTE_PREFIX } from "@/lib/vncSession/manifest";
 
@@ -61,6 +62,7 @@ export const LOCAL_ONLY_API_PREFIXES: ReadonlyArray<string> = [
   "/api/cli-tools/smelt-settings", // spawns via getCliRuntimeStatus() to detect the `smelt` CLI install (Hard Rules #15 + #17, GHSA-35fw-cv32-2373)
   "/api/cli-tools/status", // GET calls getCliRuntimeStatus() per CLI_TOOL_IDS entry (Hard Rules #15 + #17, GHSA-35fw-cv32-2373)
   "/api/services/", // T-10: embedded service lifecycle (spawn child processes)
+  "/api/version-manager/", // downloads, unpacks and runs the CLIProxyAPI binary, the same work as /api/services/cliproxy/ (Hard Rules #15 + #17); read-only GETs exempted below
   "/api/tunnels/cloudflared", // POST installs/starts/stops cloudflared; safe methods are exempted below
   "/api/tunnels/tailscale/disable", // stops Funnel and may stop tailscaled/Tailscale service
   "/api/tunnels/tailscale/enable", // starts tailscaled/login/funnel subprocesses
@@ -94,9 +96,11 @@ export const LOCAL_ONLY_API_PREFIXES: ReadonlyArray<string> = [
   VNC_ROUTE_PREFIX, // #7892: /api/vnc-session/* spawns Docker containers via child_process.spawn (src/lib/vncSession/service.ts) — RCE-via-tunnel surface (Hard Rules #15 + #17), same CVE class (GHSA-fhh6-4qxv-rpqj).
   "/api/acp/agents", // ACP custom-agent registry: POST registers a client-chosen `binary`; GET / POST {action:"refresh"} runs detectInstalledAgents() -> execFileSync(probe.command, probe.args, { shell }) transitively (src/lib/acp/registry.ts) — RCE-via-tunnel surface (Hard Rules #15 + #17, #7948)
   "/api/resilience/connections", // Per-account resilience state. NOTE: prefix matching also gates future /api/resilience/connections-* paths.
-  "/dashboard/resilience/connections", // Per-account resilience state. NOTE: this endpoint is READ-ONLY (no child process spawn, unlike every other entry in this list); gated because it exposes per-account operational state (cooldown/breaker/lockout). Do not treat as precedent for non-spawning routes.
+  // Dashboard HTML stays out of this list: a reverse proxy is not loopback, so
+  // gating the page logged the session out. The JSON API above stays local-only.
   "/api/providers/cursor/agent-availability", // credential-free dashboard-nudge check: spawns `cursor-agent status --format json` via checkCursorAgentAvailability()/getCachedCursorAgentAvailability() (src/lib/cursor/renewal.ts) — RCE-via-tunnel surface (Hard Rules #15 + #17). Narrow-scoped like /login and /refresh-cursor, not the whole /api/providers/ tree. Placed under /api/providers/ rather than /api/oauth/ because /api/oauth/ is PUBLIC-classified and never reaches this LOCAL_ONLY gate.
   "/api/modality-bridge/video/", // Video Bridge status + extraction broker; fixed ffmpeg/ffprobe subprocesses, strict loopback only (Hard Rules #15 + #17)
+  "/api/restart", // Fork route: resolveRestartPlan() spawns /usr/bin/systemd-run (or systemctl) via execFile to restart the service; upstream's version only signals its own pid, so this entry is fork-only. Spawn-capable ⇒ strict loopback (Hard Rules #15 + #17).
 ];
 
 /**
@@ -127,6 +131,21 @@ export const LOCAL_ONLY_API_PATTERNS: ReadonlyArray<RegExp> = [
   /^\/api\/providers\/volcengine-plan\/connect(\/.*)?$/, // manual headful flow + session-based phone/SMS auto-login (both spawn Playwright)
   /^\/api\/providers\/[^/]+\/refresh-cursor\/?$/,
   /^\/api\/providers\/[^/]+\/chatgpt-web-codex-doctor\/?$/,
+  // S-01 (#15159): spawn(bin, ["acp", "--agent-type", "summarizer"], …) in
+  // src/lib/providers/validation/webProvidersB.ts:535 — fixed binary list + fixed argv (not
+  // caller-controlled RCE) but Hard Rules #15 + #17 still require loopback enforcement before
+  // any auth check. Exact paths only: the rest of /api/providers/ CRUD must stay
+  // remote-reachable. NOTE: keep this justification on its OWN line — a trailing `//` comment
+  // makes the pattern invisible to check-openapi-security-tiers.mjs, whose `//.*$` strip cannot
+  // match past a CRLF line ending.
+  /^\/api\/providers\/(validate|import|bulk)\/?$/,
+  // S-01 (#15159) second hop is deliberately NOT a path pattern: /api/providers/{id}/models
+  // resolves `{id}` to an arbitrary CONNECTION id, and the spawn
+  // (src/lib/providerModels/cursorAgent.ts:17, via fetchCursorAgentModels) only runs on the
+  // `provider === "cursor"` branch of that route. A `[^/]+/models` pattern would lock remote
+  // model discovery for EVERY provider — the over-broadening the /login precedent above
+  // exists to avoid. Instead the route gates the spawn on the trusted peer-locality header,
+  // mirroring cursorAgentImage.ts (see the guard in src/app/api/providers/[id]/models/route.ts).
 ];
 
 // `SPAWN_CAPABLE_PREFIXES` / `SPAWN_CAPABLE_PATTERNS` (the spawn-capable
@@ -189,6 +208,13 @@ export const ALWAYS_PROTECTED_API_PATHS: ReadonlyArray<string> = [
   // the /webdav child. ALWAYS_PROTECTED rather than LOCAL_ONLY so an operator
   // driving the dashboard through a tunnel keeps the feature.
   "/api/settings/obsidian",
+  // GET spreads every provider_connections row verbatim, so the lazy-decrypt
+  // proxy returns each connection's apiKey / accessToken / refreshToken /
+  // idToken in plaintext, and the route has no auth call of its own. Left on the
+  // fail-open MANAGEMENT tier it served all of them anonymously under
+  // requireLogin=false (GHSA-qxg2-rm3h-4cxp). The dashboard consumers send the
+  // session cookie, so ALWAYS_PROTECTED keeps them working through a tunnel.
+  "/api/providers/client",
 ];
 
 /**
@@ -293,7 +319,17 @@ export function isPrivateLanHost(hostHeader: string | null): boolean {
  */
 export const LOCAL_ONLY_API_GET_EXEMPTIONS: ReadonlySet<string> = new Set([
   "/api/system/version",
+  // The two read-only version-manager routes only report state; every other route under
+  // /api/version-manager/ installs or spawns the CLIProxyAPI binary.
+  "/api/version-manager/status",
+  "/api/version-manager/check-update",
   "/api/tunnels/cloudflared",
+  // GET /api/mcp/audit and /stats are read-only SQLite queries behind
+  // requireManagementAuth. The rest of /api/mcp/* stays local-only because
+  // SSE/stream can spawn. Without this exemption a tunnel-served dashboard
+  // 403s the timeline MCP poll forever (#13941).
+  "/api/mcp/audit",
+  "/api/mcp/audit/stats",
 ]);
 
 /** Safe HTTP methods that can be exempted for read-only paths. */
@@ -332,9 +368,10 @@ export function isLocalOnlyPath(path: string, method?: string): boolean {
  *   - returns false if the global kill-switch is off
  *     (`localOnlyManageScopeBypassEnabled === false`),
  *   - returns true iff `path` matches one of the live bypass prefixes AND
- *     that prefix is not in `SPAWN_CAPABLE_PREFIXES` (defence-in-depth: the
- *     zod schema already rejects spawn-capable entries, but a malformed DB
- *     row should not be able to grant a bypass).
+ *     that prefix does not overlap `SPAWN_CAPABLE_PREFIXES` /
+ *     `SPAWN_CAPABLE_PATTERN_ANCESTORS` (defence-in-depth: the zod schema and
+ *     the snapshot loader already reject spawn-capable entries, but a
+ *     malformed DB row should not be able to grant a bypass).
  *
  * O(1) (no I/O, no async). Hot-reload SLA: <50 ms — satisfied structurally.
  */
@@ -350,17 +387,13 @@ export function isLocalOnlyBypassableByManageScope(path: string): boolean {
   if (!snapshot.enabled) return false;
   return snapshot.prefixes.some((p) => {
     // Defence-in-depth: reject a bypass prefix that is the same as, child of,
-    // OR PARENT of any spawn-capable prefix. The parent case catches e.g.
-    // `/api/cli-tools/` (parent of `/api/cli-tools/runtime/`) — a request to
-    // `/api/cli-tools/runtime/foo` would otherwise satisfy `path.startsWith(p)`
-    // and reach the spawn-capable surface without a loopback check.
-    if (
-      SPAWN_CAPABLE_PREFIXES.some(
-        (spawn) => p === spawn || p.startsWith(spawn) || spawn.startsWith(p)
-      )
-    ) {
-      return false;
-    }
+    // OR PARENT of any spawn-capable prefix (or pattern ancestor). The parent
+    // case catches e.g. `/api/cli-tools/` (parent of `/api/cli-tools/runtime/`)
+    // — a request to `/api/cli-tools/runtime/foo` would otherwise satisfy
+    // `path.startsWith(p)` and reach the spawn-capable surface without a
+    // loopback check. `normalizeAuthzBypass` already drops these entries when
+    // the snapshot is built; this re-check covers any other snapshot writer.
+    if (isSpawnCapableBypassPrefix(p)) return false;
     return path === p || path.startsWith(p);
   });
 }

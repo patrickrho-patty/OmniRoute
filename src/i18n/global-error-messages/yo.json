@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Àṣìṣe àìròtẹ́lẹ̀ ṣẹlẹ̀. A ti ṣe àkọsílẹ̀ rẹ̀, ẹgbẹ́ wa yóò sì ṣèwádìí rẹ̀.",
+      "detailsAriaLabel": "Àwọn kúlẹ̀kúlẹ̀ àṣìṣe",
+      "retryAriaLabel": "Tún gbìyànjú láti kó ojú-ewé náà wọlé",
+      "statusAriaLabel": "Ṣí ojú-ewé ipò ètò",
+      "systemStatus": "Ipò Ètò",
+      "title": "Nǹkan kan kò lọ dáadáa",
+      "tryAgain": "Gbìyànjú Lẹ́ẹ̀kan Sí I"
+    }
+  }
+}

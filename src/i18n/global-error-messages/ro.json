@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "A apărut o eroare neașteptată. Aceasta a fost înregistrată și echipa noastră va investiga.",
+      "detailsAriaLabel": "Detalii eroare",
+      "retryAriaLabel": "Reîncercați să încărcați pagina",
+      "statusAriaLabel": "Deschide starea sistemului",
+      "systemStatus": "Starea Sistemului",
+      "title": "Ceva a mers prost",
+      "tryAgain": "Încearcă din nou"
+    }
+  }
+}

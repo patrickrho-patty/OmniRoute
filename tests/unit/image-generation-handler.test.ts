@@ -765,7 +765,7 @@ test("handleImageGeneration sends Antigravity image requests with native image_g
     assert.equal(captured.headers.Authorization, "Bearer ag-token");
     assert.equal(captured.headers["x-client-name"], undefined);
     assert.equal(captured.headers["x-goog-user-project"], undefined);
-    assert.match(captured.headers["User-Agent"], /^antigravity\/ide\/2\.1\.1 /);
+    assert.match(captured.headers["User-Agent"], /^antigravity\/ide\/2\.5\.5 /);
     assert.equal(captured.headers["x-goog-api-client"], undefined);
     assert.equal(captured.body.project, "project-123");
     assert.match(captured.body.requestId, /^image_gen\//);
@@ -1362,37 +1362,20 @@ test("handleImageGeneration returns provider errors when Imagen3 fetch throws", 
   }
 });
 
-test("handleImageGeneration uses the default synthetic base URL for resolved custom providers without baseUrl", async () => {
-  const originalFetch = globalThis.fetch;
-  let capturedUrl;
+test("handleImageGeneration rejects custom providers without a configured baseUrl", async () => {
+  const result = await handleImageGeneration({
+    body: {
+      model: "custom-provider/super-image",
+      prompt: "fallback base url",
+    },
+    credentials: { apiKey: "custom-key" },
+    resolvedProvider: "custom-provider",
+    log: null,
+  });
 
-  globalThis.fetch = async (url) => {
-    capturedUrl = String(url);
-    return new Response(JSON.stringify({ data: [{ b64_json: "ZmFrZS1jdXN0b20=" }] }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    });
-  };
-
-  try {
-    const result = await handleImageGeneration({
-      body: {
-        model: "custom-provider/super-image",
-        prompt: "fallback base url",
-      },
-      credentials: { apiKey: "custom-key" },
-      resolvedProvider: "custom-provider",
-      log: null,
-    });
-
-    assert.equal(result.success, true);
-    assert.equal(
-      capturedUrl,
-      "https://generativelanguage.googleapis.com/v1beta/openai/images/generations"
-    );
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  assert.equal(result.success, false);
+  assert.equal(result.status, 501);
+  assert.match(result.error, /not configured/);
 });
 
 test("handleImageGeneration logs OpenAI-compatible upstream failures and transport errors", async () => {

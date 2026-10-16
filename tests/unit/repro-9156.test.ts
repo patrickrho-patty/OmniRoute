@@ -39,6 +39,22 @@ test("spawn() uses process.execPath unconditionally, no bare 'node' fallback (#9
   );
 });
 
+test("serve --daemon / --no-recovery also spawn via process.execPath (#9156)", () => {
+  // The supervised path was fixed first; the daemon and no-recovery paths in
+  // serve.mjs kept the same bare-"node" fallback, which a launchd/cron/systemd
+  // environment without Homebrew/nvm on PATH cannot resolve (spawn ENOENT).
+  const serveSrc = fs.readFileSync(
+    path.resolve(__dirname, "../../bin/cli/commands/serve.mjs"),
+    "utf8"
+  );
+  assert.ok(
+    !/process\.versions\.bun\s*\?\s*process\.execPath\s*:\s*"node"/.test(serveSrc),
+    "serve.mjs must not fall back to bare 'node' for the server child"
+  );
+  const spawns = serveSrc.match(/spawn\(\s*process\.execPath\s*,/g) ?? [];
+  assert.ok(spawns.length >= 2, `expected daemon + no-recovery spawns, got ${spawns.length}`);
+});
+
 test("process.execPath is an absolute path to the running Node.js binary", () => {
   assert.ok(
     path.isAbsolute(process.execPath),

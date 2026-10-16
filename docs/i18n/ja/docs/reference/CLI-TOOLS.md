@@ -43,27 +43,27 @@ ACPエージェント（逆生成フロー）:
 
 ---
 
-## `setup-*`による自動構成
+## `setup-*`による自動設定
 
-各ツールの設定を手動で書く必要はありません。OmniRouteは、実行中のOmniRoute（ローカルまたはリモート）から**ライブ**モデルカタログを読み取り、ツール自身の設定をあなたのマシンに書き込むための`setup-*`コマンドをサポートするCLIごとに提供します：
+各ツールの設定を手動で記述する必要はありません。OmniRouteは、サポートされているCLIごとに`setup-*`コマンドを提供しており、実行中のOmniRoute（ローカルまたはリモート）から**ライブ**モデルカタログを読み取り、ツールの設定をマシンに書き込みます。
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
 omniroute setup-cline        omniroute setup-kilo         omniroute setup-continue
 omniroute setup-cursor       omniroute setup-roo          omniroute setup-crush
 omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
+omniroute setup-5dive
 ```
 
-各コマンドは`--remote <url> --api-key <key>`（リモートOmniRouteに対してローカルツールを構成）、`--dry-run`（書き込まずにプレビュー）、および`--port`を受け入れます。モデルの自動検出がないツール（Cline、Kilo、Roo、Goose、Aider、Qwen）は`--model <id>`（および非対話型実行のための`--yes`）を受け取ります。適切な環境が注入され、全く設定が書き込まれないCLIを起動するには、一般的な`omniroute run <target>`ランチャー（claude、codex、aider、goose、opencode、qwen、gemini — ターゲットとエイリアスは`bin/cli/cli-manifest.mjs`から取得）を使用します。レガシーな各ツールのランチャー`omniroute launch`（Claude Code）および`omniroute launch-codex`（Codex）は引き続き利用可能です。Gemini CLIは起動専用であり、`omniroute run`ターゲットですが、`setup-*`/`configure`レシピはありません。
+それぞれ、`--remote <url> --api-key <key>`（リモートOmniRouteに対してローカルツールを設定）、`--dry-run`（書き込みなしでプレビュー）、および`--port`を受け入れます。モデルの自動検出機能がないツール（Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive）は、`--model <id>`（および非対話型実行の場合は`--yes`）を受け入れます。`setup-5dive`は、$HOME以下に書き込まない唯一のレシピです。これは、フリートホストにroot所有の認証プロファイルを書き込むことで5diveエージェントフリートを設定するため、`sudo`を介して再実行され、独自のリモートモードはありません。適切な環境が注入され、設定が一切書き込まれないCLIを起動するには、汎用的な`omniroute run <target>`ランチャー（claude, codex, aider, goose, opencode, qwen, gemini — ターゲットとエイリアスは`bin/cli/cli-manifest.mjs`から取得されます）を使用します。レガシーなツールごとのランチャー`omniroute launch`（Claude Code）と`omniroute launch-codex`（Codex）も引き続き利用可能です。Gemini CLIは起動専用です。`omniroute run`のターゲットですが、`setup-*`/`configure`レシピはありません。
 
-> **完全なリファレンス:** マスターテーブル — 各コマンドが書き込む内容、すべてのフラグ、ローカル対リモート、およびどのツールが`/v1`サフィックスを必要とするか — は**[CLI統合](../guides/CLI-INTEGRATIONS.md)**にあります。
+> **完全なリファレンス:** 各コマンドが何を書き込むか、すべてのフラグ、ローカルとリモートの違い、そしてどのツールが`/v1`サフィックスを必要とするかを示すマスターテーブルは、**[CLI Integrations](../guides/CLI-INTEGRATIONS.md)**にあります。
 
 ### コンテナ内での実行
 
-OmniRouteコンテナ内で実行された`setup-*`コマンドは、コンテナ自身のホームに書き込まれ、ホストCLIが読み取ることはなく、コンテナとともに消えます。OmniRouteはそれを検出し、書き込むのではなく、指示とともに`2`で終了します。前進するための2つのサポートされた方法 — ホストにCLIをインストールし、`omniroute connect`でコンテナに接続するか、設定ディレクトリをバインドマウントし、`CLI_CONFIG_HOME`を設定します（composeの`host`プロファイル）。すべての`setup-*`コマンド、さらに`omniroute configure`および`omniroute config set`は、コンテナ自身のCLIを構成することが実際に意味する場合に`--allow-container-write`を受け入れます；`OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true`はサーバーに対して同じことを行います。詳細は
-[Dockerガイド → ホストCLIツールの構成](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker)を参照してください。
+OmniRouteコンテナ内で実行される`setup-*`コマンドは、コンテナ自身のホームディレクトリに書き込みますが、これはホストCLIからは読み取られず、コンテナとともに消滅します。OmniRouteはこれを検出し、書き込みを行う代わりに指示とともにコード`2`で終了します。サポートされている2つの進め方があります。ホストにCLIをインストールしてコンテナに`omniroute connect`するか、設定ディレクトリをバインドマウントして`CLI_CONFIG_HOME`（composeの`host`プロファイル）を設定します。すべての`setup-*`コマンド、さらに`omniroute configure`と`omniroute config set`は、コンテナ自身のCLIを設定することが意図されている場合に`--allow-container-write`を受け入れます。`OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true`はサーバーに対しても同様の動作をします。[Dockerガイド → ホストCLIツールの設定](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker)を参照してください。
 
-ダッシュボードの**適用エンドポイント**（`POST /api/cli-tools/apply`）は同じガードを強制します：コンテナ内では、ホストからバインドマウントされていないターゲットへの書き込みは**`422`**で応答し、`containerEphemeralTarget: true`という安全なエラーテキストと、ホストレシピを持つツール（claude、codex、opencode、cline、kilo、continue）に対しては、代わりにホストで実行するための`hostSetupCommand`（例：`omniroute setup-opencode`）が提供されます；何も書き込まれません。`dryRun: true`はコンテナモードでも機能し、ディスクに触れずに生成されたコンテンツとターゲットパスを返すため、ダッシュボードからプレビューし、ホストで適用できます。この動作は意図的であり、`tests/unit/api/cli-tools/apply-container-guard.test.ts`によって回帰ガードされています — 422を「修正」するためにガードを削除しないでください。
+ダッシュボードの**適用エンドポイント**（`POST /api/cli-tools/apply`）も同じガードを適用します。コンテナ内で、ホストからバインドマウントされていないターゲットへの書き込みは、`containerEphemeralTarget: true`という安全なエラーテキストと、ホストレシピを持つツール（claude, codex, opencode, cline, kilo, continue）の場合には、代わりにホストで実行する`hostSetupCommand`（例: `omniroute setup-opencode`）を伴って**`422`**を返します。何も書き込まれません。`dryRun: true`はコンテナモードでも機能し続け、ディスクに触れることなく編集されたプレビューとターゲットパスを返します。プレビューの内容は、コピーまたはインポートするための資格情報を含む設定ではありません。ホスト上で元のツール/ベースURL/APIキー/モデル入力を使用して適用するか、示されたホスト側のセットアップコマンドを使用してください。プレビューヘッダーとリクエスト契約については、[CLI設定のセキュリティ](../security/CLI-CONFIGURATION.md)を参照してください。この動作は意図的なものであり、`tests/unit/api/cli-tools/apply-container-guard.test.ts`によって回帰テストで保護されています。ガードを削除して422を「修正」しないでください。
 
 ---
 
@@ -97,40 +97,40 @@ OmniRouteコンテナ内で実行された`setup-*`コマンドは、コンテ�
 
 `bin/cli/cli-manifest.mjs` はCLIコマンドの標準実行可能マニフェストであり、`run`、`configure` およびシェル補完ジェネレーターはすべてそのターゲットリスト、エイリアス解決（例えば `kilocode`/`kilo-code`/`kilo_cli` → `kilo`）および `--model` フラグの配線をそこから派生させます。ドリフトガード `tests/unit/cli/cli-manifest-drift.test.ts` は、マニフェスト、ランタイムカタログ、UIカタログ、およびすべてのコンシューマサーフェスが同期していることを確認します — 1つのサーフェスに追加されたターゲットが他のサーフェスにない場合、スイートは静かにドリフトするのではなく失敗します。
 
-## 1. CLI Codeのカタログ（26ツール）
+## 1. CLI Code のカタログ（26ツール）
 
-`/dashboard/cli-code` に表示されるすべてのツールです。`baseUrlSupport: none` のツールは、カスタムベースURLではなく、MITMまたは手動ガイドを通じて接続されます。
+`/dashboard/cli-code` に表示されるすべてのツールです。`baseUrlSupport: none` のツールは、カスタムベース URL ではなく、MITM または手動ガイドを介して接続されます。
 
-| id           | name                    | vendor              | baseUrlSupport | configType     | acpSpawnable |
-| ------------ | ----------------------- | ------------------- | -------------- | -------------- | ------------ |
-| claude       | Claude Code             | Anthropic           | full           | env            | true         |
-| codex        | OpenAI Codex CLI        | OpenAI              | full           | custom         | true         |
-| zcode        | ZCode (GLM Coding Plan) | Z.ai                | none           | custom         | false        |
-| cline        | Cline                   | OSS (ex-Claude Dev) | full           | custom         | true         |
-| kilo         | Kilo Code               | Kilo-Org            | full           | custom         | false        |
-| roo          | Roo Code                | Roo (OSS)           | full           | guide          | false        |
-| continue     | Continue                | continue.dev        | full           | guide          | false        |
-| aider        | Aider                   | OSS (P. Gauthier)   | full           | guide          | true         |
-| forge        | ForgeCode               | Antinomy HQ         | full           | custom         | true         |
-| jcode        | jcode                   | 1jehuang (OSS)      | full           | custom         | false        |
-| deepseek-tui | DeepSeek TUI            | Hunter Bown (OSS)   | full           | custom         | false        |
-| codewhale    | CodeWhale               | Hmbown (OSS)        | full           | custom         | false        |
-| opencode     | OpenCode                | Anomaly (ex-SST)    | full           | guide          | true         |
-| droid        | Factory Droid           | Factory AI          | partial        | guide          | false        |
-| copilot      | GitHub Copilot CLI      | GitHub/MS           | full           | custom         | false        |
-| cursor-cli   | Cursor CLI              | Anysphere           | partial        | guide          | true         |
-| smelt        | Smelt                   | leonardcser (OSS)   | full           | custom         | false        |
-| pi           | Pi (pi-coding-agent)    | M. Zechner (OSS)    | full           | custom         | false        |
-| grok-build   | Grok Build              | xAI                 | full           | custom         | false        |
-| crush        | Crush                   | OSS (Charm)         | full           | custom         | false        |
-| qwen         | Qwen Code               | Alibaba             | full           | guide          | true         |
-| cursor       | Cursor                  | Anysphere           | none           | guide          | false        |
-| antigravity  | Antigravity             | Google              | none           | mitm           | false        |
-| hermes       | Hermes                  | Nous Research       | none           | guide          | false        |
-| kiro         | Kiro AI                 | Amazon              | none           | mitm           | false        |
-| custom       | Custom CLI              | —                   | full           | custom-builder | false        |
+| id           | 名前                    | ベンダー           | baseUrlSupport | configType     | acpSpawnable |
+| ------------ | ----------------------- | ------------------ | -------------- | -------------- | ------------ |
+| claude       | Claude Code             | Anthropic          | full           | env            | true         |
+| codex        | OpenAI Codex CLI        | OpenAI             | full           | custom         | true         |
+| zcode        | ZCode (GLM Coding Plan) | Z.ai               | none           | custom         | false        |
+| cline        | Cline                   | OSS (旧Claude Dev) | full           | custom         | true         |
+| kilo         | Kilo Code               | Kilo-Org           | full           | custom         | false        |
+| roo          | Roo Code                | Roo (OSS)          | full           | guide          | false        |
+| continue     | Continue                | continue.dev       | full           | guide          | false        |
+| aider        | Aider                   | OSS (P. Gauthier)  | full           | guide          | true         |
+| forge        | ForgeCode               | Antinomy HQ        | full           | custom         | true         |
+| jcode        | jcode                   | 1jehuang (OSS)     | full           | custom         | false        |
+| deepseek-tui | DeepSeek TUI            | Hunter Bown (OSS)  | full           | custom         | false        |
+| codewhale    | CodeWhale               | Hmbown (OSS)       | full           | custom         | false        |
+| opencode     | OpenCode                | Anomaly (旧SST)    | full           | guide          | true         |
+| droid        | Factory Droid           | Factory AI         | partial        | guide          | false        |
+| copilot      | GitHub Copilot CLI      | GitHub/MS          | full           | custom         | false        |
+| cursor-cli   | Cursor CLI              | Anysphere          | partial        | guide          | true         |
+| smelt        | Smelt                   | leonardcser (OSS)  | full           | custom         | false        |
+| pi           | Pi (pi-coding-agent)    | M. Zechner (OSS)   | full           | custom         | false        |
+| grok-build   | Grok Build              | xAI                | full           | custom         | false        |
+| crush        | Crush                   | OSS (Charm)        | full           | custom         | false        |
+| qwen         | Qwen Code               | Alibaba            | full           | guide          | true         |
+| cursor       | Cursor                  | Anysphere          | none           | guide          | false        |
+| antigravity  | Antigravity             | Google             | none           | mitm           | false        |
+| hermes       | Hermes                  | Nous Research      | none           | guide          | false        |
+| kiro         | Kiro AI                 | Amazon             | none           | mitm           | false        |
+| custom       | カスタム CLI            | —                  | full           | custom-builder | false        |
 
-`baseUrlSupport: "partial"` のツールでは、ダッシュボードカードに「⚠ 部分的なベースURL」というバッジが表示されます。
+`baseUrlSupport: "partial"` のツールでは、ダッシュボードカードに「⚠ ベース URL は部分対応」バッジが表示されます。
 ---
 
 ## 2. CLIエージェントカタログ（10ツール）
@@ -552,14 +552,14 @@ kiro-cli status
 
 ## 10. 内部 OmniRoute CLI
 
-`omniroute` バイナリは、サーバーのライフサイクル、セットアップ、診断、プロバイダー管理用のコマンドを提供します。エントリーポイント: `bin/omniroute.mjs`。
+`omniroute` バイナリは、サーバーのライフサイクル、セットアップ、診断、プロバイダー管理のためのコマンドを提供します。エントリーポイント: `bin/omniroute.mjs`。
 
 ```bash
 omniroute                              # サーバーを起動（デフォルトポートは 20128）
-omniroute setup                        # 対話形式のセットアップウィザード
+omniroute setup                        # 対話型セットアップウィザード
 omniroute doctor                       # 設定、DB、ポート、ランタイムを確認
 omniroute providers list               # 設定済みのプロバイダー接続
-omniroute providers test-all           # すべてのアクティブな接続をテスト
+omniroute providers test-all           # すべての有効な接続をテスト
 omniroute reset-password               # 管理者パスワードをリセット
 omniroute logs                         # リクエストログをストリーミング
 omniroute health                       # 詳細なヘルス情報（ブレーカー、キャッシュ、メモリ）
@@ -570,23 +570,23 @@ omniroute --help                       # すべてのコマンドを表示
 ### セットアップと初期化
 
 ```bash
-omniroute setup                        # 対話形式のセットアップウィザード
-omniroute setup --non-interactive      # CI/自動化モード（環境変数とフラグを読み取り）
+omniroute setup                        # 対話型セットアップウィザード
+omniroute setup --non-interactive      # CI/自動化モード（環境変数とフラグを読み取る）
 omniroute setup --password '<value>'   # 管理者パスワードを直接設定
 omniroute setup --add-provider \
   --provider openai \
   --api-key '<value>' \
-  --test-provider                      # プロバイダーの追加とテストを一度に実行
+  --test-provider                      # プロバイダーを追加して一度にテスト
 ```
 
-非対話形式のセットアップで認識される環境変数:
+非対話型セットアップで認識される環境変数:
 
-| 変数                | 用途                                                                           |
-| ------------------- | ------------------------------------------------------------------------------ |
-| `OMNIROUTE_API_KEY` | プロバイダーの API キー（Commander の `.env()` により `--api-key` にバインド） |
-| `DATA_DIR`          | OmniRoute のデータディレクトリを上書き                                         |
+| 変数                | 用途                                                                         |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `OMNIROUTE_API_KEY` | プロバイダー API キー（Commander の `.env()` により `--api-key` に関連付け） |
+| `DATA_DIR`          | OmniRoute データディレクトリを上書き                                         |
 
-その他の非対話形式の入力はすべて、環境変数ではなくフラグとして渡します:
+その他のすべての非対話型入力は、環境変数ではなくフラグとして渡します:
 `--password`、`--provider`、`--provider-name`、`--provider-base-url`、`--default-model`
 （上記の `omniroute setup` オプションを参照）。
 
@@ -600,23 +600,23 @@ omniroute doctor --host 0.0.0.0        # 稼働状態確認用ホストを上書
 omniroute doctor --liveness-url <url>  # ヘルスエンドポイントの完全な URL を上書き
 ```
 
-doctor は次のチェックを実行します: `Config`、`Database`、`Storage/encryption`、
+doctor は、`Config`、`Database`、`Storage/encryption`、
 `Port availability`、`Node runtime`、`Native binary`（better-sqlite3）、
-`Memory`、`Server liveness`。いずれかのチェックが `fail` の場合、ゼロ以外の終了コードで終了します。
+`Memory`、`Server liveness` の各チェックを実行します。いずれかのチェックが `fail` の場合、ゼロ以外の終了コードで終了します。
 
 ### プロバイダー管理
 
 ```bash
 omniroute providers available                       # OmniRoute プロバイダーカタログ
-omniroute providers available --search openai       # id/名前/エイリアス/カテゴリーでカタログを絞り込み
-omniroute providers available --category api-key    # カテゴリー（api-key、oauth、free など）で絞り込み
+omniroute providers available --search openai       # ID/名前/エイリアス/カテゴリーでカタログを絞り込み
+omniroute providers available --category api-key    # カテゴリーで絞り込み（api-key、oauth、free、...）
 omniroute providers available --json                # 機械可読な JSON
 
 omniroute providers list                            # 設定済みのプロバイダー接続
 omniroute providers list --json
 
 omniroute providers test <id|name>                  # 設定済みの接続を 1 件テスト
-omniroute providers test-all                        # すべてのアクティブな接続をテスト
+omniroute providers test-all                        # すべての有効な接続をテスト
 omniroute providers validate                        # ローカルのみの構造検証
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
@@ -626,11 +626,23 @@ omniroute providers remove <id|name> --yes
 ```
 
 `providers add/import/auth/edit/remove` は API 優先であるため、
-アクティブなローカルまたはリモートコンテキストに対して動作します。認証情報の入力には
-`--credential-stdin` または `--credential-env` を使用してください。`--dry-run --json` は、
-秘匿化された有無と形式のみを報告します。`providers available` は OmniRoute カタログを読み取ります。
-`providers list/test/test-all/validate` は従来のローカル SQLite の動作を維持し、
+アクティブなローカルまたはリモートのコンテキストに対して動作します。認証情報の入力には
+`--credential-stdin` または `--credential-env` を使用してください。`--dry-run --json` では、
+秘匿化された有無と形式のみが報告されます。`providers available` は OmniRoute カタログを読み取ります。
+`providers list/test/test-all/validate` は従来のローカル SQLite 動作を維持し、
 サーバーが実行中である必要はありません。
+
+カスタムの OpenAI 互換または Anthropic 互換ノードでは、
+`omniroute nodes add` から返されたノード ID に、`omniroute keys add "$NODE_ID" --stdin` を使用して認証情報を関連付けます。
+これには、実行中のサーバーと、アクティブなコンテキストに対する管理認証が必要です。
+CLI は `POST /api/providers` を使用します。これはノードを検証し、そのエンドポイント設定を
+接続にコピーします。ノードが存在しない場合、認可に失敗した場合、またはサーバーが利用できない場合は、
+ローカルのフォールバック認証情報を作成せずにエラーを返します。
+
+`nodes add --base-url` はノードのエンドポイントを設定します。これは
+`OMNIROUTE_BASE_URL` のサーバーアドレスとは異なります。OpenAPI ファイルには、
+`omniroute openapi dump --format json --out ./openapi.json` を使用してください。グローバルな `--output` は、
+出力先のファイル名ではなく、CLI の表示形式を選択します。
 
 ### 復旧とリセット
 
@@ -650,41 +662,41 @@ omniroute auth export --force --format env               # OMNIROUTE_<PROVIDER>_
 omniroute auth export --force --out creds.json           # ファイルに書き込み（0600 権限で作成）
 ```
 
-`auth export` は**ローカル専用**（SQLite を直接読み取り、HTTP ルートは使用しない）であり、意図的に
-**平文**の `apiKey`/`accessToken`/`refreshToken`/`idToken` 値を表示または書き込みます。これは機能であり、
-バグではありません。`--force` が指定されない限り、データベースからは何も読み取られず、何も復号されません。平文が出力される前には、
-必ず stderr に警告バナーが表示されます。`STORAGE_ENCRYPTION_KEY` が設定されている必要があります。
-フィールドの復号に失敗した場合（古いキー、破損した暗号文）は、エクスポート全体を中止したり、
-基礎となるエラーを漏えいしたりする代わりに、`<field>DecryptFailed: true` として報告されます。
+`auth export` は**ローカル専用**（SQLite を直接読み取り、HTTP ルートは使用しません）であり、意図的に
+**プレーンテキスト**の `apiKey`/`accessToken`/`refreshToken`/`idToken` 値を表示または書き出します。これは
+バグではなく機能です。`--force` を指定しない限り、データベースからの読み取りも復号も行われません。プレーンテキストが出力される前には、必ず stderr に
+警告バナーが表示されます。`STORAGE_ENCRYPTION_KEY` が設定されている必要があります。
+復号に失敗したフィールド（古いキー、破損した暗号文）は、エクスポート全体を中止したり内部エラーを漏えいしたりする代わりに、
+`<field>DecryptFailed: true` として報告されます。
 
 ### その他のサブコマンド
 
-特に記載がない限り、これらは OmniRoute サーバーが実行中であることを前提とします:
+特に明記されていない限り、これらは OmniRoute サーバーが実行中であることを前提とします。
 
 ```bash
 omniroute status                       # 包括的なランタイムステータス
 omniroute logs                         # リクエストログをストリーミング（--json、--search、--follow）
-omniroute config list                  # 設定済みのCLIツールを表示
+omniroute config list                  # 設定済みの CLI ツールを表示
 
-omniroute provider list                # 利用可能なプロバイダーを一覧表示（providers listのエイリアス）
-omniroute provider add                 # OmniRouteをツールのプロバイダーとして登録
-omniroute keys add | list | remove     # APIキーを管理
+omniroute provider list                # 利用可能なプロバイダーを一覧表示（providers list のエイリアス）
+omniroute provider add                 # ツールに OmniRoute をプロバイダーとして登録
+omniroute keys add | list | remove     # API キーを管理
 omniroute models [provider]            # モデルを一覧表示（--json、--search）
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # 設定とDBのスナップショットを作成
+omniroute backup                       # 設定と DB のスナップショットを作成
 omniroute restore                      # 以前のスナップショットから復元
 
-omniroute health                       # 詳細な稼働状態（ブレーカー、キャッシュ、メモリ）
+omniroute health                       # 詳細なヘルス情報（ブレーカー、キャッシュ、メモリ）
 omniroute quota                        # プロバイダーのクォータ使用状況
-omniroute cache                        # キャッシュの状態
+omniroute cache                        # キャッシュのステータス
 omniroute cache clear                  # セマンティックキャッシュとシグネチャキャッシュをクリア
 
-omniroute mcp status | restart         # MCPサーバーの状態確認／再起動
-omniroute a2a status | card            # A2Aサーバーの状態／エージェントカード
+omniroute mcp status | restart         # MCP サーバーのステータス確認 / 再起動
+omniroute a2a status | card            # A2A サーバーのステータス / エージェントカード
 
 omniroute tunnel list | create | stop  # トンネルを管理（cloudflare/tailscale/ngrok）
-omniroute env show | get <k> | set <k> <v>  # 環境変数を確認／設定（一時的）
+omniroute env show | get <k> | set <k> <v>  # 環境変数を確認 / 設定（一時的）
 
 omniroute test                         # プロバイダー接続のスモークテスト
 omniroute update                       # 更新を確認
@@ -696,10 +708,10 @@ omniroute completion                   # シェル補完を生成
 | フラグ              | 説明                                                     |
 | ------------------- | -------------------------------------------------------- |
 | `--no-open`         | 起動時にブラウザーを自動で開かない                       |
-| `--port <n>`        | APIポートを上書き（デフォルトは20128）                   |
-| `--mcp`             | stdio経由でMCPサーバーとして実行（IDE向け）              |
-| `--non-interactive` | CIモード（プロンプトなし。環境変数／フラグから読み込み） |
-| `--json`            | 機械可読なJSON出力（doctor、providersなど）              |
+| `--port <n>`        | API ポートを上書き（デフォルトは 20128）                 |
+| `--mcp`             | stdio 経由で MCP サーバーとして実行（IDE 向け）          |
+| `--non-interactive` | CI モード（プロンプトなし。環境変数/フラグから読み取り） |
+| `--json`            | 機械可読な JSON 出力（doctor、providers など）           |
 | `--help`, `-h`      | コマンド固有のヘルプを表示                               |
 | `--version`, `-v`   | インストール済みのバージョンを表示                       |
 

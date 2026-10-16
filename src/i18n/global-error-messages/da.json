@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Der opstod en uventet fejl. Dette er blevet logget, og vores team vil undersøge det.",
+      "detailsAriaLabel": "Fejl detaljer",
+      "retryAriaLabel": "Prøv at indlæse siden igen",
+      "statusAriaLabel": "Åbn systemstatus",
+      "systemStatus": "Systemstatus",
+      "title": "Noget gik galt",
+      "tryAgain": "Prøv Igen"
+    }
+  }
+}
