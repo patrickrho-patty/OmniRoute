@@ -615,6 +615,43 @@ Regression guard: `tests/unit/model-test-registry-target-format-probe.test.ts`.
 
 ---
 
+### SRC-016 — A reasoning-only Responses answer counts as a completion
+
+| Field                 | Value                                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| Commit                | `1e054f468b`                                                                              |
+| Upstream baseline     | `release/v3.8.52`, merged into `patty` on 2026-10-16                                      |
+| Upstream file touched | `src/lib/combos/testHealth.ts`                                                            |
+| Reported symptom      | dashboard model test: "Provider returned HTTP 200 but no text content" on a healthy model |
+
+Follow-up to SRC-015. Once the probe used the router's endpoint, a reasoning-dominant
+model (`opencode-go/muse-spark-1.3-contributor`) still failed the health test: it spent
+the entire output budget thinking and returned an `incomplete` Responses payload whose
+only output item is an encrypted reasoning block with an empty summary, so no text is
+extractable anywhere:
+
+```
+status: "incomplete", incomplete_details.reason: "max_output_tokens"
+output: [ { type: "reasoning", encrypted_content: "…", summary: [] } ]
+usage:  { output_tokens: 256, output_tokens_details: { reasoning_tokens: 254 } }
+```
+
+Two gaps in the shared extractor caused that: `getUsageReasoningTokens` read only the
+chat usage shape (`completion_tokens_details`) although the Responses API reports the
+counter under `output_tokens_details`, and `hasReasoningOnlyCompletion` required a
+`choices` array, so the existing `"[reasoning-only completion]"` fallback never applied
+to a Responses answer — even though the upstream generated output and stated why it
+stopped.
+
+**Upstream sync invariant:** keep the Responses handling in `getUsageReasoningTokens`
+and `hasReasoningOnlyCompletion` when resolving `src/lib/combos/testHealth.ts`. The
+boundary that keeps this honest: a body we cannot read at all (#13070's class) reports
+neither usage nor a stop reason, so it still extracts empty and still fails — do not
+widen the fallback to "no text ⇒ healthy". Regression guard:
+`tests/unit/model-test-budget-exhausted-probe.test.ts`.
+
+---
+
 ### OPS-002 — `tls-client-node` global-install permission fix
 
 | Field   | Value                                                                             |

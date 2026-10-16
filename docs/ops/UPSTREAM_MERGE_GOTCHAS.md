@@ -321,3 +321,14 @@ skip provider billing). The gateway is fork-only (`open-sse/services/pattyGatewa
 upstream), so no merge work is needed to keep it — but any future sync that routes a
 diagnostic onto `/v1/messages` or `/v1/responses` must keep this bypass. Guard:
 `tests/unit/services/patty-gateway.test.ts`.
+
+**Second follow-on.** With the probe on the right endpoint, a reasoning-dominant model
+still failed — on the _extractor_ this time. Its answer is
+`status: "incomplete"` + `incomplete_details.reason: "max_output_tokens"` with an
+encrypted reasoning block and an empty summary, so there is no text anywhere. The shared
+extractor missed it twice: the Responses usage counter lives under `output_tokens_details`
+(only the chat shape was read), and `hasReasoningOnlyCompletion` required `choices`, so
+the existing `"[reasoning-only completion]"` fallback never applied to a Responses body
+(FORK_NOTES SRC-016). Keep the honest boundary when resolving `testHealth.ts`: a body we
+cannot read at all reports neither usage nor a stop reason and must still fail — do not
+widen "no text" into "healthy".
