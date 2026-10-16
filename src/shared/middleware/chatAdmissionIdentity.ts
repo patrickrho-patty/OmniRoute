@@ -1,10 +1,14 @@
 import { createHmac, randomBytes } from "crypto";
+import { isOwnListenerSelfHop, SELF_HOP_HEADER } from "@omniroute/open-sse/utils/selfHop.ts";
 import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
+import { getProcessStore, sharedSymbol } from "@/shared/utils/processSingleton";
 
 const ADMISSION_BYPASS_VALUE = "internal";
 const FINGERPRINT_KEY = "omniroute-admission-fingerprint-v1";
 
 export const ADMISSION_BYPASS_HEADER = "x-omniroute-admission-bypass";
+// Fork-only: a process-local proof that lets a self-loop which already carries a
+// valid API key prove admission-bypass authority without replacing Authorization.
 export const ADMISSION_BYPASS_TOKEN_HEADER = "x-omniroute-admission-token";
 
 export function resolveSessionId(request: Request): string {
@@ -20,17 +24,23 @@ export function resolveSessionId(request: Request): string {
 }
 
 // Lazily generated, held in memory only for the lifetime of this process — never
-// persisted or logged. It proves internal admission bypass for callers that use
-// a separate API key, and remains the last-resort self-loop bearer when the
-// operator has not set OMNIROUTE_API_KEY/ROUTER_API_KEY. The in-process callers
-// and verifier agree on the value for this process's lifetime.
-let generatedSelfLoopSecret: string | null = null;
+// persisted, never logged. Used ONLY as the last-resort self-loop bearer when the
+// operator hasn't set OMNIROUTE_API_KEY/ROUTER_API_KEY (#13679: the previous fallback
+// was the checked-in literal "sk_omniroute", a predictable shared secret anyone reading
+// the source could forge). Both the in-process caller (audioBridgeHelpers /
+// visionBridgeHelpers) and the verifiers (isInternalAdmissionBypass, API-key
+// validation) read this same value. It lives on globalThis because the proxy (Next
+// middleware bundle) and the route handlers load separate copies of this module.
+const SELF_LOOP_SECRET_KEY = sharedSymbol("selfLoopSecret");
+const selfLoopStore = globalThis as unknown as Record<symbol, string | undefined>;
 
 function getGeneratedSelfLoopSecret(): string {
-  if (!generatedSelfLoopSecret) {
-    generatedSelfLoopSecret = randomBytes(32).toString("hex");
-  }
-  return generatedSelfLoopSecret;
+  return getProcessStore("selfLoopSecret", () => randomBytes(32).toString("hex"));
+}
+
+/** The generated self-loop secret, or null when none was created yet. Never creates it. */
+export function peekGeneratedSelfLoopSecret(): string | null {
+  return selfLoopStore[SELF_LOOP_SECRET_KEY] ?? null;
 }
 
 /** Process-local proof for self-loops that authenticate with a separate, valid API key. */
@@ -47,10 +57,15 @@ export function resolveSelfLoopBearer(): string {
 }
 
 export function isInternalAdmissionBypass(request: Request): boolean {
+  // #13593: our own fetch to this listener already holds the parent lease.
+  if (isOwnListenerSelfHop(request.headers.get(SELF_HOP_HEADER))) return true;
+
   const bypass =
     request.headers.get(ADMISSION_BYPASS_HEADER)?.trim().toLowerCase() === ADMISSION_BYPASS_VALUE;
   if (!bypass) return false;
 
+  // Fork path: a self-loop that carries its own valid API key proves bypass authority
+  // with a process-local token instead of replacing Authorization.
   const token = request.headers.get(ADMISSION_BYPASS_TOKEN_HEADER)?.trim();
   if (token && timingSafeCompare(token, resolveAdmissionBypassToken())) return true;
 

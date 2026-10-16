@@ -43,57 +43,27 @@ Ejen ACP (aliran hasil terbalik):
 
 ---
 
-## Auto-konfigurasi dengan `setup-*`
+## Konfigurasi Auto dengan `setup-*`
 
-Anda tidak perlu menulis konfigurasi setiap alat dengan tangan. OmniRoute menyediakan perintah `setup-*`
-untuk setiap CLI yang disokong yang membaca katalog model **langsung** dari OmniRoute yang sedang berjalan
-(tempatan atau jauh) dan menulis konfigurasi alat itu sendiri di mesin anda:
+Anda tidak perlu menulis konfigurasi setiap alat secara manual. OmniRoute menyediakan arahan `setup-*` untuk setiap CLI yang disokong yang membaca katalog model **langsung** daripada OmniRoute yang sedang berjalan (tempatan atau jauh) dan menulis konfigurasi alat itu sendiri pada mesin anda:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
 omniroute setup-cline        omniroute setup-kilo         omniroute setup-continue
 omniroute setup-cursor       omniroute setup-roo          omniroute setup-crush
 omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
+omniroute setup-5dive
 ```
 
-Setiap satu menerima `--remote <url> --api-key <key>` (mengkonfigurasi alat tempatan terhadap
-OmniRoute jauh), `--dry-run` (pratonton tanpa menulis), dan `--port`. Alat
-tanpa penemuan model automatik (Cline, Kilo, Roo, Goose, Aider, Qwen) mengambil
-`--model <id>` (dan `--yes` untuk larian bukan interaktif). Untuk melancarkan CLI dengan
-persekitaran yang betul disuntik dan tanpa konfigurasi ditulis sama sekali, gunakan
-pelancar generik `omniroute run <target>` (claude, codex, aider, goose, opencode, qwen,
-gemini — sasaran dan alias datang dari `bin/cli/cli-manifest.mjs`); pelancar per-alat legasi
-`omniroute launch` (Claude Code) dan `omniroute launch-codex`
-(Codex) masih tersedia. CLI Gemini hanya untuk pelancaran: ia adalah sasaran `omniroute run`
-tetapi tidak mempunyai resipi `setup-*`/`configure`.
+Setiap satu menerima `--remote <url> --api-key <key>` (mengkonfigurasi alat tempatan terhadap OmniRoute jauh), `--dry-run` (pratonton tanpa menulis), dan `--port`. Alat tanpa penemuan model automatik (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) mengambil `--model <id>` (dan `--yes` untuk pelaksanaan bukan interaktif). `setup-5dive` adalah satu-satunya resipi yang tidak menulis di bawah `$HOME`: ia mengkonfigurasi armada agen 5dive dengan menulis profil pengesahan milik root pada hos armada, jadi ia melaksanakan semula melalui `sudo` dan tidak mempunyai mod jauhnya sendiri. Untuk melancarkan CLI dengan persekitaran yang betul disuntik dan tiada konfigurasi ditulis sama sekali, gunakan pelancar generik `omniroute run <target>` (claude, codex, aider, goose, opencode, qwen, gemini — sasaran dan alias datang dari `bin/cli/cli-manifest.mjs`); pelancar warisan setiap alat `omniroute launch` (Claude Code) dan `omniroute launch-codex` (Codex) kekal tersedia. Gemini CLI adalah pelancar sahaja: ia adalah sasaran `omniroute run` tetapi tidak mempunyai resipi `setup-*`/`configure`.
 
-> **Rujukan penuh:** jadual induk — apa yang ditulis oleh setiap perintah, setiap bendera,
-> tempatan vs jauh, dan alat mana yang memerlukan akhiran `/v1` — terdapat dalam
-> **[Integrasi CLI](../guides/CLI-INTEGRATIONS.md)**.
+> **Rujukan Penuh:** jadual induk — apa yang ditulis oleh setiap arahan, setiap bendera, tempatan vs jauh, dan alat mana yang memerlukan akhiran `/v1` — terdapat dalam **[Integrasi CLI](../guides/CLI-INTEGRATIONS.md)**.
 
 ### Menjalankan ini di dalam kontena
 
-Perintah `setup-*` yang dilaksanakan di dalam kontena OmniRoute menulis ke
-rumah kontena itu sendiri, yang tidak dibaca oleh CLI host dan yang hilang dengan
-kontena. OmniRoute mengesan itu dan keluar `2` dengan arahan daripada menulis. Dua cara yang disokong untuk maju — pasang CLI di host dan
-`omniroute connect` ke kontena, atau bind-mount direktori konfigurasi dan set
-`CLI_CONFIG_HOME` (profil `host` compose). Setiap perintah `setup-*`, ditambah
-`omniroute configure` dan `omniroute config set`, menerima
-`--allow-container-write` apabila mengkonfigurasi CLI kontena itu sendiri adalah apa yang anda
-sebenarnya maksudkan; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` melakukan perkara yang sama untuk
-pelayan. Lihat
-[Panduan Docker → Mengkonfigurasi alat CLI host](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+Arahan `setup-*` yang dilaksanakan di dalam kontena OmniRoute menulis ke dalam direktori utama kontena itu sendiri, yang tidak dibaca oleh mana-mana CLI hos dan yang akan hilang bersama kontena. OmniRoute mengesan perkara itu dan keluar dengan kod `2` bersama arahan dan bukannya menulis. Dua cara yang disokong untuk meneruskan — pasang CLI pada hos dan `omniroute connect` ke kontena, atau pasang-ikat direktori konfigurasi dan tetapkan `CLI_CONFIG_HOME` (profil `host` compose). Setiap arahan `setup-*`, serta `omniroute configure` dan `omniroute config set`, menerima `--allow-container-write` apabila mengkonfigurasi CLI kontena itu sendiri adalah apa yang anda maksudkan; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` melakukan perkara yang sama untuk pelayan. Lihat [Panduan Docker → Mengkonfigurasi alat CLI hos apabila OmniRoute berjalan dalam Docker](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-Titik akhir **apply** papan pemuka (`POST /api/cli-tools/apply`) menguatkuasakan
-pengawal yang sama: dalam kontena, penulisan yang sasarannya tidak bind-mounted dari
-host menjawab **`422`** dengan `containerEphemeralTarget: true`, teks ralat selamat dan — untuk alat dengan resipi host (claude, codex, opencode, cline,
-kilo, continue) — satu `hostSetupCommand` (contohnya `omniroute setup-opencode`) untuk dijalankan
-di host sebaliknya; tiada apa yang ditulis. `dryRun: true` terus berfungsi dalam mod kontena
-dan mengembalikan kandungan yang dihasilkan + laluan sasaran tanpa menyentuh cakera, jadi
-anda boleh pratonton dari papan pemuka dan memohon di host. Tingkah laku ini adalah
-sengaja dan dilindungi regresi oleh
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — jangan sekali-kali "baiki" 422
-dengan mengeluarkan pengawal.
+Titik akhir **apply** papan pemuka (`POST /api/cli-tools/apply`) menguatkuasakan perlindungan yang sama: dalam kontena, penulisan yang sasarannya tidak dipasang-ikat dari hos akan menjawab **`422`** dengan `containerEphemeralTarget: true`, teks ralat selamat dan — untuk alat dengan resipi hos (claude, codex, opencode, cline, kilo, continue) — `hostSetupCommand` (cth. `omniroute setup-opencode`) untuk dijalankan pada hos sebaliknya; tiada apa-apa yang ditulis. `dryRun: true` terus berfungsi dalam mod kontena dan mengembalikan pratonton yang disunting + laluan sasaran tanpa menyentuh cakera. Kandungan pratonton bukanlah konfigurasi yang mengandungi kelayakan untuk disalin atau diimport. Gunakan dengan alat asal/URL asas/kunci API/input model pada hos, atau gunakan arahan persediaan sisi hos yang ditunjukkan. Lihat [keselamatan konfigurasi CLI](../security/CLI-CONFIGURATION.md) untuk pengepala pratonton dan kontrak permintaan. Tingkah laku ini adalah disengajakan dan dilindungi daripada regresi oleh `tests/unit/api/cli-tools/apply-container-guard.test.ts` — jangan sekali-kali "memperbaiki" 422 dengan membuang perlindungan.
 
 ---
 
@@ -577,7 +547,7 @@ di bawah `/dashboard/cli-tools → Kiro`.
 
 ---
 
-## 10. CLI Dalaman OmniRoute
+## 10. CLI OmniRoute Dalaman
 
 Binari `omniroute` menyediakan perintah untuk kitar hayat pelayan, persediaan, diagnostik dan pengurusan penyedia. Titik masuk: `bin/omniroute.mjs`.
 
@@ -608,10 +578,10 @@ omniroute setup --add-provider \
 
 Pemboleh ubah persekitaran yang dikenali untuk persediaan bukan interaktif:
 
-| Pemboleh ubah       | Tujuan                                                                    |
-| ------------------- | ------------------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | Kunci API penyedia (diikat kepada `--api-key` melalui `.env()` Commander) |
-| `DATA_DIR`          | Gantikan direktori data OmniRoute                                         |
+| Pemboleh Ubah       | Tujuan                                                                       |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `OMNIROUTE_API_KEY` | Kunci API penyedia (dipautkan kepada `--api-key` melalui `.env()` Commander) |
+| `DATA_DIR`          | Gantikan direktori data OmniRoute                                            |
 
 Semua input bukan interaktif yang lain dihantar sebagai bendera, bukan pemboleh ubah persekitaran:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
@@ -627,9 +597,9 @@ omniroute doctor --host 0.0.0.0        # Gantikan hos keaktifan
 omniroute doctor --liveness-url <url>  # Gantikan URL penuh titik akhir kesihatan
 ```
 
-Perintah doctor menjalankan semakan berikut: `Config`, `Database`, `Storage/encryption`,
+Doctor menjalankan pemeriksaan berikut: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` dan `Server liveness`. Ia keluar dengan kod bukan sifar jika mana-mana semakan ialah `fail`.
+`Memory` dan `Server liveness`. Ia keluar dengan kod bukan sifar jika mana-mana pemeriksaan berstatus `fail`.
 
 ### Pengurusan Penyedia
 
@@ -652,41 +622,53 @@ omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-`providers add/import/auth/edit/remove` mengutamakan API dan oleh itu berfungsi dengan
+`providers add/import/auth/edit/remove` mengutamakan API dan oleh itu berfungsi terhadap
 konteks setempat atau jauh yang aktif. Input kelayakan hendaklah menggunakan
 `--credential-stdin` atau `--credential-env`; `--dry-run --json` hanya melaporkan
-kehadiran/bentuk yang telah disunting. `providers available` membaca katalog OmniRoute;
+kewujudan/bentuk yang disunting. `providers available` membaca katalog OmniRoute;
 `providers list/test/test-all/validate` mengekalkan tingkah laku SQLite setempatnya dan
-tidak memerlukan pelayan berjalan.
+tidak memerlukan pelayan untuk berjalan.
+
+Untuk nod tersuai yang serasi dengan OpenAI atau Anthropic, lampirkan kelayakan pada
+ID nod yang dikembalikan oleh `omniroute nodes add`, menggunakan `omniroute keys add "$NODE_ID" --stdin`.
+Ini memerlukan pelayan yang sedang berjalan dan pengesahan pengurusan untuk konteks aktif.
+CLI menggunakan `POST /api/providers`, yang mengesahkan nod dan menyalin tetapan titik akhirnya
+ke dalam sambungan. Nod yang tiada, kegagalan kebenaran atau pelayan yang tidak tersedia
+akan mengembalikan ralat tanpa mencipta kelayakan sandaran setempat.
+
+`nodes add --base-url` menetapkan titik akhir nod; ia berbeza daripada alamat pelayan
+dalam `OMNIROUTE_BASE_URL`. Untuk fail OpenAPI, gunakan
+`omniroute openapi dump --format json --out ./openapi.json`; `--output` global
+memilih pemformatan paparan CLI, bukannya nama fail destinasi.
 
 ### Pemulihan & Penetapan Semula
 
 ```bash
 omniroute reset-password                # Tetapkan semula kata laluan pentadbir (juga: omniroute-reset-password)
-omniroute reset-encrypted-columns       # Tunjukkan amaran + percubaan kering untuk penetapan semula kelayakan yang disulitkan
-omniroute reset-encrypted-columns --force  # Benar-benar tetapkan kelayakan yang disulitkan kepada nol dalam SQLite
+omniroute reset-encrypted-columns       # Tunjukkan amaran + percubaan kering untuk penetapan semula kelayakan tersulit
+omniroute reset-encrypted-columns --force  # Kosongkan kelayakan tersulit dalam SQLite kepada null
 ```
 
 ### Eksport Kelayakan (⚠ kendalikan dengan berhati-hati)
 
 ```bash
 omniroute auth export                                 # Tunjukkan amaran + gerbang pengesahan — tiada akses DB
-omniroute auth export --force                          # Eksport kelayakan DINYAHSULIT bagi SEMUA sambungan ke stdout sebagai JSON
+omniroute auth export --force                          # Eksport kelayakan DINYAHKRIP bagi SEMUA sambungan ke stdout sebagai JSON
 omniroute auth export --force --id <id>                 # Eksport hanya sambungan yang sepadan
 omniroute auth export --force --format env               # Keluarkan baris OMNIROUTE_<PROVIDER>_<FIELD>=<value>
-omniroute auth export --force --out creds.json           # Tulis ke fail (dicipta dengan kebenaran 0600)
+omniroute auth export --force --out creds.json           # Tulis ke fail (dicipta dengan keizinan 0600)
 ```
 
-`auth export` adalah **setempat sahaja** (bacaan SQLite secara langsung, tiada laluan HTTP) dan sengaja mencetak/menulis
-nilai **teks biasa** `apiKey`/`accessToken`/`refreshToken`/`idToken` — itu ialah ciri, bukan
-pepijat. Tiada apa-apa dibaca daripada pangkalan data dan tiada apa-apa dinyahsulit tanpa `--force`. Sepanduk
+`auth export` adalah **setempat sahaja** (bacaan SQLite secara langsung, tanpa laluan HTTP) dan sengaja mencetak/menulis
+nilai `apiKey`/`accessToken`/`refreshToken`/`idToken` dalam **teks biasa** — itu ialah cirinya, bukan
+pepijat. Tiada apa-apa yang dibaca daripada pangkalan data dan tiada apa-apa yang dinyahsulitkan tanpa `--force`. Sepanduk
 amaran stderr sentiasa dicetak sebelum sebarang teks biasa dikeluarkan. Memerlukan `STORAGE_ENCRYPTION_KEY`
-ditetapkan. Medan yang gagal dinyahsulit (kunci lapuk, teks sifer rosak) dilaporkan sebagai
-`<field>DecryptFailed: true` dan bukannya membatalkan keseluruhan eksport atau membocorkan ralat asas.
+ditetapkan. Medan yang gagal dinyahsulitkan (kunci lapuk, teks sifir rosak) dilaporkan sebagai
+`<field>DecryptFailed: true` dan bukannya membatalkan keseluruhan eksport atau mendedahkan ralat yang mendasarinya.
 
 ### Subperintah lain
 
-Ini mengandaikan pelayan OmniRoute sedang berjalan, melainkan dinyatakan sebaliknya:
+Perintah berikut mengandaikan pelayan OmniRoute sedang berjalan, melainkan dinyatakan sebaliknya:
 
 ```bash
 omniroute status                       # Status masa jalan yang menyeluruh
@@ -699,8 +681,8 @@ omniroute keys add | list | remove     # Urus kunci API
 omniroute models [provider]            # Senaraikan model (--json, --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # Petikan konfigurasi + DB
-omniroute restore                      # Pulihkan daripada petikan sebelumnya
+omniroute backup                       # Ambil petikan konfigurasi + DB
+omniroute restore                      # Pulihkan daripada petikan terdahulu
 
 omniroute health                       # Kesihatan terperinci (pemutus, cache, memori)
 omniroute quota                        # Penggunaan kuota penyedia
@@ -713,7 +695,7 @@ omniroute a2a status | card            # Status pelayan A2A / kad ejen
 omniroute tunnel list | create | stop  # Urus terowong (cloudflare/tailscale/ngrok)
 omniroute env show | get <k> | set <k> <v>  # Periksa / tetapkan pemboleh ubah persekitaran (sementara)
 
-omniroute test                         # Ujian ringkas kesambungan penyedia
+omniroute test                         # Ujian ringkas ketersambungan penyedia
 omniroute update                       # Semak kemas kini
 omniroute completion                   # Jana pelengkapan shell
 ```
@@ -722,13 +704,13 @@ omniroute completion                   # Jana pelengkapan shell
 
 | Bendera             | Penerangan                                                    |
 | ------------------- | ------------------------------------------------------------- |
-| `--no-open`         | Jangan buka pelayar secara automatik semasa permulaan         |
+| `--no-open`         | Jangan buka pelayar secara automatik semasa dimulakan         |
 | `--port <n>`        | Gantikan port API (lalai 20128)                               |
 | `--mcp`             | Jalankan sebagai pelayan MCP melalui stdio (untuk IDE)        |
-| `--non-interactive` | Mod CI (tanpa gesaan; membaca daripada env/bendera)           |
+| `--non-interactive` | Mod CI (tiada gesaan; membaca daripada env/bendera)           |
 | `--json`            | Output JSON yang boleh dibaca mesin (doctor, providers, dll.) |
 | `--help`, `-h`      | Tunjukkan bantuan khusus perintah                             |
-| `--version`, `-v`   | Paparkan versi yang dipasang                                  |
+| `--version`, `-v`   | Cetak versi yang dipasang                                     |
 
 ---
 

@@ -13,23 +13,25 @@
 
 # 🚀 OmniRoute — 무료 AI 게이트웨이
 
-<img src="./docs/diagrams/readme-hero.svg" width="100%" alt="OmniRoute — 코딩을 멈추지 마세요. 모든 AI 도구 → 359개 제공업체 — 150개 이상의 무료 티어 — 하나의 엔드포인트로 연결합니다. Claude Code, Codex, Cursor, Cline, Copilot 및 Antigravity를 자동 폴백을 통해 무료 Claude / GPT / Gemini에 연결합니다. RTK + Caveman 스택형 압축으로 토큰을 15~95%(평균 약 89%) 절약하여 한도에 도달하지 않습니다. 359개 AI 제공업체 · 150개 이상의 무료 티어 · 월 약 16억 2천만 개의 무료 토큰 · 19가지 라우팅 전략 · $0로 시작."/>
+<img src="./docs/diagrams/readme-hero.svg" width="100%" alt="OmniRoute — 코딩을 멈추지 마세요. 모든 AI 도구 → 372개 제공업체 — 150개 이상 무료 — 하나의 엔드포인트로 연결. Claude Code, Codex, Cursor, Cline, Copilot 및 Antigravity를 자동 폴백과 함께 무료 Claude / GPT / Gemini로 연결합니다. RTK + Caveman 다중 압축으로 토큰을 15~95%(평균 약 89%) 절약하여 한도에 도달하지 않습니다. 372개 AI 제공업체 · 150개 이상의 무료 티어 · 월 약 16억 2천만 개 무료 토큰 · 19가지 라우팅 전략 · $0로 시작."/>
 
 </div>
 
 <div align="center">
 
-## 💰 월 ~1.62B 무료 토큰
+## 💰 타사 무료 티어 전체에서 월 ~1.62B 토큰
 
 </div>
 
-> 무료 티어를 직접 조합하는 일은 고통스럽습니다. 수십 개의 SDK, 수십 개의 사용량 제한이 있는 데다 실제로 얼마나 사용할 수 있는지조차 알기 어렵습니다. OmniRoute는 **35개의 반복 풀 키에 걸친 489개의 무료 티어 항목**을 분류하고, **공개된 월간 예산이 0보다 큰 17개 풀과 모델별 Groq 한도 5개**를 바탕으로 토큰 수치를 계산하며, 공유 풀은 중복 계산하지 않습니다. 지역 신원 확인을 거쳐야만 사용할 수 있는 할당량(현재: ModelScope)은 별도로 표시되며, 지역 신원 확인 후 제공되는 +~6M은 주요 수치에 절대 합산하지 않습니다. 결과는 대시보드(`/dashboard/free-tiers`)에서 계속 확인할 수 있습니다.
-
-<img src="./docs/diagrams/free-tier-budget.svg" width="100%" alt="OmniRoute 무료 티어 예산 카드: 매월 안정적으로 ~1.62B개의 무료 토큰, 가입 크레딧을 포함하면 첫 달에는 최대 ~2.22B개를 하나의 엔드포인트에서 이용할 수 있으며, 문서화된 35개의 반복 풀 키가 분류된 489개의 무료 티어 항목을 포괄합니다. 공유 풀마다 한 번만 계산하는 정직한 풀 중복 제거 방식 — 공개된 월간 토큰 예산이 0보다 큰 17개의 반복 풀과 모델별 Groq 한도 5개를 포함합니다. 약관 위험 카탈로그에서 13개 제공업체는 회피 대상으로 표시되므로 사용 여부는 직접 결정할 수 있습니다. 예산 막대에는 Mistral 1B, Nara 210M, LLM7 150M, xKiro 150M, Groq 30M(모델별 한도 5개) 및 더 작은 풀들이 포함됩니다. 또한 첫 달 가입 크레딧과 토큰 한도가 없는 영구 무료 제공업체는 주요 수치를 부풀리지 않도록 별도로 표시됩니다. /dashboard/free-tiers에서 실시간 사용량/잔여량을 확인할 수 있습니다."/>
-
-> 실시간 `/dashboard/free-tiers` 페이지의 애니메이션 요약입니다. 전체 방법론(풀 중복 제거, 크레딧 티어, 제공업체 약관): **[docs/reference/FREE_TIERS.md](docs/reference/FREE_TIERS.md)**.
+> **자체 제공업체 계정을 사용하세요.** 이는 개별적으로 자격 요건을 충족하는 타사 무료 티어를 합산한 추정치이며, OmniRoute가 제공하는 토큰이 아닙니다. 가입하고, 필요한 경우 자격 증명을 발급받은 후, 사용할 수 있는 제공업체를 연결하세요. 각 제공업체가 한도, 가용성 및 이용 약관을 관리합니다.
 >
-> <sub>이 수치는 2주마다 실제 카탈로그를 기준으로 재감사되며 **양방향으로 변동**합니다. 제공업체가 무료 티어를 종료하면 수치가 감소하고, 새로운 무료 티어가 추가되면 증가합니다. 저희는 상향 반올림한 최상의 경우가 아니라 카탈로그에서 실제로 계산된 값을 공개합니다.</sub>
+> 무료 티어를 수동으로 조합하는 일은 고통스럽습니다. 수십 개의 SDK, 수십 가지 사용량 제한, 그리고 실제로 얼마나 사용할 수 있는지 알 방법도 없습니다. OmniRoute는 **반복 제공 풀 키 35개에 걸쳐 489개의 무료 티어 항목**을 분류하며, **공개된 월간 예산이 양수인 풀 17개와 모델별 Groq 한도 5개**를 기반으로 토큰 수치를 계산하고 공유 풀별로 중복을 제거합니다. 지역 신원 확인을 완료해야만 이용할 수 있는 할당량(현재: ModelScope)은 별도로 표시되며, 지역 신원 확인 후 제공되는 +~6M은 주요 수치에 절대 합산되지 않습니다. 결과는 대시보드(`/dashboard/free-tiers`)에서 계속 확인할 수 있습니다.
+
+<img src="./docs/diagrams/free-tier-budget.svg" width="100%" alt="OmniRoute 무료 티어 예산 카드: 매월 안정적으로 ~1.62B개의 무료 토큰, 가입 크레딧을 포함하면 첫 달에는 최대 ~2.22B개 제공. 하나의 엔드포인트 뒤에 있는, 문서화된 반복 제공 풀 키 35개에서 분류된 무료 티어 항목 489개를 포괄합니다. 공유 풀별 중복을 정직하게 제거한 계산 방식 — 공개된 월간 토큰 예산이 양수인 반복 제공 풀 17개와 모델별 Groq 한도 5개를 포함해 각 공유 풀을 한 번만 계산합니다. 이용 약관 위험 카탈로그에서 제공업체 13개는 사용 지양으로 표시되므로 사용 여부는 직접 결정할 수 있습니다. 예산 막대에는 Mistral 1B, Nara 210M, LLM7 150M, xKiro 150M, Groq 30M(모델별 한도 5개) 및 더 작은 풀이 포함되며, 첫 달 가입 크레딧과 토큰 한도가 없는 영구 무료 제공업체는 별도로 표시되어 주요 수치를 부풀리지 않습니다. /dashboard/free-tiers에서 실시간 사용량/잔여량을 확인할 수 있습니다."/>
+
+> 실시간 `/dashboard/free-tiers` 페이지의 애니메이션 요약입니다. 전체 방법론(풀 중복 제거, 크레딧 티어, 제공업체 이용 약관): **[docs/reference/FREE_TIERS.md](docs/reference/FREE_TIERS.md)**.
+>
+> <sub>이 수치는 실시간 카탈로그를 기준으로 2주마다 재감사되며 **양방향으로 변동**합니다. 제공업체가 무료 티어를 종료하면 수치가 내려가고, 새로운 무료 티어가 추가되면 올라갑니다. 반올림해 부풀린 최상의 사례가 아니라, 카탈로그에서 실제로 계산된 값을 공개합니다.</sub>
 
 <br/>
 
@@ -37,18 +39,18 @@
 
 <h3>
 
-⭐ OMNIROUTE가 비용을 절감하고 작업을 더 쉽게 수행하는 데 도움이 되었다면 저장소에 Star를 눌러 주세요.
+⭐ OMNIROUTE가 비용을 절약하고 작업을 더 쉽게 하는 데 도움이 되었다면 저장소에 Star를 눌러 주세요.
 
 </h3>
 
-[![Star 수](https://img.shields.io/github/stars/diegosouzapw/OmniRoute?style=social)](https://github.com/diegosouzapw/OmniRoute)
+[![Star](https://img.shields.io/github/stars/diegosouzapw/OmniRoute?style=social)](https://github.com/diegosouzapw/OmniRoute)
 <a href="https://trendshift.io/repositories/23589" target="_blank"><img src="https://trendshift.io/api/badge/repositories/23589" alt="diegosouzapw%2FOmniRoute | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 [![Star 기록 순위](https://api.star-history.com/badge?repo=diegosouzapw/OmniRoute&theme=dark)](https://www.star-history.com/diegosouzapw/omniroute)
 [![olud.ai](https://olud.ai/badge.php?tool=diegosouzapw-omniroute)](https://olud.ai/project/diegosouzapw-omniroute.html)
 
 ### 💬 커뮤니티에 참여하세요
 
-**👋 유지관리자를 팔로우하고 새로운 제공업체, 릴리스 및 팁을 가장 먼저 받아보세요:**
+**👋 관리자를 팔로우하고 새로운 제공업체, 릴리스 및 팁을 가장 먼저 받아보세요:**
 
 [![LinkedIn에서 Diego 팔로우](https://img.shields.io/badge/Follow_Diego_on-LinkedIn-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/diegosouzapw/)
 [![GitHub에서 @diegosouzapw 팔로우](https://img.shields.io/github/followers/diegosouzapw?style=for-the-badge&logo=github&logoColor=white&label=Follow%20on%20GitHub&color=181717)](https://github.com/diegosouzapw)
@@ -63,20 +65,22 @@
 
 <br/>
 
-## 📈 계속 성장하는 게이트웨이
+## 📈 계속 성장하는 Gateway
 
 <div align="center">
 
-|                         | v3.8.49 |        **v3.8.50**        | `v3.8.51+` |
-| ----------------------- | :-----: | :-----------------------: | :--------: |
-| 🌐 제공업체             |   290   |          **357**          | 추가 예정  |
-| 🧠 고유 채팅 모델 ID    |  1185   |         **1312**          |     —      |
-| 🖼️ 모달리티 브리지      |    —    | 🆕 비전 + 오디오 + 비디오 |     —      |
-| 📡 Radar 무료 카탈로그  |    —    |      🆕 선택적 참여       |     —      |
-| ⚖️ 할당량 인식 스케줄링 |    —    |      🆕 Quota-Share       |     —      |
-| 📊 할당량 텔레메트리    |    —    |      🆕 실시간 제공       |     —      |
+|                         |          v3.8.50          | **v3.8.51** |      `v3.8.52+`       |
+| ----------------------- | :-----------------------: | :---------: | :-------------------: |
+| 🌐 제공업체             |            352            |   **358**   |          372          |
+| 🧠 고유 채팅 모델 ID    |           1320            |  **1374**   |         1443          |
+| 🖼️ 모달리티 브리지      | 🆕 비전 + 오디오 + 비디오 |      ✓      |           ✓           |
+| 📡 Radar 무료 카탈로그  |      🆕 선택적 사용       |      ✓      |           ✓           |
+| ⚖️ 할당량 인식 스케줄링 |      🆕 Quota-Share       |      ✓      |           ✓           |
+| 📊 할당량 텔레메트리    |         🆕 실시간         |      ✓      |           ✓           |
+| 🧰 헤드리스 모드        |             —             |      —      | 🆕 `serve --headless` |
+| 🛤️ LTS 레일 인프라      |             —             |      —      |    🆕 릴리스 채널     |
 
-**→ [로드맵](ROADMAP.md) — `v3.9.0 LTS`를 향해 순항 중**
+**→ [`v3.9.0 LTS`를 향해 나아가는 로드맵](ROADMAP.md)**
 
 </div>
 
@@ -101,13 +105,13 @@
   <tr>
     <td align="right"><b>💡 알아보기</b></td>
     <td align="center"><a href="#-the-promise">💥 약속</a></td>
-    <td align="center"><a href="#-why-omniroute">🤔 OmniRoute를 사용하는 이유</a></td>
-    <td align="center"><a href="#-what-sets-omniroute-apart">🏆 OmniRoute의 차별점</a></td>
+    <td align="center"><a href="#-why-omniroute">🤔 OmniRoute를 선택해야 하는 이유</a></td>
+    <td align="center"><a href="#-what-sets-omniroute-apart">🏆 차별점</a></td>
   </tr>
   <tr>
     <td align="right"><b>⚙️ 기능</b></td>
     <td align="center"><a href="#-combos--the-flagship">🎯 콤보</a></td>
-    <td align="center"><a href="#-357-ai-providers--152-catalog-marked-free">🌐 제공업체</a></td>
+    <td align="center"><a href="#-372-ai-providers--154-catalog-marked-free">🌐 제공업체</a></td>
     <td align="center"><a href="#-full-cli--a2a--mcp">🔌 CLI 및 MCP</a></td>
   </tr>
   <tr>
@@ -139,74 +143,75 @@
 </div>
 
 <div align="center">
-  <b>🌐 66개 언어로 제공</b>
+  <b>🌐 67개 언어로 제공</b>
   <br/><br/>
-  <a href="README.md"><img src="docs/assets/flags/us.svg" width="30" alt="영어 (en)" title="영어 (en)"></a>
-  <a href="docs/i18n/pt-BR/README.md"><img src="docs/assets/flags/br.svg" width="30" alt="포르투갈어 — 브라질 (pt-BR)" title="포르투갈어 — 브라질 (pt-BR)"></a>
-  <a href="docs/i18n/pt/README.md"><img src="docs/assets/flags/pt.svg" width="30" alt="포르투갈어 (pt)" title="포르투갈어 (pt)"></a>
-  <a href="docs/i18n/es/README.md"><img src="docs/assets/flags/es.svg" width="30" alt="스페인어 (es)" title="스페인어 (es)"></a>
-  <a href="docs/i18n/fr/README.md"><img src="docs/assets/flags/fr.svg" width="30" alt="프랑스어 (fr)" title="프랑스어 (fr)"></a>
-  <a href="docs/i18n/it/README.md"><img src="docs/assets/flags/it.svg" width="30" alt="이탈리아어 (it)" title="이탈리아어 (it)"></a>
-  <a href="docs/i18n/de/README.md"><img src="docs/assets/flags/de.svg" width="30" alt="독일어 (de)" title="독일어 (de)"></a>
-  <a href="docs/i18n/nl/README.md"><img src="docs/assets/flags/nl.svg" width="30" alt="네덜란드어 (nl)" title="네덜란드어 (nl)"></a>
-  <a href="docs/i18n/ru/README.md"><img src="docs/assets/flags/ru.svg" width="30" alt="러시아어 (ru)" title="러시아어 (ru)"></a>
-  <a href="docs/i18n/uk-UA/README.md"><img src="docs/assets/flags/ua.svg" width="30" alt="우크라이나어 (uk-UA)" title="우크라이나어 (uk-UA)"></a>
-  <a href="docs/i18n/pl/README.md"><img src="docs/assets/flags/pl.svg" width="30" alt="폴란드어 (pl)" title="폴란드어 (pl)"></a>
-  <a href="docs/i18n/cs/README.md"><img src="docs/assets/flags/cz.svg" width="30" alt="체코어 (cs)" title="체코어 (cs)"></a>
-  <a href="docs/i18n/sk/README.md"><img src="docs/assets/flags/sk.svg" width="30" alt="슬로바키아어 (sk)" title="슬로바키아어 (sk)"></a>
-  <a href="docs/i18n/ro/README.md"><img src="docs/assets/flags/ro.svg" width="30" alt="루마니아어 (ro)" title="루마니아어 (ro)"></a>
-  <a href="docs/i18n/hu/README.md"><img src="docs/assets/flags/hu.svg" width="30" alt="헝가리어 (hu)" title="헝가리어 (hu)"></a>
-  <a href="docs/i18n/bg/README.md"><img src="docs/assets/flags/bg.svg" width="30" alt="불가리아어 (bg)" title="불가리아어 (bg)"></a>
-  <a href="docs/i18n/da/README.md"><img src="docs/assets/flags/dk.svg" width="30" alt="덴마크어 (da)" title="덴마크어 (da)"></a>
-  <a href="docs/i18n/fi/README.md"><img src="docs/assets/flags/fi.svg" width="30" alt="핀란드어 (fi)" title="핀란드어 (fi)"></a>
-  <a href="docs/i18n/no/README.md"><img src="docs/assets/flags/no.svg" width="30" alt="노르웨이어 (no)" title="노르웨이어 (no)"></a>
-  <a href="docs/i18n/sv/README.md"><img src="docs/assets/flags/se.svg" width="30" alt="스웨덴어 (sv)" title="스웨덴어 (sv)"></a>
-  <a href="docs/i18n/zh-CN/README.md"><img src="docs/assets/flags/cn.svg" width="30" alt="중국어 — 간체 (zh-CN)" title="중국어 — 간체 (zh-CN)"></a>
-  <a href="docs/i18n/zh-TW/README.md"><img src="docs/assets/flags/tw.svg" width="30" alt="중국어 — 번체 (zh-TW)" title="중국어 — 번체 (zh-TW)"></a>
-  <a href="docs/i18n/ja/README.md"><img src="docs/assets/flags/jp.svg" width="30" alt="일본어 (ja)" title="일본어 (ja)"></a>
+  <a href="README.md"><img src="docs/assets/flags/us.svg" width="30" alt="English (en)" title="English (en)"></a>
+  <a href="docs/i18n/pt-BR/README.md"><img src="docs/assets/flags/br.svg" width="30" alt="Português — Brasil (pt-BR)" title="Português — Brasil (pt-BR)"></a>
+  <a href="docs/i18n/pt/README.md"><img src="docs/assets/flags/pt.svg" width="30" alt="Português (pt)" title="Português (pt)"></a>
+  <a href="docs/i18n/es/README.md"><img src="docs/assets/flags/es.svg" width="30" alt="Español (es)" title="Español (es)"></a>
+  <a href="docs/i18n/fr/README.md"><img src="docs/assets/flags/fr.svg" width="30" alt="Français (fr)" title="Français (fr)"></a>
+  <a href="docs/i18n/it/README.md"><img src="docs/assets/flags/it.svg" width="30" alt="Italiano (it)" title="Italiano (it)"></a>
+  <a href="docs/i18n/de/README.md"><img src="docs/assets/flags/de.svg" width="30" alt="Deutsch (de)" title="Deutsch (de)"></a>
+  <a href="docs/i18n/nl/README.md"><img src="docs/assets/flags/nl.svg" width="30" alt="Nederlands (nl)" title="Nederlands (nl)"></a>
+  <a href="docs/i18n/ru/README.md"><img src="docs/assets/flags/ru.svg" width="30" alt="Русский (ru)" title="Русский (ru)"></a>
+  <a href="docs/i18n/uk-UA/README.md"><img src="docs/assets/flags/ua.svg" width="30" alt="Українська (uk-UA)" title="Українська (uk-UA)"></a>
+  <a href="docs/i18n/pl/README.md"><img src="docs/assets/flags/pl.svg" width="30" alt="Polski (pl)" title="Polski (pl)"></a>
+  <a href="docs/i18n/cs/README.md"><img src="docs/assets/flags/cz.svg" width="30" alt="Čeština (cs)" title="Čeština (cs)"></a>
+  <a href="docs/i18n/sk/README.md"><img src="docs/assets/flags/sk.svg" width="30" alt="Slovenčina (sk)" title="Slovenčina (sk)"></a>
+  <a href="docs/i18n/ro/README.md"><img src="docs/assets/flags/ro.svg" width="30" alt="Română (ro)" title="Română (ro)"></a>
+  <a href="docs/i18n/hu/README.md"><img src="docs/assets/flags/hu.svg" width="30" alt="Magyar (hu)" title="Magyar (hu)"></a>
+  <a href="docs/i18n/bg/README.md"><img src="docs/assets/flags/bg.svg" width="30" alt="Български (bg)" title="Български (bg)"></a>
+  <a href="docs/i18n/da/README.md"><img src="docs/assets/flags/dk.svg" width="30" alt="Dansk (da)" title="Dansk (da)"></a>
+  <a href="docs/i18n/fi/README.md"><img src="docs/assets/flags/fi.svg" width="30" alt="Suomi (fi)" title="Suomi (fi)"></a>
+  <a href="docs/i18n/no/README.md"><img src="docs/assets/flags/no.svg" width="30" alt="Norsk (no)" title="Norsk (no)"></a>
+  <a href="docs/i18n/sv/README.md"><img src="docs/assets/flags/se.svg" width="30" alt="Svenska (sv)" title="Svenska (sv)"></a>
+  <a href="docs/i18n/zh-CN/README.md"><img src="docs/assets/flags/cn.svg" width="30" alt="中文 — 简体 (zh-CN)" title="中文 — 简体 (zh-CN)"></a>
+  <a href="docs/i18n/zh-TW/README.md"><img src="docs/assets/flags/tw.svg" width="30" alt="中文 — 繁體 (zh-TW)" title="中文 — 繁體 (zh-TW)"></a>
+  <a href="docs/i18n/ja/README.md"><img src="docs/assets/flags/jp.svg" width="30" alt="日本語 (ja)" title="日本語 (ja)"></a>
   <a href="docs/i18n/ko/README.md"><img src="docs/assets/flags/kr.svg" width="30" alt="한국어 (ko)" title="한국어 (ko)"></a>
-  <a href="docs/i18n/th/README.md"><img src="docs/assets/flags/th.svg" width="30" alt="태국어 (th)" title="태국어 (th)"></a>
-  <a href="docs/i18n/vi/README.md"><img src="docs/assets/flags/vn.svg" width="30" alt="베트남어 (vi)" title="베트남어 (vi)"></a>
-  <a href="docs/i18n/id/README.md"><img src="docs/assets/flags/id.svg" width="30" alt="인도네시아어 (id)" title="인도네시아어 (id)"></a>
-  <a href="docs/i18n/ms/README.md"><img src="docs/assets/flags/my.svg" width="30" alt="말레이어 (ms)" title="말레이어 (ms)"></a>
-  <a href="docs/i18n/phi/README.md"><img src="docs/assets/flags/ph.svg" width="30" alt="필리핀어 (phi)" title="필리핀어 (phi)"></a>
-  <a href="docs/i18n/hi/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="힌디어 (hi)" title="힌디어 (hi)"></a>
-  <a href="docs/i18n/gu/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="구자라트어 (gu)" title="구자라트어 (gu)"></a>
-  <a href="docs/i18n/mr/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="마라티어 (mr)" title="마라티어 (mr)"></a>
-  <a href="docs/i18n/ta/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="타밀어 (ta)" title="타밀어 (ta)"></a>
-  <a href="docs/i18n/te/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="텔루구어 (te)" title="텔루구어 (te)"></a>
-  <a href="docs/i18n/bn/README.md"><img src="docs/assets/flags/bd.svg" width="30" alt="벵골어 (bn)" title="벵골어 (bn)"></a>
-  <a href="docs/i18n/ur/README.md"><img src="docs/assets/flags/pk.svg" width="30" alt="우르두어 (ur)" title="우르두어 (ur)"></a>
-  <a href="docs/i18n/fa/README.md"><img src="docs/assets/flags/ir.svg" width="30" alt="페르시아어 (fa)" title="페르시아어 (fa)"></a>
-  <a href="docs/i18n/ar/README.md"><img src="docs/assets/flags/sa.svg" width="30" alt="아랍어 (ar)" title="아랍어 (ar)"></a>
-  <a href="docs/i18n/he/README.md"><img src="docs/assets/flags/il.svg" width="30" alt="히브리어 (he)" title="히브리어 (he)"></a>
-  <a href="docs/i18n/tr/README.md"><img src="docs/assets/flags/tr.svg" width="30" alt="튀르키예어 (tr)" title="튀르키예어 (tr)"></a>
-  <a href="docs/i18n/az/README.md"><img src="docs/assets/flags/az.svg" width="30" alt="아제르바이잔어 (az)" title="아제르바이잔어 (az)"></a>
-  <a href="docs/i18n/sw/README.md"><img src="docs/assets/flags/tz.svg" width="30" alt="스와힐리어 (sw)" title="스와힐리어 (sw)"></a>
-  <a href="docs/i18n/el/README.md"><img src="docs/assets/flags/gr.svg" width="30" alt="그리스어 (el)" title="그리스어 (el)"></a>
-  <a href="docs/i18n/hr/README.md"><img src="docs/assets/flags/hr.svg" width="30" alt="크로아티아어 (hr)" title="크로아티아어 (hr)"></a>
-  <a href="docs/i18n/sr/README.md"><img src="docs/assets/flags/rs.svg" width="30" alt="세르비아어 (sr)" title="세르비아어 (sr)"></a>
-  <a href="docs/i18n/lt/README.md"><img src="docs/assets/flags/lt.svg" width="30" alt="리투아니아어 (lt)" title="리투아니아어 (lt)"></a>
-  <a href="docs/i18n/et/README.md"><img src="docs/assets/flags/ee.svg" width="30" alt="에스토니아어 (et)" title="에스토니아어 (et)"></a>
-  <a href="docs/i18n/lv/README.md"><img src="docs/assets/flags/lv.svg" width="30" alt="라트비아어 (lv)" title="라트비아어 (lv)"></a>
-  <a href="docs/i18n/sl/README.md"><img src="docs/assets/flags/si.svg" width="30" alt="슬로베니아어 (sl)" title="슬로베니아어 (sl)"></a>
-  <a href="docs/i18n/mt/README.md"><img src="docs/assets/flags/mt.svg" width="30" alt="몰타어 (mt)" title="몰타어 (mt)"></a>
-  <a href="docs/i18n/ga/README.md"><img src="docs/assets/flags/ie.svg" width="30" alt="아일랜드어 (ga)" title="아일랜드어 (ga)"></a>
-  <a href="docs/i18n/kn/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="칸나다어 (kn)" title="칸나다어 (kn)"></a>
-  <a href="docs/i18n/ml/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="말라얄람어 (ml)" title="말라얄람어 (ml)"></a>
-  <a href="docs/i18n/or/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="오리야어 (or)" title="오리야어 (or)"></a>
-  <a href="docs/i18n/pa/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="펀자브어 (pa)" title="펀자브어 (pa)"></a>
-  <a href="docs/i18n/ne/README.md"><img src="docs/assets/flags/np.svg" width="30" alt="네팔어 (ne)" title="네팔어 (ne)"></a>
-  <a href="docs/i18n/si/README.md"><img src="docs/assets/flags/lk.svg" width="30" alt="싱할라어 (si)" title="싱할라어 (si)"></a>
-  <a href="docs/i18n/my/README.md"><img src="docs/assets/flags/mm.svg" width="30" alt="미얀마어 (my)" title="미얀마어 (my)"></a>
-  <a href="docs/i18n/km/README.md"><img src="docs/assets/flags/kh.svg" width="30" alt="크메르어 (km)" title="크메르어 (km)"></a>
-  <a href="docs/i18n/ha/README.md"><img src="docs/assets/flags/ng.svg" width="30" alt="하우사어 (ha)" title="하우사어 (ha)"></a>
-  <a href="docs/i18n/yo/README.md"><img src="docs/assets/flags/ng.svg" width="30" alt="요루바어 (yo)" title="요루바어 (yo)"></a>
-  <a href="docs/i18n/ig/README.md"><img src="docs/assets/flags/ng.svg" width="30" alt="이그보어 (ig)" title="이그보어 (ig)"></a>
-  <a href="docs/i18n/am/README.md"><img src="docs/assets/flags/et.svg" width="30" alt="암하라어 (am)" title="암하라어 (am)"></a>
-  <a href="docs/i18n/uz/README.md"><img src="docs/assets/flags/uz.svg" width="30" alt="우즈베크어 (uz)" title="우즈베크어 (uz)"></a>
-  <a href="docs/i18n/ka/README.md"><img src="docs/assets/flags/ge.svg" width="30" alt="조지아어 (ka)" title="조지아어 (ka)"></a>
-  <a href="docs/i18n/hy/README.md"><img src="docs/assets/flags/am.svg" width="30" alt="아르메니아어 (hy)" title="아르메니아어 (hy)"></a>
+  <a href="docs/i18n/th/README.md"><img src="docs/assets/flags/th.svg" width="30" alt="ไทย (th)" title="ไทย (th)"></a>
+  <a href="docs/i18n/vi/README.md"><img src="docs/assets/flags/vn.svg" width="30" alt="Tiếng Việt (vi)" title="Tiếng Việt (vi)"></a>
+  <a href="docs/i18n/id/README.md"><img src="docs/assets/flags/id.svg" width="30" alt="Bahasa Indonesia (id)" title="Bahasa Indonesia (id)"></a>
+  <a href="docs/i18n/ms/README.md"><img src="docs/assets/flags/my.svg" width="30" alt="Bahasa Melayu (ms)" title="Bahasa Melayu (ms)"></a>
+  <a href="docs/i18n/phi/README.md"><img src="docs/assets/flags/ph.svg" width="30" alt="Filipino (phi)" title="Filipino (phi)"></a>
+  <a href="docs/i18n/hi/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="हिन्दी (hi)" title="हिन्दी (hi)"></a>
+  <a href="docs/i18n/gu/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="ગુજરાતી (gu)" title="ગુજરાતી (gu)"></a>
+  <a href="docs/i18n/mr/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="मराठी (mr)" title="मराठी (mr)"></a>
+  <a href="docs/i18n/ta/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="தமிழ் (ta)" title="தமிழ் (ta)"></a>
+  <a href="docs/i18n/te/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="తెలుగు (te)" title="తెలుగు (te)"></a>
+  <a href="docs/i18n/bn/README.md"><img src="docs/assets/flags/bd.svg" width="30" alt="বাংলা (bn)" title="বাংলা (bn)"></a>
+  <a href="docs/i18n/ur/README.md"><img src="docs/assets/flags/pk.svg" width="30" alt="اردو (ur)" title="اردو (ur)"></a>
+  <a href="docs/i18n/fa/README.md"><img src="docs/assets/flags/ir.svg" width="30" alt="فارسی (fa)" title="فارسی (fa)"></a>
+  <a href="docs/i18n/ar/README.md"><img src="docs/assets/flags/sa.svg" width="30" alt="العربية (ar)" title="العربية (ar)"></a>
+  <a href="docs/i18n/he/README.md"><img src="docs/assets/flags/il.svg" width="30" alt="עברית (he)" title="עברית (he)"></a>
+  <a href="docs/i18n/tr/README.md"><img src="docs/assets/flags/tr.svg" width="30" alt="Türkçe (tr)" title="Türkçe (tr)"></a>
+  <a href="docs/i18n/az/README.md"><img src="docs/assets/flags/az.svg" width="30" alt="Azərbaycan (az)" title="Azərbaycan (az)"></a>
+  <a href="docs/i18n/sw/README.md"><img src="docs/assets/flags/tz.svg" width="30" alt="Kiswahili (sw)" title="Kiswahili (sw)"></a>
+  <a href="docs/i18n/el/README.md"><img src="docs/assets/flags/gr.svg" width="30" alt="Ελληνικά (el)" title="Ελληνικά (el)"></a>
+  <a href="docs/i18n/hr/README.md"><img src="docs/assets/flags/hr.svg" width="30" alt="Hrvatski (hr)" title="Hrvatski (hr)"></a>
+  <a href="docs/i18n/sr/README.md"><img src="docs/assets/flags/rs.svg" width="30" alt="Српски (sr)" title="Српски (sr)"></a>
+  <a href="docs/i18n/lt/README.md"><img src="docs/assets/flags/lt.svg" width="30" alt="Lietuvių (lt)" title="Lietuvių (lt)"></a>
+  <a href="docs/i18n/et/README.md"><img src="docs/assets/flags/ee.svg" width="30" alt="Eesti (et)" title="Eesti (et)"></a>
+  <a href="docs/i18n/lv/README.md"><img src="docs/assets/flags/lv.svg" width="30" alt="Latviešu (lv)" title="Latviešu (lv)"></a>
+  <a href="docs/i18n/sl/README.md"><img src="docs/assets/flags/si.svg" width="30" alt="Slovenščina (sl)" title="Slovenščina (sl)"></a>
+  <a href="docs/i18n/mt/README.md"><img src="docs/assets/flags/mt.svg" width="30" alt="Malti (mt)" title="Malti (mt)"></a>
+  <a href="docs/i18n/ga/README.md"><img src="docs/assets/flags/ie.svg" width="30" alt="Gaeilge (ga)" title="Gaeilge (ga)"></a>
+  <a href="docs/i18n/kn/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="ಕನ್ನಡ (kn)" title="ಕನ್ನಡ (kn)"></a>
+  <a href="docs/i18n/ml/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="മലയാളം (ml)" title="മലയാളം (ml)"></a>
+  <a href="docs/i18n/or/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="ଓଡ଼ିଆ (or)" title="ଓଡ଼ିଆ (or)"></a>
+  <a href="docs/i18n/pa/README.md"><img src="docs/assets/flags/in.svg" width="30" alt="ਪੰਜਾਬੀ (pa)" title="ਪੰਜਾਬੀ (pa)"></a>
+  <a href="docs/i18n/ne/README.md"><img src="docs/assets/flags/np.svg" width="30" alt="नेपाली (ne)" title="नेपाली (ne)"></a>
+  <a href="docs/i18n/si/README.md"><img src="docs/assets/flags/lk.svg" width="30" alt="සිංහල (si)" title="සිංහල (si)"></a>
+  <a href="docs/i18n/my/README.md"><img src="docs/assets/flags/mm.svg" width="30" alt="မြန်မာ (my)" title="မြန်မာ (my)"></a>
+  <a href="docs/i18n/km/README.md"><img src="docs/assets/flags/kh.svg" width="30" alt="ខ្មែរ (km)" title="ខ្មែរ (km)"></a>
+  <a href="docs/i18n/ha/README.md"><img src="docs/assets/flags/ng.svg" width="30" alt="Hausa (ha)" title="Hausa (ha)"></a>
+  <a href="docs/i18n/yo/README.md"><img src="docs/assets/flags/ng.svg" width="30" alt="Yorùbá (yo)" title="Yorùbá (yo)"></a>
+  <a href="docs/i18n/ig/README.md"><img src="docs/assets/flags/ng.svg" width="30" alt="Igbo (ig)" title="Igbo (ig)"></a>
+  <a href="docs/i18n/am/README.md"><img src="docs/assets/flags/et.svg" width="30" alt="አማርኛ (am)" title="አማርኛ (am)"></a>
+  <a href="docs/i18n/uz/README.md"><img src="docs/assets/flags/uz.svg" width="30" alt="Oʻzbekcha (uz)" title="Oʻzbekcha (uz)"></a>
+  <a href="docs/i18n/ka/README.md"><img src="docs/assets/flags/ge.svg" width="30" alt="ქართული (ka)" title="ქართული (ka)"></a>
+  <a href="docs/i18n/hy/README.md"><img src="docs/assets/flags/am.svg" width="30" alt="Հայերեն (hy)" title="Հայերեն (hy)"></a>
+  <a href="docs/i18n/bs/README.md"><img src="docs/assets/flags/ba.svg" width="30" alt="Bosanski (bs)" title="Bosanski (bs)"></a>
 </div>
 
 <br/>
@@ -214,20 +219,21 @@
 
 <div align="center">
 
-## 🆓 설치하는 즉시 작동 — 키도, 설정도 필요 없음
+## 🆓 설치하고, 공급자를 연결한 다음, 하나의 엔드포인트를 통해 라우팅하세요
 
 </div>
 
-<img src="./docs/diagrams/works-zero-config.svg" width="100%" alt="설치하는 즉시 작동 — 설정 불필요. 세 단계: 1. 설치 — npm i -g omniroute를 실행하면 서버가 localhost:20128에서 시작됩니다. 2. 도구가 http://localhost:20128/v1을 가리키도록 설정 — OpenAI 호환 도구라면 무엇이든 사용 가능(Claude Code, Cursor, Cline). 3. 응답 수신 — API 키, 가입, 설정 없이 model auto를 호출하면 즉시 응답합니다. 키가 필요 없는 제공업체 OpenCode Free가 auto 조합에 미리 연결되어 있어 새로 설치한 직후 바로 응답합니다."/>
+<img src="./docs/diagrams/works-zero-config.svg" width="100%" alt="세 단계: OmniRoute를 설치하고 시작한 후, 본인 계정이나 API 키로 적격 공급자를 연결하고, OmniRoute API 키와 auto 모델을 사용하도록 도구의 대상을 localhost:20128/v1로 지정합니다. 라우팅은 사용 가능한 적격 연결 및 공급자 제한에 따라 달라집니다."/>
 
 ```bash
-# 새로 설치한 상태에서 자격 증명 없이도 `auto`가 바로 작동합니다:
+# 공급자를 연결한 후 Dashboard → Endpoints에서 OmniRoute 키를 복사하세요:
 curl http://localhost:20128/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_OMNIROUTE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"auto","messages":[{"role":"user","content":"Hello!"}]}'
 ```
 
-<sub>특정 무료 백엔드를 선호하시나요? `oc/…`(OpenCode Free)를 직접 호출하세요. 그런 다음 `auto`로 전환하여 OmniRoute가 선택하도록 하세요.</sub>
+<sub>`auto`를 사용하려면 적격 경로가 필요합니다. 새로 설치한 환경에는 적격 키리스 대상이 없을 수 있으며, 키리스 공급자가 서드파티 클라이언트를 거부할 수도 있습니다. OpenCode Free와 Kiro를 포함하여 `tos: avoid`로 표시된 공급자는 기본적으로 자동 라우팅에서 제외되며, 계정을 연결해도 이 설정은 재정의되지 않습니다. 공급자를 선택하기 전에 [무료 티어 가이드](docs/getting-started/FREE-TIERS-GUIDE.md)를 참조하세요.</sub>
 
 <sub>📦 **Python, Node.js, PHP 및 cURL**용 복사하여 바로 사용할 수 있는 빠른 시작 스크립트 → [`examples/quickstart/`](examples/quickstart/)</sub>
 
@@ -239,7 +245,7 @@ curl http://localhost:20128/v1/chat/completions \
 
 </div>
 
-<img src="./docs/diagrams/promise-pillars.svg" width="100%" alt="약속 — 하나의 엔드포인트와 359개의 제공업체. 정상 상태의 다른 대상이 있는 동안 자동 폴백이 라우팅을 유지합니다. 여섯 가지 핵심 요소: 359개 제공업체에 걸친 복원력 있는 폴백 · 적합한 워크로드에서 최대 95%의 토큰 절감 · 150개 이상의 무료 티어와 54개의 반복 제공/키 불필요 영구 무료 제공업체로 $0부터 시작 · 하나의 설정으로 36개의 CLI/에이전트 통합 · /v1에서 OpenAI, Claude, Gemini 및 Responses API 호환 · 서킷 브레이커, TLS 스텔스, MCP 110개 도구, A2A, 메모리, 가드레일, 평가 및 추적되는 5,100개 이상의 테스트 파일에 걸친 39,000개 이상의 정적 테스트 선언을 포함한 프로덕션 제어 기능."/>
+<img src="./docs/diagrams/promise-pillars.svg" width="100%" alt="약속 — 하나의 엔드포인트와 372개의 공급자. 정상 상태인 다른 대상을 사용할 수 있는 동안 자동 대체를 통해 라우팅이 계속됩니다. 여섯 가지 핵심 요소: 372개 공급자 전반의 복원력 있는 대체 · 적격 워크로드에서 최대 95%의 토큰 절감 · 150개 이상의 무료 티어와 54개의 정기 제공/키리스 영구 무료 공급자를 통해 $0로 시작 · 하나의 설정으로 36개의 CLI/에이전트 통합 · /v1에서 OpenAI, Claude, Gemini 및 Responses API 호환성 · 회로 차단기, TLS 스텔스, MCP 110개 도구, A2A, 메모리, 가드레일, 평가 및 추적되는 5,100개 이상의 테스트 파일 전반에 걸친 39,000개 이상의 정적 테스트 선언을 포함한 프로덕션 제어 기능."/>
 
 <br/>
 <br/>
@@ -250,11 +256,11 @@ curl http://localhost:20128/v1/chat/completions \
 
 </div>
 
-<img src="./docs/diagrams/why-pain-fix.svg" width="100%" alt="OmniRoute를 선택해야 하는 이유 — 10개의 대시보드, 작동하지 않는 API 키, 예상치 못한 청구서를 더 이상 번갈아 관리하지 마세요. 일상적인 10가지 문제와 해결책: 사용하지 못한 채 만료되는 할당량 → 구독 활용 극대화; 코딩 도중 발생하는 속도 제한 → 4단계 자동 폴백(구독 → API → 저가 → 무료); 토큰을 소모하는 도구 출력 → RTK + Caveman 압축(15~95%); 비싼 API → 비용 최적화 라우팅; 도구마다 별도의 설정 필요 → 하나의 엔드포인트, 하나의 대시보드; AI 차단 → 3단계 프록시 + TLS 스텔스; 작동하지 않는 키 → 3계층 복원력(서킷 브레이커, 키 쿨다운, 모델 잠금); 하나의 구독을 공유하는 팀 → 공정 분배 할당량을 갖춘 키 풀; 타인의 클라우드를 통과하는 프롬프트 → AES-256-GCM 암호화 키를 사용하는 로컬 우선 방식; 지출 가시성 부재 → 실시간 분석(사용량, 할당량, 절감액, p95 지연 시간)."/>
+<img src="./docs/diagrams/why-pain-fix.svg" width="100%" alt="OmniRoute를 사용해야 하는 이유 — 10개의 대시보드, 작동하지 않는 API 키, 예상치 못한 청구서를 번갈아 관리하는 일을 멈추세요. 일상적인 10가지 문제와 해결책: 사용하지 못한 채 만료되는 할당량 → 구독 활용 극대화; 코딩 도중 속도 제한 → 4단계 자동 대체(구독 → API → 저가 → 무료); 토큰을 소모하는 도구 출력 → RTK + Caveman 압축(15~95%); 비싼 API → 비용 최적화 라우팅; 도구마다 별도의 설정 → 하나의 엔드포인트, 하나의 대시보드; 차단된 AI → 3단계 프록시 + TLS 스텔스; 작동하지 않는 키 → 3계층 복원력(회로 차단기, 키 쿨다운, 모델 잠금); 하나의 구독을 공유하는 팀 → 공정 배분 할당량을 갖춘 키 풀; 다른 사람의 클라우드를 통과하는 프롬프트 → AES-256-GCM으로 암호화된 키를 사용하는 로컬 우선 방식; 지출 가시성 부재 → 실시간 분석(사용량, 할당량, 절감액, p95 지연 시간)."/>
 
 <div align="center">
 
-<img src="./docs/diagrams/tier-cascade.svg" width="100%" alt="OmniRoute 요청 흐름: IDE 또는 CLI(Claude Code, Cursor, Cline…)가 하나의 로컬 엔드포인트(http://localhost:20128/v1)를 호출합니다. OmniRoute Smart Router(RTK + Caveman 압축, 19가지 라우팅 전략, 서킷 브레이커, TLS 스텔스, MCP, A2A, 가드레일)는 적합하며 정상 상태인 대상이 있는 동안 4개의 제공업체 티어에 걸쳐 폴백할 수 있습니다 — 티어 1 구독, 티어 2 API 키, 티어 3 저가, 티어 4 무료."/>
+<img src="./docs/diagrams/tier-cascade.svg" width="100%" alt="OmniRoute 요청 흐름: IDE 또는 CLI(Claude Code, Cursor, Cline 등)가 하나의 로컬 엔드포인트(http://localhost:20128/v1)를 호출합니다. OmniRoute Smart Router(RTK + Caveman 압축, 19가지 라우팅 전략, 회로 차단기, TLS 스텔스, MCP, A2A, 가드레일)는 적격한 정상 상태의 대상이 남아 있는 동안 4개의 공급자 티어에 걸쳐 대체할 수 있습니다 — 티어 1 구독, 티어 2 API 키, 티어 3 저가, 티어 4 무료."/>
 
 </div>
 
@@ -345,31 +351,31 @@ curl http://localhost:20128/v1/chat/completions \
 
 </div>
 
-<img src="./docs/diagrams/strategies-grid.svg" width="100%" alt="19가지 콤보 라우팅 전략 전체의 애니메이션 — 전략별 타일: priority, fill-first, weighted, round-robin, p2c, least-used, random, strict-random, cost-optimized, headroom, reset-window, reset-aware, context-relay, context-optimized, cache-optimized, lkgp, auto, fusion, pipeline. 각 전략의 기능은 위 표를 참조하세요."/>
+<img src="./docs/diagrams/strategies-grid.svg" width="100%" alt="19가지 콤보 라우팅 전략의 애니메이션 — 전략별 타일: priority, fill-first, weighted, round-robin, p2c, least-used, random, strict-random, cost-optimized, headroom, reset-window, reset-aware, context-relay, context-optimized, cache-optimized, lkgp, auto, fusion, pipeline. 각 전략의 기능은 위 표를 참조하세요."/>
 
-> **콤보**는 OmniRoute가 **자동으로** 라우팅하는 모델 체인입니다. 할당량이 소진되거나, 제공업체에 장애가 발생하거나, 비용이 급증하면 콤보가 다음으로 적합한 정상 모델로 전환할 수 있습니다. 🛡️
+> **콤보**는 OmniRoute가 **자동으로** 라우팅하는 모델 체인입니다. 할당량이 소진되거나, 공급자에 장애가 발생하거나, 비용이 급증하면 콤보는 다음으로 적합하고 정상적인 모델로 전환할 수 있습니다. 🛡️
 
 ### ⚡ 설정 불필요 — `auto`만 사용하세요
 
-콤보를 생성할 필요가 없습니다. 모델을 `auto`(또는 변형 중 하나)로 설정하면 OmniRoute가 연결된 제공업체를 바탕으로 실시간 점수가 적용되는 가상 콤보를 구성합니다.
+콤보를 생성할 필요가 없습니다. 모델을 `auto`(또는 변형 중 하나)로 설정하면 OmniRoute가 연결된 공급자로 가상 콤보를 구성하고 실시간으로 점수를 매깁니다.
 
 <table>
   <tr><th align="left">모델 ID</th><th align="left">최적화 대상</th></tr>
-  <tr><td align="left" nowrap><code>auto</code></td><td align="left">🎯 균형 잡힌 기본값(LKGP — 마지막으로 정상 작동한 제공업체를 계속 사용)</td></tr>
+  <tr><td align="left" nowrap><code>auto</code></td><td align="left">🎯 균형 잡힌 기본값(LKGP — 마지막으로 정상 작동한 공급자를 계속 사용)</td></tr>
   <tr><td align="left" nowrap><code>auto/coding</code></td><td align="left">🧑💻 코드 생성 시 품질을 우선하는 가중치</td></tr>
-  <tr><td align="left" nowrap><code>auto/fast</code></td><td align="left">⚡ 지연 시간이 가장 짧은 대상을 우선</td></tr>
-  <tr><td align="left" nowrap><code>auto/cheap</code></td><td align="left">💰 토큰당 비용이 가장 저렴한 대상을 우선</td></tr>
-  <tr><td align="left" nowrap><code>auto/offline</code></td><td align="left">🔋 할당량/속도 제한의 여유가 가장 큰 대상을 우선</td></tr>
-  <tr><td align="left" nowrap><code>auto/smart</code></td><td align="left">🔭 품질 우선 + 더 나은 모델을 찾기 위한 10% 탐색</td></tr>
-  <tr><td align="left" nowrap><code>auto/lkgp</code></td><td align="left">📌 마지막으로 정상 작동한 제공업체를 명시적으로 계속 사용</td></tr>
-  <tr><td align="left" nowrap><code>auto/chaos</code></td><td align="left">🧪 복원력 테스트(카오스 엔지니어링)를 위한 장애 주입 가중치</td></tr>
+  <tr><td align="left" nowrap><code>auto/fast</code></td><td align="left">⚡ 지연 시간이 가장 짧은 대상 우선</td></tr>
+  <tr><td align="left" nowrap><code>auto/cheap</code></td><td align="left">💰 토큰당 비용이 가장 저렴한 대상 우선</td></tr>
+  <tr><td align="left" nowrap><code>auto/offline</code></td><td align="left">🔋 할당량/속도 제한의 여유가 가장 큰 대상 우선</td></tr>
+  <tr><td align="left" nowrap><code>auto/smart</code></td><td align="left">🔭 품질 우선 + 더 나은 모델을 탐색하기 위한 10% 탐색</td></tr>
+  <tr><td align="left" nowrap><code>auto/lkgp</code></td><td align="left">📌 마지막으로 정상 작동한 공급자를 명시적으로 계속 사용</td></tr>
+  <tr><td align="left" nowrap><code>auto/chaos</code></td><td align="left">🧪 모델 패널로 병렬 팬아웃(공급자당 하나, 기본값 5개)하여 하나의 답변을 반환합니다. 패널 모델당 하나의 업스트림 호출을 사용하며, 장애 주입이 아닙니다.</td></tr>
 </table>
 
 ##
 
 ### 🔀 또는 직접 구성하세요 — 19가지 라우팅 전략
 
-**19가지** 전략 모두를 콤보 단계별로 자유롭게 조합할 수 있습니다.
+**19가지** 전략을 모두 콤보 단계별로 자유롭게 조합할 수 있습니다.
 
 <table>
   <tr>
@@ -380,12 +386,12 @@ curl http://localhost:20128/v1/chat/completions \
   <tr>
     <td align="center">1</td>
     <td nowrap><code>priority</code></td>
-    <td>첫 대상을 우선하는 순차 목록 — 각 대상을 모두 소진한 후 다음 대상으로 이동 🥇</td>
+    <td>첫 번째 대상을 우선하는 순서 목록 — 각 대상을 모두 소진한 후 다음 대상으로 이동 🥇</td>
   </tr>
   <tr>
     <td align="center">2</td>
     <td nowrap><code>fill-first</code></td>
-    <td>각 대상의 할당량을 완전히 채운 후 다음 대상으로 이동</td>
+    <td>다음 대상으로 이동하기 전에 각 대상의 할당량을 완전히 소진</td>
   </tr>
   <tr>
     <td align="center">3</td>
@@ -400,12 +406,12 @@ curl http://localhost:20128/v1/chat/completions \
   <tr>
     <td align="center">5</td>
     <td nowrap><code>p2c</code></td>
-    <td>2개 선택 방식의 무작위 부하 분산</td>
+    <td>두 가지 선택의 힘을 이용한 무작위 부하 분산</td>
   </tr>
   <tr>
     <td align="center">6</td>
     <td nowrap><code>least-used</code></td>
-    <td>현재 부하가 가장 낮은 대상을 선택</td>
+    <td>현재 부하가 가장 낮은 대상 선택</td>
   </tr>
   <tr>
     <td align="center">7</td>
@@ -415,72 +421,72 @@ curl http://localhost:20128/v1/chat/completions \
   <tr>
     <td align="center">8</td>
     <td nowrap><code>strict-random</code></td>
-    <td>반복 항목을 중복 제거하지 않고 무작위로 선택 🎲</td>
+    <td>반복 항목을 중복 제거하지 않고 무작위 선택 🎲</td>
   </tr>
   <tr>
     <td align="center">9</td>
     <td nowrap><code>cost-optimized</code></td>
-    <td>실시간 카탈로그 가격을 기준으로 요청당 비용($) 최소화 💸</td>
+    <td>실시간 카탈로그 가격을 기준으로 요청당 비용 최소화 💸</td>
   </tr>
   <tr>
     <td align="center">10</td>
     <td nowrap><code>headroom</code></td>
-    <td>남은 할당량이 가장 많은 대상을 선택</td>
+    <td>남은 할당량이 가장 많은 대상 선택</td>
   </tr>
   <tr>
     <td align="center">11</td>
     <td nowrap><code>reset-window</code></td>
-    <td>할당량 기간이 가장 빨리 초기화되는 대상을 우선</td>
+    <td>할당량 기간이 가장 빨리 초기화되는 대상 우선</td>
   </tr>
   <tr>
     <td align="center">12</td>
     <td nowrap><code>reset-aware</code></td>
-    <td>할당량 초기화 시간을 기준으로 순위 지정 — 짧은 기간을 우선 📊</td>
+    <td>할당량 초기화 시간을 기준으로 순위 지정 — 짧은 기간 우선 📊</td>
   </tr>
   <tr>
     <td align="center">13</td>
     <td nowrap><code>context-relay</code></td>
-    <td>긴 대화를 위해 대상 간에 컨텍스트를 전달 🧠</td>
+    <td>긴 대화를 위해 대상 간 컨텍스트 전달 🧠</td>
   </tr>
   <tr>
     <td align="center">14</td>
     <td nowrap><code>context-optimized</code></td>
-    <td>현재 컨텍스트 크기에 가장 적합한 대상을 선택</td>
+    <td>현재 컨텍스트 크기에 가장 적합한 대상 선택</td>
   </tr>
   <tr>
     <td align="center">15</td>
     <td nowrap><code>cache-optimized</code></td>
-    <td>재사용 가능한 각 프롬프트 접두사를 동일한 계정에 고정 — 프롬프트 캐시 적중률 극대화 🎯</td>
+    <td>재사용 가능한 각 프롬프트 접두사를 동일한 계정에 고정하여 프롬프트 캐시 적중률 극대화 🎯</td>
   </tr>
   <tr>
     <td align="center">16</td>
     <td nowrap><code>lkgp</code></td>
-    <td>마지막 정상 경로(Last-Known-Good Path) — 마지막으로 성공한 제공업체에 고정한 후 규칙에 따라 대체 경로 사용</td>
+    <td>마지막 정상 경로(Last-Known-Good Path) — 마지막으로 성공한 공급자에 고정한 후 규칙에 따라 대체 경로 사용</td>
   </tr>
   <tr>
     <td align="center">17</td>
     <td nowrap><code>auto</code></td>
-    <td>모든 연결을 대상으로 16가지 요소를 실시간으로 평가 🤖</td>
+    <td>모든 연결을 대상으로 한 16개 요소의 실시간 점수 산정 🤖</td>
   </tr>
   <tr>
     <td align="center">18</td>
     <td nowrap><code>fusion</code></td>
-    <td>모델 패널에 요청을 분산하고 심사 모델이 하나의 답변으로 종합 🧬</td>
+    <td>모델 패널로 팬아웃한 후 판정 모델이 하나의 답변으로 종합 🧬</td>
   </tr>
   <tr>
     <td align="center">19</td>
     <td nowrap><code>pipeline</code></td>
-    <td>단계를 연결 — 각 대상의 출력이 다음 대상의 입력으로 전달됨 🔗</td>
+    <td>단계 연결 — 각 대상의 출력이 다음 대상의 입력으로 전달됨 🔗</td>
   </tr>
 </table>
 
-<sub>Auto-Combo 엔진은 모든 후보를 **16가지 요소**(상태, 할당량, 비용, 지연 시간, 작업 적합성, 품질, 세션 가용성 등)로 평가합니다. 자세한 내용은 [`docs/routing/AUTO-COMBO.md`](docs/routing/AUTO-COMBO.md)를 참조하세요.</sub>
+<sub>Auto-Combo 엔진은 모든 후보를 **16가지 요소**(상태, 할당량, 비용, 지연 시간, 작업 적합성, 품질, 세션 가용성 등)에 따라 평가합니다. 자세한 내용은 [`docs/routing/AUTO-COMBO.md`](docs/routing/AUTO-COMBO.md)를 참조하세요.</sub>
 
 ##
 
-### 🧱 복원력이 기본으로 제공됩니다(서로 독립적인 3개 계층)
+### 🧱 복원력이 기본으로 내장되어 있습니다(서로 독립적인 3개 계층)
 
-<img src="./docs/diagrams/resilience-layers.svg" width="100%" alt="OmniRoute 복원력 — 서로 독립적인 3개의 자가 복구 계층으로, 각 장애에 적합한 계층이 대응합니다. 계층 1 공급자 회로 차단기(공급자 전체): 408/5xx에서만 작동하며, 임계값은 OAuth 8회 / API 키 12회 / 로컬 2회이고, 60초/30초/15초 후 HALF-OPEN 프로브로 전환되어 지연 복구를 수행합니다. OPEN 상태에서는 콤보가 다음 공급자로 재라우팅됩니다. 계층 2 연결 쿨다운(키/계정 하나): 기본값은 OAuth 5초 / API 키 3초이며, 요청 폭주 방지 가드가 적용된 지수형 ×2 백오프를 사용하고, 429에서는 Retry-After를 따르며, 성공 시 모든 오류 상태가 초기화됩니다. 쿨다운 중인 키 하나는 건너뛰고 다른 키들은 계속 요청을 처리합니다. 계층 3 모델 잠금(모델 하나): 모델별 429, 로컬 404 또는 모드 거부는 해당 모델만 잠그며, 연결 전체를 잠그지는 않습니다. 종료 상태(차단됨, 만료됨, 크레딧 소진)는 쿨다운이 아니라 운영자가 처리해야 합니다."/>
+<img src="./docs/diagrams/resilience-layers.svg" width="100%" alt="OmniRoute 복원력 — 서로 독립적인 3개의 자가 복구 계층으로, 각 장애에 적합한 계층이 대응합니다. 계층 1 공급자 회로 차단기(공급자 전체): 408/5xx에서만 작동하며, 임계값은 OAuth 8회 / API 키 12회 / 로컬 2회이고, 60초/30초/15초 후 HALF-OPEN 탐색 상태로 재설정되어 지연 복구를 수행합니다. OPEN 상태인 동안 콤보는 다음 공급자로 경로를 변경합니다. 계층 2 연결 쿨다운(키/계정 하나): 기본값은 OAuth 5초 / API 키 3초이며, 무리 요청 방지 가드가 적용된 지수형 ×2 백오프를 사용하고, 429 응답에서는 Retry-After를 준수하며, 성공 시 모든 오류 상태를 지웁니다. 쿨다운 중인 키 하나는 건너뛰고 다른 키들은 계속 요청을 처리합니다. 계층 3 모델 잠금(모델 하나): 모델별 429, 로컬 404 또는 모드 거부는 해당 모델만 잠그며 전체 연결을 잠그지 않습니다. 종료 상태(차단됨, 만료됨, 크레딧 소진)는 쿨다운이 아니라 운영자가 처리해야 합니다."/>
 
 <sub>📖 [자동 콤보 엔진](docs/routing/AUTO-COMBO.md) · [복원력 가이드](docs/architecture/RESILIENCE_GUIDE.md)</sub>
 
@@ -492,9 +498,9 @@ curl http://localhost:20128/v1/chat/completions \
 
 </div>
 
-<img src="./docs/diagrams/comparison-table.svg" width="100%" alt="OmniRoute의 차별점 — 13가지 기능에 대해 9router, OpenRouter, CLIProxyAPI 및 LiteLLM과 비교한 특정 시점의 기능 현황입니다. OmniRoute: 제공업체 359개, 기본 제공 무료 티어 150개 이상, 라우팅 전략 19개, 12개 엔진 기반 토큰 압축, 110개 도구를 갖춘 내장 MCP 서버, A2A 에이전트 프로토콜, 영구 메모리, 가드레일, 클라우드 에이전트, TLS 지문 스텔스, Desktop/Termux/PWA 및 42개 다국어 UI 로케일. OmniRoute는 MIT 라이선스로 제공되며 자체 호스팅할 수 있습니다. 경쟁 제품의 기능과 수치는 변경될 수 있습니다. 링크된 방법론을 참조하세요."/>
+<img src="./docs/diagrams/comparison-table.svg" width="100%" alt="OmniRoute의 차별점 — 13개 기능을 기준으로 9router, OpenRouter, CLIProxyAPI 및 LiteLLM과 비교한 특정 시점의 기능 현황입니다. OmniRoute: 372개 제공업체, 150개 이상의 무료 티어 내장, 19가지 라우팅 전략, 12개 엔진 기반 토큰 압축, 110개 도구를 갖춘 내장 MCP 서버, A2A 에이전트 프로토콜, 영구 메모리, 가드레일, 클라우드 에이전트, TLS 지문 은폐, Desktop/Termux/PWA 및 42개 다국어 UI 로케일. OmniRoute는 MIT 라이선스로 제공되며 자체 호스팅할 수 있습니다. 경쟁 제품의 기능과 수치는 변경될 수 있습니다. 링크된 방법론을 참조하세요."/>
 
-<sub>📊 전체 방법론 및 기능별 세부 비교: 9router, OpenRouter, CLIProxyAPI 및 LiteLLM → [`docs/comparison/OMNIROUTE_VS_ALTERNATIVES.md`](docs/comparison/OMNIROUTE_VS_ALTERNATIVES.md)</sub>
+<sub>📊 9router, OpenRouter, CLIProxyAPI 및 LiteLLM과 비교한 전체 방법론 및 기능별 세부 정보 → [`docs/comparison/OMNIROUTE_VS_ALTERNATIVES.md`](docs/comparison/OMNIROUTE_VS_ALTERNATIVES.md)</sub>
 
 <br/>
 
@@ -562,29 +568,29 @@ Radar는 선택적으로 사용할 수 있으며 GET 전용입니다. OmniRoute 
 
 </div>
 
-> **v3.8.20 → v3.8.50**의 최근 주요 변경 사항입니다. 전체 변경 이력은 [`CHANGELOG.md`](CHANGELOG.md)에서 확인할 수 있습니다.
+> **v3.8.20 → v3.8.50**의 주요 변경 사항입니다. 전체 변경 이력은 [`CHANGELOG.md`](CHANGELOG.md)에서 확인하세요.
 
-- **🎛️ OmniConductor** — 에이전트 플릿으로의 인바운드 A2A 위임, Agent Card의 Conductor 스킬, Faro 푸시투토크 음성 채팅이 포함된 대시보드 패널을 제공합니다. → [A2A 서버](docs/frameworks/A2A-SERVER.md)
-- **🛂 적응형 요청 수용 및 과부하 보호** — 무거운 채팅 요청은 503 오류를 반환하는 대신 대기열에 들어가며, 연결별 원자적 RPM 롤링 리스를 사용합니다. → [복원력 가이드](docs/architecture/RESILIENCE_GUIDE.md)
-- **🗂️ 표준 `/v1/models` 순서** — 공급자별로 연속된 단일 블록을 구성하고(콤보는 맨 앞에 고정), 모든 카탈로그 소스에서 안정적인 순서를 유지합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
-- **🗜️ 압축 강화** — 기본 활성화된 인플레이션 가드, DE / FR / JA + 중국어(wényán)용 Caveman 팩, Gradle 및 .NET용 RTK 필터를 제공합니다. → [압축](docs/compression/COMPRESSION_ENGINES.md)
-- **💸 정직한 정액제 비용** — 구독/코딩 플랜 공급자는 비용 분석에서 **$0**으로 표시되며, 예산, 할당량 및 라우팅에서는 계속 추정치를 사용합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
-- **⚖️ Quota-Share 라우팅** — 공유 계정의 할당량을 풀링된 키에 공정하게 분배하며, 유휴 할당분을 빌려주는 작업 보존 방식을 사용합니다. → [복원력 가이드](docs/architecture/RESILIENCE_GUIDE.md)
-- **🤖 단일 명령 CLI/에이전트 설정** — 등록된 `setup-*` 명령 13개를 제공하며, `omniroute run`은 7개 CLI(Claude Code, Codex, Aider, Goose, OpenCode, Qwen Code, Gemini CLI)를 실행합니다. `omniroute configure`는 대화형 공급자+모델 선택기와 컨텍스트별 즐겨찾기를 통해 10개 대상을 지원합니다. → [CLI 통합](docs/guides/CLI-INTEGRATIONS.md)
-- **🛰️ 원격 모드** — 범위가 지정된 토큰(`connect` / `contexts` / `tokens`)으로 원격 OmniRoute를 제어하고, VPS 설치를 위한 `antigravity` OAuth 도우미를 사용할 수 있습니다. → [원격 모드](docs/guides/REMOTE-MODE.md)
-- **🧭 더 스마트한 자동 라우팅** — `auto/<category>:<tier>` 콤보, **Fusion**(모델 패널 + 판정 모델), 작업 인식 라우팅, 요청별 모델/모드/USD 예산 재정의를 제공합니다. → [Auto-Combo](docs/routing/AUTO-COMBO.md)
-- **🗜️ 플러그형 압축** — 조합 가능한 엔진 12개와 Compression Studios를 제공합니다. LLMLingua-2, 2단계 Ultra, omniglyph, 단계별 충실도 게이트, GCF v3.2, 드래그 재정렬 편집기가 포함됩니다. → [압축](docs/compression/COMPRESSION_ENGINES.md)
-- **🕵️ 투명한 MITM 복호화(TPROXY)** — SNI별 CA와 신뢰 저장소 설치 프로그램을 사용해 프록시 환경 변수를 무시하는 CLI의 트래픽을 캡처합니다. → [MITM/TPROXY](docs/security/MITM-TPROXY-DECRYPT.md)
-- **💸 전 영역 비용 텔레메트리** — 모든 엔드포인트에서 `X-OmniRoute-*` 비용/사용량 헤더, 캐시 HIT 절감액 헤더, 키별 USD 지출 할당량을 제공합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
-- **🧠 사용자가 제어하는 메모리** — 기본적으로 비활성화되며, 선택적으로 int8 벡터 양자화와 유형별 감쇠를 사용할 수 있고, 요청별 `x-omniroute-no-memory`를 지원합니다. → [메모리](docs/frameworks/MEMORY.md)
-- **🛡️ 보안** — 모든 LLM 경로에 프롬프트 인젝션 가드(레드팀 제품군)를 적용하고, 선택형 자격 증명 마스킹 가드레일(양방향에서 유출된 API 키/비밀 정보를 삭제), 무료 DuckDuckGo 최후 수단 웹 검색, 대시보드용 선택적 OIDC 로그인 게이트를 제공합니다(비밀번호 로그인은 항상 사용할 수 있습니다). → [가드레일](docs/security/GUARDRAILS.md)
-- **🖼️ 신규 엔드포인트** — `/v1/ocr`(Mistral OCR)과 `/v1/audio/translations`(Whisper 스타일)가 미디어 기능을 완성합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
-- **🎨 이미지/비디오/오디오 생성** — 미디어를 위한 단일 API로 xAI Grok Imagine 및 Novita AI 비디오, ComfyUI, Magnific, Adobe Firefly, Segmind와 ElevenLabs 같은 음성 공급자를 지원합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
-- **🌍 배포 및 운영** — 리버스 프록시 `basePath`, 브라우저 언어 자동 감지, 키별 기기 추적, 루트 권한 없는 MITM 신뢰 설정, zh-TW 현지화를 제공합니다. → [환경](docs/reference/ENVIRONMENT.md)
-- **🤝 더 많은 공급자 및 에이전트** — 클라우드 에이전트(Codex Cloud, Cursor, Devin, Jules), 브라우저 + OAuth 로그인을 지원하는 Grok Build(xAI), 일급 Ollama 카드, Claude Opus 5 및 Sonnet 5, Kimi 공식 파트너십(Code/Web/Moonshot), Zed, Requesty, SenseNova, Yuanbao, Agnes AI 등을 포함하며, 새롭게 개편된 **352개 공급자 카탈로그**를 제공합니다. → [공급자](docs/reference/PROVIDER_REFERENCE.md)
-- **📡 투명한 라우팅** — 모든 응답에 요청을 처리한 전략/공급자/지연 시간을 나타내는 `X-OmniRoute-Decision` 헤더가 포함됩니다. 새로운 `cache-optimized` 콤보 전략과 Auto-Combo `cacheAffinity` 요소는 반복 요청을 캐시된 접두사를 보유한 연결로 다시 라우팅하며, 읽기 전용 `/v1/auto-combo/{channel}/candidates` 엔드포인트는 `auto/*` 채널의 실시간 후보 풀을 노출합니다. → [Auto-Combo](docs/routing/AUTO-COMBO.md)
-- **⚡ 로컬 성능 및 인프라** — 원클릭 로컬 Redis, Cloudflare Workers / Deno Deploy 릴레이 배포 도구, 감독형 임베디드 서비스인 Bifrost 및 Mux를 제공합니다. → [임베디드 서비스](docs/frameworks/EMBEDDED-SERVICES.md)
-- **🧩 그 밖의 포함 기능** — 플러그인 프레임워크 + 마켓플레이스, Omni/Agent/GitHub 스킬 프레임워크, Obsidian 볼트 통합(22개 MCP 도구), OpenAI 호환 Batch 및 Files API, 시맨틱 응답 캐시, 리더보드를 포함한 게이미피케이션, ACP 에이전트 검색(내장 에이전트 15개), BigQuery로의 예약 로그 내보내기, `auto/chaos` 장애 주입, Telegram 봇 브리지, 앱 내 버전 관리자, LMArena-ELO 무료 공급자 순위를 제공합니다. → [문서](docs/README.md)
+- **🎛️ OmniConductor** — 에이전트 플릿으로의 인바운드 A2A 위임, Agent Card의 Conductor 스킬, Faro 푸시투토크 음성 채팅을 지원하는 대시보드 패널. → [A2A 서버](docs/frameworks/A2A-SERVER.md)
+- **🛂 적응형 요청 수용 및 과부하 보호** — 처리량이 큰 채팅 요청에 503을 반환하는 대신 대기열에 넣고, 연결별 원자적 RPM 롤링 리스를 적용합니다. → [복원력 가이드](docs/architecture/RESILIENCE_GUIDE.md)
+- **🗂️ 표준 `/v1/models` 정렬** — 공급자별로 하나의 연속된 블록으로 그룹화되며(콤보는 맨 앞에 고정), 모든 카탈로그 소스에서 안정적인 순서를 유지합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
+- **🗜️ 압축 강화** — 기본 활성화된 인플레이션 가드, DE / FR / JA 및 중국어(wényán)용 Caveman 팩, Gradle 및 .NET용 RTK 필터. → [압축](docs/compression/COMPRESSION_ENGINES.md)
+- **💸 정확한 정액제 비용** — 구독/코딩 플랜 공급자는 비용 분석에서 **$0**으로 표시되며, 예산, 할당량 및 라우팅에는 계속 추정값이 사용됩니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
+- **⚖️ Quota-Share 라우팅** — 공유 계정의 할당량을 풀링된 키에 공정하게 분배하며, 유휴 할당분을 빌려주는 작업 보존 방식을 적용합니다. → [복원력 가이드](docs/architecture/RESILIENCE_GUIDE.md)
+- **🤖 단일 명령 CLI/에이전트 설정** — 등록된 `setup-*` 명령 13개, 7개 CLI(Claude Code, Codex, Aider, Goose, OpenCode, Qwen Code, Gemini CLI)를 실행하는 `omniroute run`, 대화형 공급자+모델 선택기와 컨텍스트별 즐겨찾기를 통해 10개 대상을 지원하는 `omniroute configure`. → [CLI 통합](docs/guides/CLI-INTEGRATIONS.md)
+- **🛰️ 원격 모드** — 범위가 지정된 토큰(`connect` / `contexts` / `tokens`)과 VPS 설치용 `antigravity` OAuth 도우미를 사용해 원격 OmniRoute를 제어합니다. → [원격 모드](docs/guides/REMOTE-MODE.md)
+- **🧭 더 스마트한 자동 라우팅** — `auto/<category>:<tier>` 콤보, **Fusion**(모델 패널 + 판정 모델), 작업 인식 라우팅, 요청별 모델/모드/USD 예산 재정의. → [Auto-Combo](docs/routing/AUTO-COMBO.md)
+- **🗜️ 플러그형 압축** — 조합 가능한 엔진 12개와 Compression Studios: LLMLingua-2, 2단계 Ultra, omniglyph, 단계별 충실도 게이트, GCF v3.2, 드래그 재정렬 편집기. → [압축](docs/compression/COMPRESSION_ENGINES.md)
+- **🕵️ 투명한 MITM 복호화(TPROXY)** — 프록시 환경 변수를 무시하는 CLI를 캡처하며, SNI별 CA와 신뢰 저장소 설치 프로그램을 제공합니다. → [MITM/TPROXY](docs/security/MITM-TPROXY-DECRYPT.md)
+- **💸 전 영역 비용 텔레메트리** — 모든 엔드포인트에 `X-OmniRoute-*` 비용/사용량 헤더, 캐시 HIT 절감액 헤더, 키별 USD 지출 할당량을 제공합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
+- **🧠 직접 제어하는 메모리** — 기본적으로 비활성화되며, 선택적으로 int8 벡터 양자화와 유형별 감쇠를 사용할 수 있고 요청별 `x-omniroute-no-memory`를 지원합니다. → [메모리](docs/frameworks/MEMORY.md)
+- **🛡️ 보안** — 모든 LLM 경로의 프롬프트 인젝션 가드(레드팀 제품군), 선택적으로 활성화하는 자격 증명 마스킹 가드레일(양방향으로 유출된 API 키/시크릿을 삭제 처리), 무료 DuckDuckGo 최후 수단 웹 검색, 대시보드용 선택적 OIDC 로그인 게이트(비밀번호 로그인은 항상 사용 가능). → [가드레일](docs/security/GUARDRAILS.md)
+- **🖼️ 새로운 엔드포인트** — `/v1/ocr`(Mistral OCR) 및 `/v1/audio/translations`(Whisper 스타일)가 미디어 기능을 완성합니다. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
+- **🎨 이미지/동영상/오디오 생성** — 미디어를 위한 단일 API: xAI Grok Imagine 및 Novita AI 동영상, ComfyUI, Magnific, Adobe Firefly, Segmind, ElevenLabs와 같은 음성 공급자. → [API 레퍼런스](docs/reference/API_REFERENCE.md)
+- **🌍 배포 및 운영** — 리버스 프록시 `basePath`, 브라우저 언어 자동 감지, 키별 기기 추적, 루트 권한 없는 MITM 신뢰 설정, zh-TW 현지화. → [환경](docs/reference/ENVIRONMENT.md)
+- **🤝 더 많은 공급자 및 에이전트** — 클라우드 에이전트(Codex Cloud, Cursor, Devin, Jules), 브라우저 + OAuth 로그인을 지원하는 Grok Build(xAI), 일급 Ollama 카드, Claude Opus 5 및 Sonnet 5, Kimi 공식 파트너십(Code/Web/Moonshot), Zed, Requesty, SenseNova, Yuanbao, Agnes AI… 그리고 새롭게 개편된 **352개 공급자 카탈로그**. → [공급자](docs/reference/PROVIDER_REFERENCE.md)
+- **📡 투명한 라우팅** — 모든 응답에는 요청을 처리한 전략/공급자/지연 시간을 나타내는 `X-OmniRoute-Decision` 헤더가 포함됩니다. 새로운 `cache-optimized` 콤보 전략과 Auto-Combo `cacheAffinity` 요소는 반복 요청을 캐시된 접두사를 보유한 연결로 다시 라우팅하며, 읽기 전용 `/v1/auto-combo/{channel}/candidates` 엔드포인트는 `auto/*` 채널의 실시간 후보 풀을 노출합니다. → [Auto-Combo](docs/routing/AUTO-COMBO.md)
+- **⚡ 로컬 성능 및 인프라** — 원클릭 로컬 Redis, Cloudflare Workers / Deno Deploy 릴레이 배포 도구, 감독형 임베디드 서비스로 제공되는 Bifrost 및 Mux. → [임베디드 서비스](docs/frameworks/EMBEDDED-SERVICES.md)
+- **🧩 함께 제공되는 기타 기능** — 플러그인 프레임워크 + 마켓플레이스, Omni/Agent/GitHub 스킬 프레임워크, Obsidian 볼트 통합(22개 MCP 도구), OpenAI 호환 Batch 및 Files API, 시맨틱 응답 캐시, 리더보드를 지원하는 게임화, ACP 에이전트 탐색(기본 제공 에이전트 15개), BigQuery로의 예약 로그 내보내기, `auto/chaos` 병렬 멀티모델 팬아웃, Telegram 봇 브리지, 앱 내 버전 관리자 및 LMArena-ELO 무료 공급자 순위. → [문서](docs/README.md)
 
 <br/>
 
@@ -665,11 +671,11 @@ omniroute configure codex          # 다음도 지원: claude opencode qwen aide
 
 <div align="center">
 
-## 🌐 357개 AI 제공업체 — 152개는 카탈로그에서 무료로 표시됨
+## 🌐 372개 AI 제공업체 — 154개는 카탈로그에 무료로 표시됨
 
 </div>
 
-> 정식 채팅, 미디어, 검색, 로컬, 클라우드 에이전트 및 시스템 컬렉션 전반에 걸쳐 **357개의 등록된 제공업체**가 있으며, 이 중 **152개에는 `hasFree: true` 검색 메타데이터가 포함되어 있습니다**. 채팅 모델 레지스트리는 **229개 제공업체 / 2,554개의 고유 제공업체-모델 조합 / 1,283개의 원시 모델 ID**를 포함하며, 별도의 무료 예산 카탈로그에는 **491개의 모델별 행**, **35개의 정기 갱신 풀**, **54개의 정기 갱신/키 불필요 영구 무료 제공업체**가 있습니다. 이는 의도적으로 서로 다른 분모를 사용합니다. 정의와 풀 중복을 제거한 계산 방식은 [제공업체 참고 자료](docs/reference/PROVIDER_REFERENCE.md)와 [무료 티어](docs/reference/FREE_TIERS.md)에서 확인할 수 있습니다.
+> 정식 채팅, 미디어, 검색, 로컬, 클라우드 에이전트 및 시스템 컬렉션 전반에 걸쳐 **372개의 등록된 제공업체**가 있으며, 이 중 **154개에는 `hasFree: true` 탐색 메타데이터가 포함**되어 있습니다. 채팅 모델 레지스트리는 **237개 제공업체 / 3,009개의 고유한 제공업체-모델 조합 / 1,443개의 원시 모델 ID**를 포함하며, 별도의 무료 할당량 카탈로그에는 **491개의 모델별 행**, **35개의 반복 제공 풀**, **54개의 반복 제공/키 불필요 영구 무료 제공업체**가 있습니다. 이는 의도적으로 서로 다른 분모를 사용합니다. 정의와 풀 중복 제거 계산은 [제공업체 레퍼런스](docs/reference/PROVIDER_REFERENCE.md)와 [무료 티어](docs/reference/FREE_TIERS.md)에서 확인할 수 있습니다.
 
 <div align="center">
 
@@ -702,7 +708,7 @@ omniroute configure codex          # 다음도 지원: claude opencode qwen aide
   </tr>
 </table>
 
-<sub>…그 외 330개 이상 — 모든 아이콘은 대시보드의 제공업체 카탈로그에서 실시간으로 불러옵니다. 📖 [제공업체 참고 자료](docs/reference/PROVIDER_REFERENCE.md)</sub>
+<sub>…그 외 330개 이상 — 모든 아이콘은 대시보드의 제공업체 카탈로그에서 실시간으로 불러옵니다. 📖 [제공업체 레퍼런스](docs/reference/PROVIDER_REFERENCE.md)</sub>
 
 <br/>
 
@@ -720,14 +726,14 @@ omniroute configure codex          # 다음도 지원: claude opencode qwen aide
   <tr>
     <td align="center" width="150"><img src="https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg@1.91.0/icons/qoder-color.svg" width="42" alt="Qoder AI"/><br/><b>Qoder AI</b><br/><sub>Qwen3-Max, Kimi-K2<br/>무제한 무료</sub></td>
     <td align="center" width="150"><img src="./public/providers/pollinations.svg" width="42" alt="Pollinations"/><br/><b>Pollinations</b><br/><sub>GPT, Llama, Claude<br/>키 불필요</sub></td>
-    <td align="center" width="150"><img src="./public/providers/cloudflare.svg" width="42" alt="Cloudflare AI"/><br/><b>Cloudflare AI</b><br/><sub>50개 이상의 모델<br/>일일 뉴런 10K개</sub></td>
-    <td align="center" width="150"><img src="./public/providers/nvidia.svg" width="42" alt="NVIDIA NIM"/><br/><b>NVIDIA NIM</b><br/><sub>GLM, MiniMax<br/>무료로 약 40 RPM</sub></td>
-    <td align="center" width="150"><img src="./public/providers/cerebras.svg" width="42" alt="Cerebras"/><br/><b>Cerebras</b><br/><sub>GLM 4.7, GPT-OSS<br/>일일 토큰 1M개</sub></td>
+    <td align="center" width="150"><img src="./public/providers/cloudflare.svg" width="42" alt="Cloudflare AI"/><br/><b>Cloudflare AI</b><br/><sub>50개 이상의 모델<br/>일일 10K 뉴런</sub></td>
+    <td align="center" width="150"><img src="./public/providers/nvidia.svg" width="42" alt="NVIDIA NIM"/><br/><b>NVIDIA NIM</b><br/><sub>GLM, MiniMax<br/>약 40 RPM 무료</sub></td>
+    <td align="center" width="150"><img src="./public/providers/cerebras.svg" width="42" alt="Cerebras"/><br/><b>Cerebras</b><br/><sub>GLM 4.7, GPT-OSS<br/>일회성 $5 크레딧, 카드 필요</sub></td>
     <td align="center" width="150"><img src="./public/providers/openrouter.svg" width="42" alt="OpenRouter"/><br/><b>OpenRouter</b><br/><sub>:free 모델<br/>+$10 → 더 높은 RPM</sub></td>
   </tr>
 </table>
 
-📖 전체 머신 리더블 카탈로그 → [`docs/reference/PROVIDER_REFERENCE.md`](docs/reference/PROVIDER_REFERENCE.md)
+📖 전체 기계 판독 가능 카탈로그 → [`docs/reference/PROVIDER_REFERENCE.md`](docs/reference/PROVIDER_REFERENCE.md)
 
 <br/>
 </div>
@@ -903,11 +909,11 @@ claude mcp add-server omniroute --type http --url http://localhost:20128/api/mcp
 
 </div>
 
-### 📖 작동 방식 — 파이프라인, 아키텍처 및 절감 계산
+### 📖 작동 방식 — 파이프라인, 아키텍처 및 절감 계산법
 
-<img src="./docs/diagrams/compression-pipeline.svg" width="100%" alt="OmniRoute 압축 파이프라인: 10,000토큰의 클라이언트 요청이 Session-Dedup, CCR, Lite, RTK, Responses Tool Output, Headroom, Relevance, Caveman, Aggressive, LLMLingua-2, Ultra, OmniGlyph 등 조합 가능한 12개 엔진을 통과하며, 문서화된 스택 예시에서는 약 1,080토큰으로 공급자에게 전달될 수 있습니다. 구조화된 콘텐츠는 보존 가드와 단계별 충실도 게이트로 보호되며, 명시적인 손실 압축 또는 실험적 모드는 적용 가능한 콘텐츠를 변환할 수 있습니다."/>
+<img src="./docs/diagrams/compression-pipeline.svg" width="100%" alt="OmniRoute 압축 파이프라인: 10,000토큰의 클라이언트 요청이 조합 가능한 12개 엔진(Session-Dedup, CCR, Lite, RTK, Responses Tool Output, Headroom, Relevance, Caveman, Aggressive, LLMLingua-2, Ultra, OmniGlyph)을 통과하며, 문서화된 스택 조합 예시에서는 약 1,080토큰으로 제공업체에 도달할 수 있습니다. 구조화된 콘텐츠는 보존 가드와 단계별 충실도 게이트로 보호되며, 명시적인 손실 또는 실험적 모드는 적용 가능한 콘텐츠를 변환할 수 있습니다."/>
 
-기본 스택 조합은 `RTK → Caveman` 순서로 실행됩니다. 두 엔진이 동일한 도구/컨텍스트 페이로드에 적용되면 절감 효과가 복리로 누적됩니다.
+기본 스택 조합은 `RTK → Caveman`을 실행합니다. 둘 다 동일한 도구/컨텍스트 페이로드에 적용되면 절감 효과가 복리로 누적됩니다.
 
 ```txt
 combined = 1 − (1 − RTK) × (1 − Caveman_input)
@@ -917,32 +923,32 @@ range    = 78.4 – 94.6%
 
 코드 블록, URL, JSON 및 구조화된 데이터는 보존 엔진에 의해 **항상 보호됩니다**.
 
-> **적은 토큰으로 충분한데 왜 많은 토큰을 사용할까요?** 모든 요청은 클라이언트 변경 없이 OmniRoute의 압축 파이프라인을 **투명하게** 통과합니다. 이제 이 파이프라인은 순서대로 실행되고 라우팅 조합별로 자유롭게 구성할 수 있는 **12개의 조합 가능한 엔진 스택**입니다. [RTK](https://github.com/rtk-ai/rtk), [Caveman](https://github.com/JuliusBrussee/caveman) (⭐ 90K+), [LLMLingua-2](https://github.com/microsoft/LLMLingua), [Troglodita](https://github.com/leninejunior/troglodita) (PT-BR)의 아이디어를 기반으로 합니다.
+> **적은 토큰으로 충분한데 왜 많은 토큰을 사용할까요?** 모든 요청은 클라이언트 변경 없이 OmniRoute의 압축 파이프라인을 **투명하게** 통과합니다. 이제 파이프라인은 순서대로 실행되고 라우팅 조합별로 자유롭게 구성할 수 있는 **조합 가능한 12개 엔진 스택**입니다. [RTK](https://github.com/rtk-ai/rtk), [Caveman](https://github.com/JuliusBrussee/caveman) (⭐ 90K+), [LLMLingua-2](https://github.com/microsoft/LLMLingua), [Troglodita](https://github.com/leninejunior/troglodita) (PT-BR)의 아이디어를 기반으로 합니다.
 
 ### 🧱 12개 엔진 스택
 
-엔진은 파이프라인 순서대로 실행되며, 각 조합에서 개별적으로 활성화/비활성화하고 구성할 수 있습니다.
+엔진은 파이프라인 순서대로 실행되며, 각 조합에서 개별적으로 켜고 끄거나 구성할 수 있습니다.
 
 <table>
   <tr><th align="center">#</th><th align="left">엔진</th><th align="left">기능</th></tr>
-  <tr><td align="center" nowrap>1</td><td align="left" nowrap><b>Session-Dedup</b></td><td align="left">여러 턴에서 반복되는 콘텐츠 제거(콘텐츠 주소 지정 방식, 턴 간 적용)</td></tr>
+  <tr><td align="center" nowrap>1</td><td align="left" nowrap><b>Session-Dedup</b></td><td align="left">여러 턴에 걸쳐 반복되는 콘텐츠 제거(콘텐츠 주소 지정 방식, 턴 간 적용)</td></tr>
   <tr><td align="center" nowrap>2</td><td align="left" nowrap><b>CCR</b></td><td align="left">대용량 블록을 검색 마커 뒤에 보관하고 필요할 때 가져옴</td></tr>
-  <tr><td align="center" nowrap>3</td><td align="left" nowrap><b>Lite</b></td><td align="left">공백 + 이미지 URL 정리(지연 시간이 짧은 기준 모드)</td></tr>
+  <tr><td align="center" nowrap>3</td><td align="left" nowrap><b>Lite</b></td><td align="left">공백 + 이미지 URL 정리(지연 시간이 짧은 기준선)</td></tr>
   <tr><td align="center" nowrap>4</td><td align="left" nowrap><b>RTK</b></td><td align="left">스마트 도구 결과 필터링, 중복 제거 및 잘라내기(명령어 인식)</td></tr>
-  <tr><td align="center" nowrap>5</td><td align="left" nowrap><b>Responses Tool Output</b></td><td align="left">셸/패치/검색/빌드 출력에 대한 무손실 우선 JSON + 범위가 제한된 진단 압축(Responses API)</td></tr>
+  <tr><td align="center" nowrap>5</td><td align="left" nowrap><b>Responses Tool Output</b></td><td align="left">셸/패치/검색/빌드 출력에 대한 무손실 우선 JSON + 제한된 진단 압축(Responses API)</td></tr>
   <tr><td align="center" nowrap>6</td><td align="left" nowrap><b>Headroom</b></td><td align="left">벤더링된 <b>GCF</b> 코덱을 통한 JSON 배열의 무손실 표 형식 압축(~30%)</td></tr>
-  <tr><td align="center" nowrap>7</td><td align="left" nowrap><b>Relevance</b></td><td align="left">마지막 사용자 쿼리를 기준으로 문장을 추출해 점수화</td></tr>
-  <tr><td align="center" nowrap>8</td><td align="left" nowrap><b>Caveman</b></td><td align="left">규칙 기반 산문 압축(출력에서 ~65–75%)</td></tr>
-  <tr><td align="center" nowrap>9</td><td align="left" nowrap><b>Aggressive</b></td><td align="left">요약 + 이전 턴의 점진적 노후화</td></tr>
+  <tr><td align="center" nowrap>7</td><td align="left" nowrap><b>Relevance</b></td><td align="left">마지막 사용자 쿼리를 기준으로 추출형 문장 점수 산정</td></tr>
+  <tr><td align="center" nowrap>8</td><td align="left" nowrap><b>Caveman</b></td><td align="left">규칙 기반 산문 압축(출력 기준 ~65–75%)</td></tr>
+  <tr><td align="center" nowrap>9</td><td align="left" nowrap><b>Aggressive</b></td><td align="left">이전 턴의 요약 + 점진적 에이징</td></tr>
   <tr><td align="center" nowrap>10</td><td align="left" nowrap><b>LLMLingua-2</b></td><td align="left">MobileBERT ONNX를 통한 ML 의미론적 가지치기 — 코드 안전, 비동기</td></tr>
-  <tr><td align="center" nowrap>11</td><td align="left" nowrap><b>Ultra</b></td><td align="left">선택적 소형 모델(SLM) 계층을 사용한 휴리스틱 토큰 가지치기</td></tr>
-  <tr><td align="center" nowrap>12</td><td align="left" nowrap><b>OmniGlyph</b></td><td align="left">Anthropic 직접 연결에서 측정된 Claude Fable 5를 위한 실험적 이미지 기반 컨텍스트 인코딩. GPT 5.6 트랜스포머는 공급자 확인증이 제공될 때까지 실패 시 차단 상태로 유지됩니다. 4가지 압축 프로필(기본값인 공격적, 균형, 코딩 안전, 패스스루) 제공(가장 공격적이며 명시적으로 활성화해야 함)</td></tr>
+  <tr><td align="center" nowrap>11</td><td align="left" nowrap><b>Ultra</b></td><td align="left">선택적 소형 모델(SLM) 계층을 활용하는 휴리스틱 토큰 가지치기</td></tr>
+  <tr><td align="center" nowrap>12</td><td align="left" nowrap><b>OmniGlyph</b></td><td align="left">Anthropic 직접 연결에서 측정된 Claude Fable 5를 위한 실험적 컨텍스트-이미지 인코딩. GPT 5.6 트랜스포머는 제공업체 수신 확인 전까지 실패 시 차단 상태를 유지합니다. 네 가지 압축 프로필(기본값인 공격적, 균형, 코딩 안전, 패스스루)(가장 공격적, 명시적 사용 설정 필요)</td></tr>
 </table>
 
-코드 블록, URL 및 구조화된 데이터는 바이트 단위로 완벽하게 **항상 보존됩니다**. **원클릭 프리셋**으로 엔진을 조합할 수 있습니다.
+코드 블록, URL 및 구조화된 데이터는 **항상 바이트 단위까지 완벽하게 보존됩니다**. **원클릭 프리셋**으로 엔진을 조합할 수 있습니다.
 
 <table>
-  <tr><th align="left">모드</th><th align="left">절감률</th><th align="left">권장 용도</th></tr>
+  <tr><th align="left">모드</th><th align="left">절감률</th><th align="left">최적 용도</th></tr>
   <tr><td align="left" nowrap>🪶 <b>Lite</b></td><td align="left" nowrap>~15%</td><td align="left">항상 활성화할 수 있는 안전한 기본값</td></tr>
   <tr><td align="left" nowrap>🪨 <b>Standard (Caveman)</b></td><td align="left" nowrap>~30%</td><td align="left">일상적인 코딩</td></tr>
   <tr><td align="left" nowrap>⚡ <b>Aggressive</b></td><td align="left" nowrap>~50%</td><td align="left">도구 사용이 많은 장시간 세션</td></tr>
@@ -953,7 +959,7 @@ range    = 78.4 – 94.6%
 
 **실제 예시 — Standard 모드:**
 
-> **이전(69토큰):** _"React 컴포넌트가 다시 렌더링되는 이유는 렌더링 주기마다 새로운 객체 참조를 생성하고 있기 때문일 가능성이 높습니다. 인라인 객체를 prop으로 전달하면 React의 얕은 비교가 매번 이를 다른 객체로 인식하여 다시 렌더링됩니다. useMemo를 사용해 객체를 메모이제이션하는 것이 좋습니다."_
+> **이전(69토큰):** _"React 컴포넌트가 다시 렌더링되는 이유는 렌더링 주기마다 새로운 객체 참조를 생성하기 때문일 가능성이 큽니다. 인라인 객체를 prop으로 전달하면 React의 얕은 비교는 매번 이를 다른 객체로 인식하여 다시 렌더링합니다. useMemo를 사용하여 객체를 메모이제이션하는 것을 권장합니다."_
 >
 > **이후(19토큰):** _"렌더링마다 새 객체 참조 생성. 인라인 객체 prop = 새 참조 = 재렌더링. useMemo로 감싸세요."_
 >
@@ -961,28 +967,28 @@ range    = 78.4 – 94.6%
 
 **PT-BR 예시 — [Troglodita](https://github.com/leninejunior/troglodita) 모드:**
 
-> **이전(42토큰):** _"문제는 렌더링 주기마다 새로운 객체 참조가 생성되어 컴포넌트가 다시 렌더링된다는 것입니다. `useMemo`를 사용하는 것이 좋습니다."_
+> **이전(42 토큰):** _"문제는 렌더링 주기마다 새로운 객체 참조가 생성되어 컴포넌트가 다시 렌더링된다는 것입니다. `useMemo` 사용을 권장합니다."_
 >
-> **이후(12토큰):** _"재렌더링: 매 주기 새 참조 생성(인라인 객체 재생성). `useMemo` 사용."_
+> **이후(12 토큰):** _"재렌더링: 주기마다 새 참조 생성(인라인 객체 재생성). `useMemo` 사용."_
 >
-> **동일한 답변. 토큰은 약 70% 감소. 기술적 정확성은 그대로.** ✅
+> **동일한 답변. 토큰 약 70% 감소. 기술적 정확성은 그대로.** ✅
 
 <br/>
 
-### 🎚️ 엔진을 넘어서 — 출력 스타일, 적응형 다이얼 및 요청별 제어
+### 🎚️ 엔진 그 이상 — 출력 스타일, 적응형 다이얼 및 요청별 제어
 
-위의 12개 엔진은 **입력**을 줄입니다. 세 가지 추가 계층은 **어떻게**, **언제**, 그리고 무엇이 **출력되는지**를 조정합니다.
+위의 12개 엔진은 **입력되는** 내용을 줄입니다. 세 가지 추가 계층은 **어떻게**, **언제**, 그리고 무엇이 **출력되는지**를 결정합니다.
 
-- **🪄 출력 스타일** _(출력 축 조정)_ — 결정론적이고 캐시에 안전한 응답 형태 지정 지침을 주입합니다. 여러 스타일을 조합할 수 있으며, 각 스타일은 `lite` / `full` / `ultra` 강도를 지원합니다. 스타일 추가는 레지스트리에 한 줄만 등록하면 됩니다.
-  - **간결한 문체** — 군더더기 / 관사 / 유보적 표현을 제거하되 기술적 내용은 정확하게 유지합니다.
-  - **코드 최소화** — "게으른 시니어 개발자"식 YAGNI: 작동하는 최소한의 변경만 적용하고, 요청하지 않은 뼈대 코드는 만들지 않습니다.
-  - **Ponytail(게으른 시니어 개발자)** — YAGNI 단계를 따라 근본 원인을 해결하고, 작동하는 최소한의 diff만 만듭니다.
-  - **ADHD가 있어요(행동 우선)** — 다음 행동을 먼저 제시하고, 단계에 번호를 매기며, 구체적인 다음 단계 하나만 제공하고, 서문은 생략합니다.
+- **🪄 출력 스타일** _(출력 축 조정)_ — 결정론적이고 캐시 친화적인 응답 형식 지정 지침을 삽입합니다. 여러 스타일을 조합할 수 있으며 각각 `lite` / `full` / `ultra` 강도를 지원합니다. 스타일 추가는 레지스트리에 한 줄만 등록하면 됩니다.
+  - **간결한 문체** — 군더더기 / 관사 / 불확실한 표현을 제거하고 기술적 핵심은 정확히 유지합니다.
+  - **적은 코드** — "게으른 시니어 개발자"식 YAGNI: 요청하지 않은 스캐폴딩 없이 작동하는 최소 변경만 제공합니다.
+  - **포니테일(게으른 시니어 개발자)** — YAGNI 단계를 따라 근본 원인을 해결하고, 작동하는 최소 diff를 제공합니다.
+  - **ADHD가 있어요(행동 우선)** — 다음 행동부터 제시하고, 단계에 번호를 붙이며, 구체적인 다음 단계 하나만 제공하고, 서문은 생략합니다.
   - **간결한 CJK(文言)** — 고전 중국어 기반의 극도로 간결한 스타일입니다(`zh` 로케일에서만 활성화).
-- **🎯 적응형 컨텍스트 예산** _(다이얼)_ — 하나의 켜기/끄기 토큰 임계값 대신, **모델의 컨텍스트 창에 맞추는 데** 필요한 수준까지만 가장 저렴하고 정보 손실이 적은 엔진을 단계적으로 적용합니다. 정책: `reserve-output`(기본값, 모델 인식) · `percentage` · `absolute`. 모드: `floor`(크기 적합 보장) · `replace-autotrigger`(명시적 선택 우선) · `off`(레거시 임계값).
-- **🎛️ 압축 결정 위치** _(우선순위, 높음 → 낮음)_ — 요청별 `x-omniroute-compression` 헤더 › 라우팅 조합 재정의 › 활성화된 명명 프로필 › 적응형 / 자동 트리거 › 패널 기본값 › 끄기. 적용된 계획은 `X-OmniRoute-Compression: <mode>; source=<source>` 응답 헤더로 반환됩니다.
+- **🎯 적응형 컨텍스트 예산** _(다이얼)_ — 단일 온/오프 토큰 임계값 대신, **모델의 컨텍스트 윈도우에 맞추는 데** 필요한 수준까지만 가장 저렴하고 손실이 적은 엔진을 단계적으로 적용합니다. 정책: `reserve-output`(기본값, 모델 인식) · `percentage` · `absolute`. 모드: `floor`(적합 보장) · `replace-autotrigger`(명시적 선택 우선) · `off`(레거시 임계값).
+- **🎛️ 압축 결정 위치** _(우선순위, 높음 → 낮음)_ — 요청별 `x-omniroute-compression` 헤더 › 라우팅 조합 재정의 › 활성화된 명명 프로필 › 적응형 / 자동 트리거 › 패널 기본값 › 비활성화. 적용된 계획은 `X-OmniRoute-Compression: <mode>; source=<source>` 응답 헤더에 그대로 반환됩니다.
 
-토큰 임계값을 기준으로 자동 트리거하거나, 적응형 다이얼을 켜거나, 명명 프로필을 고정하거나, 요청별로 일회성 설정을 지정하거나, 라우팅 조합별로 파이프라인을 할당할 수 있습니다. 워크로드에 맞는 방식을 선택하세요. 선택적으로 사용할 수 있는 오프라인 **평가 하네스**(`npm run eval:compression`)는 변경 사항을 배포하기 전에 고정된 코퍼스를 기준으로 충실도와 절감 효과를 평가합니다.
+토큰 임계값 기반 자동 트리거를 사용하거나, 적응형 다이얼을 켜거나, 명명 프로필을 고정하거나, 요청별로 일회성 설정을 지정하거나, 라우팅 조합별로 파이프라인을 할당할 수 있습니다. 워크로드에 맞는 방식을 선택하세요. 선택적으로 사용할 수 있는 오프라인 **평가 하네스**(`npm run eval:compression`)는 변경 사항을 적용하기 전에 고정된 코퍼스에서 충실도와 절감률을 평가합니다.
 
 📖 [`COMPRESSION_GUIDE.md`](docs/compression/COMPRESSION_GUIDE.md) · [`RTK_COMPRESSION.md`](docs/compression/RTK_COMPRESSION.md) · [`COMPRESSION_ENGINES.md`](docs/compression/COMPRESSION_ENGINES.md)
 
@@ -1001,20 +1007,38 @@ npm install -g omniroute
 omniroute
 ```
 
-> 💡 `npm warn ERESOLVE` 또는 peer-dep 경고가 표시되나요? [무시해도 됩니다](docs/guides/TROUBLESHOOTING.md#npm-install-warnings-eresolve--peer--deprecated).
+> 💡 `npm warn ERESOLVE` 또는 peer-dep 경고가 표시되나요? [문제없는 경고입니다](docs/guides/TROUBLESHOOTING.md#npm-install-warnings-eresolve--peer--deprecated).
+> **npm 11 이상을 사용하시나요?** 허용되지 않은 패키지 수명 주기 스크립트는 npm에서 차단할 수 있습니다. OmniRoute의 `postinstall`(`node scripts/build/postinstall.mjs`)은 네이티브 런타임 파일을 준비하는 데 필요합니다. 전역 설치 시 npm 경고에 표시된 패키지를 허용하세요. OmniRoute 3.8.51에서 보고된 패키지 집합의 경우:
+>
+> ```bash
+> npm install -g --allow-scripts=omniroute,keytar,onnxruntime-node,@parcel/watcher,@swc/core,protobufjs,esbuild omniroute
+> ```
+>
+> 이후 전역 설치에서도 이 허용 목록을 재사용하려면 한 번 구성한 다음 정상적으로 설치하세요.
+>
+> ```bash
+> npm config set allow-scripts=omniroute,keytar,onnxruntime-node,@parcel/watcher,@swc/core,protobufjs,esbuild --location=user
+> npm install -g omniroute
+> ```
+>
+> 종속성 목록은 릴리스마다 변경될 수 있습니다. npm에서 다른 목록을 보고하면 해당 경고에 표시된 패키지 이름을 사용하세요. 패키지를 허용하면 해당 패키지의 설치 스크립트 실행이 허용됩니다.
+> **Gemini Web 또는 다른 웹 쿠키 공급자를 사용하시나요?** npm 패키지에는
+> Playwright가 포함되어 있지만 Chromium 바이너리는 포함되어 있지 않습니다. 첫 번째 웹 공급자 요청을 보내기 전에
+> [Playwright Chromium 설정](docs/guides/TROUBLESHOOTING.md#gemini-web-and-playwright-chromium)
+> 안내를 확인하세요.
 
-대시보드: `http://localhost:20128` · API: `http://localhost:20128/v1`.
+대시보드는 `http://localhost:20128`, API는 `http://localhost:20128/v1`에서 사용할 수 있습니다.
 
-**2) 무료 제공업체 연결(가입 불필요)**
+**2) 자신의 계정을 사용하여 적격 공급자 연결**
 
-대시보드 → **제공업체** → **Kiro AI**(무료 Claude, 계정당 월 약 50크레딧) 또는 **OpenCode Free**(인증 불필요) 연결 → 완료.
+대시보드 → **공급자** → 현재 약관과 할당량이 사용 사례에 적합한 공급자를 선택 → API 키를 추가하거나 계정 연결 절차를 완료합니다. 무료 티어에도 가입, 승인 또는 결제 수단이 필요할 수 있습니다. [무료 티어 가이드](docs/getting-started/FREE-TIERS-GUIDE.md)를 확인하세요. 키 없는 이용 가능 여부는 보장되지 않으며, `tos: avoid`로 표시된 공급자는 기본적으로 `auto`에서 제외됩니다.
 
 **3) 코딩 도구 연결**
 
 ```txt
 기본 URL: http://localhost:20128/v1
 API 키:   [대시보드 → 엔드포인트에서 복사]
-모델:     auto            (설정 없는 스마트 라우팅 — 또는 임의의 제공업체/모델)
+모델:     auto            (적격 연결 사이에서 라우팅 — 또는 공급자/모델 선택)
 ```
 
 **4) 작동 여부 확인**
@@ -1023,9 +1047,9 @@ API 키:   [대시보드 → 엔드포인트에서 복사]
 curl http://localhost:20128/v1/models -H "Authorization: Bearer YOUR_KEY"
 ```
 
-연결된 모델 목록이 표시되어야 합니다. 🎉 이것으로 끝입니다. 코딩을 시작하면 OmniRoute가 자동으로 라우팅하고 필요할 때 대체 경로를 사용합니다.
+연결된 모델 목록이 표시되어야 합니다. 🎉 이것으로 끝입니다. 코딩을 시작하면 OmniRoute가 자동으로 라우팅하고 장애 조치를 수행합니다.
 
-클라이언트가 사용자 지정 헤더를 전송할 수 없는 경우 OmniRoute는 토큰이 포함된 호환성 별칭도 제공합니다.
+클라이언트에서 사용자 지정 헤더를 보낼 수 없는 경우 OmniRoute는 토큰이 포함된 호환성 별칭도 제공합니다.
 
 ```txt
 OpenAI 카탈로그: http://localhost:20128/vscode/YOUR_KEY/
@@ -1036,7 +1060,7 @@ Ollama 채팅:     http://localhost:20128/vscode/YOUR_KEY/api/chat
 Ollama 태그:     http://localhost:20128/vscode/YOUR_KEY/api/tags
 ```
 
-`Authorization: Bearer ...`를 첨부할 수 없는 클라이언트에서만 이 주소를 사용하세요. 헤더 인증이 여전히 권장되는 방식입니다.
+`Authorization: Bearer ...`를 첨부할 수 없는 클라이언트에서만 이를 사용하세요. 헤더 인증이 여전히 권장 방식입니다.
 
 <br/>
 
@@ -1262,21 +1286,21 @@ OMNIROUTE_SKIP_POSTINSTALL=1 npm install -g omniroute   # CI=1도 이를 건너�
 <table>
   <tr><th align="left">계층</th><th align="left">기술</th></tr>
   <tr><td nowrap><b>런타임</b></td><td>Node.js 22.x / 24.x LTS — <code>&gt;=22.22.2 &lt;23 || &gt;=24.0.0 &lt;27</code></td></tr>
-  <tr><td nowrap><b>언어</b></td><td>TypeScript 6.0 — <b>100% TypeScript</b> (<code>src/</code> 및 <code>open-sse/</code> 전반에 걸쳐, v2.0부터 코어에 <code>any</code> 없음)</td></tr>
+  <tr><td nowrap><b>언어</b></td><td>TypeScript 6.0 — <code>src/</code> 및 <code>open-sse/</code> 전체에 걸쳐 <b>100% TypeScript</b> 사용(v2.0부터 코어의 <code>any</code> 사용 0건)</td></tr>
   <tr><td nowrap><b>프레임워크</b></td><td>Next.js 16 + React 19 + Tailwind CSS 4</td></tr>
-  <tr><td nowrap><b>데이터베이스</b></td><td>better-sqlite3 (SQLite, WAL journaling) + LowDB (JSON legacy) — 122개 도메인 모듈, 182개 마이그레이션</td></tr>
-  <tr><td nowrap><b>메모리</b></td><td>SQLite FTS5 full-text + int8 양자화 벡터 임베딩, 타입화된 감쇠</td></tr>
-  <tr><td nowrap><b>스키마</b></td><td>Zod 4 — MCP 도구 I/O 유효성 검사 + API 계약</td></tr>
+  <tr><td nowrap><b>데이터베이스</b></td><td>better-sqlite3 (SQLite, WAL 저널링) + LowDB (레거시 JSON) — 도메인 모듈 137개, 마이그레이션 203개</td></tr>
+  <tr><td nowrap><b>메모리</b></td><td>SQLite FTS5 전문 검색 + int8 양자화 벡터 임베딩, 유형화된 감쇠</td></tr>
+  <tr><td nowrap><b>스키마</b></td><td>Zod 4 — MCP 도구 입출력 검증 + API 계약</td></tr>
   <tr><td nowrap><b>프로토콜</b></td><td>MCP (stdio / HTTP / SSE) + A2A v0.3 (JSON-RPC 2.0 + SSE)</td></tr>
-  <tr><td nowrap><b>스트리밍</b></td><td>Server-Sent Events (SSE) + WebSocket bridge (<code>/v1/ws</code>)</td></tr>
+  <tr><td nowrap><b>스트리밍</b></td><td>Server-Sent Events (SSE) + WebSocket 브리지(<code>/v1/ws</code>)</td></tr>
   <tr><td nowrap><b>압축</b></td><td>12개 엔진 파이프라인 — RTK, Caveman, LLMLingua-2 (MobileBERT ONNX), GCF, OmniGlyph</td></tr>
-  <tr><td nowrap><b>인증 및 보안</b></td><td>OAuth 2.0 (PKCE) + JWT + API Keys + MCP 범위 지정 인증 · 저장 데이터 AES-256-GCM · DOMPurify</td></tr>
+  <tr><td nowrap><b>인증 및 보안</b></td><td>OAuth 2.0 (PKCE) + JWT + API Keys + MCP 범위 지정 인증 · 저장 데이터 AES-256-GCM 암호화 · DOMPurify</td></tr>
   <tr><td nowrap><b>스텔스</b></td><td>wreq-js — JA3 / JA4 TLS 지문 위장, 3단계 프록시</td></tr>
-  <tr><td nowrap><b>복원력</b></td><td>Circuit breaker, exponential backoff, anti-thundering-herd, 자동 콤보 자가 치유</td></tr>
-  <tr><td nowrap><b>로깅</b></td><td>pino — 요청 컨텍스트를 포함한 구조화된 JSON 로그</td></tr>
-  <tr><td nowrap><b>테스팅</b></td><td>Node.js test runner + Vitest — 5,100개 이상의 추적된 테스트 파일 전반에 걸쳐 <b>39,000개 이상의 정적 테스트 선언</b> (단위, 통합, E2E, 보안, 생태계)</td></tr>
-  <tr><td nowrap><b>플랫폼</b></td><td>데스크톱 (Electron) · Android (Termux) · PWA (모든 브라우저)</td></tr>
-  <tr><td nowrap><b>CI/CD</b></td><td>GitHub Actions — 자동 npm 게시 + 릴리스 시 Docker Hub</td></tr>
+  <tr><td nowrap><b>복원력</b></td><td>서킷 브레이커, 지수 백오프, 동시 요청 폭주 방지, 자동 조합 자가 복구</td></tr>
+  <tr><td nowrap><b>로깅</b></td><td>pino — 요청 컨텍스트가 포함된 구조화된 JSON 로그</td></tr>
+  <tr><td nowrap><b>테스트</b></td><td>Node.js 테스트 러너 + Vitest — 추적되는 5,100개 이상의 테스트 파일에 걸친 <b>39,000개 이상의 정적 테스트 선언</b>(단위, 통합, E2E, 보안, 생태계)</td></tr>
+  <tr><td nowrap><b>플랫폼</b></td><td>데스크톱(Electron) · Android (Termux) · PWA(모든 브라우저)</td></tr>
+  <tr><td nowrap><b>CI/CD</b></td><td>GitHub Actions — 릴리스 시 npm 자동 게시 + Docker Hub 배포</td></tr>
   <tr><td nowrap><b>링크</b></td><td><a href="https://omniroute.online">웹사이트</a> · <a href="https://www.npmjs.com/package/omniroute">npm</a> · <a href="https://hub.docker.com/r/diegosouzapw/omniroute">Docker Hub</a></td></tr>
 </table>
 
@@ -1728,7 +1752,7 @@ MIT 라이선스 - 자세한 내용은 [LICENSE](LICENSE)를 참조하세요.
 
 **[⬆ 맨 위로 돌아가기](#-omniroute)** · 오픈 소스 AI 커뮤니티를 위해 ❤️를 담아 만들었습니다.
 
-<sub>OmniRoute v3.8.51 · Node ≥22.22.2 · MIT 라이선스 · <a href="https://omniroute.online">omniroute.online</a></sub>
+<sub>OmniRoute v3.8.52 · Node ≥22.22.2 · MIT 라이선스 · <a href="https://omniroute.online">omniroute.online</a></sub>
 
 </div>
 <!-- 커뮤니티 Q&A를 위해 GitHub Discussions가 활성화되어 있습니다 -->

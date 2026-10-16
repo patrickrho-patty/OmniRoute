@@ -22,18 +22,22 @@
  *   - Never touch multipart content parts other than `type: "text"`.
  *   - Only dedup blocks ≥ minBlockChars (default 80 chars) AND ≥ MIN_BLOCK_LINES lines.
  *   - First occurrence is ALWAYS kept intact; only later identical occurrences are replaced.
+ *   - Never rewrite the current turn (messages after the last assistant message): the
+ *     model must see what it just read or was just sent. It is deduped on a later turn.
  *
  * Reconstruction:
  *   Replace every `[dedup:ref sha=XXXXXXXX]` marker with the original block text
  *   from the reverse map attached as `__sessionDedupMap__` on the body object.
  */
 
+import crypto from "node:crypto";
 import { createCompressionStats } from "../../stats.ts";
 import { canonicalize } from "../../incremental/messageHash.ts";
 import { runFuzzyPass } from "./fuzzy.ts";
 import { dedupMessageTexts } from "./suffixDedup.ts";
 import { memoKey } from "../../incremental/types.ts";
 import type { IncrementalContext } from "../../incremental/types.ts";
+import { callerSupportsCcrRetrieve } from "../ccr/protocolInstruction.ts";
 import type {
   CompressionEngine,
   CompressionEngineApplyOptions,
@@ -47,10 +51,208 @@ import type { CompressionResult } from "../../types.ts";
 const ENGINE_ID = "session-dedup";
 /** Minimum block character count to be a dedup candidate. */
 const DEFAULT_MIN_BLOCK_CHARS = 80;
+/**
+ * Per-message key namespace for the dedup `msgIdx`: string content uses `i*MSG_KEY_STRIDE`,
+ * multipart text part `p` uses `i*MSG_KEY_STRIDE + p + 1`. One stride per message keeps the
+ * two shapes from colliding while preserving message ORDER (an earlier message always has a
+ * strictly smaller key), which both the suffix index's owner comparison and
+ * {@link currentTurnStartIndex} rely on. Recover the message index with
+ * `Math.floor(key / MSG_KEY_STRIDE)`.
+ */
+const MSG_KEY_STRIDE = 100000;
+
+/**
+ * First message index that belongs to the CURRENT TURN — everything after the last assistant
+ * message. Upstream rule: the current turn is never rewritten, because an agent that re-reads
+ * a file it already read would get `[dedup:ref sha=...]` back, conclude the read was lost and
+ * read it again. `0` means "no assistant turn in this body yet", so nothing lies outside the
+ * current turn and no cross-message replacement may be applied — the intra-message pass above
+ * is the only dedup such a body gets.
+ */
+function currentTurnStartIndex(messages: MessageLike[]): number {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "assistant") return i + 1;
+  }
+  return 0;
+}
+
+/**
+ * Drop the replacements that belong to the current turn (keys are `i*MSG_KEY_STRIDE(+p+1)`,
+ * so the message index is `floor(key / MSG_KEY_STRIDE)`). Copy-on-write: the common case —
+ * nothing in the current turn — returns the input map unchanged.
+ */
+function withoutCurrentTurnReplacements(
+  deduped: Map<number, string>,
+  currentTurnStart: number
+): Map<number, string> {
+  let filtered: Map<number, string> | null = null;
+  for (const key of deduped.keys()) {
+    if (Math.floor(key / MSG_KEY_STRIDE) >= currentTurnStart) {
+      filtered ??= new Map(deduped);
+      filtered.delete(key);
+    }
+  }
+  return filtered ?? deduped;
+}
 
 // Cross-message suffix dedup is implemented in ./suffixDedup.ts (single-pass, O(n)).
 // `dedupMessageTexts` preserves the exact external contract of the previous O(n²)
 // implementation (longest-suffix match, first-occurrence kept, reversible markers).
+//
+// What is NOT in suffixDedup.ts: **intra-message** dedup (a block repeated inside ONE
+// message). The suffix index can never see it — an intra-message repetition has no
+// EARLIER owner — so it is handled by the literal-scan pass below, retained from upstream
+// (#6467 + the literal-scan fix that replaced the `new RegExp(block)` calls). It is
+// reached only for a single non-system text message; every multi-message body goes through
+// the O(n) suffix core.
+
+// ─── intra-message dedup: retained from upstream (#6467) ─────────────────────
+
+/** Minimum number of lines a block must span to be a dedup candidate. */
+const MIN_BLOCK_LINES = 3;
+/**
+ * O(n²) guard for {@link findSuffixBlocks} (OOM incident): a single message with
+ * thousands of lines otherwise generates one full-length suffix string PER line,
+ * all retained at once. A real agent conversation embedding a large
+ * line-numbered file view (e.g. a tool result pasting a multi-thousand-line
+ * file back into the chat) drove ~1.7GB of live suffix strings and OOM-killed
+ * the 2GB heap (heap snapshot confirmed 6801 `{ block }` objects). These bound
+ * both the number of suffix starts scanned
+ * and the total bytes of retained blocks, so memory is O(budget) instead of O(n²).
+ * Dedup is best-effort — skipping the tail only forgoes some compression, never
+ * changes output correctness.
+ */
+const MAX_SUFFIX_STARTS = 2000;
+const MAX_TOTAL_BLOCK_BYTES = 8 * 1024 * 1024;
+
+// ─── hash helper (SHA-256 prefix, collision-resistant) ───────────────────────
+
+function hashBlock(text: string): string {
+  // 24 hex / 96 bits — collision-resistant (a 32-bit djb2 could collide and make a
+  // dedup marker reference the WRONG block). Pass 2 additionally verifies block
+  // equality before substituting, so a collision can never cause corruption.
+  return crypto.createHash("sha256").update(text).digest("hex").slice(0, 24);
+}
+
+// ─── suffix-block extraction ──────────────────────────────────────────────────
+
+/**
+ * For each starting line position, emit the suffix block `lines[start..end]`
+ * (i.e. from `start` to the end of the line array). This ensures that any
+ * multiline sub-content that appears verbatim in multiple messages is discoverable
+ * regardless of what text precedes it in each message.
+ *
+ * Only emits blocks that meet minBlockChars AND have at least MIN_BLOCK_LINES lines.
+ * Uses a seen-set to deduplicate identical suffix blocks.
+ */
+function findSuffixBlocks(
+  lines: string[],
+  minBlockChars: number
+): Array<{ block: string; startLine: number }> {
+  const n = lines.length;
+  const seen = new Set<string>();
+  const results: Array<{ block: string; startLine: number }> = [];
+
+  // O(n²) guard (#OOM): cap the number of suffix starts and the total retained
+  // block bytes so a huge message can't materialize thousands of full-length
+  // suffix strings at once. See MAX_SUFFIX_STARTS / MAX_TOTAL_BLOCK_BYTES.
+  const maxStarts = Math.min(n, MAX_SUFFIX_STARTS);
+  let totalBlockBytes = 0;
+  for (let start = 0; start < maxStarts; start++) {
+    const block = lines.slice(start).join("\n");
+    const blockLines = n - start;
+    if (blockLines >= MIN_BLOCK_LINES && block.length >= minBlockChars && !seen.has(block)) {
+      seen.add(block);
+      results.push({ block, startLine: start });
+      totalBlockBytes += block.length;
+      if (totalBlockBytes >= MAX_TOTAL_BLOCK_BYTES) break;
+    }
+  }
+  return results;
+}
+
+/**
+ * Deduplicates repeated lines within a single message (intra-message dedup).
+ * Replaces repeated suffix blocks with markers.
+ */
+function countLiteralOccurrences(text: string, needle: string): number {
+  if (!needle) return 0;
+  let count = 0;
+  let offset = 0;
+  while (true) {
+    const idx = text.indexOf(needle, offset);
+    if (idx === -1) return count;
+    count++;
+    offset = idx + needle.length;
+  }
+}
+
+function replaceLiteralOccurrencesAfterFirst(
+  text: string,
+  needle: string,
+  replacement: string
+): string {
+  if (!needle) return text;
+  const first = text.indexOf(needle);
+  if (first === -1) return text;
+
+  let result = text.slice(0, first + needle.length);
+  let offset = first + needle.length;
+
+  while (true) {
+    const idx = text.indexOf(needle, offset);
+    if (idx === -1) {
+      result += text.slice(offset);
+      return result;
+    }
+    result += text.slice(offset, idx) + replacement;
+    offset = idx + needle.length;
+  }
+}
+
+function dedupeWithinMessage(
+  text: string,
+  minBlockChars: number
+): { deduped: string; changed: boolean } {
+  const lines = text.split("\n");
+  const blocks = findSuffixBlocks(lines, minBlockChars);
+
+  if (blocks.length < 2) return { deduped: text, changed: false };
+
+  // Find the most common block (likely candidate for intra-message dedup).
+  const blockFreq = new Map<string, number>();
+  for (const { block } of blocks) {
+    blockFreq.set(block, (blockFreq.get(block) || 0) + 1);
+  }
+
+  // Sort by frequency descending, then by length descending (prefer replacing more common, longer blocks first).
+  const sortedBlocks = [...blocks].sort((a, b) => {
+    const freqDiff = (blockFreq.get(b.block) || 0) - (blockFreq.get(a.block) || 0);
+    return freqDiff !== 0 ? freqDiff : b.block.length - a.block.length;
+  });
+
+  let result = text;
+  let changed = false;
+
+  for (const { block } of sortedBlocks) {
+    // Only dedup blocks that appear 2+ times in the text. Use literal indexOf
+    // scanning instead of compiling the whole block into a RegExp: remembered
+    // JSON/tool blobs can be hundreds of KB and V8 rejects such regex sources
+    // with "Regular expression too large".
+    const occurrences = countLiteralOccurrences(result, block);
+    if (occurrences < 2) continue;
+
+    const sha = hashBlock(block);
+    const marker = `[dedup:ref sha=${sha}]`;
+    // Replace ALL occurrences except the first (keep the original once).
+    result = replaceLiteralOccurrencesAfterFirst(result, block, marker);
+    changed = true;
+  }
+
+  return { deduped: result, changed };
+}
+
+// ─── end intra-message dedup (retained from upstream) ───────────────────────
 
 // ─── message array processing ─────────────────────────────────────────────────
 
@@ -283,16 +485,19 @@ function dedupToolResults(
 }
 
 /**
- * Process messages: collect text content, run two-pass dedup, apply results.
+ * Process messages: collect text content, run the dedup passes, apply results. Cross-message
+ * dedup is the single-pass O(n) suffix core (suffixDedup.ts); a body with one text message gets
+ * the intra-message pass instead.
  */
 function processMessages(
   messages: MessageLike[],
   minBlockChars: number
 ): { messages: MessageLike[]; dedupCount: number } {
   // Collect (msgIdx, text) for non-system content. Keys live in a per-message namespace of
-  // 100000 so string content (`i*100000`) and multipart text parts (`i*100000 + p + 1`)
-  // never collide across adjacent string/multipart messages, while preserving message order
-  // (earlier messages keep strictly smaller keys, which the dedup ordering relies on).
+  // MSG_KEY_STRIDE (100000) so string content (`i*MSG_KEY_STRIDE`) and multipart text parts
+  // (`i*MSG_KEY_STRIDE + p + 1`) never collide across adjacent string/multipart messages,
+  // while preserving message order (earlier messages keep strictly smaller keys, which the
+  // dedup ordering relies on). The message index of a key is `floor(key / MSG_KEY_STRIDE)`.
 
   const msgTexts: Array<{ msgIdx: number; text: string }> = [];
 
@@ -300,43 +505,65 @@ function processMessages(
     const msg = messages[i];
     if (msg.role === "system") continue;
     if (typeof msg.content === "string") {
-      msgTexts.push({ msgIdx: i * 100000, text: msg.content });
+      msgTexts.push({ msgIdx: i * MSG_KEY_STRIDE, text: msg.content });
     } else if (Array.isArray(msg.content)) {
       for (let p = 0; p < msg.content.length; p++) {
         const part = msg.content[p];
         if (part["type"] === "text" && typeof part["text"] === "string") {
-          msgTexts.push({ msgIdx: i * 100000 + p + 1, text: part["text"] as string });
+          msgTexts.push({ msgIdx: i * MSG_KEY_STRIDE + p + 1, text: part["text"] as string });
         }
       }
     }
   }
 
-  if (msgTexts.length < 2) {
+  if (msgTexts.length === 0) {
     return { messages, dedupCount: 0 };
   }
 
-  const { deduped, dedupCount } = dedupMessageTexts(msgTexts, minBlockChars);
+  // A single text message is the intra-message case: the only repetition it can contain is
+  // inside itself, which the cross-message suffix index can never see. Upstream's literal-scan
+  // pass handles it, and upstream's current-turn rule does not apply to it — the repetition is
+  // inside the message the caller just sent, which is what the model must receive whole.
+  if (msgTexts.length === 1) {
+    const { msgIdx, text } = msgTexts[0];
+    const intra = dedupeWithinMessage(text, minBlockChars);
+    if (!intra.changed) return { messages, dedupCount: 0 };
+    const single = new Map<number, string>([[msgIdx, intra.deduped]]);
+    return {
+      messages: messages.map((msg, i) => reassembleMessage(msg, i, single)),
+      dedupCount: 1,
+    };
+  }
 
-  if (dedupCount === 0) {
+  // Cross-message dedup (single-pass O(n) suffix index — see suffixDedup.ts). Messages after
+  // the last assistant message form the current turn: they are still FED to the index (their
+  // blocks must become owners for a later turn) but the replacements proposed for them are
+  // dropped. That is upstream's `messageIndex >= currentTurnStart` skip, expressed over the
+  // fork's `i*MSG_KEY_STRIDE(+p+1)` key namespace instead of a second `messageIndex` field.
+  const currentTurnStart = currentTurnStartIndex(messages);
+  const { deduped: proposed } = dedupMessageTexts(msgTexts, minBlockChars);
+  const deduped = withoutCurrentTurnReplacements(proposed, currentTurnStart);
+
+  if (deduped.size === 0) {
     return { messages, dedupCount: 0 };
   }
 
   const result = messages.map((msg, i) => reassembleMessage(msg, i, deduped));
 
-  return { messages: result, dedupCount };
+  return { messages: result, dedupCount: deduped.size };
 }
 
 /**
  * Apply the deduped-text replacements for one message, keyed by its array index `i`
- * (string content → `i*100000`; multipart text part p → `i*100000 + p + 1`). Returns a
- * shallow-cloned message with markers substituted where present. Shared by the full and
- * incremental paths so they reassemble identically.
+ * (string content → `i*MSG_KEY_STRIDE`; multipart text part p → `i*MSG_KEY_STRIDE + p + 1`).
+ * Returns a shallow-cloned message with markers substituted where present. Shared by the full
+ * and incremental paths so they reassemble identically.
  */
 function reassembleMessage(msg: MessageLike, i: number, deduped: Map<number, string>): MessageLike {
   if (msg.role === "system") return { ...msg };
 
   if (typeof msg.content === "string") {
-    const replacement = deduped.get(i * 100000);
+    const replacement = deduped.get(i * MSG_KEY_STRIDE);
     return replacement !== undefined ? { ...msg, content: replacement } : { ...msg };
   }
 
@@ -344,7 +571,7 @@ function reassembleMessage(msg: MessageLike, i: number, deduped: Map<number, str
     let changed = false;
     const newContent = msg.content.map((part, p) => {
       if (part["type"] !== "text" || typeof part["text"] !== "string") return part;
-      const key = i * 100000 + p + 1;
+      const key = i * MSG_KEY_STRIDE + p + 1;
       const replacement = deduped.get(key);
       if (replacement !== undefined) {
         changed = true;
@@ -363,17 +590,17 @@ type MemoizedMessage = { msg: MessageLike; changed: boolean };
 
 /**
  * Whether the dedup substituted a marker for any text span of message `i` this turn — the
- * content-level "did this message change" signal (string key `i*100000`; multipart text part p
- * key `i*100000 + p + 1`). Mirrors the keys reassembleMessage consumes.
+ * content-level "did this message change" signal (string key `i*MSG_KEY_STRIDE`; multipart
+ * text part p key `i*MSG_KEY_STRIDE + p + 1`). Mirrors the keys reassembleMessage consumes.
  */
 function messageWasDeduped(msg: MessageLike, i: number, deduped: Map<number, string>): boolean {
-  if (typeof msg.content === "string") return deduped.has(i * 100000);
+  if (typeof msg.content === "string") return deduped.has(i * MSG_KEY_STRIDE);
   if (Array.isArray(msg.content)) {
     return msg.content.some(
       (part, p) =>
         part["type"] === "text" &&
         typeof part["text"] === "string" &&
-        deduped.has(i * 100000 + p + 1)
+        deduped.has(i * MSG_KEY_STRIDE + p + 1)
     );
   }
   return false;
@@ -393,6 +620,12 @@ function processMessagesIncremental(
 ): { messages: MessageLike[]; changedCount: number } {
   const cumulative = ctx.cumulativeByIndex;
 
+  // Current-turn rule (upstream), shared with the full path: the messages after the last
+  // assistant message are never rewritten. Their replacements are dropped below and their
+  // memo entries are withheld — a current-turn message may become eligible next turn, so its
+  // output is not yet a stable prefix value (the memo is only valid for an immutable prefix).
+  const currentTurnStart = currentTurnStartIndex(messages);
+
   // Collect (msgIdx, text) ONLY for messages we haven't compressed before. Array index is the
   // msgIdx namespace base, identical across turns (append-only) so it matches the persistent
   // index's existing ownership.
@@ -403,22 +636,25 @@ function processMessagesIncremental(
     const h = cumulative[i];
     if (h !== undefined && ctx.memo.has(memoKey(ENGINE_ID, h))) continue; // cached prefix
     if (typeof msg.content === "string") {
-      newMsgTexts.push({ msgIdx: i * 100000, text: msg.content });
+      newMsgTexts.push({ msgIdx: i * MSG_KEY_STRIDE, text: msg.content });
     } else if (Array.isArray(msg.content)) {
       for (let p = 0; p < msg.content.length; p++) {
         const part = msg.content[p];
         if (part["type"] === "text" && typeof part["text"] === "string") {
-          newMsgTexts.push({ msgIdx: i * 100000 + p + 1, text: part["text"] as string });
+          newMsgTexts.push({ msgIdx: i * MSG_KEY_STRIDE + p + 1, text: part["text"] as string });
         }
       }
     }
   }
 
   // Dedup the new tail against the carried index (prefix blocks already registered there).
-  const deduped =
+  // The index is fed EVERY new message (so current-turn blocks still become owners for a
+  // later turn); only the current turn's replacements are dropped.
+  const proposed =
     newMsgTexts.length > 0
       ? dedupMessageTexts(newMsgTexts, minBlockChars, ctx.dedupIndex).deduped
       : new Map<number, string>();
+  const deduped = withoutCurrentTurnReplacements(proposed, currentTurnStart);
 
   let changedCount = 0;
   const result = messages.map((msg, i) => {
@@ -437,12 +673,34 @@ function processMessagesIncremental(
     // level fact, not a cross-turn object-reference compare which is always true for multipart).
     const changed = messageWasDeduped(msg, i, deduped);
     const out = reassembleMessage(msg, i, deduped);
-    if (key) ctx.memo.set(key, { msg: out, changed });
+    // Only a message OUTSIDE the current turn has a position-stable output; memoizing a
+    // current-turn message would freeze its un-replaced text forever (next turn it can no longer
+    // be re-processed, so it could never pick up the replacement a full run would apply).
+    if (key && i < currentTurnStart) ctx.memo.set(key, { msg: out, changed });
     if (changed) changedCount++;
     return out;
   });
 
   return { messages: result, changedCount };
+}
+
+/**
+ * Number of non-system text entries in a body (string content, or `type: "text"` parts).
+ * Fewer than 2 means the only dedup possible is INTRA-message, which lives in the full path.
+ */
+function countNonSystemTextEntries(messages: MessageLike[]): number {
+  let count = 0;
+  for (const msg of messages) {
+    if (msg.role === "system") continue;
+    if (typeof msg.content === "string") {
+      count++;
+    } else if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part["type"] === "text" && typeof part["text"] === "string") count++;
+      }
+    }
+  }
+  return count;
 }
 
 // ─── schema & validation ──────────────────────────────────────────────────────
@@ -543,7 +801,9 @@ export const sessionDedupEngine: CompressionEngine = {
     // When the incremental compressor supplies a per-session context (and fuzzy is off),
     // process only the new tail against the persistent index and reuse cached prefix output.
     // The length guard ensures the cumulative keys line up with this body 1:1; otherwise fall
-    // back to the full path (always correct).
+    // back to the full path (always correct). A body with a single non-system text entry is the
+    // intra-message case, which the incremental path does not implement — it always takes the
+    // full path, so "incremental output ≡ full output" holds for that shape too.
     const ctx = options?.incremental;
     const fuzzyRaw = stepConfig["fuzzy"];
     const fuzzyOn =
@@ -554,6 +814,8 @@ export const sessionDedupEngine: CompressionEngine = {
     if (
       ctx &&
       !fuzzyOn &&
+      Array.isArray(messages) &&
+      countNonSystemTextEntries(messages as MessageLike[]) >= 2 &&
       Array.isArray(ctx.cumulativeByIndex) &&
       ctx.cumulativeByIndex.length === messages.length
     ) {
@@ -593,7 +855,8 @@ export const sessionDedupEngine: CompressionEngine = {
       exactMessages,
       stepConfig,
       minBlockChars,
-      options?.principalId
+      options?.principalId,
+      callerSupportsCcrRetrieve(body)
     );
 
     if (toolResultDedupCount + dedupCount + fuzzyCount === 0) {

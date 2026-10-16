@@ -11,11 +11,18 @@
 import { mergeAbortSignals } from "@omniroute/open-sse/executors/base.ts";
 import { cloneBoundedForLog } from "@omniroute/open-sse/utils/requestLogger.ts";
 
-export function buildClientRawRequest(request: Request, body: unknown) {
+export function buildClientRawRequest(
+  request: Request,
+  body: unknown,
+  signalOverride?: AbortSignal | null
+) {
   const url = new URL(request.url);
   const headers = Object.fromEntries(request.headers.entries());
   delete headers["x-omniroute-lease-owner"];
   delete headers["x-omniroute-lease-generation"];
+  // Internal slow-keepalive deadline routing token (never client-sent, never
+  // upstream-bound): set by withDeadlineSignal, consumed by getDeadlineController.
+  delete headers["x-deadline-token"];
   // Fork defense-in-depth: strip client credentials AT CAPTURE, not only at log
   // time — clientRawRequest flows through several observability consumers and
   // any of them must never retain the bearer/cookie/x-patty material. The
@@ -43,7 +50,7 @@ export function buildClientRawRequest(request: Request, body: unknown) {
     // compression), and this has to stay a snapshot of what the client actually sent.
     body: cloneBoundedForLog(body),
     headers,
-    signal: request.signal ?? null,
+    signal: signalOverride === undefined ? (request.signal ?? null) : signalOverride,
   };
 }
 

@@ -47,6 +47,8 @@ describe("session-dedup engine", () => {
       { role: "user", content: `Here is the code:\n${REPEATED_BLOCK}` },
       { role: "assistant", content: "I understand the code." },
       { role: "user", content: `Please review again:\n${REPEATED_BLOCK}` },
+      // Closes the turn: the current turn is never deduped.
+      { role: "assistant", content: "Reviewed." },
     ]);
 
     const result = sessionDedupEngine.apply(body as Record<string, unknown>);

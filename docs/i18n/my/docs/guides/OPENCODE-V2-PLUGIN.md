@@ -72,24 +72,31 @@ alias ထပ်တူဖယ်ရှားခြင်း မရှိ၊ ဈေ
 
 ## ရွေးချယ်စရာများ
 
-| Key                              | မူလတန်ဖိုး                                               | မှတ်ချက်များ                                                                                                                    |
-| -------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `providerId`                     | `"omniroute"`                                            | Provider id၊ integration id နှင့် မော်ဒယ်များ ပေါ်လာမည့် prefix                                                                 |
-| `baseURL`                        | လိုအပ်သည်                                                | Gateway root၊ `http(s)` သာဖြစ်ရမည်။ လိုအပ်သည့်နေရာတွင် `/v1` suffix ကို ထည့်ပေးသည်                                              |
-| `apiKey`                         | ချိတ်ဆက်ထားသော credential၊ ထို့နောက် `OMNIROUTE_API_KEY` | `/v1/*` အတွက် chat key                                                                                                          |
-| `managementReadToken`            | `apiKey` ကို အစားထိုးအသုံးပြုသည်                         | `/api/*` အတွက် key — ပုံမှန်အားဖြင့် **တူညီသော key မဟုတ်ပါ**                                                                    |
-| `displayName`                    | `"OmniRoute"`                                            | ရွေးချယ်ကိရိယာထဲရှိ provider အမည်                                                                                               |
-| `timeoutMs`                      | `10000`                                                  | Endpoint တစ်ခုစီအတွက် fetch timeout (auto-combo များက 5s အသုံးပြုသည်)                                                           |
-| `modelCacheTtlMs`                | `300000`                                                 | ကတ်တလောက် cache TTL၊ disk snapshot တစ်ခုက cold start များကို အရှိန်မြှင့်ပေးသည်                                                 |
-| `timeouts`                       | `timeoutMs` ကို အစားထိုးအသုံးပြုသည်                      | Endpoint တစ်ခုစီအတွက် ms ဖြင့် သတ်မှတ်ထားသော အချိန်ပမာဏများ: `models`, `combos`, `autoCombos`, `enrichment`                     |
-| `enrichment`                     | `true`                                                   | အမည်များ၊ ဈေးနှုန်းများနှင့် အခမဲ့အဆင့် သုံးစွဲခွင့်ပမာဏများကို ရယူရန်                                                          |
-| `providerTag`                    | `true`                                                   | ပြသမည့်အမည်၏ ရှေ့တွင် route လုပ်ပေးသည့် upstream provider ကို prefix အဖြစ် ထည့်ရန်                                              |
-| `usableOnly`                     | `false`                                                  | Gateway က provisioned ဖြစ်သည်ဟု ဖော်ပြသော provider များကိုသာ ထားရှိရန်                                                          |
-| `visibleModels` / `hiddenModels` | `[]`                                                     | အတိအကျ သို့မဟုတ် suffix ကိုက်ညီသော allowlist များ၊ deny က ဦးစားပေးသည်                                                           |
-| `geminiSanitization`             | `true`                                                   | Tool schema များမှ Gemini က ငြင်းပယ်သော JSON-Schema keyword များကို ဖယ်ရှားရန် (`$ref` tool များကို မပြောင်းလဲဘဲ ဆက်လက်ပို့သည်) |
-| `apiFormat.allowAnthropic`       | `false`                                                  | Allowlist ထဲရှိ id များကို Anthropic API block မှတစ်ဆင့် route လုပ်ရန်                                                          |
-| `apiFormat.anthropicModels`      | `[]`                                                     | Anthropic သို့ route လုပ်မည့် model id အပြည့်အစုံများ                                                                           |
-| `logLevel` / `startupDebug`      | `warn` / `false`                                         | Logger ၏ အသေးစိတ်မှတ်တမ်းတင်မှုအဆင့်                                                                                            |
+| ကီး                              | မူလတန်ဖိုး                                               | မှတ်ချက်များ                                                                                                                                          |
+| -------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `providerId`                     | `"omniroute"`                                            | Provider id၊ integration id နှင့် model များ ပြသမည့် prefix                                                                                           |
+| `baseURL`                        | လိုအပ်သည်                                                | Gateway root၊ `http(s)` သာလျှင်၊ လိုအပ်သည့်နေရာတွင် `/v1` suffix ကို ထည့်ပေးသည်                                                                       |
+| `apiKey`                         | ချိတ်ဆက်ထားသော credential၊ ထို့နောက် `OMNIROUTE_API_KEY` | `/v1/*` အတွက် chat key                                                                                                                                |
+| `managementReadToken`            | `apiKey` ကို အစားထိုးအသုံးပြုသည်                         | `/api/*` အတွက် key — ပုံမှန်အားဖြင့် တူညီသော key **မဟုတ်ပါ**                                                                                          |
+| `displayName`                    | `"OmniRoute"`                                            | ရွေးချယ်ကိရိယာထဲရှိ provider အမည်                                                                                                                     |
+| `timeoutMs`                      | `10000`                                                  | Endpoint တစ်ခုချင်းစီအတွက် fetch timeout (အလိုအလျောက် combo များတွင် 5s အသုံးပြုသည်)                                                                  |
+| `modelCacheTtlMs`                | `300000`                                                 | Catalog cache TTL၊ disk snapshot တစ်ခုက cold start များကို ကြိုတင်ပြင်ဆင်ပေးသည်                                                                       |
+| `timeouts`                       | `timeoutMs` ကို အစားထိုးအသုံးပြုသည်                      | Endpoint တစ်ခုချင်းစီအတွက် ms ဖြင့် သတ်မှတ်သော အချိန်ပမာဏများ—`models`၊ `combos`၊ `autoCombos`၊ `enrichment`                                          |
+| `enrichment`                     | `true`                                                   | အမည်များ၊ စျေးနှုန်းများနှင့် free-tier budget များကို ရယူသည်                                                                                         |
+| `providerTag`                    | `true`                                                   | ပြသမည့်အမည်၏ ရှေ့တွင် route လုပ်ပေးသည့် upstream provider ကို ထည့်သည်                                                                                 |
+| `usableOnly`                     | `false`                                                  | Gateway က provision လုပ်ထားသည်ဟု ဖော်ပြသော provider များကိုသာ ထားရှိသည်                                                                               |
+| `showcasePerOwner`               | `10`                                                     | မူလမြင်ကွင်းတွင် provider တစ်ခုလျှင် ထားရှိမည့် entry အရေအတွက်                                                                                        |
+| `freshPerOwner`                  | `10`                                                     | မူလမြင်ကွင်းတွင် provider တစ်ခုလျှင် ထားရှိမည့် လတ်ဆတ်သော entry အရေအတွက်                                                                              |
+| `freshWindowDays`                | `90`                                                     | Fresh branch အတွက် ရက်ဖြင့် သတ်မှတ်သော လတ်ဆတ်မှုကာလ                                                                                                   |
+| `usageMemory`                    | `true`                                                   | ရက် 30 အသုံးပြုမှု analytics တွင် ဖော်ပြထားသော statically dropped entry များကို ပြန်လည်ထည့်သွင်းသည် (management token လိုအပ်သည်)                      |
+| `visibleModels` / `hiddenModels` | `[]`                                                     | အတိအကျ သို့မဟုတ် suffix ကိုက်ညီသော allowlist များ၊ deny က ဦးစားပေးသည်၊ `*` သည် catalog တစ်ခုလုံးကို ထုတ်ပြန်သည် (အခြား filter များ ဆက်လက်သက်ရောက်သည်) |
+| `geminiSanitization`             | `true`                                                   | Gemini က လက်မခံသော JSON-Schema keyword များကို tool schema များမှ ဖယ်ရှားသည် (`$ref` tool များကို မပြောင်းလဲဘဲ ဆက်လက်ပို့ပေးသည်)                      |
+| `apiFormat.allowAnthropic`       | `false`                                                  | Allowlist ထဲရှိ id များကို Anthropic API block မှတစ်ဆင့် route လုပ်သည်                                                                                |
+| `apiFormat.anthropicModels`      | `[]`                                                     | Anthropic သို့ route လုပ်မည့် model id အပြည့်အစုံ                                                                                                     |
+| `logLevel` / `startupDebug`      | `warn` / `false`                                         | Logger ၏ အသေးစိတ်ဖော်ပြမှုအဆင့်                                                                                                                       |
+
+Usage memory ကို မူလအတိုင်း ဖွင့်ထားသည်။ Management token မရှိပါက ၎င်းသည် အလုပ်မလုပ်ဘဲ ရှိနေမည်
+(startup notice တစ်ခုကို log မှတ်တမ်းတင်မည်) ဖြစ်ပြီး မည်သည့်အရာကိုမျှ ပြန်လည်ထည့်သွင်းမည်မဟုတ်ပါ။
 
 ## ကတ်တလောက်ကို နောက်ဆုံးအခြေအနေအတိုင်း ထိန်းသိမ်းပုံ
 

@@ -31,11 +31,11 @@ test("#9064 static ANTHROPIC_BETA_API_KEY must include code-execution beta", () 
   );
 });
 
-test("#9064 static ANTHROPIC_BETA_API_KEY must include skills beta", () => {
+test("#14200 static ANTHROPIC_BETA_API_KEY must NOT include skills beta unconditionally (dynamic only)", () => {
   const tokens = ANTHROPIC_BETA_API_KEY.split(",").map((s) => s.trim());
   assert.ok(
-    tokens.includes(SKILLS),
-    `skills beta missing from ANTHROPIC_BETA_API_KEY: ${ANTHROPIC_BETA_API_KEY}`
+    !tokens.includes(SKILLS),
+    `skills beta must not be statically included in ANTHROPIC_BETA_API_KEY to prevent 400 on tool-less requests: ${ANTHROPIC_BETA_API_KEY}`
   );
 });
 

@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Vyskytla sa neočakávaná chyba. Toto bolo zaznamenané a náš tím to preskúma.",
+      "detailsAriaLabel": "Podrobnosti o chybe",
+      "retryAriaLabel": "Skúste znovu načítať stránku",
+      "statusAriaLabel": "Otvorenie stavu systému",
+      "systemStatus": "Stav systému",
+      "title": "Niečo sa pokazilo",
+      "tryAgain": "Skúste znova"
+    }
+  }
+}

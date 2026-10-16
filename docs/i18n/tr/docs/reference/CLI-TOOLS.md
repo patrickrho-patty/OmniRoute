@@ -43,9 +43,9 @@ ACP Agents (ters başlatma akışı):
 
 ---
 
-## `setup-*` ile otomatik yapılandırma
+## `setup-*` ile Otomatik Yapılandırma
 
-Her aracın yapılandırmasını elle yazmanız gerekmez. OmniRoute, desteklenen her CLI için çalışan bir OmniRoute'tan (yerel veya uzak) **canlı** model kataloğunu okuyan ve aracın kendi yapılandırmasını makinenize yazan bir `setup-*` komutu sağlar:
+Her aracın yapılandırmasını elle yazmak zorunda değilsiniz. OmniRoute, desteklenen her CLI için, çalışan bir OmniRoute'tan (yerel veya uzak) **canlı** model kataloğunu okuyan ve aracın kendi yapılandırmasını makinenize yazan bir `setup-*` komutu sunar:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
@@ -55,17 +55,15 @@ omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
 omniroute setup-5dive
 ```
 
-Her biri `--remote <url> --api-key <key>` (yerel bir aracı uzak bir OmniRoute'a göre yapılandırır), `--dry-run` (yazmadan önizler) ve `--port` seçeneklerini kabul eder. Otomatik model keşfi olmayan araçlar (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) `--model <id>` seçeneğini (ve etkileşimsiz çalıştırmalar için `--yes` seçeneğini) kullanır. `setup-5dive`, `$HOME` altına yazmayan tek reçetedir: filo ana makinesine root sahipliğinde bir kimlik doğrulama profili yazarak bir 5dive ajan filosunu yapılandırır; bu nedenle `sudo` üzerinden kendisini yeniden çalıştırır ve kendine ait bir uzak modu yoktur. Doğru ortam değişkenleri eklenmiş şekilde ve hiçbir yapılandırma yazmadan bir CLI başlatmak için genel `omniroute run <target>` başlatıcısını kullanın (claude, codex, aider, goose, opencode, qwen, gemini — hedefler ve takma adlar `bin/cli/cli-manifest.mjs` dosyasından gelir); eski araç bazlı başlatıcılar olan `omniroute launch` (Claude Code) ve `omniroute launch-codex` (Codex) kullanılabilir olmaya devam eder. Gemini CLI yalnızca başlatma amaçlıdır: bir `omniroute run` hedefidir ancak `setup-*`/`configure` reçetesi yoktur.
+Her biri `--remote <url> --api-key <key>` (uzak bir OmniRoute'a karşı yerel bir aracı yapılandırma), `--dry-run` (yazmadan önizleme) ve `--port` parametrelerini kabul eder. Model otomatik keşfi olmayan araçlar (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) `--model <id>` (ve etkileşimsiz çalıştırmalar için `--yes`) parametresini alır. `setup-5dive`, `$HOME` altına yazmayan tek tariftir: filo ana bilgisayarında kök sahipli bir kimlik doğrulama profili yazarak bir 5dive aracı filosunu yapılandırır, bu nedenle `sudo` aracılığıyla yeniden yürütülür ve kendi uzak modu yoktur. Doğru ortam enjekte edilmiş ve hiç yapılandırma yazılmamış bir CLI başlatmak için genel `omniroute run <target>` başlatıcısını kullanın (claude, codex, aider, goose, opencode, qwen, gemini — hedefler ve takma adlar `bin/cli/cli-manifest.mjs` dosyasından gelir); eski araç başına başlatıcılar `omniroute launch` (Claude Code) ve `omniroute launch-codex` (Codex) hala mevcuttur. Gemini CLI yalnızca başlatma amaçlıdır: bir `omniroute run` hedefidir ancak `setup-*`/`configure` tarifi yoktur.
 
-> **Tam başvuru:** Her komutun ne yazdığı, tüm seçenekler, yerel ve uzak kullanım arasındaki farklar ve hangi araçların `/v1` son ekini gerektirdiği hakkındaki ana tablo
-> **[CLI Entegrasyonları](../guides/CLI-INTEGRATIONS.md)** bölümünde bulunur.
+> **Tam referans:** her komutun ne yazdığı, her bayrak, yerel ve uzak arasındaki farklar ve hangi araçların `/v1` soneki istediği gibi ana tablo **[CLI Entegrasyonları](../guides/CLI-INTEGRATIONS.md)** bölümünde yer almaktadır.
 
-### Bunları bir konteyner içinde çalıştırma
+### Bunları bir kapsayıcı içinde çalıştırma
 
-OmniRoute konteyneri içinde çalıştırılan bir `setup-*` komutu, konteynerin kendi ana dizinine yazar; hiçbir ana makine CLI'ı burayı okumaz ve bu dizin konteynerle birlikte kaybolur. OmniRoute bunu algılar ve yazmak yerine talimatlarla birlikte `2` çıkış koduyla sonlanır. İlerlemek için desteklenen iki yöntem vardır: CLI'ı ana makineye yükleyip konteynere `omniroute connect` ile bağlanmak veya yapılandırma dizinlerini bind mount ile bağlayıp `CLI_CONFIG_HOME` değişkenini ayarlamak (compose `host` profili). Her `setup-*` komutunun yanı sıra `omniroute configure` ve `omniroute config set`, asıl amacınız konteynerin kendi CLI'larını yapılandırmak olduğunda `--allow-container-write` seçeneğini kabul eder; sunucu için `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` aynı işlevi görür. Bkz.
-[Docker Kılavuzu → Ana makine CLI araçlarını yapılandırma](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+OmniRoute kapsayıcısı içinde yürütülen bir `setup-*` komutu, kapsayıcının kendi ana dizinine yazar; bu dizin hiçbir ana bilgisayar CLI'si tarafından okunmaz ve kapsayıcıyla birlikte kaybolur. OmniRoute bunu algılar ve yazmak yerine talimatlarla birlikte `2` koduyla çıkar. İki desteklenen yol vardır — CLI'yi ana bilgisayara kurup kapsayıcıya `omniroute connect` yapmak veya yapılandırma dizinlerini bağlayıp `CLI_CONFIG_HOME`'u (compose `host` profili) ayarlamak. Her `setup-*` komutu, ayrıca `omniroute configure` ve `omniroute config set`, kapsayıcının kendi CLI'larını yapılandırmak istediğinizde `--allow-container-write` parametresini kabul eder; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` sunucu için de aynısını yapar. [Docker Kılavuzu → Ana bilgisayar CLI araçlarını yapılandırma](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker) bölümüne bakın.
 
-Panonun **uygulama uç noktası** (`POST /api/cli-tools/apply`) aynı korumayı uygular: bir konteynerde, hedefi ana makineden bind mount ile bağlanmamış bir yazma isteğine hiçbir şey yazmadan **`422`** koduyla birlikte `containerEphemeralTarget: true`, güvenli hata metni ve — ana makine reçetesi bulunan araçlar (claude, codex, opencode, cline, kilo, continue) için — bunun yerine ana makinede çalıştırılacak bir `hostSetupCommand` (ör. `omniroute setup-opencode`) döndürür. `dryRun: true`, konteyner modunda çalışmaya devam eder ve diske dokunmadan oluşturulan içeriği ve hedef yolu döndürür; böylece panodan önizleme yapıp ana makinede uygulayabilirsiniz. Bu davranış kasıtlıdır ve `tests/unit/api/cli-tools/apply-container-guard.test.ts` tarafından regresyonlara karşı korunur — korumayı kaldırarak bir 422 hatasını asla "düzeltmeyin".
+Kontrol panelinin **uygulama uç noktası** (`POST /api/cli-tools/apply`) aynı korumayı uygular: bir kapsayıcıda, hedefi ana bilgisayardan bağlanmamış bir yazma işlemi, `containerEphemeralTarget: true` ile **`422`** yanıtı verir, güvenli hata metni ve — ana bilgisayar tarifi olan araçlar için (claude, codex, opencode, cline, kilo, continue) — bunun yerine ana bilgisayarda çalıştırılacak bir `hostSetupCommand` (örn. `omniroute setup-opencode`) sağlar; hiçbir şey yazılmaz. `dryRun: true` kapsayıcı modunda çalışmaya devam eder ve diske dokunmadan sansürlenmiş bir önizleme + hedef yolu döndürür. Önizleme içeriği, kopyalanacak veya içe aktarılacak kimlik bilgisi içeren bir yapılandırma değildir. Ana bilgisayarda orijinal araç/temel URL/API anahtarı/model girdileriyle uygulayın veya belirtilen ana bilgisayar tarafı kurulum komutunu kullanın. Önizleme başlığı ve istek sözleşmesi için [CLI yapılandırma güvenliği](../security/CLI-CONFIGURATION.md) bölümüne bakın. Bu davranış kasıtlıdır ve `tests/unit/api/cli-tools/apply-container-guard.test.ts` tarafından regresyonlara karşı korunmaktadır — bir 422 hatasını korumayı kaldırarak asla "düzeltmeyin".
 
 ---
 
@@ -571,19 +569,19 @@ kiro-cli status
 
 ## 10. Dahili OmniRoute CLI
 
-`omniroute` ikili dosyası; sunucu yaşam döngüsü, kurulum, tanılama ve sağlayıcı yönetimi için komutlar sağlar. Giriş noktası: `bin/omniroute.mjs`.
+`omniroute` ikili dosyası; sunucu yaşam döngüsü, kurulum, tanılama ve sağlayıcı yönetimi için komutlar sunar. Giriş noktası: `bin/omniroute.mjs`.
 
 ```bash
-omniroute                              # Sunucuyu başlatır (varsayılan port 20128)
+omniroute                              # Sunucuyu başlat (varsayılan port 20128)
 omniroute setup                        # Etkileşimli kurulum sihirbazı
-omniroute doctor                       # Yapılandırmayı, DB'yi, portları ve çalışma zamanını kontrol eder
+omniroute doctor                       # Yapılandırmayı, DB'yi, portları ve çalışma zamanını kontrol et
 omniroute providers list               # Yapılandırılmış sağlayıcı bağlantıları
-omniroute providers test-all           # Her etkin bağlantıyı test eder
-omniroute reset-password               # Yönetici parolasını sıfırlar
-omniroute logs                         # İstek günlüklerini akış halinde gösterir
-omniroute health                       # Ayrıntılı sistem durumu (kesiciler, önbellek, bellek)
-omniroute --version                    # Sürümü yazdırır
-omniroute --help                       # Tüm komutları gösterir
+omniroute providers test-all           # Her etkin bağlantıyı test et
+omniroute reset-password               # Yönetici parolasını sıfırla
+omniroute logs                         # İstek günlüklerini akış halinde göster
+omniroute health                       # Ayrıntılı durum (kesiciler, önbellek, bellek)
+omniroute --version                    # Sürümü yazdır
+omniroute --help                       # Tüm komutları göster
 ```
 
 ### Kurulum ve Başlatma
@@ -591,11 +589,11 @@ omniroute --help                       # Tüm komutları gösterir
 ```bash
 omniroute setup                        # Etkileşimli kurulum sihirbazı
 omniroute setup --non-interactive      # CI/otomasyon modu (ortam değişkenlerini + bayrakları okur)
-omniroute setup --password '<value>'   # Yönetici parolasını doğrudan ayarlar
+omniroute setup --password '<value>'   # Yönetici parolasını doğrudan ayarla
 omniroute setup --add-provider \
   --provider openai \
   --api-key '<value>' \
-  --test-provider                      # Tek seferde bir sağlayıcı ekler ve test eder
+  --test-provider                      # Tek seferde bir sağlayıcı ekle ve test et
 ```
 
 Etkileşimsiz kurulum için tanınan ortam değişkenleri:
@@ -603,39 +601,39 @@ Etkileşimsiz kurulum için tanınan ortam değişkenleri:
 | Değişken            | Amaç                                                                                     |
 | ------------------- | ---------------------------------------------------------------------------------------- |
 | `OMNIROUTE_API_KEY` | Sağlayıcı API anahtarı (Commander `.env()` aracılığıyla `--api-key` seçeneğine bağlanır) |
-| `DATA_DIR`          | OmniRoute veri dizinini geçersiz kılar                                                   |
+| `DATA_DIR`          | OmniRoute veri dizinini geçersiz kıl                                                     |
 
-Diğer tüm etkileşimsiz girdiler ortam değişkenleri olarak değil, bayraklar olarak geçirilir:
+Diğer tüm etkileşimsiz girdiler ortam değişkenleri olarak değil, bayraklar olarak iletilir:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
 (yukarıdaki `omniroute setup` seçeneklerine bakın).
 
 ### Tanılama
 
 ```bash
-omniroute doctor                       # Yapılandırmayı, DB'yi, portları, çalışma zamanını, belleği ve çalışırlığı kontrol eder
+omniroute doctor                       # Yapılandırmayı, DB'yi, portları, çalışma zamanını, belleği ve canlılığı kontrol et
 omniroute doctor --json                # Makine tarafından okunabilir JSON
-omniroute doctor --no-liveness         # HTTP sistem durumu yoklamasını atlar
-omniroute doctor --host 0.0.0.0        # Çalışırlık ana makinesini geçersiz kılar
-omniroute doctor --liveness-url <url>  # Tam sistem durumu uç noktası URL'sini geçersiz kılar
+omniroute doctor --no-liveness         # HTTP durum yoklamasını atla
+omniroute doctor --host 0.0.0.0        # Canlılık ana makinesini geçersiz kıl
+omniroute doctor --liveness-url <url>  # Tam durum uç noktası URL'sini geçersiz kıl
 ```
 
 Doctor şu kontrolleri çalıştırır: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` ve `Server liveness`. Herhangi bir kontrol `fail` olursa sıfırdan farklı bir kodla çıkar.
+`Memory` ve `Server liveness`. Herhangi bir kontrol `fail` olursa sıfır olmayan bir çıkış koduyla sonlanır.
 
 ### Sağlayıcı Yönetimi
 
 ```bash
 omniroute providers available                       # OmniRoute sağlayıcı kataloğu
-omniroute providers available --search openai       # Kataloğu kimliğe/ada/takma ada/kategoriye göre filtreler
-omniroute providers available --category api-key    # Kategoriye göre filtreler (api-key, oauth, free, ...)
+omniroute providers available --search openai       # Kataloğu kimliğe/ada/takma ada/kategoriye göre filtrele
+omniroute providers available --category api-key    # Kategoriye göre filtrele (api-key, oauth, free, ...)
 omniroute providers available --json                # Makine tarafından okunabilir JSON
 
 omniroute providers list                            # Yapılandırılmış sağlayıcı bağlantıları
 omniroute providers list --json
 
-omniroute providers test <id|name>                  # Yapılandırılmış bir bağlantıyı test eder
-omniroute providers test-all                        # Her etkin bağlantıyı test eder
+omniroute providers test <id|name>                  # Yapılandırılmış bir bağlantıyı test et
+omniroute providers test-all                        # Her etkin bağlantıyı test et
 omniroute providers validate                        # Yalnızca yerel yapısal doğrulama
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
@@ -644,60 +642,72 @@ omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-`providers add/import/auth/edit/remove` öncelikli olarak API'yi kullanır ve bu nedenle
-etkin yerel veya uzak bağlam üzerinde çalışır. Kimlik bilgisi girdisi için
+`providers add/import/auth/edit/remove` öncelikle API'yi kullanır ve bu nedenle
+etkin yerel veya uzak bağlama karşı çalışır. Kimlik bilgisi girdisi için
 `--credential-stdin` veya `--credential-env` kullanılmalıdır; `--dry-run --json` yalnızca
-gizlenmiş varlık/yapı bilgilerini bildirir. `providers available`, OmniRoute kataloğunu okur;
-`providers list/test/test-all/validate` yerel SQLite davranışlarını korur ve
-sunucunun çalışmasını gerektirmez.
+maskelenmiş varlık/yapı bilgilerini bildirir. `providers available`, OmniRoute kataloğunu okur;
+`providers list/test/test-all/validate` yerel SQLite davranışını korur ve
+sunucunun çalışıyor olmasını gerektirmez.
+
+Özel bir OpenAI uyumlu veya Anthropic uyumlu düğüm için kimlik bilgilerini
+`omniroute nodes add` tarafından döndürülen düğüm kimliğine `omniroute keys add "$NODE_ID" --stdin` kullanarak ekleyin.
+Bunun için çalışan bir sunucu ve etkin bağlamda yönetim kimlik doğrulaması gerekir.
+CLI, düğümü doğrulayan ve uç nokta ayarlarını bağlantıya kopyalayan `POST /api/providers`
+isteğini kullanır. Eksik bir düğüm, yetkilendirme hatası veya kullanılamayan bir
+sunucu, yerel bir yedek kimlik bilgisi oluşturmadan hata döndürür.
+
+`nodes add --base-url` düğüm uç noktasını ayarlar; bu, `OMNIROUTE_BASE_URL`
+içindeki sunucu adresinden farklıdır. OpenAPI dosyaları için
+`omniroute openapi dump --format json --out ./openapi.json` kullanın; genel `--output`
+bir hedef dosya adı değil, CLI görüntüleme biçimini seçer.
 
 ### Kurtarma ve Sıfırlama
 
 ```bash
-omniroute reset-password                # Yönetici parolasını sıfırlar (ayrıca: omniroute-reset-password)
-omniroute reset-encrypted-columns       # Şifrelenmiş kimlik bilgilerini sıfırlamak için uyarı + deneme çalıştırması gösterir
-omniroute reset-encrypted-columns --force  # SQLite'taki şifrelenmiş kimlik bilgilerini gerçekten null yapar
+omniroute reset-password                # Yönetici parolasını sıfırla (diğer kullanım: omniroute-reset-password)
+omniroute reset-encrypted-columns       # Şifrelenmiş kimlik bilgilerini sıfırlamak için uyarı + deneme çalıştırması göster
+omniroute reset-encrypted-columns --force  # SQLite içindeki şifrelenmiş kimlik bilgilerini gerçekten null yap
 ```
 
 ### Kimlik Bilgilerini Dışa Aktarma (⚠ dikkatli kullanın)
 
 ```bash
-omniroute auth export                                 # Uyarı + onay geçidi gösterir — DB erişimi yoktur
-omniroute auth export --force                          # TÜM bağlantıların ŞİFRESİ ÇÖZÜLMÜŞ kimlik bilgilerini JSON olarak stdout'a aktarır
-omniroute auth export --force --id <id>                 # Yalnızca eşleşen bağlantıyı dışa aktarır
-omniroute auth export --force --format env               # OMNIROUTE_<PROVIDER>_<FIELD>=<value> satırları üretir
-omniroute auth export --force --out creds.json           # Bir dosyaya yazar (0600 izinleriyle oluşturulur)
+omniroute auth export                                 # Uyarı + onay adımı göster — DB erişimi yok
+omniroute auth export --force                          # TÜM bağlantıların ŞİFRESİ ÇÖZÜLMÜŞ kimlik bilgilerini JSON olarak stdout'a aktar
+omniroute auth export --force --id <id>                 # Yalnızca eşleşen bağlantıyı dışa aktar
+omniroute auth export --force --format env               # OMNIROUTE_<PROVIDER>_<FIELD>=<value> satırları üret
+omniroute auth export --force --out creds.json           # Bir dosyaya yaz (0600 izinleriyle oluşturulur)
 ```
 
-`auth export` **yalnızca yerel** olarak çalışır (doğrudan SQLite okuması, HTTP rotası yoktur) ve kasıtlı olarak
-**düz metin** `apiKey`/`accessToken`/`refreshToken`/`idToken` değerlerini yazdırır/yazar — bu bir
-hata değil, özelliktir. `--force` olmadan veritabanından hiçbir şey okunmaz ve hiçbir şeyin şifresi çözülmez. Herhangi bir düz metin yayımlanmadan önce stderr'e
-her zaman bir uyarı başlığı yazdırılır. `STORAGE_ENCRYPTION_KEY` değişkeninin
-ayarlanmış olması gerekir. Şifresi çözülemeyen bir alan (eski anahtar, bozuk şifreli metin), dışa aktarma işleminin tamamını iptal etmek veya temel hatayı sızdırmak yerine
-`<field>DecryptFailed: true` olarak bildirilir.
+`auth export` **yalnızca yerel olarak** çalışır (doğrudan SQLite okuması, HTTP rotası yoktur) ve kasıtlı olarak
+**düz metin** `apiKey`/`accessToken`/`refreshToken`/`idToken` değerlerini yazdırır/yazar — bu bir hata
+değil, özelliktir. `--force` olmadan veritabanından hiçbir şey okunmaz ve hiçbir şeyin şifresi çözülmez. Herhangi bir düz metin
+çıktılanmadan önce stderr'e her zaman bir uyarı bandı yazdırılır. `STORAGE_ENCRYPTION_KEY` değişkeninin
+ayarlanmış olması gerekir. Şifresi çözülemeyen bir alan (eski anahtar, bozuk şifreli metin), tüm dışa aktarma işlemini
+durdurmak veya temel hatayı açığa çıkarmak yerine `<field>DecryptFailed: true` olarak bildirilir.
 
 ### Diğer alt komutlar
 
-Aksi belirtilmedikçe bunlar çalışan bir OmniRoute sunucusu gerektirir:
+Aksi belirtilmedikçe bunlar çalışan bir OmniRoute sunucusu olduğunu varsayar:
 
 ```bash
 omniroute status                       # Kapsamlı çalışma zamanı durumu
-omniroute logs                         # İstek günlüklerini akış halinde göster (--json, --search, --follow)
-omniroute config list                  # Yapılandırılmış CLI araçlarını göster
+omniroute logs                         # İstek günlüklerini akış olarak göster (--json, --search, --follow)
+omniroute config list                  # Yapılandırılmış CLI araçlarını görüntüle
 
-omniroute provider list                # Kullanılabilir sağlayıcıları listele (providers list diğer adı)
-omniroute provider add                 # OmniRoute'u bir araca sağlayıcı olarak kaydet
+omniroute provider list                # Kullanılabilir sağlayıcıları listele (providers list için takma ad)
+omniroute provider add                 # OmniRoute'u bir araçta sağlayıcı olarak kaydet
 omniroute keys add | list | remove     # API anahtarlarını yönet
 omniroute models [provider]            # Modelleri listele (--json, --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # Yapılandırmanın ve veritabanının anlık görüntüsünü al
+omniroute backup                       # Yapılandırma + veritabanı anlık görüntüsü oluştur
 omniroute restore                      # Önceki bir anlık görüntüden geri yükle
 
-omniroute health                       # Ayrıntılı sistem durumu (devre kesiciler, önbellek, bellek)
+omniroute health                       # Ayrıntılı sistem sağlığı (devre kesiciler, önbellek, bellek)
 omniroute quota                        # Sağlayıcı kota kullanımı
 omniroute cache                        # Önbellek durumu
-omniroute cache clear                  # Anlamsal ve imza önbelleklerini temizle
+omniroute cache clear                  # Anlamsal + imza önbelleklerini temizle
 
 omniroute mcp status | restart         # MCP sunucusu durumu / yeniden başlatma
 omniroute a2a status | card            # A2A sunucusu durumu / aracı kartı
@@ -705,7 +715,7 @@ omniroute a2a status | card            # A2A sunucusu durumu / aracı kartı
 omniroute tunnel list | create | stop  # Tünelleri yönet (cloudflare/tailscale/ngrok)
 omniroute env show | get <k> | set <k> <v>  # Ortam değişkenlerini incele / ayarla (geçici)
 
-omniroute test                         # Sağlayıcı bağlantısı hızlı testi
+omniroute test                         # Sağlayıcı bağlantısı için hızlı test
 omniroute update                       # Güncellemeleri denetle
 omniroute completion                   # Kabuk tamamlama betiği oluştur
 ```
@@ -715,9 +725,9 @@ omniroute completion                   # Kabuk tamamlama betiği oluştur
 | Bayrak              | Açıklama                                                          |
 | ------------------- | ----------------------------------------------------------------- |
 | `--no-open`         | Başlangıçta tarayıcıyı otomatik olarak açma                       |
-| `--port <n>`        | API bağlantı noktasını geçersiz kıl (varsayılan 20128)            |
+| `--port <n>`        | API portunu geçersiz kıl (varsayılan 20128)                       |
 | `--mcp`             | stdio üzerinden MCP sunucusu olarak çalıştır (IDE'ler için)       |
-| `--non-interactive` | CI modu (istem yoktur; ortam değişkenlerinden/bayraklardan okur)  |
+| `--non-interactive` | CI modu (istem yoktur; ortamdan/bayraklardan okur)                |
 | `--json`            | Makine tarafından okunabilir JSON çıktısı (doctor, providers vb.) |
 | `--help`, `-h`      | Komuta özgü yardımı göster                                        |
 | `--version`, `-v`   | Yüklü sürümü yazdır                                               |

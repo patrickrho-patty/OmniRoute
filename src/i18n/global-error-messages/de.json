@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Ein unerwarteter Fehler ist aufgetreten. Dies wurde protokolliert und unser Team wird dies untersuchen.",
+      "detailsAriaLabel": "Fehlerdetails",
+      "retryAriaLabel": "Seite erneut laden",
+      "statusAriaLabel": "Systemstatus öffnen",
+      "systemStatus": "Systemstatus",
+      "title": "Etwas ist schiefgelaufen",
+      "tryAgain": "Versuche es erneut"
+    }
+  }
+}

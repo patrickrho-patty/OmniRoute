@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "ያልተጠበቀ ስህተት ተከስቷል። ይህ ተመዝግቧል እና ቡድናችን ይመረምረዋል።",
+      "detailsAriaLabel": "የስህተት ዝርዝሮች",
+      "retryAriaLabel": "ገጹን እንደገና ለመጫን ሞክር",
+      "statusAriaLabel": "የስርዓት ሁኔታን ክፈት",
+      "systemStatus": "የስርዓት ሁኔታ",
+      "title": "አንድ ችግር ተፈጥሯል",
+      "tryAgain": "እንደገና ሞክር"
+    }
+  }
+}

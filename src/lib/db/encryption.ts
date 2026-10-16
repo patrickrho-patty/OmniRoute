@@ -168,6 +168,41 @@ export function isEncryptionEnabled(): boolean {
 }
 
 /**
+ * Loud production warning when STORAGE_ENCRYPTION_KEY is unset.
+ *
+ * Dev/test keep the plaintext passthrough. In production the same empty-key
+ * contract applies (`.env.example`: "Leave empty to disable DB encryption";
+ * `docs/reference/ENVIRONMENT.md`: "empty = disabled"). Exiting here would
+ * crash-loop Docker, which sets NODE_ENV=production and starts from that
+ * example env. The box is logged once at boot and the process keeps serving.
+ *
+ * Call once from `src/instrumentation-node.ts`, not from encrypt()/decrypt().
+ * `encryptionEnabled` is injectable so a test can reach this branch without
+ * reading the operator's `.env`.
+ */
+export function assertEncryptionKeyConfiguredForProduction(
+  env: NodeJS.ProcessEnv = process.env,
+  logger: Pick<Console, "error"> = console,
+  encryptionEnabled: () => boolean = isEncryptionEnabled
+): void {
+  if (isTestContext()) return;
+  if (env.NODE_ENV !== "production") return;
+  if (encryptionEnabled()) return;
+
+  logger.error("");
+  logger.error("═══════════════════════════════════════════════════");
+  logger.error("  ⚠  STARTUP: STORAGE_ENCRYPTION_KEY is not set");
+  logger.error("═══════════════════════════════════════════════════");
+  logger.error("  • Credential encryption is disabled. Provider credentials (API keys,");
+  logger.error("    OAuth tokens) will be stored in plaintext. An empty key is the");
+  logger.error("    documented default, so startup continues.");
+  logger.error("    → Generate a key with: openssl rand -base64 32");
+  logger.error("    → Set STORAGE_ENCRYPTION_KEY and restart to encrypt credentials at rest.");
+  logger.error("═══════════════════════════════════════════════════");
+  logger.error("");
+}
+
+/**
  * True when `value` is a stored ciphertext (carries the `enc:v1:` prefix).
  * Lets callers tell "credential present but undecryptable" (stale/changed
  * STORAGE_ENCRYPTION_KEY) apart from "credential genuinely empty" — decrypt()

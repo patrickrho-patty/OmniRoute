@@ -74,24 +74,31 @@ canonical alias ನಕಲು ನಿವಾರಣೆ ಇರುವುದಿಲ್�
 
 ## ಆಯ್ಕೆಗಳು
 
-| ಕೀಲಿ                             | ಪೂರ್ವನಿಯೋಜಿತ ಮೌಲ್ಯ                          | ಟಿಪ್ಪಣಿಗಳು                                                                                                                    |
-| -------------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `providerId`                     | `"omniroute"`                               | ಪೂರೈಕೆದಾರ id, ಇಂಟಿಗ್ರೇಶನ್ id ಮತ್ತು ಮಾದರಿಗಳು ಕಾಣಿಸಿಕೊಳ್ಳುವ ಪೂರ್ವಪ್ರತ್ಯಯ                                                        |
-| `baseURL`                        | ಅಗತ್ಯವಿದೆ                                   | ಗೇಟ್ವೇ ಮೂಲ ವಿಳಾಸ, `http(s)` ಮಾತ್ರ; ಅಗತ್ಯವಿರುವಲ್ಲಿ `/v1` ಪ್ರತ್ಯಯವನ್ನು ಸೇರಿಸಲಾಗುತ್ತದೆ                                           |
-| `apiKey`                         | ಸಂಪರ್ಕಿತ ರುಜುವಾತು, ನಂತರ `OMNIROUTE_API_KEY` | `/v1/*` ಗಾಗಿ ಚಾಟ್ ಕೀಲಿ                                                                                                        |
-| `managementReadToken`            | `apiKey` ಗೆ ಹಿಂತಿರುಗುತ್ತದೆ                  | `/api/*` ಗಾಗಿ ಕೀಲಿ — ಸಾಮಾನ್ಯವಾಗಿ ಇದು ಅದೇ ಕೀಲಿಯಾಗಿರುವುದಿಲ್ಲ                                                                    |
-| `displayName`                    | `"OmniRoute"`                               | ಆಯ್ಕೆಪಟ್ಟಿಯಲ್ಲಿನ ಪೂರೈಕೆದಾರರ ಹೆಸರು                                                                                             |
-| `timeoutMs`                      | `10000`                                     | ಪ್ರತಿ ಎಂಡ್ಪಾಯಿಂಟ್ಗಾಗಿ fetch ಕಾಲಮಿತಿ (auto-combos 5s ಬಳಸುತ್ತವೆ)                                                                |
-| `modelCacheTtlMs`                | `300000`                                    | ಕ್ಯಾಟಲಾಗ್ cache TTL; ಡಿಸ್ಕ್ snapshot cold starts ಅನ್ನು ವೇಗಗೊಳಿಸುತ್ತದೆ                                                         |
-| `timeouts`                       | `timeoutMs` ಗೆ ಹಿಂತಿರುಗುತ್ತದೆ               | ms ನಲ್ಲಿ ಪ್ರತಿ ಎಂಡ್ಪಾಯಿಂಟ್ ಮಿತಿಗಳು: `models`, `combos`, `autoCombos`, `enrichment`                                            |
-| `enrichment`                     | `true`                                      | ಹೆಸರುಗಳು, ಬೆಲೆ ವಿವರಗಳು ಮತ್ತು ಉಚಿತ-ಶ್ರೇಣಿಯ ಬಜೆಟ್ಗಳನ್ನು ಪಡೆಯುತ್ತದೆ                                                              |
-| `providerTag`                    | `true`                                      | ಪ್ರದರ್ಶನ ಹೆಸರಿಗೆ ಅದು ಮಾರ್ಗನಿರ್ದೇಶಿಸುವ upstream ಪೂರೈಕೆದಾರರ ಪೂರ್ವಪ್ರತ್ಯಯವನ್ನು ಸೇರಿಸುತ್ತದೆ                                       |
-| `usableOnly`                     | `false`                                     | ಗೇಟ್ವೇ ಸಿದ್ಧಗೊಳಿಸಲಾಗಿದೆ ಎಂದು ವರದಿ ಮಾಡುವ ಪೂರೈಕೆದಾರರನ್ನು ಮಾತ್ರ ಉಳಿಸುತ್ತದೆ                                                       |
-| `visibleModels` / `hiddenModels` | `[]`                                        | ನಿಖರ-ಅಥವಾ-ಪ್ರತ್ಯಯ ಅನುಮತಿ ಪಟ್ಟಿಗಳು; ನಿರಾಕರಣೆಗೆ ಆದ್ಯತೆ                                                                          |
-| `geminiSanitization`             | `true`                                      | tool schemas ನಿಂದ Gemini ತಿರಸ್ಕರಿಸುವ JSON-Schema ಕೀವರ್ಡ್ಗಳನ್ನು ತೆಗೆದುಹಾಕುತ್ತದೆ (`$ref` tools ಅನ್ನು ಬದಲಾಯಿಸದೆ ರವಾನಿಸಲಾಗುತ್ತದೆ) |
-| `apiFormat.allowAnthropic`       | `false`                                     | ಅನುಮತಿ ಪಟ್ಟಿಯಲ್ಲಿರುವ ids ಅನ್ನು Anthropic API ಬ್ಲಾಕ್ ಮೂಲಕ ಮಾರ್ಗನಿರ್ದೇಶಿಸುತ್ತದೆ                                                 |
-| `apiFormat.anthropicModels`      | `[]`                                        | Anthropic ಗೆ ಮಾರ್ಗನಿರ್ದೇಶಿಸಲಾದ ಸಂಪೂರ್ಣ model ids                                                                              |
-| `logLevel` / `startupDebug`      | `warn` / `false`                            | ಲಾಗರ್ ವಿವರದ ಮಟ್ಟ                                                                                                              |
+| ಕೀಲಿ                             | ಡೀಫಾಲ್ಟ್                                      | ಟಿಪ್ಪಣಿಗಳು                                                                                                                     |
+| -------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `providerId`                     | `"omniroute"`                                 | ಮಾದರಿಗಳು ಕಾಣಿಸಿಕೊಳ್ಳುವ provider id, integration id ಮತ್ತು ಪೂರ್ವಪ್ರತ್ಯಯ                                                          |
+| `baseURL`                        | ಅಗತ್ಯವಿದೆ                                     | Gateway ಮೂಲ ವಿಳಾಸ, `http(s)` ಮಾತ್ರ; ಅಗತ್ಯವಿರುವಲ್ಲಿ `/v1` ಪ್ರತ್ಯಯವನ್ನು ಸೇರಿಸಲಾಗುತ್ತದೆ                                           |
+| `apiKey`                         | ಸಂಪರ್ಕಿತ credential, ನಂತರ `OMNIROUTE_API_KEY` | `/v1/*` ಗಾಗಿ Chat ಕೀಲಿ                                                                                                         |
+| `managementReadToken`            | `apiKey` ಗೆ ಹಿಂತಿರುಗುತ್ತದೆ                    | `/api/*` ಗಾಗಿ ಕೀಲಿ — ಸಾಮಾನ್ಯವಾಗಿ ಇದು ಅದೇ ಕೀಲಿ **ಅಲ್ಲ**                                                                         |
+| `displayName`                    | `"OmniRoute"`                                 | picker ನಲ್ಲಿನ provider ಹೆಸರು                                                                                                   |
+| `timeoutMs`                      | `10000`                                       | ಪ್ರತಿ endpoint fetch timeout (auto-combos 5s ಬಳಸುತ್ತವೆ)                                                                        |
+| `modelCacheTtlMs`                | `300000`                                      | Catalog cache TTL; disk snapshot cold start ಗಳನ್ನು ವೇಗಗೊಳಿಸುತ್ತದೆ                                                              |
+| `timeouts`                       | `timeoutMs` ಗೆ ಹಿಂತಿರುಗುತ್ತದೆ                 | ms ಗಳಲ್ಲಿ ಪ್ರತಿ endpoint budget ಗಳು: `models`, `combos`, `autoCombos`, `enrichment`                                            |
+| `enrichment`                     | `true`                                        | ಹೆಸರುಗಳು, pricing ಮತ್ತು free-tier budget ಗಳನ್ನು ಪಡೆಯುತ್ತದೆ                                                                     |
+| `providerTag`                    | `true`                                        | display name ಗೆ ಅದು route ಮಾಡುವ upstream provider ಅನ್ನು ಪೂರ್ವಪ್ರತ್ಯಯವಾಗಿ ಸೇರಿಸುತ್ತದೆ                                           |
+| `usableOnly`                     | `false`                                       | gateway provisioned ಎಂದು ವರದಿ ಮಾಡುವ provider ಗಳನ್ನು ಮಾತ್ರ ಉಳಿಸುತ್ತದೆ                                                           |
+| `showcasePerOwner`               | `10`                                          | ಪ್ರತಿ provider ಗೆ default-view ನಲ್ಲಿ ಉಳಿಸಿಕೊಳ್ಳುವ ನಮೂದುಗಳು                                                                     |
+| `freshPerOwner`                  | `10`                                          | ಪ್ರತಿ provider ಗೆ default-view ನಲ್ಲಿ ಉಳಿಸಿಕೊಳ್ಳುವ ಹೊಸ ನಮೂದುಗಳು                                                                 |
+| `freshWindowDays`                | `90`                                          | fresh branch ಗಾಗಿ ದಿನಗಳಲ್ಲಿನ freshness window                                                                                  |
+| `usageMemory`                    | `true`                                        | 30-day usage analytics ಹೆಸರಿಸಿದ, ಸ್ಥಿರವಾಗಿ ಕೈಬಿಡಲಾದ ನಮೂದುಗಳನ್ನು ಮರುಸ್ಥಾಪಿಸುತ್ತದೆ (management token ಅಗತ್ಯವಿದೆ)                  |
+| `visibleModels` / `hiddenModels` | `[]`                                          | ನಿಖರ-ಅಥವಾ-ಪ್ರತ್ಯಯ allowlist ಗಳು; deny ಗೆ ಆದ್ಯತೆ; `*` ಪೂರ್ಣ catalog ಅನ್ನು ಪ್ರಕಟಿಸುತ್ತದೆ (ಇತರ filter ಗಳು ಇನ್ನೂ ಅನ್ವಯಿಸುತ್ತವೆ)    |
+| `geminiSanitization`             | `true`                                        | tool schema ಗಳಿಂದ Gemini ತಿರಸ್ಕರಿಸುವ JSON-Schema keyword ಗಳನ್ನು ತೆಗೆದುಹಾಕುತ್ತದೆ (`$ref` tool ಗಳನ್ನು ಬದಲಾಯಿಸದೆ ರವಾನಿಸಲಾಗುತ್ತದೆ) |
+| `apiFormat.allowAnthropic`       | `false`                                       | allowlist ಮಾಡಲಾದ id ಗಳನ್ನು Anthropic API block ಮೂಲಕ route ಮಾಡುತ್ತದೆ                                                            |
+| `apiFormat.anthropicModels`      | `[]`                                          | Anthropic ಗೆ route ಮಾಡಲಾದ ಪೂರ್ಣ model id ಗಳು                                                                                   |
+| `logLevel` / `startupDebug`      | `warn` / `false`                              | Logger verbosity                                                                                                               |
+
+Usage memory ಡೀಫಾಲ್ಟ್ ಆಗಿ ಸಕ್ರಿಯವಾಗಿರುತ್ತದೆ. management token ಇಲ್ಲದಿದ್ದರೆ ಅದು ನಿಷ್ಕ್ರಿಯವಾಗಿಯೇ ಇರುತ್ತದೆ
+(startup notice ಅನ್ನು log ಮಾಡಲಾಗುತ್ತದೆ) ಮತ್ತು ಯಾವುದನ್ನೂ ಮರುಸ್ಥಾಪಿಸಲಾಗುವುದಿಲ್ಲ.
 
 ## ಕ್ಯಾಟಲಾಗ್ ಹೇಗೆ ತಾಜಾವಾಗಿರುತ್ತದೆ
 

@@ -218,7 +218,6 @@ describe("applyCompression with memoization", () => {
   });
 
   it("flag OFF: two identical calls both compute (no caching path)", () => {
-    let callCount = 0;
     // We can't easily spy on internal engine, so we verify via deterministic output
     // equality between independent calls (proving cache isn't interfering).
     // Use a body that will be lightly compressed.
@@ -355,7 +354,8 @@ describe("resultMemo — core review hardening", () => {
 
   it("#8137: caveman mode produces SAME key across different models", () => {
     // caveman is deterministic and model-independent (no image/vision logic)
-    const k = (model?: string) => makeMemoKey(baseBody, "caveman" as never, memoConfig, "p1", model);
+    const k = (model?: string) =>
+      makeMemoKey(baseBody, "caveman" as never, memoConfig, "p1", model);
     assert.equal(k("gpt-4"), k("claude-3"), "caveman key must be model-independent");
   });
 

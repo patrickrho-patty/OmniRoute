@@ -2,6 +2,7 @@ import { z } from "zod";
 import { CORS_HEADERS, handleCorsOptions } from "@/shared/utils/cors";
 import { callCloudWithMachineId } from "@/shared/utils/cloud";
 import { handleChat } from "@/sse/handlers/chat";
+import { logAdmissionRejection } from "@/sse/handlers/admissionRejectionLog";
 import { generateRequestId } from "@/shared/utils/requestId";
 import { resolveIncomingCorrelationId } from "@/shared/utils/correlationPreserve.ts";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
@@ -18,6 +19,7 @@ import {
   OPENAI_STARTUP_FRAME,
   withEarlyStreamKeepalive,
 } from "@omniroute/open-sse/utils/earlyStreamKeepalive";
+import { createStreamDeadlineSignal } from "@omniroute/open-sse/utils/streamDeadlineSignal";
 import { resolveKeepaliveThreshold } from "@omniroute/open-sse/utils/keepaliveThreshold";
 import {
   admitChatRequest,
@@ -33,6 +35,7 @@ import {
 } from "@/shared/utils/compressionHeaderEcho";
 import { resolveModelAliasWithSeedFallbackOnBody } from "@/lib/modelAliasResolver";
 import { enforceApiKeyPolicy } from "@/shared/utils/apiKeyPolicy";
+import { enforceClientApiRouteAuth } from "@/shared/utils/clientApiRouteAuth";
 import {
   assertRuntimeModelProviderAvailable,
   isRuntimeProviderRetirementError,
@@ -98,6 +101,13 @@ export async function OPTIONS() {
 export async function POST(request) {
   await ensureInitialized();
 
+  // Defense-in-depth: the authz proxy (src/proxy.ts) is the primary gate, but
+  // its matcher can miss path variants (e.g. uppercase /V1/ aliases), so the
+  // handler enforces authentication independently. Without this, a proxy
+  // bypass means unauthenticated upstream dispatch.
+  const authRejection = await enforceClientApiRouteAuth(request);
+  if (authRejection) return authRejection;
+
   // Content-Type guard (#6414) — reject non-JSON POST bodies with 415 per RFC 7231.
   // OpenAI/Anthropic reject `text/plain` or missing Content-Type at the edge; matching
   // that behavior prevents a text/plain body from silently reaching provider lookup.
@@ -119,12 +129,24 @@ export async function POST(request) {
   // Reserve heavyweight capacity atomically and ingest the body with a hard byte bound
   // BEFORE JSON parsing. Missing or dishonest Content-Length values cannot bypass
   // the actual-byte limit. Capacity exhaustion is retryable rather than process-fatal.
+  // The slow-stream deadline is created only after the route knows this is a streaming
+  // request; non-streaming calls keep the framework Request object untouched.
   const sessionId = resolveSessionId(request);
   const admissionResult = await admitChatRequest(request, {
     sessionId,
     queueMs: CHAT_ADMISSION_QUEUE_MAX_MS,
   });
-  if (admissionResult.admit === false) return admissionResult.response;
+  if (admissionResult.admit === false) {
+    void logAdmissionRejection(admissionResult.response, {
+      path: new URL(request.url).pathname,
+      model: "-",
+      requestBody: null,
+      apiKeyId: null,
+      apiKeyName: null,
+      correlationId: resolveIncomingCorrelationId(request.headers.get("x-correlation-id")),
+    });
+    return admissionResult.response;
+  }
   const admission = admissionResult;
   request = admission.request;
   const finishAdmission = (response: Response) =>
@@ -215,6 +237,15 @@ export async function POST(request) {
           signal: request.signal,
         });
         if (structuralAdmission.admit === false) {
+          void logAdmissionRejection(structuralAdmission.response, {
+            path: new URL(request.url).pathname,
+            model:
+              typeof parsedBody?.model === "string" && parsedBody.model ? parsedBody.model : "-",
+            requestBody: parsedBody ?? null,
+            apiKeyId: null,
+            apiKeyName: null,
+            correlationId: resolveIncomingCorrelationId(request.headers.get("x-correlation-id")),
+          });
           admission.lease?.release();
           return finishAdmission(structuralAdmission.response);
         }
@@ -288,21 +319,25 @@ export async function POST(request) {
 
     if (wantsStreaming) {
       const reqId = callerCorrelationId ?? generateRequestId();
+      const { signal: routeDeadlineSignal, deadlineController: routeDeadlineController } =
+        createStreamDeadlineSignal(request.signal);
       // Wrap the real handler response, not the synthetic early-keepalive response. If the
       // client cancels while handleChat is still pending, earlyStreamKeepalive will cancel the
       // eventual handler body; only that confirmed cleanup releases heavyweight capacity.
       const handlerResponse = releaseChatAdmissionAfterHandler(
-        handleChat(request, null, parsedBody, reqId),
+        handleChat(request, null, parsedBody, reqId, routeDeadlineSignal),
         admission.lease,
-        { signal: request.signal }
+        { signal: routeDeadlineSignal }
       );
       const streamedResponse = await withEarlyStreamKeepalive(handlerResponse, {
-        signal: request.signal,
+        signal: routeDeadlineSignal,
         thresholdMs: resolveKeepaliveThreshold(parsedBody?.model),
         keepaliveFrame: OPENAI_KEEPALIVE_FRAME,
         startupFrame: OPENAI_STARTUP_FRAME,
         errorFrame: OPENAI_CHAT_ERROR_FRAME,
+        correlationId: reqId,
         extraHeaders: { "X-Correlation-Id": reqId },
+        deadlineController: routeDeadlineController,
       });
       return withCompressionHeaderEcho(streamedResponse, compressionRequestHeader);
     }

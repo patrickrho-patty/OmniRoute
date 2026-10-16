@@ -27,6 +27,7 @@ export interface ComboErrorEntry {
   status: number;
   error: string;
   kind: ComboOutcomeKind;
+  code?: string;
 }
 
 const KIND_LABELS: Record<ComboOutcomeKind, string> = {
@@ -189,4 +190,16 @@ export function resolveComboTerminalStatus(
   }
 
   return entries.some((e) => e.kind === "timeout") ? 504 : 502;
+}
+
+/** Preserve the terminal target's code only when it represents the aggregate verdict. */
+export function resolveComboTerminalCode(
+  entries: ReadonlyArray<ComboErrorEntry>,
+  status: number
+): string | undefined {
+  const terminal = entries.at(-1);
+  if (terminal?.status !== status || entries.some((entry) => entry.kind !== terminal.kind)) {
+    return undefined;
+  }
+  return terminal.code;
 }

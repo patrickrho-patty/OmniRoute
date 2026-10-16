@@ -76,6 +76,32 @@ function resolveParam(p) {
   return p;
 }
 
+// OpenAPI path-item parameters are inherited by every operation. An operation
+// overrides the same (in, name) pair. Some management routes have placeholders
+// without parameter declarations; the CLI still needs a required value for them.
+function operationParameters(path, pathItem, operation) {
+  const parameters = new Map();
+  for (const parameter of [...(pathItem.parameters || []), ...(operation.parameters || [])]) {
+    const resolved = resolveParam(parameter);
+    parameters.set(`${resolved.in}:${resolved.name}`, resolved);
+  }
+  // Nested braces are malformed OpenAPI templates, not parameter names. Leave
+  // their pre-existing literal behavior rather than generating invalid JS.
+  for (const match of path.matchAll(/(?<!\{)\{([^{}]+)\}(?!\})/g)) {
+    const name = match[1];
+    const key = `path:${name}`;
+    if (!parameters.has(key)) {
+      parameters.set(key, {
+        name,
+        in: "path",
+        required: true,
+        description: `${name} path parameter`,
+      });
+    }
+  }
+  return [...parameters.values()];
+}
+
 /** @type {Record<string, Array<{path: string, method: string, opId: string, op: object}>>} */
 const byTag = {};
 
@@ -94,7 +120,7 @@ for (const [path, methods] of Object.entries(spec.paths || {})) {
     const opId = op.operationId || `${method}-${path.replace(/[^a-z0-9]/gi, "-")}`;
 
     byTag[tag] = byTag[tag] || [];
-    byTag[tag].push({ path, method, opId, op });
+    byTag[tag].push({ path, method, opId, op, params: operationParameters(path, methods, op) });
   }
 }
 
@@ -112,9 +138,8 @@ for (const [tag, ops] of Object.entries(byTag)) {
     `  const tag = parent.command("${tag}").description("${escapeStr(ops[0]?.op?.tags?.[0] || tag)} endpoints");`,
   ];
 
-  for (const { path, method, opId, op } of ops) {
+  for (const { path, method, opId, op, params } of ops) {
     const cmdName = kebab(opId);
-    const params = (op.parameters || []).map(resolveParam);
     const pathParams = params.filter((p) => p.in === "path");
     const queryParams = params.filter((p) => p.in === "query");
     const hasBody = !!op.requestBody;
@@ -141,7 +166,7 @@ for (const [tag, ops] of Object.entries(byTag)) {
     lines.push(`      let url = "${path}";`);
     for (const p of pathParams) {
       lines.push(
-        `      url = url.replace("{${p.name}}", encodeURIComponent(opts.${camelCase(kebab(p.name))} ?? ""));`
+        `      url = url.replaceAll("{${p.name}}", encodeURIComponent(opts.${camelCase(kebab(p.name))} ?? ""));`
       );
     }
     // Build query string from query params

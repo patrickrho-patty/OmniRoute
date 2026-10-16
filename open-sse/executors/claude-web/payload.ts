@@ -1,5 +1,6 @@
 // Pure Claude-web payload construction (types + transforms + default tools/style).
 // Extracted verbatim from claude-web.ts. No host state, no fetch/auth.
+import { extractClaudeWebAttachments } from "./attachments.ts";
 import { randomUUID } from "crypto";
 
 // Default model when not specified
@@ -298,7 +299,7 @@ function buildClaudeWebPayload(
       assistant_message_uuid: turn.assistantMessageUuid,
     },
     ...(turn.parentMessageUuid ? { parent_message_uuid: turn.parentMessageUuid } : {}),
-    attachments: [],
+    attachments: extractClaudeWebAttachments(Array.isArray(body.messages) ? body.messages : []),
     effort: thinking.effort,
     files: [],
     sync_sources: [],

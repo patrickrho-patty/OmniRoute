@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Si è verificato un errore imprevisto. Questo è stato registrato e il nostro team indagherà.",
+      "detailsAriaLabel": "Dettagli dell'errore",
+      "retryAriaLabel": "Riprova a caricare la pagina",
+      "statusAriaLabel": "Apri stato del sistema",
+      "systemStatus": "Stato Del Sistema",
+      "title": "Qualcosa è andato storto",
+      "tryAgain": "Riprova"
+    }
+  }
+}

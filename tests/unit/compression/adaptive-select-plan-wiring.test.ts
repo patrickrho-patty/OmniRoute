@@ -23,15 +23,29 @@ test("no contextBudget → auto-trigger path is byte-identical to legacy", () =>
   // under threshold → derived default ("lite")
   const small = selectCompressionPlan(cfg, null, 1000);
   assert.equal(small.mode, "lite");
-  // over threshold → auto-trigger fires → "aggressive"
-  const big = selectCompressionPlan(cfg, null, 200000);
+  // over threshold → auto-trigger fires → "aggressive" (lossy, so only when the request opts
+  // in — #14529; header-less it is downgraded to the safe stacked pair).
+  const big = selectCompressionPlan(cfg, null, 200000, undefined, undefined, {}, "allow-lossy");
   assert.equal(big.mode, "aggressive");
+  assert.equal(selectCompressionPlan(cfg, null, 200000).mode, "stacked");
   assert.equal(shouldAutoTrigger(cfg, 200000), true);
 });
 
 test("contextBudget.mode='off' → identical to no contextBudget", () => {
-  const cfg = { ...legacyCfg(), contextBudget: { mode: "off" as const } };
-  assert.equal(selectCompressionPlan(cfg as any, null, 200000).mode, "aggressive");
+  const cfg = {
+    ...legacyCfg(),
+    contextBudget: { mode: "off" as const },
+  } as unknown as CompressionConfig;
+  for (const header of [null, "allow-lossy"]) {
+    assert.deepEqual(
+      selectCompressionPlan(cfg, null, 200000, undefined, undefined, {}, header),
+      selectCompressionPlan(legacyCfg(), null, 200000, undefined, undefined, {}, header)
+    );
+  }
+  assert.equal(
+    selectCompressionPlan(cfg, null, 200000, undefined, undefined, {}, "allow-lossy").mode,
+    "aggressive"
+  );
 });
 
 test("master off stays off when an adaptive context budget is exceeded", () => {

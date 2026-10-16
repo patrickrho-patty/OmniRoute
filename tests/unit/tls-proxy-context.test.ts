@@ -34,16 +34,16 @@ const ENV_KEYS = [
 
 async function withEnv(env: EnvState, fn: () => Promise<void> | void): Promise<void> {
   const prior = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]));
+  for (const key of ENV_KEYS) delete process.env[key];
   for (const key of ENV_KEYS) {
-    if (env[key] === undefined) delete process.env[key];
-    else process.env[key] = env[key];
+    if (env[key] !== undefined) process.env[key] = env[key];
   }
   try {
     await fn();
   } finally {
+    for (const key of ENV_KEYS) delete process.env[key];
     for (const key of ENV_KEYS) {
-      if (prior[key] === undefined) delete process.env[key];
-      else process.env[key] = prior[key];
+      if (prior[key] !== undefined) process.env[key] = prior[key];
     }
     setTlsClientForTest(null);
   }
@@ -171,6 +171,84 @@ test("Request input bypasses wreq without losing method headers or body", async 
       assert.equal(received?.headers.get("x-test"), "present");
       assert.equal(await received?.text(), "payload");
       assert.equal(tracked.tlsFingerprintUsed, false);
+    }
+  );
+});
+
+test("RequestInit.next does not by itself disable TLS fingerprint eligibility", async () => {
+  await withEnv(
+    {
+      ENABLE_TLS_FINGERPRINT: "true",
+      TLS_FINGERPRINT_PROVIDERS: "codex",
+    },
+    async () => {
+      let tlsCalls = 0;
+      let forwardedNext: unknown = "unset";
+      let dispatcherCalls = 0;
+      setTlsClientForTest(
+        fakeTlsClient(async (_url, options) => {
+          tlsCalls++;
+          forwardedNext =
+            "next" in (options ?? {}) ? (options as { next?: unknown }).next : undefined;
+          return new Response("tls", { status: 200 });
+        })
+      );
+
+      const init = {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        signal: new AbortController().signal,
+        next: { revalidate: 0, tags: ["chat"] },
+      };
+      const tracked = await runWithTlsTracking("codex", () =>
+        proxyFetch("https://upstream.example/v1/chat/completions", init, {
+          undiciFetch: async () => {
+            dispatcherCalls++;
+            return new Response("dispatcher", { status: 599 });
+          },
+        })
+      );
+
+      assert.equal(tlsCalls, 1);
+      assert.equal(dispatcherCalls, 0);
+      assert.equal(tracked.tlsFingerprintUsed, true);
+      assert.equal((tracked.result as Response).status, 200);
+      assert.equal(forwardedNext, undefined);
+    }
+  );
+});
+
+test("an unrecognized RequestInit key still bypasses TLS fingerprinting", async () => {
+  await withEnv(
+    {
+      ENABLE_TLS_FINGERPRINT: "true",
+      TLS_FINGERPRINT_PROVIDERS: "codex",
+    },
+    async () => {
+      let tlsCalls = 0;
+      setTlsClientForTest(
+        fakeTlsClient(async () => {
+          tlsCalls++;
+          return new Response("tls", { status: 200 });
+        })
+      );
+
+      const init = {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+        cache: "no-store",
+      };
+      const tracked = await runWithTlsTracking("codex", () =>
+        proxyFetch("https://upstream.example/v1/chat/completions", init, {
+          undiciFetch: async () => new Response("dispatcher", { status: 599 }),
+        })
+      );
+
+      assert.equal(tlsCalls, 0);
+      assert.equal(tracked.tlsFingerprintUsed, false);
+      assert.equal((tracked.result as Response).status, 599);
     }
   );
 });

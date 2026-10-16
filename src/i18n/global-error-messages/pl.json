@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Wystąpił nieoczekiwany błąd. Został on zapisany, a nasz zespół przeprowadzi dochodzenie.",
+      "detailsAriaLabel": "Szczegóły błędu",
+      "retryAriaLabel": "Spróbuj ponownie załadować stronę",
+      "statusAriaLabel": "Otwórz status systemu",
+      "systemStatus": "Stan systemu",
+      "title": "Coś poszło nie tak",
+      "tryAgain": "Spróbuj ponownie"
+    }
+  }
+}

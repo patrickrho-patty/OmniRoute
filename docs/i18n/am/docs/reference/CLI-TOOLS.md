@@ -45,10 +45,7 @@ ACP Agents (የተቃራኒ ማስጀመሪያ ፍሰት):
 
 ## በ`setup-*` በራስ-ሰር ማዋቀር
 
-የእያንዳንዱን መሣሪያ ውቅር በእጅ መጻፍ አያስፈልግዎትም። OmniRoute እየሠራ
-ካለ OmniRoute (አካባቢያዊ ወይም የርቀት) **ቀጥታ** የሞዴል ካታሎግን የሚያነብና
-የመሣሪያውን የራሱን ውቅር በማሽንዎ ላይ የሚጽፍ ለእያንዳንዱ የሚደገፍ CLI የ`setup-*`
-ትዕዛዝ ይዞ ይመጣል፦
+የእያንዳንዱን መሳሪያ ውቅር በእጅዎ መጻፍ የለብዎትም። OmniRoute ለእያንዳንዱ የሚደገፍ CLI `setup-*` ትዕዛዝ ያቀርባል፣ ይህም ከሚሰራ OmniRoute (አካባቢያዊ ወይም የርቀት) **ቀጥታ** ሞዴል ካታሎግ ያነባል እና የመሳሪያውን የራሱን ውቅር በማሽንዎ ላይ ይጽፋል፡
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
@@ -58,48 +55,15 @@ omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
 omniroute setup-5dive
 ```
 
-እያንዳንዱ `--remote <url> --api-key <key>` (አካባቢያዊ መሣሪያን ከርቀት
-OmniRoute ጋር ማዋቀር)፣ `--dry-run` (ሳይጻፍ ቅድመ-ዕይታ) እና `--port`ን ይቀበላል። ራስ-ሰር
-የሞዴል ማግኘት የሌላቸው መሣሪያዎች (Cline፣ Kilo፣ Roo፣ Goose፣ Aider፣ Qwen፣ 5dive)
-`--model <id>`ን (እንዲሁም መስተጋብር ለሌላቸው አሂዶች `--yes`ን) ይቀበላሉ። `setup-5dive`
-በ`$HOME` ሥር የማይጽፍ ብቸኛው አሠራር ነው፦ በመንጋው አስተናጋጅ ላይ
-በroot ባለቤትነት የተያዘ የማረጋገጫ መገለጫ በመጻፍ የ5dive ወኪል መንጋን
-ያዋቅራል፤ ስለዚህ በ`sudo` በኩል ራሱን እንደገና ያስኬዳል እና የራሱ የርቀት
-ሁነታ የለውም። ትክክለኛው env ተካቶ ምንም ውቅር ሳይጻፍ CLIን ለማስጀመር፣ አጠቃላዩን
-`omniroute run <target>` ማስጀመሪያ ይጠቀሙ (claude፣ codex፣ aider፣ goose፣ opencode፣ qwen፣
-gemini — ዒላማዎችና ተለዋጭ ስሞች ከ`bin/cli/cli-manifest.mjs` ይመጣሉ)፤ የቆዩት
-ለየመሣሪያው የተዘጋጁ ማስጀመሪያዎች `omniroute launch` (Claude Code) እና `omniroute launch-codex`
-(Codex) አሁንም ይገኛሉ። Gemini CLI ለማስጀመር ብቻ ነው፦ የ`omniroute run`
-ዒላማ ነው፣ ነገር ግን የ`setup-*`/`configure` አሠራር የለውም።
+እያንዳንዱ `--remote <url> --api-key <key>` (አካባቢያዊ መሳሪያን ከርቀት OmniRoute ጋር ለማዋቀር)፣ `--dry-run` (ሳይጽፉ ቅድመ እይታ) እና `--port` ይቀበላል። ሞዴል ራስ-ሰር-ማግኛ የሌላቸው መሳሪያዎች (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) `--model <id>` (እና መስተጋብራዊ ላልሆኑ አሂዶች `--yes`) ይወስዳሉ። `setup-5dive` በ`$HOME` ስር የማይጽፍ ብቸኛው የምግብ አዘገጃጀት መመሪያ ነው፡ የ5dive ወኪል ፍሊትን የሚያዋቅረው በፍሊት አስተናጋጅ ላይ ስር-ባለቤት የሆነ የማረጋገጫ ፕሮፋይል በመጻፍ ነው፣ ስለዚህ በ`sudo` በኩል እንደገና ይፈጸማል እና የራሱ የርቀት ሁነታ የለውም። ትክክለኛው env ገብቶበት እና ምንም ውቅር ሳይጻፍ CLI ለማስጀመር፣ አጠቃላይ የሆነውን `omniroute run <target>` ማስጀመሪያን ይጠቀሙ (claude, codex, aider, goose, opencode, qwen, gemini — ኢላማዎች እና ቅጽል ስሞች ከ`bin/cli/cli-manifest.mjs` ይመጣሉ)፤ የቆዩት ለእያንዳንዱ መሳሪያ ማስጀመሪያዎች `omniroute launch` (Claude Code) እና `omniroute launch-codex` (Codex) አሁንም ይገኛሉ። Gemini CLI ማስጀመሪያ-ብቻ ነው፡ እሱ `omniroute run` ኢላማ ነው ነገር ግን `setup-*`/`configure` የምግብ አዘገጃጀት መመሪያ የለውም።
 
-> **ሙሉ ማጣቀሻ፦** ዋናው ሰንጠረዥ — እያንዳንዱ ትዕዛዝ ምን እንደሚጽፍ፣ ሁሉም ጥቆማዎች፣
-> አካባቢያዊ ከርቀት ጋር ሲነጻጸር፣ እና የትኞቹ መሣሪያዎች የ`/v1` ቅጥያ እንደሚፈልጉ — በ
-> **[የCLI ውህደቶች](../guides/CLI-INTEGRATIONS.md)** ውስጥ ይገኛል።
+> **ሙሉ ማጣቀሻ:** ዋናው ሰንጠረዥ — እያንዳንዱ ትዕዛዝ ምን እንደሚጽፍ፣ እያንዳንዱ ባንዲራ፣ አካባቢያዊ ከርቀት ጋር ሲነጻጸር፣ እና የትኞቹ መሳሪያዎች `/v1` ቅጥያ እንደሚፈልጉ — በ**[CLI Integrations](../guides/CLI-INTEGRATIONS.md)** ውስጥ ይገኛል።
 
 ### እነዚህን በኮንቴይነር ውስጥ ማስኬድ
 
-በOmniRoute ኮንቴይነር ውስጥ የተፈጸመ የ`setup-*` ትዕዛዝ ወደ
-ኮንቴይነሩ የራሱ home ይጽፋል፤ ምንም የአስተናጋጅ CLI ይህን አያነበውም፣ እንዲሁም ከ
-ኮንቴይነሩ ጋር ይጠፋል። OmniRoute ይህን ፈልጎ ያውቅና ከመጻፍ ይልቅ
-ከመመሪያዎች ጋር በ`2` ይወጣል። ሁለት የሚደገፉ የቀጣይ እርምጃ መንገዶች አሉ — CLIን በአስተናጋጁ ላይ ጭነው
-`omniroute connect`ን ወደ ኮንቴይነሩ መጠቀም፣ ወይም የውቅር ማውጫዎቹን bind-mount አድርጎ
-`CLI_CONFIG_HOME`ን ማዘጋጀት (የcompose `host` መገለጫ)። እያንዳንዱ የ`setup-*` ትዕዛዝ፣ ከ
-`omniroute configure` እና `omniroute config set` ጋር፣ በእርግጥ ያሰቡት
-የኮንቴይነሩን የራሱን CLIዎች ማዋቀር ከሆነ `--allow-container-write`ን ይቀበላል፤
-`OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` ለአገልጋዩ ተመሳሳይ ነገር ያደርጋል።
-[የDocker መመሪያ → የአስተናጋጅ CLI መሣሪያዎችን ማዋቀር](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker)ን ይመልከቱ።
+በOmniRoute ኮንቴይነር ውስጥ የሚፈጸም `setup-*` ትዕዛዝ ወደ ኮንቴይነሩ የራሱ ቤት ይጽፋል፣ ይህም ምንም አስተናጋጅ CLI የማያነበው እና ከኮንቴይነሩ ጋር አብሮ የሚጠፋ ነው። OmniRoute ይህንን አውቆ ከመጻፍ ይልቅ መመሪያዎችን በመስጠት በ`2` ይወጣል። ሁለት የሚደገፉ መንገዶች አሉ — CLI ን በአስተናጋጁ ላይ መጫን እና ከኮንቴይነሩ ጋር `omniroute connect` ማድረግ፣ ወይም የውቅር ማውጫዎችን bind-mount ማድረግ እና `CLI_CONFIG_HOME` (የcompose `host` ፕሮፋይል) ማዘጋጀት። እያንዳንዱ `setup-*` ትዕዛዝ፣ በተጨማሪም `omniroute configure` እና `omniroute config set`፣ የኮንቴይነሩን የራሱን CLIs ማዋቀር ሲፈልጉ `--allow-container-write` ይቀበላል፤ `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` ለአገልጋዩም ተመሳሳይ ነገር ያደርጋል። ይመልከቱ [Docker Guide → Configuring host CLI tools](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker)።
 
-የዳሽቦርዱ **የተግባራዊነት መጨረሻ ነጥብ** (`POST /api/cli-tools/apply`) ተመሳሳዩን
-ጥበቃ ያስገድዳል፦ በኮንቴይነር ውስጥ፣ ዒላማው ከአስተናጋጁ bind-mount ያልተደረገ
-የመጻፍ ሙከራ **`422`**ን ከ`containerEphemeralTarget: true`፣ ከአስተማማኙ የስህተት
-ጽሑፍ እና — የአስተናጋጅ አሠራር ላላቸው መሣሪያዎች (claude፣ codex፣ opencode፣ cline፣
-kilo፣ continue) — በአስተናጋጁ ላይ የሚኬድ `hostSetupCommand` (ለምሳሌ `omniroute setup-opencode`)
-ጋር ይመልሳል፤ ምንም ነገር አይጻፍም። `dryRun: true` በኮንቴይነር
-ሁነታ ውስጥ መሥራቱን ይቀጥላል፣ እና ዲስኩን ሳይነካ የተፈጠረውን ይዘት + የዒላማ ዱካ ይመልሳል፤ በዚህም
-ከዳሽቦርዱ ቅድመ-ዕይታ ማድረግና በአስተናጋጁ ላይ ተግባራዊ ማድረግ ይችላሉ። ይህ ባህሪ
-ሆን ተብሎ የተደረገ ሲሆን ተመልሶ እንዳይበላሽ በ
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` ይጠበቃል — ጥበቃውን
-በማስወገድ የ422 ስህተትን ፈጽሞ "አያስተካክሉ"።
+የዳሽቦርዱ **apply endpoint** (`POST /api/cli-tools/apply`) ተመሳሳይ ጥበቃን ያስፈጽማል፡ በኮንቴይነር ውስጥ፣ ኢላማው ከአስተናጋጁ bind-mount ያልተደረገለት ጽሁፍ **`422`** በ`containerEphemeralTarget: true`፣ ደህንነቱ የተጠበቀ የስህተት ጽሁፍ እና — አስተናጋጅ የምግብ አዘገጃጀት መመሪያ ላላቸው መሳሪያዎች (claude, codex, opencode, cline, kilo, continue) — በአስተናጋጁ ላይ የሚሰራ `hostSetupCommand` (ለምሳሌ `omniroute setup-opencode`) ይመልሳል፤ ምንም አይጻፍም። `dryRun: true` በኮንቴይነር ሁነታ መስራቱን ይቀጥላል እና ዲስክን ሳይነካ የተስተካከለ ቅድመ እይታ + ኢላማ መንገድ ይመልሳል። የቅድመ እይታ ይዘት ለመቅዳት ወይም ለማስመጣት የሚያገለግል ምስክርነት የያዘ ውቅር አይደለም። በአስተናጋጁ ላይ ባለው ኦሪጅናል መሳሪያ/መሰረታዊ URL/API ቁልፍ/ሞዴል ግብዓቶች ያመልክቱ፣ ወይም የተጠቀሰውን አስተናጋጅ-ጎን የማዋቀሪያ ትዕዛዝ ይጠቀሙ። ለቅድመ እይታ ራስጌ እና የጥያቄ ውል [CLI configuration security](../security/CLI-CONFIGURATION.md) ይመልከቱ። ይህ ባህሪ ሆን ተብሎ የተደረገ እና በ`tests/unit/api/cli-tools/apply-container-guard.test.ts` የተጠበቀ ነው — ጥበቃውን በማስወገድ 422ን በጭራሽ "አያስተካክሉ"።
 
 ---
 
@@ -144,7 +108,7 @@ kilo፣ continue) — በአስተናጋጁ ላይ የሚኬድ `hostSetupComman
 
 ## 1. የCLI Code ካታሎግ (26 መሣሪያዎች)
 
-በ`/dashboard/cli-code` ውስጥ የሚታዩ ሁሉም መሣሪያዎች። `baseUrlSupport: none` ያላቸው መሣሪያዎች ብጁ base URL ከመጠቀም ይልቅ በMITM ወይም በእጅ መመሪያ በኩል የተገናኙ ናቸው፦
+በ`/dashboard/cli-code` ውስጥ የሚታዩ ሁሉም መሣሪያዎች። `baseUrlSupport: none` ያላቸው መሣሪያዎች ብጁ base URL ከመጠቀም ይልቅ በMITM ወይም በእጅ መመሪያ በኩል ተያይዘዋል፦
 
 | id           | name                    | vendor              | baseUrlSupport | configType     | acpSpawnable |
 | ------------ | ----------------------- | ------------------- | -------------- | -------------- | ------------ |
@@ -602,21 +566,21 @@ kiro-cli status
 
 ---
 
-## 10. ውስጣዊ OmniRoute CLI
+## 10. የውስጥ OmniRoute CLI
 
-የ`omniroute` ባይነሪ ለሰርቨር የሕይወት ዑደት፣ ማዋቀር፣ ምርመራ እና የአቅራቢ አስተዳደር ትዕዛዞችን ያቀርባል። የመግቢያ ነጥብ፦ `bin/omniroute.mjs`።
+የ`omniroute` ባይነሪ ለሰርቨር የሕይወት ዑደት፣ ማዋቀር፣ ምርመራ እና የአቅራቢ አስተዳደር ትዕዛዞችን ይሰጣል። መግቢያ ነጥብ፦ `bin/omniroute.mjs`።
 
 ```bash
-omniroute                              # ሰርቨሩን አስጀምር (ነባሪ ፖርት 20128)
+omniroute                              # ሰርቨሩን ያስጀምሩ (ነባሪ ወደብ 20128)
 omniroute setup                        # በይነተገናኝ የማዋቀር አዋቂ
-omniroute doctor                       # ውቅርን፣ DBን፣ ፖርቶችን እና runtimeን ፈትሽ
+omniroute doctor                       # ውቅርን፣ DBን፣ ወደቦችን እና runtimeን ይፈትሹ
 omniroute providers list               # የተዋቀሩ የአቅራቢ ግንኙነቶች
-omniroute providers test-all           # እያንዳንዱን ንቁ ግንኙነት ፈትሽ
-omniroute reset-password               # የአስተዳዳሪ የይለፍ ቃልን ዳግም አስጀምር
-omniroute logs                         # የጥያቄ ምዝግቦችን በቀጥታ አሳይ
+omniroute providers test-all           # እያንዳንዱን ንቁ ግንኙነት ይፈትሹ
+omniroute reset-password               # የአስተዳዳሪውን የይለፍ ቃል ዳግም ያስጀምሩ
+omniroute logs                         # የጥያቄ ምዝግቦችን በቀጥታ ያሰራጩ
 omniroute health                       # ዝርዝር የጤና ሁኔታ (breakers፣ cache፣ memory)
-omniroute --version                    # ስሪቱን አትም
-omniroute --help                       # ሁሉንም ትዕዛዞች አሳይ
+omniroute --version                    # ስሪቱን ያትሙ
+omniroute --help                       # ሁሉንም ትዕዛዞች ያሳዩ
 ```
 
 ### ማዋቀር እና ማስጀመር
@@ -624,136 +588,148 @@ omniroute --help                       # ሁሉንም ትዕዛዞች አሳይ
 ```bash
 omniroute setup                        # በይነተገናኝ የማዋቀር አዋቂ
 omniroute setup --non-interactive      # የCI/አውቶሜሽን ሁነታ (የአካባቢ ተለዋዋጮችን + flagsን ያነባል)
-omniroute setup --password '<value>'   # የአስተዳዳሪ የይለፍ ቃልን በቀጥታ አዘጋጅ
+omniroute setup --password '<value>'   # የአስተዳዳሪ የይለፍ ቃሉን በቀጥታ ያዘጋጁ
 omniroute setup --add-provider \
   --provider openai \
   --api-key '<value>' \
-  --test-provider                      # አቅራቢን በአንድ ጊዜ ጨምር እና ፈትሽ
+  --test-provider                      # አቅራቢን በአንድ ጊዜ ያክሉ እና ይፈትሹ
 ```
 
-በይነተገናኝ ላልሆነ ማዋቀር የሚታወቁ የአካባቢ ተለዋዋጮች፦
+ለበይነተገናኝ ላልሆነ ማዋቀር የሚታወቁ የአካባቢ ተለዋዋጮች፦
 
 | ተለዋዋጭ               | ዓላማ                                                           |
 | ------------------- | ------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | የአቅራቢ API ቁልፍ (በCommander `.env()` በኩል ከ`--api-key` ጋር የተሳሰረ) |
-| `DATA_DIR`          | የOmniRoute ውሂብ ማውጫን ተካ                                        |
+| `OMNIROUTE_API_KEY` | የአቅራቢ API ቁልፍ (በCommander `.env()` በኩል ከ`--api-key` ጋር የተያያዘ) |
+| `DATA_DIR`          | የOmniRoute ውሂብ ማውጫን ይተኩ                                       |
 
-ሌሎች በይነተገናኝ ያልሆኑ ግብዓቶች እንደ የአካባቢ ተለዋዋጮች ሳይሆን እንደ flags ይተላለፋሉ፦
+ሁሉም ሌሎች በይነተገናኝ ያልሆኑ ግብዓቶች እንደ flags ይተላለፋሉ፤ እንደ የአካባቢ ተለዋዋጮች አይደለም፦
 `--password`፣ `--provider`፣ `--provider-name`፣ `--provider-base-url`፣ `--default-model`
 (ከላይ ያሉትን የ`omniroute setup` አማራጮች ይመልከቱ)።
 
-### ምርመራ
+### ምርመራዎች
 
 ```bash
-omniroute doctor                       # ውቅርን፣ DBን፣ ፖርቶችን፣ runtimeን፣ memoryን እና livenessን ፈትሽ
+omniroute doctor                       # ውቅርን፣ DBን፣ ወደቦችን፣ runtimeን፣ memoryን እና livenessን ይፈትሹ
 omniroute doctor --json                # በማሽን ሊነበብ የሚችል JSON
-omniroute doctor --no-liveness         # የHTTP ጤና ፍተሻውን ዝለል
-omniroute doctor --host 0.0.0.0        # የliveness hostን ተካ
-omniroute doctor --liveness-url <url>  # ሙሉውን የጤና endpoint URL ተካ
+omniroute doctor --no-liveness         # የHTTP ጤና ፍተሻውን ይዝለሉ
+omniroute doctor --host 0.0.0.0        # የliveness hostን ይተኩ
+omniroute doctor --liveness-url <url>  # ሙሉውን የጤና endpoint URL ይተኩ
 ```
 
-doctor እነዚህን ፍተሻዎች ያካሂዳል፦ `Config`፣ `Database`፣ `Storage/encryption`፣
+doctor እነዚህን ፍተሻዎች ያከናውናል፦ `Config`፣ `Database`፣ `Storage/encryption`፣
 `Port availability`፣ `Node runtime`፣ `Native binary` (better-sqlite3)፣
-`Memory` እና `Server liveness`። ማንኛውም ፍተሻ `fail` ከሆነ ዜሮ ባልሆነ ኮድ ይወጣል።
+`Memory` እና `Server liveness`። ማንኛውም ፍተሻ `fail` ከሆነ ዜሮ ባልሆነ የመውጫ ኮድ ይወጣል።
 
 ### የአቅራቢ አስተዳደር
 
 ```bash
 omniroute providers available                       # የOmniRoute አቅራቢ ካታሎግ
-omniroute providers available --search openai       # ካታሎጉን በid/name/alias/category አጣራ
-omniroute providers available --category api-key    # በምድብ አጣራ (api-key፣ oauth፣ free፣ ...)
+omniroute providers available --search openai       # ካታሎጉን በid/name/alias/category ያጣሩ
+omniroute providers available --category api-key    # በምድብ ያጣሩ (api-key፣ oauth፣ free፣ ...)
 omniroute providers available --json                # በማሽን ሊነበብ የሚችል JSON
 
 omniroute providers list                            # የተዋቀሩ የአቅራቢ ግንኙነቶች
 omniroute providers list --json
 
-omniroute providers test <id|name>                  # አንድ የተዋቀረ ግንኙነት ፈትሽ
-omniroute providers test-all                        # እያንዳንዱን ንቁ ግንኙነት ፈትሽ
-omniroute providers validate                        # አካባቢያዊ-ብቻ መዋቅራዊ ማረጋገጫ
+omniroute providers test <id|name>                  # አንድ የተዋቀረ ግንኙነት ይፈትሹ
+omniroute providers test-all                        # እያንዳንዱን ንቁ ግንኙነት ይፈትሹ
+omniroute providers validate                        # በአካባቢው ብቻ የሚካሄድ መዋቅራዊ ማረጋገጫ
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
-omniroute providers auth <provider>                 # ነባር የOAuth ሂደት
+omniroute providers auth <provider>                 # ነባር የOAuth ፍሰት
 omniroute providers edit <id|name> --default-model <model>
 omniroute providers remove <id|name> --yes
 ```
 
-`providers add/import/auth/edit/remove` API-ቀዳሚ ናቸው፤ ስለዚህም ንቁ በሆነው
-አካባቢያዊ ወይም የርቀት context ላይ ይሠራሉ። የማረጋገጫ መረጃ ግብዓት
+`providers add/import/auth/edit/remove` API-first ናቸው፤ ስለዚህም
+በንቁው የአካባቢ ወይም የርቀት context ላይ ይሰራሉ። የማረጋገጫ መረጃ ግብዓት
 `--credential-stdin` ወይም `--credential-env`ን መጠቀም አለበት፤ `--dry-run --json`
-የተሰወረ የመኖር/ቅርጽ መረጃን ብቻ ያሳያል። `providers available` የOmniRoute ካታሎግን ያነባል፤
-`providers list/test/test-all/validate` አካባቢያዊ የSQLite ባህሪያቸውን ይይዛሉ እና
-ሰርቨሩ እየሠራ መሆንን አይጠይቁም።
+የተሸፈነውን መኖር/ቅርጽ ብቻ ሪፖርት ያደርጋል። `providers available` የOmniRoute ካታሎግን ያነባል፤
+`providers list/test/test-all/validate` የአካባቢያዊ SQLite ባህሪያቸውን ይዘው ይቆያሉ እና
+ሰርቨሩ እየሰራ እንዲሆን አያስፈልጋቸውም።
+
+ለብጁ OpenAI-compatible ወይም Anthropic-compatible node፣ `omniroute nodes add` በሚመልሰው
+node ID ላይ `omniroute keys add "$NODE_ID" --stdin`ን በመጠቀም የማረጋገጫ መረጃዎችን ያያይዙ።
+ይህ ለንቁው context እየሰራ ያለ ሰርቨር እና የአስተዳደር ማረጋገጫ ይፈልጋል።
+CLIው `POST /api/providers`ን ይጠቀማል፤ ይህም nodeን ያረጋግጣል እና የendpoint
+ቅንብሮቹን ወደ ግንኙነቱ ይቀዳል። የጎደለ node፣ የፈቃድ አለመሳካት ወይም የማይገኝ
+ሰርቨር የአካባቢ fallback የማረጋገጫ መረጃ ሳይፈጥር ስህተት ይመልሳል።
+
+`nodes add --base-url` የnode endpointን ያዘጋጃል፤ ይህም
+በ`OMNIROUTE_BASE_URL` ውስጥ ካለው የሰርቨር አድራሻ የተለየ ነው። ለOpenAPI ፋይሎች
+`omniroute openapi dump --format json --out ./openapi.json`ን ይጠቀሙ፤ ዓለም አቀፉ `--output`
+የCLI ማሳያ ቅርጸትን ይመርጣል እንጂ የመድረሻ ፋይል ስምን አይመርጥም።
 
 ### መልሶ ማግኘት እና ዳግም ማስጀመር
 
 ```bash
-omniroute reset-password                # የአስተዳዳሪ የይለፍ ቃልን ዳግም አስጀምር (እንዲሁም፦ omniroute-reset-password)
-omniroute reset-encrypted-columns       # ለተመሰጠሩ የማረጋገጫ መረጃዎች ዳግም ማስጀመር ማስጠንቀቂያ + dry-run አሳይ
-omniroute reset-encrypted-columns --force  # በSQLite ውስጥ የተመሰጠሩ የማረጋገጫ መረጃዎችን በእውነት null አድርግ
+omniroute reset-password                # የአስተዳዳሪውን የይለፍ ቃል ዳግም ያስጀምሩ (እንዲሁም፦ omniroute-reset-password)
+omniroute reset-encrypted-columns       # ለተመሰጠረ የማረጋገጫ መረጃ ዳግም ማስጀመር ማስጠንቀቂያ + dry-run ያሳዩ
+omniroute reset-encrypted-columns --force  # በSQLite ውስጥ ያሉ የተመሰጠሩ የማረጋገጫ መረጃዎችን በእርግጥ null ያድርጉ
 ```
 
 ### የማረጋገጫ መረጃ ወደ ውጭ መላክ (⚠ በጥንቃቄ ይያዙ)
 
 ```bash
-omniroute auth export                                 # ማስጠንቀቂያ + የማረጋገጫ ደረጃ አሳይ — የDB መዳረሻ የለም
-omniroute auth export --force                          # የሁሉንም ግንኙነቶች የተፈቱ የማረጋገጫ መረጃዎች እንደ JSON ወደ stdout ላክ
-omniroute auth export --force --id <id>                 # የሚዛመደውን ግንኙነት ብቻ ወደ ውጭ ላክ
-omniroute auth export --force --format env               # የOMNIROUTE_<PROVIDER>_<FIELD>=<value> መስመሮችን አውጣ
-omniroute auth export --force --out creds.json           # ወደ ፋይል ጻፍ (በ0600 ፈቃዶች ይፈጠራል)
+omniroute auth export                                 # ማስጠንቀቂያ + የማረጋገጫ በር ያሳዩ — የDB መዳረሻ የለም
+omniroute auth export --force                          # የሁሉንም ግንኙነቶች ዲክሪፕት የተደረጉ የማረጋገጫ መረጃዎች እንደ JSON ወደ stdout ይላኩ
+omniroute auth export --force --id <id>                 # ተዛማጁን ግንኙነት ብቻ ወደ ውጭ ይላኩ
+omniroute auth export --force --format env               # የOMNIROUTE_<PROVIDER>_<FIELD>=<value> መስመሮችን ያውጡ
+omniroute auth export --force --out creds.json           # ወደ ፋይል ይጻፉ (በ0600 ፈቃዶች የሚፈጠር)
 ```
 
-`auth export` **አካባቢያዊ-ብቻ** ነው (ቀጥተኛ የSQLite ንባብ፣ የHTTP route የለም) እና ሆን ብሎ
-**plaintext** የ`apiKey`/`accessToken`/`refreshToken`/`idToken` እሴቶችን ያትማል/ይጽፋል — ይህ ባህሪው እንጂ
-ስህተት አይደለም። `--force` ሳይኖር ከውሂብ ጎታው ምንም አይነበብም፣ ምንም አይፈታም። ማንኛውም plaintext
-ከመውጣቱ በፊት የማስጠንቀቂያ ሰንደቅ ሁልጊዜ ወደ stderr ይታተማል። `STORAGE_ENCRYPTION_KEY`
-መዘጋጀትን ይጠይቃል። መፍታት ያልተቻለው መስክ (ጊዜው ያለፈ ቁልፍ፣ የተበላሸ ciphertext) ሙሉውን ወደ ውጭ መላክ
-ከማቋረጥ ወይም ዋናውን ስህተት ከማጋለጥ ይልቅ እንደ `<field>DecryptFailed: true` ሪፖርት ይደረጋል።
+`auth export` **በአካባቢያዊ ሁኔታ ብቻ** ይሰራል (SQLiteን በቀጥታ ያነባል፣ የHTTP መስመር የለውም) እና ሆን ተብሎ
+የ**ግልጽ ጽሑፍ** `apiKey`/`accessToken`/`refreshToken`/`idToken` እሴቶችን ያትማል/ይጽፋል — ይህ ባህሪው ነው፣
+ስህተት አይደለም። `--force` ከሌለ ከውሂብ ጎታው ምንም ነገር አይነበብም፣ ምንም ነገርም ዲክሪፕት አይደረግም። ማንኛውም የግልጽ ጽሑፍ ከመውጣቱ በፊት የstderr
+ማስጠንቀቂያ ሰንደቅ ሁልጊዜ ይታተማል። `STORAGE_ENCRYPTION_KEY` እንዲዋቀር
+ያስፈልጋል። ዲክሪፕት ማድረግ ያልተሳካለት መስክ (ጊዜው ያለፈበት ቁልፍ፣ የተበላሸ ciphertext) ሙሉውን export ከማቋረጥ ወይም መሠረታዊውን ስህተት ከማጋለጥ ይልቅ
+እንደ `<field>DecryptFailed: true` ሪፖርት ይደረጋል።
 
 ### ሌሎች ንዑስ ትዕዛዞች
 
-ሌላ ማስታወሻ ካልተሰጠ በስተቀር፣ እነዚህ እየሠራ ያለ OmniRoute ሰርቨር እንዳለ ይገምታሉ፦
+በተለየ ሁኔታ ካልተገለጸ በስተቀር፣ እነዚህ እየሰራ ያለ OmniRoute server እንዳለ ይገምታሉ፦
 
 ```bash
-omniroute status                       # ዝርዝር የአሂድ ጊዜ ሁኔታ
-omniroute logs                         # የጥያቄ ምዝግቦችን በቀጥታ አሳይ (--json, --search, --follow)
+omniroute status                       # አጠቃላይ የአሂድ ጊዜ ሁኔታ
+omniroute logs                         # የጥያቄ ምዝግቦችን ዥረት አድርግ (--json, --search, --follow)
 omniroute config list                  # የተዋቀሩ የCLI መሣሪያዎችን አሳይ
 
-omniroute provider list                # የሚገኙ አቅራቢዎችን ዘርዝር (የproviders list ተለዋጭ ስም)
-omniroute provider add                 # OmniRouteን በአንድ መሣሪያ ላይ እንደ አቅራቢ መዝግብ
+omniroute provider list                # ያሉትን providers ዘርዝር (የproviders list ተለዋጭ ስም)
+omniroute provider add                 # OmniRouteን በአንድ መሣሪያ ላይ እንደ provider መዝግብ
 omniroute keys add | list | remove     # የAPI ቁልፎችን አስተዳድር
-omniroute models [provider]            # ሞዴሎችን ዘርዝር (--json, --search)
+omniroute models [provider]            # modelsን ዘርዝር (--json, --search)
 omniroute combo list | switch | create | delete
 
-omniroute backup                       # የውቅር + DB ቅጽበታዊ ቅጂ
-omniroute restore                      # ከቀዳሚ ቅጽበታዊ ቅጂ ወደነበረበት መልስ
+omniroute backup                       # የconfig + DB ቅጽበታዊ ቅጂ
+omniroute restore                      # ከቀድሞ ቅጽበታዊ ቅጂ መልስ
 
-omniroute health                       # ዝርዝር የጤና ሁኔታ (መቆራረጫዎች፣ መሸጎጫ፣ ማህደረ ትውስታ)
-omniroute quota                        # የአቅራቢ ኮታ አጠቃቀም
-omniroute cache                        # የመሸጎጫ ሁኔታ
-omniroute cache clear                  # የትርጉም + የፊርማ መሸጎጫዎችን አጽዳ
+omniroute health                       # ዝርዝር የጤና ሁኔታ (breakers፣ cache፣ memory)
+omniroute quota                        # የprovider quota አጠቃቀም
+omniroute cache                        # የcache ሁኔታ
+omniroute cache clear                  # semantic + signature cachesን አጽዳ
 
-omniroute mcp status | restart         # የMCP አገልጋይ ሁኔታ / ዳግም ማስጀመር
-omniroute a2a status | card            # የA2A አገልጋይ ሁኔታ / የወኪል ካርድ
+omniroute mcp status | restart         # የMCP server ሁኔታ / ዳግም ማስጀመር
+omniroute a2a status | card            # የA2A server ሁኔታ / agent card
 
-omniroute tunnel list | create | stop  # ቱነሎችን አስተዳድር (cloudflare/tailscale/ngrok)
-omniroute env show | get <k> | set <k> <v>  # የአካባቢ ተለዋዋጮችን መርምር / አዘጋጅ (ጊዜያዊ)
+omniroute tunnel list | create | stop  # tunnelsን አስተዳድር (cloudflare/tailscale/ngrok)
+omniroute env show | get <k> | set <k> <v>  # env varsን መርምር / አዋቅር (ጊዜያዊ)
 
-omniroute test                         # የአቅራቢ ግንኙነት መሠረታዊ ሙከራ
+omniroute test                         # የprovider ግንኙነት smoke test
 omniroute update                       # ዝማኔዎችን ፈትሽ
-omniroute completion                   # የሼል ማጠናቀቂያ አመንጭ
+omniroute completion                   # የshell completion አመንጭ
 ```
 
-### የተለመዱ አማራጮች
+### የተለመዱ flags
 
-| አማራጭ                | መግለጫ                                               |
-| ------------------- | -------------------------------------------------- |
-| `--no-open`         | ሲጀመር አሳሹን በራስ-ሰር አትክፈት                             |
-| `--port <n>`        | የAPI ወደብን ቀይር (ነባሪው 20128)                         |
-| `--mcp`             | በstdio ላይ እንደ MCP አገልጋይ አሂድ (ለIDEዎች)               |
-| `--non-interactive` | የCI ሁነታ (ጥያቄዎች የሉም፤ ከአካባቢ ተለዋዋጮች/አማራጮች ያነባል)       |
-| `--json`            | በማሽን ሊነበብ የሚችል የJSON ውጤት (doctor, providers፣ ወዘተ.) |
-| `--help`, `-h`      | ለትእዛዙ የተወሰነ እገዛ አሳይ                                |
-| `--version`, `-v`   | የተጫነውን ስሪት አትም                                     |
+| Flag                | መግለጫ                                                |
+| ------------------- | --------------------------------------------------- |
+| `--no-open`         | ሲጀመር browserን በራስ-ሰር አትክፈት                          |
+| `--port <n>`        | የAPI portን ተካ (ነባሪ 20128)                           |
+| `--mcp`             | በstdio ላይ እንደ MCP server አሂድ (ለIDEs)                |
+| `--non-interactive` | የCI ሁነታ (ጥያቄዎች የሉም፤ ከenv/flags ያነባል)                |
+| `--json`            | በማሽን ሊነበብ የሚችል JSON output (doctor፣ providers፣ ወዘተ) |
+| `--help`, `-h`      | ለትዕዛዙ የተለየ help አሳይ                                 |
+| `--version`, `-v`   | የተጫነውን version አትም                                  |
 
 ---
 

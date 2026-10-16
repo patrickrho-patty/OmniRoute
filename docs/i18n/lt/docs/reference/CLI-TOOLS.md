@@ -45,9 +45,9 @@ ACP agentai (atvirkštinis paleidimo srautas):
 
 ## Automatinis konfigūravimas naudojant `setup-*`
 
-Nereikia kiekvieno įrankio konfigūracijos rašyti rankiniu būdu. OmniRoute pateikia po vieną `setup-*`
-komandą kiekvienam palaikomam CLI. Ji nuskaito **tiesioginį** modelių katalogą iš veikiančio
-OmniRoute (vietinio arba nuotolinio) ir įrašo paties įrankio konfigūraciją jūsų kompiuteryje:
+Jums nereikia rankiniu būdu rašyti kiekvieno įrankio konfigūracijos. OmniRoute pateikia `setup-*`
+komandą kiekvienam palaikomam CLI, kuri nuskaito **gyvą** modelių katalogą iš veikiančio
+OmniRoute (vietinio ar nuotolinio) ir įrašo įrankio konfigūraciją jūsų kompiuteryje:
 
 ```bash
 omniroute setup-codex        omniroute setup-claude       omniroute setup-opencode
@@ -57,48 +57,50 @@ omniroute setup-goose        omniroute setup-qwen         omniroute setup-aider
 omniroute setup-5dive
 ```
 
-Kiekviena komanda priima `--remote <url> --api-key <key>` (vietiniam įrankiui sukonfigūruoti naudoti
-nuotolinį OmniRoute), `--dry-run` (peržiūrai nieko neįrašant) ir `--port`. Įrankiams
-be automatinio modelių aptikimo (Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) reikia
-`--model <id>` (ir `--yes`, kai komandos vykdomos neinteraktyviai). `setup-5dive` yra vienintelis
-konfigūravimo būdas, kuris nieko neįrašo į `$HOME`: jis sukonfigūruoja 5dive agentų parką
-parko pagrindiniame kompiuteryje įrašydamas root priklausantį autentifikavimo profilį, todėl iš naujo paleidžiamas per `sudo`
-ir neturi atskiro nuotolinio režimo. Norėdami paleisti CLI su
-įterptais tinkamais aplinkos kintamaisiais ir apskritai neįrašyti jokios konfigūracijos, naudokite bendrąją
-`omniroute run <target>` paleidyklę (claude, codex, aider, goose, opencode, qwen,
-gemini — paskirties vietos ir alternatyvūs pavadinimai gaunami iš `bin/cli/cli-manifest.mjs`); senosios
-konkretiems įrankiams skirtos paleidyklės `omniroute launch` (Claude Code) ir `omniroute launch-codex`
-(Codex) vis dar pasiekiamos. Gemini CLI galima tik paleisti: jis yra `omniroute run`
-paskirties vieta, tačiau neturi `setup-*`/`configure` konfigūravimo būdo.
+Kiekviena priima `--remote <url> --api-key <key>` (konfigūruoja vietinį įrankį nuotoliniam
+OmniRoute), `--dry-run` (peržiūra be rašymo) ir `--port`. Įrankiai be modelio automatinio aptikimo
+(Cline, Kilo, Roo, Goose, Aider, Qwen, 5dive) priima `--model <id>` (ir `--yes` neinteraktyviems
+vykdymams). `setup-5dive` yra vienintelis receptas, kuris nerašo į `$HOME`: jis konfigūruoja
+5dive agentų grupę, įrašydamas šakninio vartotojo autentifikavimo profilį grupės pagrindiniame
+kompiuteryje, todėl jis vėl vykdomas per `sudo` ir neturi savo nuotolinio režimo. Norėdami paleisti
+CLI su įterpta tinkama aplinka ir visai be konfigūracijos, naudokite bendrąjį
+`omniroute run <target>` paleidiklį (claude, codex, aider, goose, opencode, qwen,
+gemini – taikiniai ir pseudonimai gaunami iš `bin/cli/cli-manifest.mjs`); senesni
+įrankių paleidikliai `omniroute launch` (Claude Code) ir `omniroute launch-codex`
+(Codex) lieka prieinami. Gemini CLI yra tik paleidžiamas: tai yra `omniroute run`
+taikinys, bet neturi `setup-*`/`configure` recepto.
 
-> **Išsamus žinynas:** pagrindinė lentelė — ką įrašo kiekviena komanda, visos parinktys,
-> vietinis ir nuotolinis režimai bei kuriems įrankiams reikia `/v1` galūnės — pateikta
-> **[CLI integracijose](../guides/CLI-INTEGRATIONS.md)**.
+> **Pilna nuoroda:** pagrindinė lentelė – ką kiekviena komanda rašo, kiekviena vėliavėlė,
+> vietinis vs nuotolinis ir kurie įrankiai nori `/v1` priesagos – yra
+> **[CLI Integrations](../guides/CLI-INTEGRATIONS.md)**.
 
-### Šių komandų vykdymas konteineryje
+### Vykdymas konteineryje
 
-Konteineryje OmniRoute vykdoma `setup-*` komanda įrašo duomenis į paties
-konteinerio namų katalogą, kurio neskaito joks pagrindinio kompiuterio CLI ir kuris išnyksta kartu su
-konteineriu. OmniRoute tai aptinka ir, užuot rašęs, baigia darbą su kodu `2` bei pateikia
-instrukcijas. Yra du palaikomi sprendimai — įdiegti CLI pagrindiniame kompiuteryje ir
-naudoti `omniroute connect` prisijungiant prie konteinerio arba prijungti konfigūracijos katalogus ir nustatyti
-`CLI_CONFIG_HOME` (compose `host` profilį). Kiekviena `setup-*` komanda, taip pat
-`omniroute configure` ir `omniroute config set`, priima
-`--allow-container-write`, kai iš tiesų norite konfigūruoti paties konteinerio CLI;
-`OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true` tą patį atlieka serveriui. Žr.
-[Docker vadovas → Pagrindinio kompiuterio CLI įrankių konfigūravimas](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
+`setup-*` komanda, vykdoma OmniRoute konteineryje, rašo į paties konteinerio namų katalogą,
+kurio joks pagrindinio kompiuterio CLI neskaito ir kuris dingsta kartu su konteineriu.
+OmniRoute tai aptinka ir išeina su kodu `2` bei instrukcijomis, užuot rašęs. Du palaikomi
+būdai – įdiegti CLI pagrindiniame kompiuteryje ir `omniroute connect` prie konteinerio,
+arba prijungti konfigūracijos katalogus ir nustatyti `CLI_CONFIG_HOME` (kompozicijos
+`host` profilis). Kiekviena `setup-*` komanda, taip pat `omniroute configure` ir
+`omniroute config set`, priima `--allow-container-write`, kai iš tikrųjų norėjote
+konfigūruoti paties konteinerio CLI; `OMNIROUTE_ALLOW_CONTAINER_CONFIG_WRITE=true`
+atlieka tą patį serveriui. Žr.
+[Docker Guide → Configuring host CLI tools](../guides/DOCKER_GUIDE.md#configuring-host-cli-tools-when-omniroute-runs-in-docker).
 
-Valdymo skydelio **pritaikymo galinis taškas** (`POST /api/cli-tools/apply`) taiko
-tą pačią apsaugą: konteineryje įrašymo operacija, kurios paskirties vieta nėra prijungta iš
-pagrindinio kompiuterio, pateikia atsakymą **`422`** su `containerEphemeralTarget: true`, saugiu klaidos
-tekstu ir — įrankiams, turintiems pagrindinio kompiuterio konfigūravimo būdą (claude, codex, opencode, cline,
-kilo, continue) — `hostSetupCommand` (pvz., `omniroute setup-opencode`), kurią reikia vykdyti
-pagrindiniame kompiuteryje; niekas neįrašoma. `dryRun: true` ir toliau veikia konteinerio
-režimu bei grąžina sugeneruotą turinį ir paskirties kelią neliesdamas disko, todėl
-galite atlikti peržiūrą valdymo skydelyje, o pakeitimus pritaikyti pagrindiniame kompiuteryje. Toks veikimas yra
-tyčinis ir apsaugotas regresijos testu
-`tests/unit/api/cli-tools/apply-container-guard.test.ts` — niekada „netaisykite“ 422
-pašalindami šią apsaugą.
+Prietaisų skydelio **taikymo galinis taškas** (`POST /api/cli-tools/apply`) taiko
+tą pačią apsaugą: konteineryje rašymas, kurio taikinys nėra prijungtas iš pagrindinio
+kompiuterio, atsako **`422`** su `containerEphemeralTarget: true`, saugiu klaidos
+tekstu ir – įrankiams su pagrindinio kompiuterio receptu (claude, codex, opencode,
+cline, kilo, continue) – `hostSetupCommand` (pvz., `omniroute setup-opencode`),
+kurį reikia paleisti pagrindiniame kompiuteryje; niekas nerašoma. `dryRun: true`
+veikia konteinerio režimu ir grąžina redaguotą peržiūrą + tikslinį kelią, neliečiant
+disko. Peržiūros turinys nėra kredencialus turinti konfigūracija, kurią galima
+kopijuoti ar importuoti. Taikykite su originaliu įrankiu/baziniu URL/API raktu/modelio
+įvestimis pagrindiniame kompiuteryje arba naudokite nurodytą pagrindinio kompiuterio
+sąrankos komandą. Žr. [CLI configuration security](../security/CLI-CONFIGURATION.md)
+dėl peržiūros antraštės ir užklausos sutarties. Šis elgesys yra
+tyčinis ir apsaugotas nuo regresijos `tests/unit/api/cli-tools/apply-container-guard.test.ts`
+– niekada „netaisykite“ 422 klaidos pašalindami apsaugą.
 
 ---
 
@@ -143,38 +145,38 @@ vienos sąsajos, bet nepridedamas prie kitų, testų rinkinys nepavyksta, užuot
 
 ## 1. CLI kodo katalogas (26 įrankiai)
 
-Visi įrankiai, rodomi `/dashboard/cli-code`. Įrankiai, kurių `baseUrlSupport: none`, prijungiami per MITM arba naudojant rankinį vadovą, o ne pasirinktinį bazinį URL:
+Visi įrankiai, kurie rodomi `/dashboard/cli-code`. Tie, kurie turi `baseUrlSupport: none`, yra prijungiami per MITM arba rankinį vadovą, o ne per pasirinktinį bazinį URL:
 
-| id           | pavadinimas             | tiekėjas            | baseUrlSupport | configType     | acpSpawnable |
-| ------------ | ----------------------- | ------------------- | -------------- | -------------- | ------------ |
-| claude       | Claude Code             | Anthropic           | full           | env            | true         |
-| codex        | OpenAI Codex CLI        | OpenAI              | full           | custom         | true         |
-| zcode        | ZCode (GLM Coding Plan) | Z.ai                | none           | custom         | false        |
-| cline        | Cline                   | OSS (ex-Claude Dev) | full           | custom         | true         |
-| kilo         | Kilo Code               | Kilo-Org            | full           | custom         | false        |
-| roo          | Roo Code                | Roo (OSS)           | full           | guide          | false        |
-| continue     | Continue                | continue.dev        | full           | guide          | false        |
-| aider        | Aider                   | OSS (P. Gauthier)   | full           | guide          | true         |
-| forge        | ForgeCode               | Antinomy HQ         | full           | custom         | true         |
-| jcode        | jcode                   | 1jehuang (OSS)      | full           | custom         | false        |
-| deepseek-tui | DeepSeek TUI            | Hunter Bown (OSS)   | full           | custom         | false        |
-| codewhale    | CodeWhale               | Hmbown (OSS)        | full           | custom         | false        |
-| opencode     | OpenCode                | Anomaly (ex-SST)    | full           | guide          | true         |
-| droid        | Factory Droid           | Factory AI          | partial        | guide          | false        |
-| copilot      | GitHub Copilot CLI      | GitHub/MS           | full           | custom         | false        |
-| cursor-cli   | Cursor CLI              | Anysphere           | partial        | guide          | true         |
-| smelt        | Smelt                   | leonardcser (OSS)   | full           | custom         | false        |
-| pi           | Pi (pi-coding-agent)    | M. Zechner (OSS)    | full           | custom         | false        |
-| grok-build   | Grok Build              | xAI                 | full           | custom         | false        |
-| crush        | Crush                   | OSS (Charm)         | full           | custom         | false        |
-| qwen         | Qwen Code               | Alibaba             | full           | guide          | true         |
-| cursor       | Cursor                  | Anysphere           | none           | guide          | false        |
-| antigravity  | Antigravity             | Google              | none           | mitm           | false        |
-| hermes       | Hermes                  | Nous Research       | none           | guide          | false        |
-| kiro         | Kiro AI                 | Amazon              | none           | mitm           | false        |
-| custom       | Custom CLI              | —                   | full           | custom-builder | false        |
+| id           | pavadinimas                 | pardavėjas             | baseUrlSupport | configType     | acpSpawnable |
+| ------------ | --------------------------- | ---------------------- | -------------- | -------------- | ------------ |
+| claude       | Claude Code                 | Anthropic              | full           | env            | true         |
+| codex        | OpenAI Codex CLI            | OpenAI                 | full           | custom         | true         |
+| zcode        | ZCode (GLM kodavimo planas) | Z.ai                   | none           | custom         | false        |
+| cline        | Cline                       | OSS (buvęs Claude Dev) | full           | custom         | true         |
+| kilo         | Kilo Code                   | Kilo-Org               | full           | custom         | false        |
+| roo          | Roo Code                    | Roo (OSS)              | full           | guide          | false        |
+| continue     | Continue                    | continue.dev           | full           | guide          | false        |
+| aider        | Aider                       | OSS (P. Gauthier)      | full           | guide          | true         |
+| forge        | ForgeCode                   | Antinomy HQ            | full           | custom         | true         |
+| jcode        | jcode                       | 1jehuang (OSS)         | full           | custom         | false        |
+| deepseek-tui | DeepSeek TUI                | Hunter Bown (OSS)      | full           | custom         | false        |
+| codewhale    | CodeWhale                   | Hmbown (OSS)           | full           | custom         | false        |
+| opencode     | OpenCode                    | Anomaly (buvęs SST)    | full           | guide          | true         |
+| droid        | Factory Droid               | Factory AI             | partial        | guide          | false        |
+| copilot      | GitHub Copilot CLI          | GitHub/MS              | full           | custom         | false        |
+| cursor-cli   | Cursor CLI                  | Anysphere              | partial        | guide          | true         |
+| smelt        | Smelt                       | leonardcser (OSS)      | full           | custom         | false        |
+| pi           | Pi (pi-coding-agent)        | M. Zechner (OSS)       | full           | custom         | false        |
+| grok-build   | Grok Build                  | xAI                    | full           | custom         | false        |
+| crush        | Crush                       | OSS (Charm)            | full           | custom         | false        |
+| qwen         | Qwen Code                   | Alibaba                | full           | guide          | true         |
+| cursor       | Cursor                      | Anysphere              | none           | guide          | false        |
+| antigravity  | Antigravity                 | Google                 | none           | mitm           | false        |
+| hermes       | Hermes                      | Nous Research          | none           | guide          | false        |
+| kiro         | Kiro AI                     | Amazon                 | none           | mitm           | false        |
+| custom       | Pasirinktinis CLI           | —                      | full           | custom-builder | false        |
 
-Įrankių, kurių `baseUrlSupport: "partial"`, informacijos suvestinės kortelėje rodoma žyma „⚠ Dalinis bazinio URL palaikymas“.
+Įrankiai, turintys `baseUrlSupport: "partial"`, prietaisų skydelio kortelėje rodo ženklelį "⚠ Base URL parcial".
 ---
 
 ## 2. CLI agentų katalogas (10 įrankių)
@@ -602,41 +604,41 @@ esantį `/dashboard/cli-tools → Kiro`.
 
 ## 10. Vidinė OmniRoute CLI
 
-Vykdomasis failas `omniroute` suteikia komandas serverio gyvavimo ciklui, konfigūravimui, diagnostikai ir teikėjų valdymui. Įėjimo taškas: `bin/omniroute.mjs`.
+`omniroute` vykdomasis failas suteikia serverio gyvavimo ciklo, sąrankos, diagnostikos ir teikėjų valdymo komandas. Įvesties taškas: `bin/omniroute.mjs`.
 
 ```bash
-omniroute                              # Paleisti serverį (numatytasis prievadas – 20128)
-omniroute setup                        # Interaktyvus konfigūravimo vediklis
+omniroute                              # Paleisti serverį (numatytasis prievadas 20128)
+omniroute setup                        # Interaktyvus sąrankos vediklis
 omniroute doctor                       # Patikrinti konfigūraciją, DB, prievadus ir vykdymo aplinką
-omniroute providers list               # Sukonfigūruoti ryšiai su teikėjais
-omniroute providers test-all           # Patikrinti kiekvieną aktyvų ryšį
+omniroute providers list               # Sukonfigūruoti teikėjų ryšiai
+omniroute providers test-all           # Išbandyti kiekvieną aktyvų ryšį
 omniroute reset-password               # Iš naujo nustatyti administratoriaus slaptažodį
 omniroute logs                         # Srautu perduoti užklausų žurnalus
 omniroute health                       # Išsami būklė (grandinės pertraukikliai, podėlis, atmintis)
-omniroute --version                    # Išvesti versiją
-omniroute --help                       # Rodyti visas komandas
+omniroute --version                    # Parodyti versiją
+omniroute --help                       # Parodyti visas komandas
 ```
 
-### Konfigūravimas ir inicijavimas
+### Sąranka ir inicijavimas
 
 ```bash
-omniroute setup                        # Interaktyvus konfigūravimo vediklis
-omniroute setup --non-interactive      # CI / automatizavimo režimas (skaito aplinkos kintamuosius ir parametrus)
+omniroute setup                        # Interaktyvus sąrankos vediklis
+omniroute setup --non-interactive      # CI / automatizavimo režimas (skaito aplinkos kintamuosius ir parinktis)
 omniroute setup --password '<value>'   # Tiesiogiai nustatyti administratoriaus slaptažodį
 omniroute setup --add-provider \
   --provider openai \
   --api-key '<value>' \
-  --test-provider                      # Vienu veiksmu pridėti ir patikrinti teikėją
+  --test-provider                      # Vienu veiksmu pridėti ir išbandyti teikėją
 ```
 
-Neinteraktyvaus konfigūravimo metu atpažįstami aplinkos kintamieji:
+Atpažįstami neinteraktyvios sąrankos aplinkos kintamieji:
 
 | Kintamasis          | Paskirtis                                                           |
 | ------------------- | ------------------------------------------------------------------- |
-| `OMNIROUTE_API_KEY` | Teikėjo API raktas (su `--api-key` susietas per Commander `.env()`) |
+| `OMNIROUTE_API_KEY` | Teikėjo API raktas (susietas su `--api-key` per Commander `.env()`) |
 | `DATA_DIR`          | Pakeisti OmniRoute duomenų katalogą                                 |
 
-Visos kitos neinteraktyvios įvestys perduodamos kaip parametrai, o ne kaip aplinkos kintamieji:
+Visos kitos neinteraktyvios įvestys perduodamos kaip parinktys, o ne aplinkos kintamieji:
 `--password`, `--provider`, `--provider-name`, `--provider-base-url`, `--default-model`
 (žr. pirmiau pateiktas `omniroute setup` parinktis).
 
@@ -644,15 +646,15 @@ Visos kitos neinteraktyvios įvestys perduodamos kaip parametrai, o ne kaip apli
 
 ```bash
 omniroute doctor                       # Patikrinti konfigūraciją, DB, prievadus, vykdymo aplinką, atmintį ir pasiekiamumą
-omniroute doctor --json                # Kompiuterio skaitomas JSON
+omniroute doctor --json                # Mašininiu būdu skaitomas JSON
 omniroute doctor --no-liveness         # Praleisti HTTP būklės patikrą
-omniroute doctor --host 0.0.0.0        # Pakeisti pasiekiamumo patikros pagrindinį kompiuterį
+omniroute doctor --host 0.0.0.0        # Pakeisti pasiekiamumo tikrinimo pagrindinį kompiuterį
 omniroute doctor --liveness-url <url>  # Pakeisti visą būklės galinio taško URL
 ```
 
-Doctor vykdo šias patikras: `Config`, `Database`, `Storage/encryption`,
+Diagnostikos įrankis vykdo šias patikras: `Config`, `Database`, `Storage/encryption`,
 `Port availability`, `Node runtime`, `Native binary` (better-sqlite3),
-`Memory` ir `Server liveness`. Jei kurios nors patikros rezultatas yra `fail`, procesas baigiamas nenuliniu išėjimo kodu.
+`Memory` ir `Server liveness`. Jei kurios nors patikros rezultatas yra `fail`, programa baigiama ne nuliniu kodu.
 
 ### Teikėjų valdymas
 
@@ -660,14 +662,14 @@ Doctor vykdo šias patikras: `Config`, `Database`, `Storage/encryption`,
 omniroute providers available                       # OmniRoute teikėjų katalogas
 omniroute providers available --search openai       # Filtruoti katalogą pagal ID / pavadinimą / alternatyvų pavadinimą / kategoriją
 omniroute providers available --category api-key    # Filtruoti pagal kategoriją (api-key, oauth, free, ...)
-omniroute providers available --json                # Kompiuterio skaitomas JSON
+omniroute providers available --json                # Mašininiu būdu skaitomas JSON
 
-omniroute providers list                            # Sukonfigūruoti ryšiai su teikėjais
+omniroute providers list                            # Sukonfigūruoti teikėjų ryšiai
 omniroute providers list --json
 
-omniroute providers test <id|name>                  # Patikrinti vieną sukonfigūruotą ryšį
-omniroute providers test-all                        # Patikrinti kiekvieną aktyvų ryšį
-omniroute providers validate                        # Tik vietinė struktūros patikra
+omniroute providers test <id|name>                  # Išbandyti vieną sukonfigūruotą ryšį
+omniroute providers test-all                        # Išbandyti kiekvieną aktyvų ryšį
+omniroute providers validate                        # Tik vietinis struktūros tikrinimas
 omniroute providers add <provider> --credential-env PROVIDER_KEY
 omniroute providers import ./providers.json --dry-run --json
 omniroute providers auth <provider>                 # Esama OAuth eiga
@@ -676,48 +678,60 @@ omniroute providers remove <id|name> --yes
 ```
 
 `providers add/import/auth/edit/remove` pirmiausia naudoja API, todėl veikia su
-aktyviu vietiniu arba nuotoliniu kontekstu. Prisijungimo duomenys turėtų būti įvedami naudojant
+aktyviu vietiniu arba nuotoliniu kontekstu. Prisijungimo duomenims įvesti reikėtų naudoti
 `--credential-stdin` arba `--credential-env`; `--dry-run --json` pateikia tik
-užmaskuotą informaciją apie jų buvimą ir struktūrą. `providers available` skaito OmniRoute katalogą;
+užmaskuotą informaciją apie buvimą ir struktūrą. `providers available` skaito OmniRoute katalogą;
 `providers list/test/test-all/validate` išlaiko vietinę SQLite veikseną ir
 nereikalauja, kad serveris veiktų.
+
+Pasirinktiniam su OpenAI arba Anthropic suderinamam mazgui prisijungimo duomenis susiekite su
+mazgo ID, kurį grąžino `omniroute nodes add`, naudodami `omniroute keys add "$NODE_ID" --stdin`.
+Tam reikia veikiančio serverio ir aktyvaus konteksto valdymo autentifikavimo.
+CLI naudoja `POST /api/providers`, kuris patikrina mazgą ir nukopijuoja jo galinio taško
+nustatymus į ryšį. Jei mazgo nėra, nepavyksta autorizavimas arba serveris
+nepasiekiamas, grąžinama klaida nesukuriant vietinių atsarginių prisijungimo duomenų.
+
+`nodes add --base-url` nustato mazgo galinį tašką; jis skiriasi nuo serverio adreso,
+nurodyto `OMNIROUTE_BASE_URL`. OpenAPI failams naudokite
+`omniroute openapi dump --format json --out ./openapi.json`; visuotinė parinktis `--output`
+parenka CLI rodymo formatą, o ne paskirties failo pavadinimą.
 
 ### Atkūrimas ir nustatymas iš naujo
 
 ```bash
 omniroute reset-password                # Iš naujo nustatyti administratoriaus slaptažodį (taip pat: omniroute-reset-password)
-omniroute reset-encrypted-columns       # Rodyti įspėjimą ir bandomąjį šifruotų prisijungimo duomenų nustatymo iš naujo vykdymą
-omniroute reset-encrypted-columns --force  # Iš tikrųjų nustatyti šifruotų SQLite prisijungimo duomenų reikšmę į null
+omniroute reset-encrypted-columns       # Parodyti įspėjimą ir atlikti bandomąjį šifruotų prisijungimo duomenų nustatymą iš naujo
+omniroute reset-encrypted-columns --force  # Iš tikrųjų SQLite nustatyti šifruotų prisijungimo duomenų reikšmes į „null“
 ```
 
 ### Prisijungimo duomenų eksportavimas (⚠ elkitės atsargiai)
 
 ```bash
-omniroute auth export                                 # Rodyti įspėjimą ir prašyti patvirtinimo — be prieigos prie DB
-omniroute auth export --force                          # Eksportuoti VISŲ ryšių IŠŠIFRUOTUS prisijungimo duomenis į stdout kaip JSON
+omniroute auth export                                 # Parodyti įspėjimą ir prašyti patvirtinimo — be prieigos prie DB
+omniroute auth export --force                          # Eksportuoti VISŲ ryšių IŠŠIFRUOTUS prisijungimo duomenis į stdout JSON formatu
 omniroute auth export --force --id <id>                 # Eksportuoti tik atitinkantį ryšį
 omniroute auth export --force --format env               # Išvesti OMNIROUTE_<PROVIDER>_<FIELD>=<value> eilutes
-omniroute auth export --force --out creds.json           # Įrašyti į failą (sukuriamas su 0600 leidimais)
+omniroute auth export --force --out creds.json           # Įrašyti į failą (sukuriamą su 0600 leidimais)
 ```
 
-`auth export` veikia **tik vietoje** (tiesiogiai skaito SQLite, nenaudodama HTTP maršruto) ir sąmoningai išveda arba įrašo
-**paprastojo teksto** `apiKey`/`accessToken`/`refreshToken`/`idToken` reikšmes — tai funkcija, o ne
-klaida. Be `--force` niekas neskaitoma iš duomenų bazės ir niekas neiššifruojama. Prieš išvedant bet kokį paprastąjį tekstą
-visada į stderr išvedama įspėjimo juosta. Būtina nustatyti `STORAGE_ENCRYPTION_KEY`.
-Jei lauko nepavyksta iššifruoti (pasenęs raktas arba sugadintas šifruotasis tekstas), vietoje viso eksportavimo nutraukimo ar pagrindinės klaidos atskleidimo pateikiama
-`<field>DecryptFailed: true`.
+`auth export` veikia **tik lokaliai** (tiesiogiai skaito SQLite, nenaudodama HTTP maršruto) ir sąmoningai išveda / įrašo
+**atvirojo teksto** `apiKey`/`accessToken`/`refreshToken`/`idToken` reikšmes — tai funkcija, o ne
+klaida. Be `--force` niekas neskaitoma iš duomenų bazės ir niekas neiššifruojama. Prieš išvedant bet kokį atvirąjį tekstą,
+visada stderr sraute parodomas įspėjamasis pranešimas. Būtina nustatyti `STORAGE_ENCRYPTION_KEY`.
+Laukas, kurio nepavyksta iššifruoti (pasenęs raktas, sugadintas šifruotasis tekstas), pateikiamas kaip
+`<field>DecryptFailed: true`, užuot nutraukus visą eksportavimą ar atskleidus pirminę klaidą.
 
-### Kitos pokomandės
+### Kitos antrinės komandos
 
-Jei nenurodyta kitaip, jos daro prielaidą, kad OmniRoute serveris veikia:
+Jei nenurodyta kitaip, šioms komandoms reikalingas veikiantis OmniRoute serveris:
 
 ```bash
 omniroute status                       # Išsami vykdymo būsenos informacija
 omniroute logs                         # Užklausų žurnalų srautas (--json, --search, --follow)
 omniroute config list                  # Rodyti sukonfigūruotus CLI įrankius
 
-omniroute provider list                # Išvardyti pasiekiamus teikėjus (komandos „providers list“ alternatyvus pavadinimas)
-omniroute provider add                 # Užregistruoti „OmniRoute“ kaip įrankio teikėją
+omniroute provider list                # Išvardyti pasiekiamus teikėjus (providers list pseudonimas)
+omniroute provider add                 # Užregistruoti OmniRoute kaip įrankio teikėją
 omniroute keys add | list | remove     # Tvarkyti API raktus
 omniroute models [provider]            # Išvardyti modelius (--json, --search)
 omniroute combo list | switch | create | delete
@@ -725,7 +739,7 @@ omniroute combo list | switch | create | delete
 omniroute backup                       # Sukurti konfigūracijos ir DB momentinę kopiją
 omniroute restore                      # Atkurti iš ankstesnės momentinės kopijos
 
-omniroute health                       # Išsami būklės informacija (pertraukikliai, podėlis, atmintis)
+omniroute health                       # Išsami veikimo būklė (grandinės pertraukikliai, podėlis, atmintis)
 omniroute quota                        # Teikėjo kvotos naudojimas
 omniroute cache                        # Podėlio būsena
 omniroute cache clear                  # Išvalyti semantinį ir parašų podėlius
@@ -738,20 +752,20 @@ omniroute env show | get <k> | set <k> <v>  # Peržiūrėti / nustatyti aplinkos
 
 omniroute test                         # Teikėjo ryšio bazinis patikrinimas
 omniroute update                       # Patikrinti, ar yra naujinių
-omniroute completion                   # Generuoti komandinio apvalkalo užbaigimo scenarijų
+omniroute completion                   # Sugeneruoti apvalkalo automatinį užbaigimą
 ```
 
 ### Bendrosios parinktys
 
-| Parinktis           | Aprašymas                                                          |
-| ------------------- | ------------------------------------------------------------------ |
-| `--no-open`         | Paleidžiant automatiškai neatverti naršyklės                       |
-| `--port <n>`        | Pakeisti API prievadą (numatytasis – 20128)                        |
-| `--mcp`             | Vykdyti kaip MCP serverį per stdio (IDE aplinkoms)                 |
-| `--non-interactive` | CI režimas (be raginimų; skaito iš aplinkos kintamųjų / parinkčių) |
-| `--json`            | Kompiuterio skaitoma JSON išvestis (doctor, providers ir kt.)      |
-| `--help`, `-h`      | Rodyti konkrečios komandos žinyną                                  |
-| `--version`, `-v`   | Išvesti įdiegtą versiją                                            |
+| Parinktis           | Aprašymas                                                     |
+| ------------------- | ------------------------------------------------------------- |
+| `--no-open`         | Paleidžiant automatiškai neatverti naršyklės                  |
+| `--port <n>`        | Pakeisti API prievadą (numatytasis 20128)                     |
+| `--mcp`             | Vykdyti kaip MCP serverį per stdio (IDE aplinkoms)            |
+| `--non-interactive` | CI režimas (be raginimų; skaito iš aplinkos / parinkčių)      |
+| `--json`            | Kompiuterio skaitoma JSON išvestis (doctor, providers ir kt.) |
+| `--help`, `-h`      | Rodyti konkrečios komandos žinyną                             |
+| `--version`, `-v`   | Išvesti įdiegtą versiją                                       |
 
 ---
 

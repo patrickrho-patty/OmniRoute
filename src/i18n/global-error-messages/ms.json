@@ -1,0 +1,13 @@
+{
+  "publicSystem": {
+    "globalError": {
+      "description": "Ralat yang tidak dijangka telah berlaku. Ini telah direkodkan dan pasukan kami akan menyiasat.",
+      "detailsAriaLabel": "Butiran ralat",
+      "retryAriaLabel": "Cuba muat semula halaman tersebut",
+      "statusAriaLabel": "Buka status sistem",
+      "systemStatus": "Status Sistem",
+      "title": "Sesuatu telah berlaku kesilapan",
+      "tryAgain": "Cuba Lagi"
+    }
+  }
+}

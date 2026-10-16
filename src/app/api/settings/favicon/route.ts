@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSettings } from "@/lib/db/settings";
 import { SAFE_OUTBOUND_FETCH_PRESETS, safeOutboundFetch } from "@/shared/network/safeOutboundFetch";
-import { withBasePath } from "@/shared/utils/basePath";
+import { normalizeBasePath } from "@/shared/utils/basePath";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +18,11 @@ const ALLOWED_IMAGE_TYPES = [
 const MAX_FAVICON_SIZE = 50 * 1024; // 50KB
 const FETCH_TIMEOUT = 5000; // 5 seconds
 const CACHE_DURATION = 300; // 5 minutes
+// Fork brand asset: the Patty checkout ships `public/favicon.ico` and no SVG icon
+// file, so the default-icon fallback must point at the file that actually exists on
+// this tree — see tests/unit/patty-brand-assets.test.ts.
+const DEFAULT_ICON_FILENAME = "favicon.ico";
+const DEFAULT_ICON_CONTENT_TYPE = "image/x-icon";
 
 function validateImageData(base64Data: string, contentType: string): boolean {
   if (!ALLOWED_IMAGE_TYPES.includes(contentType)) {
@@ -35,11 +42,16 @@ function validateImageData(base64Data: string, contentType: string): boolean {
   return true;
 }
 
+/**
+ * Fork API: absolute same-origin redirect to the bundled default icon, basePath aware.
+ * Kept synchronous (`NextResponse`) — the Patty brand-asset test calls it directly.
+ */
 export function defaultFaviconRedirect(request: Request): NextResponse {
-  return NextResponse.redirect(new URL(withBasePath("/favicon.ico"), request.url));
+  const { origin, target } = resolveDefaultIconTarget(request as NextRequest);
+  return NextResponse.redirect(new URL(target, origin));
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const settings = await getSettings();
 
@@ -88,12 +100,12 @@ export async function GET(request: Request) {
     }
 
     if (!faviconData) {
-      return defaultFaviconRedirect(request);
+      return buildDefaultIconRedirect(request);
     }
 
     const match = faviconData.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) {
-      return defaultFaviconRedirect(request);
+      return buildDefaultIconRedirect(request);
     }
 
     const contentType = match[1];
@@ -108,6 +120,57 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("Favicon API error:", error);
+    return buildDefaultIconRedirect(request);
+  }
+}
+
+function firstHeaderValue(value: string | null): string {
+  return (value ?? "").split(",")[0].trim();
+}
+
+function resolveRequestScheme(request: NextRequest, rawProto: string): string {
+  if (rawProto === "http" || rawProto === "https") return rawProto;
+  return new URL(request.url).protocol === "https:" ? "https" : "http";
+}
+
+function resolveDefaultIconTarget(request: NextRequest): { origin: string; target: string } {
+  const headers = request.headers;
+  // Fork: a bare `Request` (direct caller / unit test) carries no Host header — fall back to
+  // the request URL's own host so the redirect stays an absolute same-origin URL.
+  const host =
+    firstHeaderValue(headers.get("x-forwarded-host")) ||
+    firstHeaderValue(headers.get("host")) ||
+    new URL(request.url).host;
+  const scheme = resolveRequestScheme(
+    request,
+    firstHeaderValue(headers.get("x-forwarded-proto")).toLowerCase()
+  );
+  const basePath = request.nextUrl?.basePath || normalizeBasePath(process.env.OMNIROUTE_BASE_PATH);
+  if (!host) throw new Error("missing request origin");
+  return {
+    origin: `${scheme}://${host}`,
+    target: `${basePath}/${DEFAULT_ICON_FILENAME}`,
+  };
+}
+
+function buildDefaultIconRedirect(request?: NextRequest): Promise<NextResponse> | NextResponse {
+  try {
+    if (!request) throw new Error("missing request origin");
     return defaultFaviconRedirect(request);
+  } catch {
+    return serveDefaultIconFile();
+  }
+}
+
+async function serveDefaultIconFile(): Promise<NextResponse> {
+  try {
+    const filePath = path.join(process.cwd(), "public", DEFAULT_ICON_FILENAME);
+    const body = await readFile(filePath);
+    return new NextResponse(body, {
+      headers: { "Content-Type": DEFAULT_ICON_CONTENT_TYPE },
+    });
+  } catch (error) {
+    console.error("Favicon API error:", error);
+    return new NextResponse("Not found", { status: 404 });
   }
 }

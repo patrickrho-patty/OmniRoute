@@ -14,11 +14,13 @@ import { handleGoogleFlowVideoGeneration } from "./videoGeneration/googleFlowHan
 import { handleDeepinfraVideoGeneration } from "./videoGeneration/deepinfraHandler.ts";
 import { handleLeonardoVideoGeneration } from "./videoGeneration/leonardoHandler.ts";
 import { handleDashscopeVideoGeneration } from "./videoGeneration/dashscopeHandler.ts";
+import { handleMinimaxVideoGeneration } from "./videoGeneration/minimaxHandler.ts";
 import { handleNovitaVideoGeneration } from "./videoGeneration/novitaHandler.ts";
 import { handleXaiVideoGeneration } from "./videoGeneration/xaiGrokImagineHandler.ts";
 import { handleSegmindVideoGeneration } from "./videoGeneration/providers/segmind.ts";
 import { handleUcVideoGeneration } from "./videoGeneration/providers/ucVideo.ts";
 import { handleAdobeFireflyVideoGeneration } from "./videoGeneration/adobeFireflyHandler.ts";
+import { handleSyntxVideoGeneration } from "./videoGeneration/syntxHandler.ts";
 import { handleOpenAIVideoGeneration } from "./videoGeneration/openai.ts";
 import { getVideoJobPreset, handleVideoJobGeneration } from "./videoGeneration/job.ts";
 import {
@@ -61,7 +63,8 @@ import { handleFalVideoGeneration } from "./mediaGeneration/fal.ts";
 export function resolveVideoBaseUrl(
   credentials:
     { baseUrl?: unknown; providerSpecificData?: { baseUrl?: unknown } | null } | null | undefined,
-  fallback: string
+  fallback: string,
+  failClosed = false
 ): string {
   const psd = credentials?.providerSpecificData;
   const psdBaseUrl =
@@ -74,7 +77,7 @@ export function resolveVideoBaseUrl(
       : null;
   const nodeBaseUrl = psdBaseUrl || topLevelBaseUrl;
 
-  if (!nodeBaseUrl) return fallback;
+  if (!nodeBaseUrl) return failClosed ? "" : fallback;
 
   // Trim trailing slashes
   let normalized = nodeBaseUrl;
@@ -193,14 +196,19 @@ export async function handleVideoGeneration({ body, credentials, log, resolvedPr
       log.info("VIDEO", `Custom model ${provider}/${model} — using OpenAI-compatible handler`);
     const syntheticConfig = {
       id: provider,
-      baseUrl: resolveVideoBaseUrl(
-        credentials,
-        "http://generative.language.googleapis.com/v1beta/openai/videos/generations"
-      ),
+      baseUrl: resolveVideoBaseUrl(credentials, "", true),
       authType: "apikey",
       authHeader: "bearer",
       format: "openai-video",
     };
+    if (!syntheticConfig.baseUrl) {
+      return {
+        success: false,
+        status: 501,
+        error: `Video generation is not configured for custom provider: ${provider}`,
+      };
+    }
+
     return handleOpenAIVideoGeneration({
       model,
       body,
@@ -305,6 +313,17 @@ export async function handleVideoGeneration({ body, credentials, log, resolvedPr
     });
   }
 
+  if (providerConfig.format === "minimax-video") {
+    return handleMinimaxVideoGeneration({
+      model,
+      provider,
+      providerConfig,
+      body,
+      credentials,
+      log,
+    });
+  }
+
   if (providerConfig.format === "segmind") {
     return handleSegmindVideoGeneration({
       model,
@@ -329,6 +348,16 @@ export async function handleVideoGeneration({ body, credentials, log, resolvedPr
   }
   if (providerConfig.format === "adobe-firefly-video") {
     return handleAdobeFireflyVideoGeneration({
+      model,
+      provider,
+      providerConfig,
+      body,
+      credentials,
+      log,
+    });
+  }
+  if (providerConfig.format === "syntx-video") {
+    return handleSyntxVideoGeneration({
       model,
       provider,
       providerConfig,
