@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getModelTargetFormat } from "@omniroute/open-sse/config/providerModels.ts";
 import { prepareConnectionModelTest } from "@/lib/providerModels/prepareConnectionModelTest";
 import { POST as postChatCompletion } from "@/app/api/v1/chat/completions/route";
 import { POST as postAudioTranscription } from "@/app/api/v1/audio/transcriptions/route";
@@ -286,7 +287,12 @@ export function buildInternalAudioTranscriptionRequest(
   });
 }
 
-export function detectTestKind(modelStr: string, customModel: any, nodeApiType?: string) {
+export function detectTestKind(
+  modelStr: string,
+  customModel: any,
+  nodeApiType?: string,
+  registryTargetFormat?: string
+) {
   const supportedEndpoints = Array.isArray(customModel?.supportedEndpoints)
     ? customModel.supportedEndpoints
     : [];
@@ -336,7 +342,13 @@ export function detectTestKind(modelStr: string, customModel: any, nodeApiType?:
     !isEmbedding &&
     (apiFormat === "responses" ||
       nodeType === "responses" ||
-      supportedEndpoints.includes("responses"));
+      supportedEndpoints.includes("responses") ||
+      // The provider registry is authoritative for dispatch: the router resolves a
+      // model's endpoint through `getModelTargetFormat`, so the probe must follow the
+      // same signal. Without it a registry Responses model reached through a node
+      // typed "openai" fell to the chat branch below and was reported as
+      // "HTTP 200 but no text content" (#12674's model, #13070's message).
+      registryTargetFormat === "openai-responses");
   // Non-chat generation endpoints (image, music, video) should NOT be dispatched
   // as chat completions — they incur billable generation costs (#13376).
   const isNonChatGeneration =
@@ -535,7 +547,12 @@ export async function runSingleModelTest(
     findProviderNodeApiType(providerId),
   ]);
   const { isRerank, isEmbedding, isAudioTranscription, isResponses, isNonChatGeneration } =
-    detectTestKind(fullModelStr, customModel, nodeApiType);
+    detectTestKind(
+      fullModelStr,
+      customModel,
+      nodeApiType,
+      getModelTargetFormat(providerId, fullModelStr)
+    );
 
   // #13376: Skip image/music/video generation models — dispatching them as
   // chat completions incurs real billable generations the operator never asked for.
