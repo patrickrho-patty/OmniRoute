@@ -571,6 +571,50 @@ does not change or verify the live database setting.
 
 ---
 
+### SRC-015 — The model health probe must follow the registry's target format
+
+| Field                 | Value                                                                  |
+| --------------------- | ---------------------------------------------------------------------- |
+| Commit                | `824bb0da02`                                                           |
+| Upstream baseline     | `release/v3.8.52`, merged into `patty` on 2026-10-16                   |
+| Upstream file touched | `src/lib/api/modelTestRunner.ts`                                       |
+| Reported symptom      | dashboard model test: "Provider returned HTTP 200 but no text content" |
+
+The dashboard's per-model health test chose its endpoint from the connection's
+**imported overlay** (`customModel.apiFormat`, `supportedEndpoints`) plus the
+provider node's `apiType`. Overlays are written by catalog syncs and can be stale
+or partial: on the reporting host `customModels[opencode-go]` held
+`{ apiFormat: "chat-completions", supportedEndpoints: ["chat"] }` for
+`muse-spark-1.3-contributor`, while `getModelTargetFormat("opencode-go", …)` —
+the resolver the router dispatches with — returns `openai-responses` for that
+model and the rest of the Go family.
+
+The probe therefore posted a Chat Completions body capped at 64 tokens
+(`STREAMING_CHAT_TEST_MAX_TOKENS`). A reasoning model spends that budget on
+thinking, returns `content: null`, and `classifyModelTestOutput` reads that as
+empty. The model itself was healthy: the same connection answered normally, and
+the failing probe was logged with `sourceFormat: openai → targetFormat:
+openai-responses` and `completion_tokens: 64` of which `reasoning: 62`.
+
+`detectTestKind` now takes an optional `registryTargetFormat` and treats
+`"openai-responses"` as a Responses signal, and `runSingleModelTest` passes
+`getModelTargetFormat(providerId, fullModelStr)`. Audio, rerank and embedding
+detection still take precedence, so a Responses-capable provider that hosts those
+keeps their endpoints.
+
+**Upstream sync invariant:** keep the registry lookup in `detectTestKind`'s
+Responses condition when resolving `modelTestRunner.ts`. Do not take upstream's
+whole file to settle a conflict in it. Upstream state checked on 2026-10-16
+against its default branch (`release/v3.8.52`, `ddf2759eb3`):
+`STREAMING_CHAT_TEST_MAX_TOKENS` is still `64`, `classifyModelTestOutput` is
+unchanged, and `isResponses` still reads only
+`apiFormat` / `nodeApiType` / `supportedEndpoints`. Upstream fixed the
+node-declared variant in #13070 and the model's _routing_ in
+#12674/#12196/#11048; this probe-side variant has no upstream issue or PR.
+Regression guard: `tests/unit/model-test-registry-target-format-probe.test.ts`.
+
+---
+
 ### OPS-002 — `tls-client-node` global-install permission fix
 
 | Field   | Value                                                                             |

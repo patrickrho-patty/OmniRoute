@@ -280,3 +280,31 @@ Then close the loop against the lockfile: every bare import in `src/`,
 positives — `bun:sqlite`, the package's own `omniroute/plugins/sdk`
 self-reference, and two dynamic template imports.) `npm ci --dry-run` proves the
 lockfile and the manifest are in sync, which is the check the runner performs.
+
+## 12. A diagnostic path can read metadata the router ignores
+
+A health probe that picks its endpoint from the **connection's imported overlay**
+(`customModel.apiFormat`, `supportedEndpoints`) will disagree with dispatch, which
+resolves a model's endpoint from the **provider registry** (`getModelTargetFormat`).
+Overlays are written by catalog syncs and can be stale or partial, so the two
+answers diverge silently: the model works in chat while the dashboard reports it
+broken.
+
+v3.8.52: `opencode-go/muse-spark-1.3-contributor` had an overlay of
+`chat-completions` / `["chat"]` while the registry said `openai-responses`. The
+probe posted a 64-token Chat Completions body, the reasoning model spent it on
+thinking, and the test reported "Provider returned HTTP 200 but no text content" —
+for a model that answered fine over the same connection.
+
+**Merge rule:** when resolving `src/lib/api/modelTestRunner.ts`, keep the registry
+lookup in `detectTestKind`'s Responses condition. Generalised: if a diagnostic path
+and the request path answer the same question from different sources, a sync must
+not "simplify" one to match the other. See `FORK_NOTES.md` SRC-015 and
+`tests/unit/model-test-registry-target-format-probe.test.ts`.
+
+Upstream status checked 2026-10-16 on its default branch tip `ddf2759eb3`:
+`STREAMING_CHAT_TEST_MAX_TOKENS = 64`, `classifyModelTestOutput` unchanged, and
+`isResponses` still reads only `apiFormat` / `nodeApiType` / `supportedEndpoints`.
+The node-declared variant was fixed in #13070 and the routing variant in #12674;
+this probe-side variant has no upstream issue or PR, so do not assume upstream's
+file already carries it.
