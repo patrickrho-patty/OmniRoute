@@ -251,3 +251,32 @@ with "defined multiple times" is an import-resolution bug, not a Docker problem.
 - **Don't `git stash`. Ever.** In this repo it operates on the shared object
   store and has eaten another session's work twice (on record). Use the index
   stages / `git show <ref>:<path>` for comparisons.
+
+## 11. `package.json` is a UNION — and a dirty `node_modules` hides the loss
+
+Taking upstream's `package.json` wholesale (then re-adding the one dependency you
+happen to remember) drops every fork-only dependency in one silent step. v3.8.52
+lost `magic-grid@^3.4.7`, declared only for the fork's unified MagicGrid quota
+board (`QuotaCardGrid.tsx`).
+
+**The local build will not catch it.** A sync worktree's `node_modules` is
+hard-linked from the main checkout, which was installed _before_ the merge — so
+`npm run build` still resolves the dropped package off disk and goes green. The
+first thing that fails is the GHCR workflow's clean `npm ci`, ~20 minutes in, at
+the Turbopack step. Cost of this lesson: one wasted CI run.
+
+Before merging, diff the manifests key-by-key:
+
+```bash
+git show <fork-tip>:package.json   > /tmp/fork.json
+git show <merged>:package.json     > /tmp/merged.json
+# compare dependencies / devDependencies / optionalDependencies / overrides /
+# engines / scripts. Upstream's version BUMPS are expected; fork-only KEYS are not.
+```
+
+Then close the loop against the lockfile: every bare import in `src/`,
+`open-sse/`, `bin/` and `electron/` must exist as a package in
+`package-lock.json`. (v3.8.52: 3,570 files scanned, four findings, all false
+positives — `bun:sqlite`, the package's own `omniroute/plugins/sdk`
+self-reference, and two dynamic template imports.) `npm ci --dry-run` proves the
+lockfile and the manifest are in sync, which is the check the runner performs.
