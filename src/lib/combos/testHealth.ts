@@ -76,6 +76,8 @@ function getUsageReasoningTokens(body: JsonRecord): number {
   if (!usage) return 0;
 
   const completionDetails = asRecord(usage.completion_tokens_details);
+  // The Responses API reports the same counter under `output_tokens_details`.
+  const outputDetails = asRecord(usage.output_tokens_details);
   const topLevelReasoning =
     typeof usage.reasoning_tokens === "number" && Number.isFinite(usage.reasoning_tokens)
       ? usage.reasoning_tokens
@@ -85,13 +87,30 @@ function getUsageReasoningTokens(body: JsonRecord): number {
     Number.isFinite(completionDetails.reasoning_tokens)
       ? completionDetails.reasoning_tokens
       : 0;
+  const responsesReasoning =
+    typeof outputDetails.reasoning_tokens === "number" &&
+    Number.isFinite(outputDetails.reasoning_tokens)
+      ? outputDetails.reasoning_tokens
+      : 0;
 
-  return Math.max(topLevelReasoning, detailedReasoning);
+  return Math.max(topLevelReasoning, detailedReasoning, responsesReasoning);
 }
 
 function hasReasoningOnlyCompletion(body: JsonRecord): boolean {
-  if (!Array.isArray(body.choices) || body.choices.length === 0) return false;
   if (getUsageReasoningTokens(body) <= 0) return false;
+
+  // Responses shape. A reasoning-dominant model answers with an encrypted reasoning
+  // item and an empty summary, so `extractComboTestResponseText` finds no text anywhere
+  // even though the upstream generated output and said why it stopped: the probe's own
+  // budget. Without this the model reads as "Provider returned HTTP 200 but no text
+  // content" while it is answering normally (opencode-go/muse-spark-1.3-contributor).
+  const incomplete = asRecord(body.incomplete_details);
+  if (body.status === "incomplete" && incomplete.reason === "max_output_tokens") {
+    const output = Array.isArray(body.output) ? body.output : [];
+    if (output.some((item) => asRecord(item).type === "reasoning")) return true;
+  }
+
+  if (!Array.isArray(body.choices) || body.choices.length === 0) return false;
 
   return body.choices.some((choice) => {
     const choiceRecord = asRecord(choice);
