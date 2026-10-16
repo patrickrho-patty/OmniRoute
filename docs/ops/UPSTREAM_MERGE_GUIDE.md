@@ -322,11 +322,28 @@ will replay the new one through the guard's tolerance path.
 
 ### 7.2 The image pipeline (production = `omni.patty.io`)
 
-Production runs `ghcr.io/patty-internal/omniroute:latest` (container `omniroute-p5`,
+Production runs `ghcr.io/patrickrho-patty/omniroute:latest` (container `omniroute-p5`,
 compose at `/opt/omniroute/docker-compose.yml` on the Contabo VPS
 `109.123.231.227`). The image is built by **`.github/workflows/build-patty-image.yml`
 — the ONE workflow the fork keeps** (restored 2026-09-24 after the 2026-08-30
 sweep deleted it and GHCR silently went stale for a month).
+
+**Repo-owner transfers break this pipeline in three places — check all three.**
+The fork has already moved twice (`patrickrho-patty` → `patty-internal` 2026-08 →
+back to `patrickrho-patty` 2026-10), and each move silently skipped every build
+because the job guard was an equality check on the old slug. Since 2026-10 the
+workflow derives `IMAGE_NAME` from `github.repository_owner`, guards negatively
+(`github.repository != 'diegosouzapw/OmniRoute'`) and `scripts/deploy-ghcr.sh`
+derives the owner from the `origin` remote, so neither needs editing on a
+transfer. The two that still do:
+
+1. `/opt/omniroute/docker-compose.yml` on the VPS — its `image:` line names the
+   old namespace, so the pull silently keeps the previous container.
+2. The VPS's `docker login ghcr.io` credential — it was issued for the old
+   namespace and may lose `read:packages` on the new one.
+
+Verify a transfer end-to-end by the **image digest**, never by container health:
+`docker inspect --format '{{index .RepoDigests 0}}' omniroute-p5` must change.
 
 Since v3.8.51 the workflow builds Next **on the runner host** and substitutes the
 Dockerfile's builder stage via a named build context (`build-contexts:
