@@ -308,3 +308,16 @@ Upstream status checked 2026-10-16 on its default branch tip `ddf2759eb3`:
 The node-declared variant was fixed in #13070 and the routing variant in #12674;
 this probe-side variant has no upstream issue or PR, so do not assume upstream's
 file already carries it.
+
+**Follow-on (same class, 2026-10-16).** Moving the probe to `/v1/responses` exposed the
+other half of this: that endpoint is a _patty billing_ endpoint, and with
+`PATTY_GATEWAY_URL` + `PATTY_GATEWAY_TOKEN` set the fork's gateway asserted
+`x-patty-harness: codex` and rejected the probe with "Patty harness does not match this
+endpoint" — thrown _before_ `handleChat` logs the request, so the failure left no call-log
+entry and looked like nothing had been sent at all. `preparePattyRequest` now returns early
+for a verified in-process self-loop request (constant-time self-loop bearer match; the
+`x-internal-test` header alone is deliberately NOT enough, or the bypass becomes a way to
+skip provider billing). The gateway is fork-only (`open-sse/services/pattyGateway.ts`, absent
+upstream), so no merge work is needed to keep it — but any future sync that routes a
+diagnostic onto `/v1/messages` or `/v1/responses` must keep this bypass. Guard:
+`tests/unit/services/patty-gateway.test.ts`.

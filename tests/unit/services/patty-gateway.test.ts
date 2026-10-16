@@ -469,3 +469,83 @@ test("Codex Enterprise rate-limit events use Patty's primary and secondary windo
     promo: null,
   });
 });
+
+// ---------------------------------------------------------------------------
+// In-process model health probes
+//
+// A model test reaches /v1/responses through the in-process self-loop and carries
+// no harness header. /v1/responses is a patty billing endpoint, so the gateway
+// asserted `x-patty-harness: codex` and rejected it with
+// "Patty harness does not match this endpoint" -- a false verdict on a healthy
+// model, thrown before the request is logged.
+// ---------------------------------------------------------------------------
+
+test("an in-process model health probe is not treated as a harness turn", async () => {
+  const { resolveSelfLoopBearer } =
+    await import("../../../src/shared/middleware/chatAdmissionIdentity.ts");
+  const body = { model: "muse-spark-1.3-contributor", input: [{ role: "user", content: "pong" }] };
+  const request = new Request("https://chatgpt.com/v1/responses", {
+    method: "POST",
+    headers: {
+      // Exactly what buildInternalResponsesRequest sends.
+      authorization: `Bearer ${resolveSelfLoopBearer()}`,
+      "x-internal-test": "combo-health-check",
+      "x-omniroute-no-memory": "true",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  const prepared = await preparePattyRequest(request, body, "request-probe", {
+    env,
+    fetchImpl: async () => {
+      throw new Error("a health probe must not reach the patty gateway");
+    },
+  });
+
+  assert.equal(prepared.decision, null);
+  assert.equal(prepared.body, body);
+});
+
+test("a harnessless caller is still rejected on a billing endpoint", async () => {
+  const body = { model: "muse-spark-1.3-contributor", input: [] };
+  const request = new Request("https://chatgpt.com/v1/responses", {
+    method: "POST",
+    headers: { authorization: "Bearer sk-not-our-self-loop" },
+    body: JSON.stringify(body),
+  });
+
+  await assert.rejects(
+    () =>
+      preparePattyRequest(request, body, "request-external", {
+        env,
+        fetchImpl: async () => jsonResponse(preflightBody),
+      }),
+    (error: unknown) =>
+      error instanceof PattyGatewayError && error.code === "patty_harness_mismatch"
+  );
+});
+
+test("the internal-test header alone does not bypass the gateway", async () => {
+  // The bypass must rest on the process secret, never on a header a remote caller
+  // can set — otherwise it becomes a way to skip provider billing.
+  const body = { model: "muse-spark-1.3-contributor", input: [] };
+  const request = new Request("https://chatgpt.com/v1/responses", {
+    method: "POST",
+    headers: {
+      authorization: "Bearer sk-not-our-self-loop",
+      "x-internal-test": "combo-health-check",
+    },
+    body: JSON.stringify(body),
+  });
+
+  await assert.rejects(
+    () =>
+      preparePattyRequest(request, body, "request-spoof", {
+        env,
+        fetchImpl: async () => jsonResponse(preflightBody),
+      }),
+    (error: unknown) =>
+      error instanceof PattyGatewayError && error.code === "patty_harness_mismatch"
+  );
+});
