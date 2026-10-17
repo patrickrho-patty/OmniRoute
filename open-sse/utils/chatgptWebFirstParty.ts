@@ -59,6 +59,15 @@ const CHATGPT_ASSET_PATH_RE =
   /^\/(?:cdn|unauth-mweb|auth-mweb)\/(?:assets|scripts)\/[A-Za-z0-9._-]+\.js$/;
 const OAI_UPLOAD_HOST_RE = /(?:^|\.)oaiusercontent\.com$/i;
 const FIRST_PARTY_BRIDGE_KEY = "__omnirouteChatGptFirstPartyV1";
+
+/**
+ * Webpack module ids the ChatGPT integrity module requires for its UUID helper. The id is part
+ * of the page's build, not of the contract, so it changes when OpenAI ships a new bundle.
+ * Observed: `TI` (through 2026-08), `DD` (2026-10). Unknown ids must keep failing loudly — a
+ * silently wrong helper yields an invalid integrity token, which is harder to diagnose than a
+ * named error.
+ */
+export const UUID_DEPENDENCY_IDS = ["TI", "DD"] as const;
 const FIRST_PARTY_ABORT_KEY = "__omnirouteChatGptAbortV1";
 const FIRST_PARTY_REQUEST_KEY = "__omnirouteChatGptRequestV1";
 const MAX_ASSET_SOURCE_BYTES = 24 * 1024 * 1024;
@@ -408,7 +417,7 @@ async function discoverFirstPartyModule(page: Page): Promise<FirstPartyModuleRes
   });
 }
 
-function buildBridgeModuleSource(
+export function buildBridgeModuleSource(
   assetUrl: string,
   contract: ChatGptWebFirstPartyModuleContract
 ): string {
@@ -424,8 +433,16 @@ function buildBridgeModuleSource(
       `if (typeof factory !== "function") throw new Error("ChatGPT integrity module factory is unavailable");`,
       `const exports = {};`,
       `const requireShim = id => {`,
-      `if (id === "TI") return { a: () => crypto.randomUUID() };`,
-      `throw new Error("Unsupported ChatGPT integrity dependency: " + id);`,
+      // The integrity module reaches for one helper: a fresh UUID generator. Its webpack
+      // module id is a per-build name, so a chatgpt.com deploy renames it and the bridge used
+      // to die with "Unsupported ChatGPT integrity dependency: <id>" even though nothing about
+      // the contract changed. Observed names: TI (through 2026-08), DD (2026-10). Keep the set
+      // explicit — a genuinely different module must still fail loudly instead of silently
+      // returning a UUID function and producing an invalid integrity token.
+      `if (${JSON.stringify(UUID_DEPENDENCY_IDS)}.includes(id)) return { a: () => crypto.randomUUID() };`,
+      `throw new Error("Unsupported ChatGPT integrity dependency: " + id +`,
+      `" (known UUID helpers: " + ${JSON.stringify(UUID_DEPENDENCY_IDS)}.join(", ") +`,
+      `"). A chatgpt.com build may have renamed it; add the new id to UUID_DEPENDENCY_IDS in open-sse/utils/chatgptWebFirstParty.ts.");`,
       `};`,
       `requireShim.d = (target, definitions) => {`,
       `for (const [name, getter] of Object.entries(definitions)) {`,
