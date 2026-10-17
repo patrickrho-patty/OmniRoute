@@ -10,7 +10,7 @@
  * Provider identity lives on the card itself (icon + label + plan badge).
  *
  * Layout engine: magic-grid (MagicGrid). Cards keep their CSS width
- * (`w-full` on phones → 1 column; `sm:w-[280px]` → as many 280px columns as
+ * (`w-full` on phones → 1 column; `sm:w-[320px]` → as many 320px columns as
  * fit, capped by maxColumns). MagicGrid only computes positions; we drive
  * `positionItems()` from our own ResizeObserver / MutationObserver / window
  * resize listeners so every listener is disconnectable on unmount (the
@@ -156,8 +156,10 @@ export function sortProviderConnectionsByPriority(
 
 /** Card width per density mode — phones go full-width (single MagicGrid column). */
 const CARD_WIDTH_CLASS = {
-  full: "w-full sm:w-[280px]",
-  compact: "w-full sm:w-[260px]",
+  // 320px fits a full e-mail address on the account line; the header wraps its chips
+  // (see QuotaCardHeader) rather than crushing the text when a card is narrower.
+  full: "w-full sm:w-[320px]",
+  compact: "w-full sm:w-[296px]",
 } as const;
 
 export default function QuotaCardGrid({

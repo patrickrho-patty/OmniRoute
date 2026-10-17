@@ -85,8 +85,12 @@ export default function QuotaCardHeader({
   const tokenExpiryTitle = hasTokenExpiry ? new Date(tokenExpiryMs).toLocaleString() : undefined;
 
   return (
-    <div className="flex min-h-[62px] items-center justify-between gap-2 px-3 py-2">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+    <div className="flex min-h-[62px] flex-wrap items-center justify-between gap-x-2 gap-y-1 px-3 py-2">
+      {/* `basis-[11rem]` gives the account block a floor. Without it the fixed-width reset chip
+          and action buttons (both shrink-0) squeezed this block to ~40px on a 280px card, which
+          turned "Token expires in 0h 15m" into one character per line. With the floor + wrap,
+          the chips drop to a second row instead of crushing the text. */}
+      <div className="flex min-w-0 flex-1 basis-[11rem] items-center gap-2">
         <span
           className="inline-flex size-7 shrink-0 items-center justify-center"
           title={cardStatus}
@@ -126,11 +130,21 @@ export default function QuotaCardHeader({
               </span>
             )}
           </div>
-          <span className="text-[11px] text-text-muted truncate" title={accountName ?? ""}>
+          {/* The account/email line must stay readable: the full value wraps onto a second line
+              instead of being clipped to a couple of characters (`title` keeps the whole value
+              available even when a very long address runs out of room). */}
+          <span
+            className="text-[11px] text-text-muted leading-[1.35] break-words"
+            title={accountName ?? ""}
+          >
             {accountName}
           </span>
           {tokenExpiryLabel && (
             <span
+              // Wrapping is deliberate (a long "Token expires in …" must not be cut), so the
+              // fix for the vertical-text report lives in the header's width floor above: the
+              // account block keeps ≥11rem, which renders this label on one line instead of
+              // wrapping it one character per line inside a squeezed 42px column.
               className={`text-[10px] whitespace-normal [overflow-wrap:anywhere] leading-[1.4] ${tokenCountdown ? "text-sky-500" : "text-rose-500"}`}
               title={tokenExpiryTitle}
             >
