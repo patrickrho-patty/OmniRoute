@@ -45,17 +45,28 @@ export function validateChatGptWebProvider({
               error: "ChatGPT Web Cookie header must contain cookies",
               unsupported: false,
             };
-      } catch {
+      } catch (cookieError) {
         return {
           valid: false,
-          error: "ChatGPT Web storage state JSON or Cookie header is invalid",
+          // Same principle as below: name the real reason (e.g. the missing session cookie)
+          // so the operator can fix it instead of guessing what the form wants.
+          error:
+            cookieError instanceof Error && cookieError.message
+              ? cookieError.message
+              : "ChatGPT Web storage state JSON or Cookie header is invalid",
           unsupported: false,
         };
       }
     }
     return {
       valid: false,
-      error: "ChatGPT Web storage state JSON is invalid or contains foreign origins",
+      // Propagate the specific reason (invalid cookie / foreign origin / missing field). The old
+      // catch-all said "invalid or contains foreign origins" even when the real problem was a
+      // cookie missing required fields, which sent the operator chasing the wrong thing.
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : "ChatGPT Web storage state JSON is invalid or contains foreign origins",
       unsupported: false,
     };
   }

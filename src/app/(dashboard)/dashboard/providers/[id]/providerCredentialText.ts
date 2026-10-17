@@ -77,10 +77,10 @@ export function getWebSessionCredentialHint(
   // unclear for the provider (t3.chat needs a localStorage value AND the Cookie
   // header, so "Required cookie: convex-session-id + Cookie header…" reads
   // circular). The override key ships translated in every locale.
-  if (requirement.hintKey) {
+  if (requirement.hintKey || requirement.hintFallback) {
     return providerText(
       t,
-      requirement.hintKey,
+      requirement.hintKey ?? "",
       requirement.hintFallback ??
         "Open the provider's web session in DevTools, copy the required credential(s), and paste them in the fields below.",
       values
