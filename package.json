@@ -413,6 +413,7 @@
     "@atjsh/llmlingua-2": "3.0.0",
     "@huggingface/transformers": "^4.2.0",
     "better-sqlite3": "^13.0.3",
+    "cloakbrowser": "0.6.3",
     "js-tiktoken": "^1.0.20",
     "keytar": "^7.9.0",
     "onnxruntime-node": "1.30.0",
