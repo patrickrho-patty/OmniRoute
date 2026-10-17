@@ -14,10 +14,28 @@ import {
   isCommonChatGptWebRetiredProviderId,
 } from "../../src/shared/constants/chatgptWebRetirement.ts";
 
+// Routes observed in the first-party ChatGPT UI (upstream baseline, through 2026-08-31).
+const OBSERVED_MODEL_IDS = [
+  "gpt-5-6",
+  "gpt-5-6-thinking",
+  "gpt-5-6-pro",
+  "gpt-5.6-luna-free",
+  "gpt-5.6-luna-free-thinking",
+  "gpt-5-5-instant",
+  "gpt-5-5-thinking",
+  "gpt-5-5-pro",
+];
+
+// Fork addition (2026-10-17): GPT-6 routes mirroring the 5.6 shape. They are NOT
+// first-party observations — upstream ships none — so they must stay in a separate list until
+// someone confirms them against a live account; a wrong guess must never read as "observed".
+const FORK_ADDED_MODEL_IDS = ["gpt-6", "gpt-6-thinking", "gpt-6-pro"];
+
 const MODEL_IDS = [
   "gpt-5-6",
   "gpt-5-6-thinking",
   "gpt-5-6-pro",
+  ...FORK_ADDED_MODEL_IDS,
   "gpt-5.6-luna-free",
   "gpt-5.6-luna-free-thinking",
   "gpt-5-5-instant",
@@ -31,6 +49,14 @@ test("registers only the clean-room ChatGPT Web routes observed in the first-par
     chatgpt_webProvider.models.map((model) => model.id),
     MODEL_IDS
   );
+  // The observed baseline must stay a subset of what ships, so a fork guess can never
+  // replace an upstream-verified route.
+  for (const observed of OBSERVED_MODEL_IDS) {
+    assert.ok(
+      chatgpt_webProvider.models.some((model) => model.id === observed),
+      `observed route ${observed} must stay registered`
+    );
+  }
   assert.equal(REGISTRY["chatgpt-web"], chatgpt_webProvider);
   assert.equal(getRegistryEntry("chatgpt-web"), chatgpt_webProvider);
   assert.equal(WEB_COOKIE_PROVIDERS["chatgpt-web"].toolCalling, "none");

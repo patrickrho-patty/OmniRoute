@@ -276,6 +276,21 @@ function resolveSelection(model: string, body: JsonRecord): ChatGptWebUiSelectio
       effortIndex: effortIndex(reasoningEffort(body)),
     };
   }
+  // Fork addition (2026-10-17): GPT-6 routes. `modelLabel` doubles as the join key to the
+  // upstream model id in chatgptWebFirstParty.directModel.
+  if (normalized === "gpt-6-pro") {
+    return { kind: "picker", modelLabel: "GPT-6 Sol", effortIndex: 4 };
+  }
+  if (normalized === "gpt-6-instant" || normalized === "gpt-6") {
+    return { kind: "picker", modelLabel: "GPT-6 Sol", effortIndex: 0 };
+  }
+  if (["gpt-6-thinking", "gpt-6-sol"].includes(normalized)) {
+    return {
+      kind: "picker",
+      modelLabel: "GPT-6 Sol",
+      effortIndex: effortIndex(reasoningEffort(body)),
+    };
+  }
   if (normalized === "gpt-5-5-pro") {
     return { kind: "picker", modelLabel: "GPT-5.5", effortIndex: 4 };
   }

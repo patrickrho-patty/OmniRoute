@@ -22,10 +22,13 @@ export interface ChatGptWebFirstPartyRequest {
   selection: ChatGptWebUiSelection;
 }
 
+/** Picker labels the adapter can resolve; each one maps to an upstream model id below. */
+export type ChatGptWebPickerLabel = "GPT-5.6 Sol" | "GPT-5.5" | "GPT-6 Sol";
+
 export type ChatGptWebUiSelection =
   | {
       kind: "picker";
-      modelLabel: "GPT-5.6 Sol" | "GPT-5.5";
+      modelLabel: ChatGptWebPickerLabel;
       effortIndex: 0 | 1 | 2 | 3 | 4;
     }
   | {
@@ -615,9 +618,30 @@ async function ensureFirstPartyBridge(page: Page): Promise<void> {
   }
 }
 
-function directModel(selection: ChatGptWebUiSelection): { model: string; reason: boolean } {
+/**
+ * Picker label → the `model` string chatgpt.com's backend expects. Adding a web model is a
+ * row in the chatgpt-web registry, a branch in chatgptWebExecutorAdapter.resolveSelection,
+ * and this map — the label is the join key between them.
+ */
+const UPSTREAM_MODEL_BY_LABEL: Record<ChatGptWebPickerLabel, string> = {
+  "GPT-5.6 Sol": "gpt-5-6",
+  "GPT-5.5": "gpt-5-5",
+  // Fork addition (2026-10-17). Not yet verified against a live account: if chatgpt.com
+  // rejects this as an unknown model, the id it wants goes here (e.g. gpt-6-sol).
+  "GPT-6 Sol": "gpt-6",
+};
+
+/** Exported for unit tests: maps a resolved UI selection to the upstream request shape. */
+export function directModel(selection: ChatGptWebUiSelection): { model: string; reason: boolean } {
   if (selection.kind === "free") return { model: "auto", reason: selection.thinkEnabled };
-  const base = selection.modelLabel === "GPT-5.6 Sol" ? "gpt-5-6" : "gpt-5-5";
+  const base = UPSTREAM_MODEL_BY_LABEL[selection.modelLabel];
+  if (!base) {
+    // Previously an unmapped label silently fell through to gpt-5-5, which sent the wrong
+    // model upstream instead of failing where the operator can see it.
+    throw new Error(
+      `ChatGPT Web: no upstream model id mapped for picker label ${selection.modelLabel}`
+    );
+  }
   if (selection.effortIndex === 4) return { model: `${base}-pro`, reason: false };
   return { model: base, reason: selection.effortIndex > 0 };
 }
