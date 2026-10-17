@@ -166,6 +166,94 @@ function isPoolEnabled(): boolean {
   return flag !== "off" && flag !== "0" && flag !== "false";
 }
 
+export type StealthBrowserEngine = "cloakbrowser" | "obscura" | "chromium";
+
+export interface StealthBrowserLaunchOptions {
+  /** Headless by default. Headed launches stay on plain Chromium (see launchBrowserInstance). */
+  headless?: boolean;
+  /** Chrome/Chromium path for the plain-Playwright fallback. */
+  executablePath?: string;
+  args?: string[];
+  /** Try CloakBrowser before Obscura — required for anti-bot providers. */
+  preferCloakbrowser?: boolean;
+}
+
+type StealthEngineOverrides = {
+  cloakbrowser?: () => Promise<((opts: unknown) => Promise<Browser>) | null>;
+  obscura?: () => Promise<{ browser: Browser } | null>;
+  chromium?: () => Promise<Browser>;
+};
+
+let stealthEngineOverrides: StealthEngineOverrides | null = null;
+
+/** Test seam: stub the optional engines so the precedence is verifiable without browsers. */
+export function __setStealthEngineOverrides(overrides: StealthEngineOverrides | null): void {
+  stealthEngineOverrides = overrides;
+}
+
+/**
+ * Launch a browser for an executor that owns its own lifecycle instead of borrowing a pooled
+ * context (cloudflare-playground is the case that motivated this). Honours
+ * `preferCloakbrowser`, then degrades to Obscura and finally plain Playwright, so a missing or
+ * broken optional engine never fails the provider outright. The resolved engine is returned for
+ * logging and diagnostics.
+ */
+export async function launchStealthBrowser(
+  options: StealthBrowserLaunchOptions = {}
+): Promise<{ browser: Browser; engine: StealthBrowserEngine }> {
+  const headless = options.headless !== false;
+  const launchChromium = async (): Promise<{
+    browser: Browser;
+    engine: StealthBrowserEngine;
+  }> => {
+    if (stealthEngineOverrides?.chromium) {
+      return { browser: await stealthEngineOverrides.chromium(), engine: "chromium" };
+    }
+    const { chromium } = await import("playwright");
+    return {
+      browser: await chromium.launch({
+        ...(options.executablePath ? { executablePath: options.executablePath } : {}),
+        ...(options.args ? { args: options.args } : {}),
+        headless,
+      }),
+      engine: "chromium",
+    };
+  };
+
+  // A headed window must be a real Chromium; the shared engines below are headless.
+  if (!headless || !isPoolEnabled()) return launchChromium();
+
+  const resolveCloak = stealthEngineOverrides?.cloakbrowser ?? resolveCloakLaunch;
+  const resolveObscura = stealthEngineOverrides?.obscura ?? connectObscuraBrowser;
+
+  const tryCloakbrowser = async () => {
+    const cloakLaunch = await resolveCloak();
+    if (!cloakLaunch) return null;
+    const browser = await cloakLaunch({
+      headless: true,
+      args: options.args ?? ["--no-sandbox", "--disable-dev-shm-usage"],
+    });
+    return { browser, engine: "cloakbrowser" as const };
+  };
+  const tryObscura = async () => {
+    const obscura = await resolveObscura();
+    return obscura ? { browser: obscura.browser, engine: "obscura" as const } : null;
+  };
+
+  const engines = options.preferCloakbrowser
+    ? [tryCloakbrowser, tryObscura]
+    : [tryObscura, tryCloakbrowser];
+  for (const tryEngine of engines) {
+    try {
+      const launched = await tryEngine();
+      if (launched) return launched;
+    } catch {
+      // Same tolerance as the pool: a broken optional engine must not fail the call.
+    }
+  }
+  return launchChromium();
+}
+
 function resetIdleTimer(): void {
   if (state.idleTimer) clearTimeout(state.idleTimer);
   state.idleTimer = setTimeout(() => {
@@ -326,19 +414,36 @@ async function launchBrowserInstance(
   // Chromium; fall back to cloakbrowser, then plain Chromium. Obscura's
   // lifecycle (one shared `obscura serve` per process) lives in ./obscura.ts,
   // so executors like cloudflare-playground reuse the same server.
-  const obscura = await connectObscuraBrowser();
-  if (obscura) {
-    state.engine = "obscura";
-    return obscura.browser;
-  }
-
-  const cloakLaunch = await resolveCloakLaunch();
-  if (cloakLaunch) {
-    state.engine = "cloakbrowser";
-    return cloakLaunch({
+  // `preferCloakbrowser` flips that order: anti-bot providers need CloakBrowser's
+  // binary-level fingerprint patches, which a different CDP shape alone does not give.
+  const tryCloakbrowser = async (): Promise<Browser | null> => {
+    const cloakLaunch = await resolveCloakLaunch();
+    if (!cloakLaunch) return null;
+    const browser = await cloakLaunch({
       headless: true,
       args: ["--no-sandbox", "--disable-dev-shm-usage"],
     });
+    state.engine = "cloakbrowser";
+    return browser;
+  };
+  const tryObscura = async (): Promise<Browser | null> => {
+    const obscura = await connectObscuraBrowser();
+    if (!obscura) return null;
+    state.engine = "obscura";
+    return obscura.browser;
+  };
+
+  const engines = options.preferCloakbrowser
+    ? [tryCloakbrowser, tryObscura]
+    : [tryObscura, tryCloakbrowser];
+  for (const tryEngine of engines) {
+    try {
+      const browser = await tryEngine();
+      if (browser) return browser;
+    } catch {
+      // An optional engine can fail at runtime (binary missing, download refused,
+      // launch crash). Fall through to the next engine rather than failing the call.
+    }
   }
 
   // Fallback: plain Playwright. Works for Claude web (cookie-only auth) but

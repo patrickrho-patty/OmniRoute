@@ -350,12 +350,24 @@ COPY --from=builder /app/node_modules/playwright ./node_modules/playwright
 # browsers land under /home/node which persists across image layers and is
 # accessible to the non-root runtime user.
 ENV PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright
+
+# CloakBrowser (stealth Chromium; source-level fingerprint patches) is what clears
+# Cloudflare / DuckDuckGo anti-bot for the browser-backed providers — plain Chromium is
+# detected. Bake its binary into the image and disable the package's runtime auto-update
+# so a deploy never depends on a ~200MB first-request download. The package itself reaches
+# this stage through assembleStandalone's EXTRA_MODULE_ENTRIES (its import is computed, so
+# static tracing cannot see it); when it is absent the pool falls back to Playwright.
+ENV CLOAKBROWSER_CACHE_DIR=/home/node/.cloakbrowser
+ENV CLOAKBROWSER_AUTO_UPDATE=0
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-apt-cache,target=/var/cache/apt,sharing=locked \
   --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-apt-lists,target=/var/lib/apt/lists,sharing=locked \
   apt-get update \
   && node node_modules/playwright/cli.js install chromium --with-deps \
   && apt-get install -y --no-install-recommends xvfb \
+  && { node node_modules/cloakbrowser/dist/cli.js install \
+       || echo "WARN: cloakbrowser binary not baked; browser-backed providers fall back to Playwright Chromium"; } \
   && chown -R node:node /home/node/.cache \
+  && { [ ! -d /home/node/.cloakbrowser ] || chown -R node:node /home/node/.cloakbrowser; } \
   && rm -rf /var/lib/apt/lists/*
 
 USER node

@@ -36,7 +36,7 @@
 import { randomUUID } from "crypto";
 import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import { makeExecutorErrorResult as makeErrorResult } from "../utils/error.ts";
-import { connectObscuraBrowser } from "../services/obscura.ts";
+import { launchStealthBrowser } from "../services/browserPool.ts";
 import type { Browser, Page } from "playwright";
 
 export const PLAYGROUND_URL = "https://playground.ai.cloudflare.com/";
@@ -297,22 +297,19 @@ export class PlaywrightCfTransport implements CfTransport {
     config: CfTransportConfig
   ): Promise<{ ok: true } | { ok: false; status: number; message: string }> {
     try {
-      // #12274: prefer the shared Obscura browser (browser-grade TLS fingerprint
-      // on the WS upgrade, ~30MB) over a full Chromium per request; fall back to
-      // a direct Chromium launch when Obscura is unavailable.
-      const obscura = await connectObscuraBrowser();
-      const playwright = await importPlaywright();
-      if (obscura) {
-        this.browser = obscura.browser;
-      } else {
-        const executablePath =
-          this.chromeExecutablePath ?? process.env.CLOUDFLARE_PLAYGROUND_CHROME_PATH;
-        this.browser = await playwright.chromium.launch({
-          ...(executablePath ? { executablePath } : {}),
-          headless: true,
-          args: BROWSER_ARGS,
-        });
-      }
+      // #12274 landed Obscura first (a ~30MB CDP browser). Cloudflare's playground sits
+      // behind anti-bot, and what clears that is CloakBrowser's binary-level fingerprint
+      // patches — a lighter CDP browser keeps the same detectable fingerprint — so ask for
+      // cloak-first here and keep Obscura/Playwright Chromium as ordered fallbacks.
+      const executablePath =
+        this.chromeExecutablePath ?? process.env.CLOUDFLARE_PLAYGROUND_CHROME_PATH;
+      const { browser } = await launchStealthBrowser({
+        headless: true,
+        args: BROWSER_ARGS,
+        ...(executablePath ? { executablePath } : {}),
+        preferCloakbrowser: true,
+      });
+      this.browser = browser;
       const context = await this.browser.newContext({ userAgent: PLAYGROUND_UA });
       const page = await context.newPage();
       this.page = page;
@@ -388,16 +385,6 @@ export class PlaywrightCfTransport implements CfTransport {
     const browser = this.browser;
     this.browser = null;
     if (browser) await browser.close().catch(() => {});
-  }
-}
-
-async function importPlaywright(): Promise<typeof import("playwright")> {
-  try {
-    return await import("playwright");
-  } catch {
-    throw new Error(
-      "Playwright is not available. Install it (npm i playwright && npx playwright install chromium) or set CLOUDFLARE_PLAYGROUND_CHROME_PATH to a Chrome binary."
-    );
   }
 }
 

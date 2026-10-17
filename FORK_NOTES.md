@@ -1134,6 +1134,42 @@ correlationId, streamSignal)` shape, so `runtimeOptions.claudeLargeMessagesAppli
 
 ---
 
+## Browser engine for browser-backed providers (2026-10-17)
+
+Deployed images must ship a browser **revision that matches the installed Playwright**.
+`runner-cli` installs Playwright's libraries only, so every `chromium.launch` fails with
+`browserType.launch: Executable doesn't exist` — that is what returned 502 for
+`cloudflare-playground/…` on omni.patty.io. Two things keep it fixed in this fork:
+
+1. **Image flavor.** `.github/workflows/build-patty-image.yml` builds `target: runner-web`,
+   which runs `playwright install chromium --with-deps` with
+   `PLAYWRIGHT_BROWSERS_PATH=/home/node/.cache/ms-playwright`. Playwright resolves browsers by
+   its _own_ version (1.62.1 → `chromium-1234`), so "a browser exists on the host" is not
+   sufficient — a stale revision reproduces the identical error.
+2. **Stealth engine.** `cloakbrowser` (MIT) is an optionalDependency. `browserPool` already
+   resolved it through a computed dynamic import (`getCloakbrowserModuleId`) but the package was
+   never installed, so every browser path silently ran vanilla Chromium. Now:
+   - `assembleStandalone.mjs` copies `cloakbrowser` (+ its `tar` dependency) into the standalone
+     output — same reason as `wreq-js`: a computed import is invisible to static tracing.
+   - The `runner-web` stage bakes the binary
+     (`node node_modules/cloakbrowser/dist/cli.js install`) with
+     `CLOAKBROWSER_CACHE_DIR=/home/node/.cloakbrowser` and `CLOAKBROWSER_AUTO_UPDATE=0`, so a
+     deploy is deterministic instead of downloading ~350 MB on the first request.
+   - `preferCloakbrowser` (declared in both pool interfaces, previously read nowhere) now really
+     flips the engine order for anti-bot callers; `cloudflare-playground` sets it, because a
+     lighter CDP browser keeps the same detectable fingerprint.
+   - Everywhere else the upstream order stays `Obscura → cloakbrowser → Playwright Chromium`,
+     and any missing/broken engine degrades instead of failing the provider.
+
+Measured 2026-10-17 (macOS, free binary v146): `duckduckgo.com/html` answers **403 to plain
+Playwright Chromium and 200 to CloakBrowser**; the Cloudflare playground answers 200 to both
+from a residential IP. Ops caveat: the free binary allows **one concurrent session** — a busy
+server needs a key for the paid channel, or it falls back to Chromium.
+
+Validation gotcha: never point two app instances at one `DATA_DIR`. A container and a dev
+server writing the same `storage.sqlite` corrupted the WAL copy (`database disk image is
+malformed`); one writer per data directory.
+
 ## Rebase procedure for future upstream releases
 
 > **2026-09-25:** the authoritative, current playbook now lives in

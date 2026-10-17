@@ -28,6 +28,7 @@
  * scripts/build/bootstrap-env.mjs -> outDir/build/bootstrap-  Y               -           -    SHARED (extra module)
  * scripts/dev/healthcheck.mjs -> outDir/healthcheck.mjs       Y               -           -    SHARED (extra module)
  * playwright-core -> outDir/node_modules/playwright-core      Y               -           -    SHARED (extra module)
+ * cloakbrowser -> outDir/node_modules/cloakbrowser            Y               -           -    SHARED (extra module)
  * sqlite-vec -> outDir/node_modules/sqlite-vec                Y               -           -    SHARED (extra module)
  * sqlite-vec-linux-x64/arm64/darwin-x64/arm64/win-x64 (same) Y               -           -    SHARED (extra module)
  * abs-path sanitization in server.js + required-server-files  -               Y           Y    SHARED (opt-in: sanitizePaths)
@@ -141,6 +142,22 @@ export const EXTRA_MODULE_ENTRIES = [
     src: ["node_modules", ...binding.packageName.split("/")],
     dest: ["node_modules", ...binding.packageName.split("/")],
   })),
+  {
+    // open-sse/services/browserPool.ts resolves cloakbrowser through a computed
+    // dynamic import (getCloakbrowserModuleId) so Turbopack leaves it unresolved.
+    // That keeps the engine optional but also hides it from static tracing, so the
+    // stealth Chromium package must be copied like wreq-js — and may legitimately
+    // be absent, which syncExtraModulesToDir tolerates.
+    label: "cloakbrowser stealth engine",
+    src: ["node_modules", "cloakbrowser"],
+    dest: ["node_modules", "cloakbrowser"],
+  },
+  {
+    // cloakbrowser unpacks its downloaded binary with `tar` at install time.
+    label: "cloakbrowser tar extractor",
+    src: ["node_modules", "tar"],
+    dest: ["node_modules", "tar"],
+  },
   {
     label: "third-party notices",
     src: ["THIRD_PARTY_NOTICES.md"],
