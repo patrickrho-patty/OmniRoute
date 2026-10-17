@@ -34,6 +34,17 @@ export const chatgpt_webProvider: RegistryEntry = {
       ...ADJUSTABLE_REASONING,
     },
     { id: "gpt-5-6-pro", name: "GPT-5.6 Sol — Pro", ...FIXED_TEXT, supportsReasoning: true },
+    // Fork addition (2026-10-17): GPT-6 routes, opt-in. They mirror the 5.6 rows above and
+    // only work if the account's chatgpt.com picker actually offers GPT-6 — upstream
+    // (checked 2026-10-17, main) ships no GPT-6 route for this provider.
+    { id: "gpt-6", name: "GPT-6 Sol — Instant", ...FIXED_TEXT },
+    {
+      id: "gpt-6-thinking",
+      name: "GPT-6 Sol — Thinking",
+      aliases: ["gpt-6-sol"],
+      ...ADJUSTABLE_REASONING,
+    },
+    { id: "gpt-6-pro", name: "GPT-6 Sol — Pro", ...FIXED_TEXT, supportsReasoning: true },
     { id: "gpt-5.6-luna-free", name: "GPT-5.6 Luna — Free", ...FIXED_TEXT },
     {
       id: "gpt-5.6-luna-free-thinking",
