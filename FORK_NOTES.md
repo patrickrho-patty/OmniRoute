@@ -19,7 +19,7 @@ Keep this file updated whenever we add a new fork-only source patch or a product
 | Fork remote                         | `git@github.com:patrickrho-patty/OmniRoute.git` (owner changed 2026-10 — was `patty-internal`; GitHub redirects the old URL, but update remotes/clones) |
 | Fork branch carrying source patches | `patty` (successor of the retired `custom-features` branch)                                                                                             |
 | Upstream baseline                   | `release/v3.8.51` (`6b8c5df66f`) — merged 2026-09-24 (merge commit on `patty`)                                                                          |
-| Current deploy HEAD                 | `b3dbbbea54` (deployed to `omni.patty.io` 2026-09-27)                                                                                                   |
+| Current deploy HEAD                 | `97584d1f55` (deployed to `omni.patty.io` 2026-10-19)                                                                                                   |
 | Source divergence                   | merge with upstream v3.8.51 (+1,668 upstream commits since 2026-08-25 base)                                                                             |
 | Pushed to GitHub                    | Yes — `patty` pushed to origin                                                                                                                          |
 | VPS                                 | `109.123.231.227`, OmniRoute container on port 20128                                                                                                    |
