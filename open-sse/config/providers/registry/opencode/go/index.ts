@@ -13,6 +13,8 @@ export const opencode_goProvider: RegistryEntry = {
   authHeader: "Authorization",
   authPrefix: "Bearer",
   defaultContextLength: 200000,
+  // Upstream 400s "name must be at most 64 characters" on chat-completions tools.
+  toolNameMaxLength: 64,
   // glm-5.3-flash and other always-thinking models need a generous output
   // budget or reasoning consumes every token before content is emitted.
   requestDefaults: { maxTokens: 16_384 },
@@ -49,6 +51,16 @@ export const opencode_goProvider: RegistryEntry = {
     // #8353: Kimi K3 base + max-effort alias from the OpenCode Go registry.
     { id: "kimi-k3", name: "Kimi K3", supportsReasoning: true, supportedThinkingEfforts: ["max"] },
     { id: "kimi-k3-max", name: "Kimi K3 (max effort)", supportsReasoning: true },
+    // Kimi K3.1 Pro — chat-completions lane only, always-on Kimi thinking (OpenCode Go
+    // docs 2026-10-23). No effort aliases: Go lists none for this id.
+    {
+      id: "kimi-k3.1-pro",
+      name: "Kimi K3.1 Pro",
+      contextLength: 1048576,
+      maxOutputTokens: 131072,
+      supportsReasoning: true,
+      supportsVision: true,
+    },
     // MiMo-V2.5 — base model + effort-tier aliases (#6922).
     { id: "mimo-v2.5-pro", name: "MiMo-V2.5-Pro", supportsReasoning: true },
     {
@@ -76,7 +88,13 @@ export const opencode_goProvider: RegistryEntry = {
       supportsVision: true,
     },
     { id: "minimax-m2.7", name: "MiniMax M2.7", targetFormat: "claude" },
-    { id: "minimax-m2.5", name: "MiniMax M2.5", targetFormat: "claude" },
+    {
+      id: "minimax-m2.5",
+      name: "MiniMax M2.5",
+      targetFormat: "claude",
+      contextLength: 204800,
+      maxOutputTokens: 131072,
+    },
     // Issue #2292: Qwen models on opencode-go reject oa-compat format
     // ("Model qwen3.x-* is not supported for format oa-compat") — same
     // upstream behavior already declared for opencode-zen. Route them
@@ -265,7 +283,9 @@ export const opencode_goProvider: RegistryEntry = {
     },
     // #12674: Muse Spark 1.3 Contributor — base + effort-tier aliases from the
     // OpenCode Go registry (`opencode models opencode-go --refresh --verbose`;
-    // exact suffix set: minimal/low/medium/high/xhigh, no max — same as 1.2).
+    // exact suffix set: minimal/low/medium/high/xhigh — same as 1.2). #12687 adds
+    // a `-max` variant: the executor sends `max` verbatim and retries once with
+    // `xhigh` only if upstream rejects it (dispatchWithMuseSparkMaxFallback).
     // Upstream serves Muse Spark only on the Responses API; without
     // targetFormat:"openai-responses" these fall through to /chat/completions
     // and the upstream returns 500 (same class as #12196).
@@ -336,6 +356,17 @@ export const opencode_goProvider: RegistryEntry = {
       supportsVideo: true,
       targetFormat: "openai-responses",
     },
+    {
+      id: "muse-spark-1.3-contributor-max",
+      name: "Muse Spark 1.3 Contributor (max effort)",
+      contextLength: 1048576,
+      maxOutputTokens: 131072,
+      supportsReasoning: true,
+      supportsVision: true,
+      supportsAudio: true,
+      supportsVideo: true,
+      targetFormat: "openai-responses",
+    },
     // #8353: Grok 4.5 + effort tiers from the OpenCode Go registry.
     // The Go endpoint table (opencode.ai/docs/go) serves the Grok family on
     // /responses only; without targetFormat:"openai-responses" these rows fall
@@ -394,6 +425,17 @@ export const opencode_goProvider: RegistryEntry = {
       supportedThinkingEfforts: ["none", "low", "high", "max"],
       targetFormat: "openai-responses",
     },
+    // Experimental vision variant of DeepSeek V4 Flash. Declared explicitly so the
+    // combo vision filter and the Vision Bridge do not rely on the `-vision` id
+    // heuristic. Remove the row if the upstream retires the `-exp` id.
+    {
+      id: "deepseek-v4-flash-vision-exp",
+      name: "DeepSeek V4 Flash Vision (exp)",
+      supportsReasoning: true,
+      supportsVision: true,
+      supportedThinkingEfforts: ["none", "low", "high", "max"],
+      targetFormat: "openai-responses",
+    },
     // #12196: the Go upstream serves this model only on /responses —
     // /chat/completions 500s for it. github already declares the same model
     // id with targetFormat:"openai-responses" (see github/index.ts).
@@ -433,6 +475,14 @@ export const opencode_goProvider: RegistryEntry = {
     // Keep these provider-scoped so synced data and operator overrides retain precedence.
     {
       id: "deepseek-v4.1-flash",
+      name: "DeepSeek V4.1 Flash",
+      contextLength: 1000000,
+      maxOutputTokens: 384000,
+    },
+    // Go exposes deepseek-flash as an alias of the same 1M DeepSeek V4.1 Flash.
+    // This ID is imported from live catalogs and needs its own metadata row.
+    {
+      id: "deepseek-flash",
       name: "DeepSeek V4.1 Flash",
       contextLength: 1000000,
       maxOutputTokens: 384000,

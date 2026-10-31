@@ -17,6 +17,7 @@
  * after the #11205 security review), and anything else we can't service gets a
  * JSON-RPC error so the id is always settled and the turn never hangs.
  */
+import { newestChromeProfile } from "../../utils/browserProfiles.ts";
 
 // wreq-js WebSocket surface (mirrors the private type in codex.ts:71-77).
 export type CodexWreqWebSocket = {
@@ -126,7 +127,7 @@ export class CodexAppServerClient {
     // turn never connects. The local app-server ignores the impersonation
     // fingerprint; only the Authorization bearer matters for its ws-auth.
     this.ws = await this.websocketFn(url, {
-      browser: "chrome_142",
+      browser: newestChromeProfile(),
       os: "windows",
       headers: { Authorization: `Bearer ${token}` },
     });

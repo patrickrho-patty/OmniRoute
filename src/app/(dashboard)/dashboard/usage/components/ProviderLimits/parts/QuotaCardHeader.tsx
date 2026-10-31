@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import Button from "@/shared/components/Button";
+import Icon from "@/shared/components/Icon";
 import ConnectionTestButton from "@/shared/components/ConnectionTestButton";
 import Badge from "@/shared/components/Badge";
 import ProviderIcon from "@/shared/components/ProviderIcon";
@@ -10,10 +12,11 @@ import { formatCountdown, type CardStatus, type SoonestResetInfo } from "../util
 import { translateUsageOrFallback } from "../i18nFallback";
 
 const STATUS_DOT_CLASS: Record<CardStatus, string> = {
-  critical: "bg-rose-500 shadow-[0_0_0_2px_rgba(244,63,94,0.16)]",
-  alert: "bg-amber-400 shadow-[0_0_0_2px_rgba(251,191,36,0.2)]",
-  ok: "bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.18)]",
-  empty: "bg-slate-300 shadow-[0_0_0_2px_rgba(148,163,184,0.18)]",
+  critical: "bg-error shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-error)_16%,transparent)]",
+  alert: "bg-warning shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-warning)_20%,transparent)]",
+  ok: "bg-success shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-success)_18%,transparent)]",
+  empty:
+    "bg-text-muted/30 shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-text-muted)_18%,transparent)]",
 };
 
 interface Props {
@@ -122,11 +125,8 @@ export default function QuotaCardHeader({
               </Badge>
             </span>
             {hasStaleData && (
-              <span
-                className="material-symbols-outlined shrink-0 text-[12px] leading-4 text-amber-500"
-                title={t("staleQuotaTooltip")}
-              >
-                schedule
+              <span className="shrink-0 leading-4 text-warning" title={t("staleQuotaTooltip")}>
+                <Icon name="schedule" size={12} ariaLabel={t("staleQuotaTooltip")} />
               </span>
             )}
           </div>
@@ -145,7 +145,7 @@ export default function QuotaCardHeader({
               // fix for the vertical-text report lives in the header's width floor above: the
               // account block keeps ≥11rem, which renders this label on one line instead of
               // wrapping it one character per line inside a squeezed 42px column.
-              className={`text-[10px] whitespace-normal [overflow-wrap:anywhere] leading-[1.4] ${tokenCountdown ? "text-sky-500" : "text-rose-500"}`}
+              className={`text-[10px] whitespace-normal [overflow-wrap:anywhere] leading-[1.4] ${tokenCountdown ? "text-info" : "text-error"}`}
               title={tokenExpiryTitle}
             >
               {tokenExpiryLabel}
@@ -159,7 +159,7 @@ export default function QuotaCardHeader({
             className={`inline-flex h-5 shrink-0 items-center gap-0.5 rounded-full border border-border px-1.5 text-[10px] font-semibold leading-none tabular-nums ${RESET_URGENCY_CLASS[soonestReset.urgency] ?? "text-text-muted"}`}
             title={`${t("resetsIn")} ${soonestReset.countdown} — ${new Date(soonestReset.iso).toLocaleString()}`}
           >
-            <span className="material-symbols-outlined text-[11px] leading-none">schedule</span>
+            <Icon name="schedule" size={11} className="leading-none" />
             {soonestReset.countdown}
           </span>
         )}
@@ -171,8 +171,9 @@ export default function QuotaCardHeader({
           compact
           onSent={onTestSent}
         />
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           disabled={togglingActive}
           onClick={(e) => {
             e.stopPropagation();
@@ -181,14 +182,10 @@ export default function QuotaCardHeader({
           }}
           title={toggleActiveLabel}
           aria-label={toggleActiveLabel}
-          className={`p-1 rounded-md cursor-pointer transition-colors hover:bg-black/[0.04] dark:hover:bg-white/[0.04] disabled:opacity-40 disabled:cursor-not-allowed ${
-            isActive ? "text-text-muted" : "text-rose-500"
-          }`}
+          className={`size-6 min-h-6 ${isActive ? "text-text-muted" : "text-error"}`}
         >
-          <span className="material-symbols-outlined text-[14px]">
-            {isActive ? "toggle_on" : "toggle_off"}
-          </span>
-        </button>
+          <Icon name={isActive ? "toggle_on" : "toggle_off"} size={14} />
+        </Button>
       </div>
     </div>
   );

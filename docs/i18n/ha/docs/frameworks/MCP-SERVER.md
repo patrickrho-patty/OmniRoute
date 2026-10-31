@@ -72,6 +72,16 @@ curl -i \
 
 Key marar `manage` (ko rashin Bearer) yana mayar da `403 LOCAL_ONLY`. An tsara sibling prefix `/api/cli-tools/runtime/*` da gangan don kada a iya kauce wa wannan iyaka — duba [Matakan Route Guard — keɓantacciyar damar manage-scope](../security/ROUTE_GUARD_TIERS.md#manage-scope-carve-out).
 
+### Tabbatar da Origin
+
+Bayan tantancewa, kowace buƙata zuwa `/api/mcp/*` — transport da hanyoyin gudanarwa kamar `status`, `tools`, `audit`, `restart` — ana tabbatar da kan `Origin` ɗinta, ko wane ne mai kira (maɓallin API, alamar CLI, zaman dashboard, ko loopback mara suna idan an kashe shiga). Wannan ita ce kariyar DNS rebinding da ƙa'idar MCP Streamable HTTP ta wajabta.
+
+- **Babu kan `Origin`** → an yarda. OmniRoute CLI, SDK da abokan cinikin IDE ba sa aika shi.
+- **`Origin` da aka yarda** → `localhost` / `127.0.0.1` / `[::1]` a kowane port, ko origin na jama'a na OmniRoute kansa: `OMNIROUTE_PUBLIC_BASE_URL` / `NEXT_PUBLIC_BASE_URL` / `NEXT_PUBLIC_APP_URL`, origin da amintaccen reverse proxy ya tura (`OMNIROUTE_TRUST_PROXY`, kawai idan ba a saita base URL ba), ko mai masaukin IP na loopback/LAN da ake shiga kai tsaye. Kan `Host` shi kaɗai ba zai taɓa sa wani origin ya zama amintacce ba.
+- **Kowane `Origin` dabam, har da `null`** → `403` tare da jikin kuskuren JSON-RPC: `id: null`, `error.code: -32000`, `error.data.code: "INVALID_ORIGIN"`. Zaman dashboard da ya gabatar da ingantacciyar alamar CSRF har yanzu ana karɓa, kamar sauran rubuce-rubucen dashboard.
+
+Abokin ciniki na MCP na mai bincike da ake bayarwa a bayan reverse proxy yana buƙatar `OMNIROUTE_PUBLIC_BASE_URL`; babu jerin izini ga wasu origins. Ba a duba Origin a buƙatar farko ta CORS (`OPTIONS`) ba; ana duba buƙatar da ke biye.
+
 ## Saitin IDE
 
 Duba [Saitin Abokin Cinikin MCP](../guides/SETUP_GUIDE.md#mcp-client-configuration) don saita Claude Desktop,
@@ -289,188 +299,123 @@ Ana toshe dukkan jigilar SSE da Streamable HTTP har sai an kunna sabar MCP a cik
 
 ---
 
-## Tabbatar da Shaida & Iyakokin Izini
+# Tabbatarwa & Scopes
 
-Kiran kayan aikin MCP suna karanta kirtanin iyakokin izini daga mai kira. Wannan binciken yana ɗaya daga cikin
-wuraren suna guda uku masu zaman kansu. Samun izini daga mai bincike ɗaya ba yana nufin an samu daga sauran ba.
-Dokokin suna cikin [Wuraren suna uku na iyakokin izini](#three-scope-namespaces).
-Kasidar kayan aikin tana cikin [Iyakokin izinin kayan aikin MCP](#mcp-tool-scopes).
+Kayan MCP karanta muryoyin scope daga mai kira. Wannan bincika daya ne na namespaces uku masu daidai kuma guda. Pass daga wani checker ba pass daga wasu ba ne.
+Ka'idanni sune [Namespaces uku na scopes](#three-scope-namespaces).
+Katalog na kayan shi ne [Scopes na kayan MCP](#mcp-tool-scopes).
 
-### Wuraren suna uku na iyakokin izini
+### Namespaces uku na scopes
 
-`manage` a kan maɓallin API, `read:compression` a kan kayan aikin MCP, da `read` a kan
-alamar samun dama ta `oma_live_…` izini ne guda uku mabambanta. Masu kira da suka aika alamar samun dama ta `read`
-zuwa hanyar gudanarwa mai yin canji suna samun HTTP 403
-`Access token scope 'read' is insufficient; 'write' required.`
-Wannan matsayi shi ne `scopeSatisfies`. Ba ya duba teburin MCP, haka kuma mai daidaita MCP
-ba ya duba shi.
+`manage` a kan maɓin API, `read:compression` a kan kayan MCP, da `read` a kan access token `oma_live_…` sune haƙoƙi guda dabinci. Masu kira da ke aika access token `read` zuwa mafishi na management wanda ke canza suna samun HTTP 403 `Access token scope 'read' is insufficient; 'write' required.` Wannan rank shi ne `scopeSatisfies`. Ba ta taba lambanin teburin MCP, kuma mai matchin MCP ma ba ya taba nuni da ita.
 
-| Wurin suna                      | Shaidar shiga                                                                 | Mai bincike                     | Abin da samun izini yake ba da dama                                         |
-| :------------------------------ | :---------------------------------------------------------------------------- | :------------------------------ | :-------------------------------------------------------------------------- |
-| Gudanarwar maɓallin API         | `api_keys.scopes`                                                             | `hasManageScope`                | REST na gudanarwa don wannan maɓallin Bearer                                |
-| Ƙarin maɓallin API              | wannan jerin, kirtani guda ɗaya da ya yi daidai                               | mataimakin da aka ambata a ƙasa | Wannan damar guda ɗaya kawai                                                |
-| Iyakokin izinin kayan aikin MCP | wannan jerin, in ba haka ba MCP `_meta`, in ba haka ba `OMNIROUTE_MCP_SCOPES` | `scopeMatches`                  | Wannan kayan aikin, da zarar an kunna tilastawa                             |
-| Alamar samun dama               | `oma_live_…`                                                                  | `scopeSatisfies`                | Hanyar gudanarwa wadda hanyar aikinta da hanyarta ke buƙatar wannan matsayi |
+| Namespace             | Credential                                                                                     | Checker                           | A pass allows                                                             |
+| :-------------------- | :--------------------------------------------------------------------------------------------- | :-------------------------------- | :------------------------------------------------------------------------ |
+| Management na API-key | `api_keys.scopes`                                                                              | `hasManageScope`                  | REST na management don wannan maɓin Bearer                                |
+| Ƙararar na API-key    | wannan array din, wataƙoƙari gaskiya ne                                                        | mai taimakon da aka ambata a kasa | Wannan iya guda kawai                                                     |
+| Scopes na kayan MCP   | wannan array din, in ba harki MCP `_meta` (HTTP/SSE kawai), in ba harki `OMNIROUTE_MCP_SCOPES` | `scopeMatches`                    | Wannan kayan, idan an kunna enforcement                                   |
+| Access token          | `oma_live_…`                                                                                   | `scopeSatisfies`                  | Mafishi na management wanda method da path ɗinsa suna buƙatar wannan rank |
 
-An bayyana samar da kowace shaidar shiga a cikin
-[Tabbatar da Shaidar Gudanarwa](../guides/MANAGEMENT-AUTH.md).
+Ƙirƙirar kowane credential an tafawa a cikin
+[Tabbatarwa na Management](../guides/MANAGEMENT-AUTH.md).
 
-#### Iyakokin izinin maɓallin API
+#### Scopes na API-key
 
-Jerin `api_keys.scopes` guda ɗaya yana aiwatar da ayyuka biyu. Suna amfani da ayyuka mabambanta.
+Wataƙoƙari `api_keys.scopes` tana ba da abinci ga ayyuka biyu. Suna amfani da ayyuka dabinci.
 
-**REST na gudanarwa.** `manage` da `admin` su ne mambobin
-`MANAGEMENT_API_KEY_SCOPES` (`src/shared/constants/managementScopes.ts`).
-`hasManageScope` ne ke ba da izinin hanyoyin gudanarwa ga wannan maɓalli. `admin` yana
-da ikon gudanarwa a waɗannan hanyoyin. Kalmar `admin` a nan ba matsayi ba ce na
-alamar samun dama, kuma ba ta faɗaɗa zuwa iyakokin izinin kayan aikin MCP.
+**REST na management.** `manage` da `admin` sune memba na `MANAGEMENT_API_KEY_SCOPES` (`src/shared/constants/managementScopes.ts`). `hasManageScope` shi ne wanda ke ba da izin ga mafishi na management don wannan maɓin. `admin` yana da ikon management a kan wadannan mafishi. Kalmar `admin` ba a nan ba ne rank na access-token, kuma ba ya cika zuwa scopes na kayan MCP.
 
-**Kirtanin ƙari.** Kowannensu gwajin kasancewa daidai ne, kuma kowannensu yana nan
-a wajen `MANAGEMENT_API_KEY_SCOPES`.
+**Muryoyi mai ƙarawa.** Kowane shi ne gwaji na memba na gaskiya, kuma kowane yana zaune a waje da `MANAGEMENT_API_KEY_SCOPES`.
 
-| Iyakacin izini                 | Abin da samun izini yake ba da dama                                                                                                                                                           |
-| :----------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mcp:connect`                  | Keɓewar LOCAL_ONLY ta `/api/mcp/` wadda ba loopback ba kawai (`hasMcpConnectOrManageScope`). Maɓalli mai `manage` ko `admin` har yanzu yana wuce wannan keɓewar.                              |
-| `self:usage`                   | `GET /api/v1/me/status` don wannan maɓalli (`src/app/api/v1/me/status/route.ts`). `POST /api/keys` yana ƙara wannan iyakacin izini lokacin ƙirƙirawa (`normalizeSelfServiceScopesForCreate`). |
-| `self:account-quota`           | Ƙayyadaddun asusun upstream a cikin wannan bayanan matsayin (`src/lib/usage/apiKeySelfService.ts`). Har yanzu hanyar matsayin tana buƙatar `self:usage`.                                      |
-| `policy:bypass-provider-quota` | Kiran inference na wannan maɓalli suna tsallake manufar ƙayyadadden mai samarwa (`hasProviderQuotaBypassScope` a cikin `src/sse/handlers/chat.ts`).                                           |
+| Scope                          | A pass allows                                                                                                                                                                 |
+| :----------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp:connect`                  | Keɓewar `/api/mcp/` LOCAL_ONLY da ba ta loopback kawai (`hasMcpConnectOrManageScope`). Maɓin da ke da `manage` ko `admin` yana ci gaba da wannan keɓewa.                      |
+| `self:usage`                   | `GET /api/v1/me/status` don wannan maɓin (`src/app/api/v1/me/status/route.ts`). `POST /api/keys` yana ƙara wannan scope a kan create (`normalizeSelfServiceScopesForCreate`). |
+| `self:account-quota`           | Kuɗin asusun upstream a cikin wannan status payload (`src/lib/usage/apiKeySelfService.ts`). Mafishi na status yana ci gaba da buƙatar `self:usage`.                           |
+| `policy:bypass-provider-quota` | Kiran inference na wannan maɓin ya tsaya wa policy na provider-quota (`hasProviderQuotaBypassScope` a cikin `src/sse/handlers/chat.ts`).                                      |
 
-#### Daidaitawa
+#### Haduwa
 
-Kasidar ita ce teburin da ke ƙarƙashin [Iyakokin izinin kayan aikin MCP](#mcp-tool-scopes). Kada a
-ɗauki `MCP_SCOPE_LIST` da ke cikin `src/shared/constants/mcpScopes.ts` a matsayin wannan kasidar:
-shi ne asalin ƙaramin rukuni mai nau'i. Kayan aikin da aka ƙara daga baya suna ayyana ƙarin iyakokin izini a gefensa
-(`read:notion`, `read:skills`, `read:local-corpus`, da sauran abubuwan teburin).
+Katalog shi ne lambobi a karkashin [Scopes na kayan MCP](#mcp-tool-scopes). Kada ka ɗauki `MCP_SCOPE_LIST` a cikin `src/shared/constants/mcpScopes.ts` a matsayin wannan katalog: shi ne iya na asali wanda aka yi nauyin. Kayan da suka bayan sun ayyana karƙashin scopes da suka fiye da shi (`read:notion`, `read:skills`, `read:local-corpus`, da sauran lambobi).
 
-`evaluateToolScopes` da ke cikin `open-sse/mcp-server/scopeEnforcement.ts` yana ba da damar kira
-idan kowane iyakacin izini da ake buƙata ya dace da wani iyakacin izini da aka bayar:
+`evaluateToolScopes` a cikin `open-sse/mcp-server/scopeEnforcement.ts` yana ba da dama ga kiran idan kowane scope da ake buƙata ya hadu da wani scope da an bayar:
 
-- `*` yana dacewa da kowane iyakacin izini da ake buƙata.
-- Iyakacin izini da aka bayar wanda ya ƙare da `*` yana dacewa da iyakacin izini da ake buƙata wanda ya fara da
-  prefix ɗin da ke gaban tauraron. `read:*` yana dacewa da `read:compression`.
-- Duk wani iyakacin izini da aka bayar yana dacewa ne kawai da kirtanin da ake buƙata mai kama da shi daidai.
+- `*` yana haduwa da kowane scope da ake buƙata.
+- Wani scope da an bayar wanda yake ƙare da `*` yana haduwa da wani scope da ake buƙata wanda yake farawa da mafiɗin kafin taurin. `read:*` yana haduwa da `read:compression`.
+- Kowane sauran scope da an bayar yana haduwa da kawai muryoyin da ake buƙata daidai.
 
-Maɓalli wanda iyakokin izininsa suke `["manage"]` ba ya wuce `scopeMatches` don `read:compression`.
-Haka kiran yake gaza don `admin`, `mcp:connect`, `read`, da `write` idan waɗannan
-su ne kawai kirtanin da aka bayar. Babu wani tsarin matsayi tsakanin iyakokin izinin kayan aikin MCP
-sai dai `*` da ke ƙarshe.
+Maɓin wanda scopes ɗinsa sune `["manage"]` yana gaza a `scopeMatches` don `read:compression`. Kiran kuma yana gaza don `admin`, `mcp:connect`, `read`, da `write` idan kowane daga cikinsu shi ne kawai muryoyin da an bayar. Babu tsarin gaba a tsakanin scopes na kayan MCP sai wanda ke tare da `*` a karshe.
 
-Tilastawa a kashe take sai idan `OMNIROUTE_MCP_ENFORCE_SCOPES=true` (tsoho
-`false`). Yayin da take kashe, `evaluateToolScopes` yana ba da damar kiran kuma yana tsallake
-kasidar. Yayin da take kunne, HTTP yana amfani da `api_keys.scopes` na maɓallin Bearer a matsayin
-`authInfo` (duba [Ɗaure iyakokin izinin HTTP bisa kowane maɓalli](#per-key-http-scope-binding-7895)).
-Idan ba a samo iyakokin izinin maɓalli ba, saitin da aka bayar yana koma wa MCP `_meta`, sannan
-`OMNIROUTE_MCP_SCOPES`.
+Enforcement a buya sai idan `OMNIROUTE_MCP_ENFORCE_SCOPES=true` (tsofanin `false`). Yayin da ba a kunna shi ba, `evaluateToolScopes` yana ba da dama ga kiran kuma yana tsayawa da yin amfani da katalog. Yayin da aka kunna shi, HTTP yana amfani da `api_keys.scopes` na maɓin Bearer a matsayin `authInfo` (duba [Bindin scope na HTTP kowane maɓin](#per-key-http-scope-binding-7895)). Idan babu scope na maɓin da ya warware, set na muryoyin da an bayar yana faduwa zuwa MCP `_meta` (wanda ake gaishe kawai ga masu kira na HTTP/SSE, a cikin maherin ɗaukar harka na HTTP; `_meta` na mai kira na stdio ana watsi da shi saboda mai kansa yake sarƙewa kuma bai ɗauke wani sani na kowane mai kira ba), sannan `OMNIROUTE_MCP_SCOPES`.
 
-#### Iyakokin izinin alamar samun dama
+#### Scopes na access-token
 
-Alamomin `oma_live_…` (`src/lib/accessTokens/scopes.ts`) suna ɗauke da `read`, `write`,
-ko `admin`. `scopeSatisfies` matsayi ne: `admin` yana rufe `write` da `read`, kuma
-`write` yana rufe `read`. Iyakokin izini da ba a sani ba ba sa rufe komai.
+Tokens na `oma_live_…` (`src/lib/accessTokens/scopes.ts`) suna ɗauke `read`, `write`, ko `admin`. `scopeSatisfies` shi ne rank: `admin` yana rufe `write` da `read`, kuma `write` yana rufe `read`. Scopes da ba a sani ba sun rufe komai.
 
-`evaluateAccessTokenAuth` (`src/server/authz/accessTokenAuth.ts`) yana kwatanta wannan
-matsayi da `inferRequiredScope` (`src/server/authz/accessScopes.ts`):
+`evaluateAccessTokenAuth` (`src/server/authz/accessTokenAuth.ts`) yana kwatanta wannan rank da `inferRequiredScope` (`src/server/authz/accessScopes.ts`):
 
 - `GET`, `HEAD`, da `OPTIONS` suna buƙatar `read`.
-- Kowace hanya ta dabam tana buƙatar `write`.
-- Hanyoyin da ke cikin `ADMIN_SCOPE_PREFIXES` suna buƙatar `admin` ga kowace hanyar aiki. `/api/mcp`
-  yana cikin wannan jeri, don haka alamar samun dama ta `write` har yanzu ba za ta iya kiran farfajiyar HTTP ta MCP ba.
-- Hanyoyin da ke cikin `ADMIN_MUTATION_PREFIXES` suna buƙatar `admin` ne kawai don canje-canje.
+- Kowane sauri dabawa yana buƙatar `write`.
+- Daban-daban da ke cikin `ADMIN_SCOPE_PREFIXES` suna buƙatar `admin` ga kowane harki. `/api/mcp` yana cikin wannan jerin, don haka access token na `write` kuma ba sai ya kira sabis na HTTP na MCP ba.
+- Daban-daban da ke cikin `ADMIN_MUTATION_PREFIXES` suna buƙatar `admin` kawai don ayyuka da ke canza bayanai.
+- Daban-daban da ke cikin `ADMIN_MUTATION_EXACT_PATHS` (`/api/settings`, `/api/settings/require-login`) suna buƙatar `admin` kawai don ayyuka da ke canza bayanai, kuma kawai kan wannan dababa na gaske — wasu sub-routes na `/api/settings/*` suna ci gaba da `write`.
 
-`PATCH /api/keys/{id}` aiki ne na sauyi kuma baya cikin waɗancan jerin admin, don haka token mai
-`read` yana karɓar 403
-`Faɗin izinin access token na 'read' bai isa ba; ana buƙatar 'write'.`
-Access token mai `write` ko `admin` yana biyan buƙatar wannan route. JWT na dashboard,
-token na machine-id na loopback CLI, da API key mai `manage` ko `admin` suna bi ta
-wasu rassan kuma wannan matsayi ba ya taƙaita su.
+`PATCH /api/keys/{id}` dabara ce mai canza bayanai (mutation) kuma ba a cikin shirin admin ba, don haka access token na `read` yana karɣi 403 `Access token scope 'read' is insufficient; 'write' required.`
+Access token na `write` ko `admin` yana gamsu da wannan hanya. Dashboard JWT, token na machine-id na loopback CLI, da API key mai da `manage` ko `admin` suna sauran reshe, ba a iya rage su da wannan matsayi ba.
 
-Access token da ya wuce `scopeSatisfies` don `/api/mcp` ya tsallake
-shingen gudanarwa ne kawai. Har yanzu kiran tools yana gudanar da `scopeMatches` a kan scopes na API-key.
-Matsayin access-token ba ya cikin abubuwan shigarwa na `scopeMatches`.
+Access token da ya karɣi `scopeSatisfies` don `/api/mcp` ya tsallaba da babu wataƙa mai sarrafa kawai. Kirar kayan aiki (tool calls) har yanzu suna gudu da `scopeMatches` na scopes na API key. Matsayin access token ba shi ne shigar da ake amfani da shi a cikin `scopeMatches`.
 
-### Scopes na tools na MCP
+### Scopes na kayan aiki na MCP
 
-Ana gudanar da tabbatar da scopes a wuri guda a `open-sse/mcp-server/scopeEnforcement.ts`.
-Kowane tool yana buƙatar takamaiman scopes:
+An tsayar da aiwatar da scopes a cikin `open-sse/mcp-server/scopeEnforcement.ts`. Kowane kayan aiki yana buƙatar scopes na musamman:
 
-| Iyaka                 | Kayan aiki                                                                                                                                                                              |
-| :-------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `read:health`         | `get_health`, `get_provider_metrics`, `simulate_route`, `explain_route`, `best_combo_for_task`, `db_health_check`                                                                       |
-| `read:combos`         | `list_combos`, `get_combo_metrics`, `simulate_route`, `best_combo_for_task`, `test_combo`                                                                                               |
-| `write:combos`        | `switch_combo`, `set_routing_strategy`                                                                                                                                                  |
-| `read:quota`          | `check_quota`                                                                                                                                                                           |
-| `read:usage`          | `cost_report`, `get_session_snapshot`, `explain_route`                                                                                                                                  |
-| `read:models`         | `list_models_catalog`                                                                                                                                                                   |
-| `execute:completions` | `route_request`, `test_combo`                                                                                                                                                           |
-| `execute:search`      | `web_search`, `x_search`, `web_fetch`                                                                                                                                                   |
-| `write:budget`        | `set_budget_guard`                                                                                                                                                                      |
-| `write:resilience`    | `set_resilience_profile`, `db_health_check`                                                                                                                                             |
-| `pricing:write`       | `sync_pricing`                                                                                                                                                                          |
-| `read:cache`          | `cache_stats`                                                                                                                                                                           |
-| `write:cache`         | `cache_flush`                                                                                                                                                                           |
-| `read:compression`    | `compression_status`, `list_compression_combos`, `compression_combo_stats`                                                                                                              |
-| `write:compression`   | `compression_configure`, `set_compression_engine`                                                                                                                                       |
-| `read:proxies`        | `oneproxy_fetch`, `oneproxy_rotate`, `oneproxy_stats`                                                                                                                                   |
-| `read:notion`         | `notion_search`, `notion_get_page`, `notion_list_block_children`, `notion_query_database`, `notion_get_database`                                                                        |
-| `write:notion`        | `notion_append_blocks`                                                                                                                                                                  |
-| `read:memory`         | `memory_search`                                                                                                                                                                         |
-| `write:memory`        | `memory_add`, `memory_clear`                                                                                                                                                            |
-| `read:skills`         | `skills_list`, `skills_executions`                                                                                                                                                      |
-| `write:skills`        | `skills_enable`                                                                                                                                                                         |
-| `execute:skills`      | `skills_execute`                                                                                                                                                                        |
-| `read:catalog`        | `agent_skills_list`, `agent_skills_get`, `agent_skills_coverage`                                                                                                                        |
-| `read:tools`          | `omniroute_tool_search`                                                                                                                                                                 |
-| `read:radar`          | `omniroute_radar_catalog`                                                                                                                                                               |
-| `read:gamification`   | `gamification_profile`, `gamification_rank`, `gamification_leaderboard`, `gamification_badges`, `gamification_servers`, `gamification_anomalies`                                        |
-| `write:gamification`  | `gamification_invite`, `gamification_transfer`                                                                                                                                          |
-| `read:plugins`        | `plugin_list`, `plugin_executions`                                                                                                                                                      |
-| `write:plugins`       | `plugin_scan`, `plugin_install`, `plugin_uninstall`, `plugin_activate`, `plugin_deactivate`, `plugin_configure`                                                                         |
-| `read:obsidian`       | Kayan aikin karantawa 13 — `obsidian_list_vault`, `obsidian_read_note`, `obsidian_search_simple`, `obsidian_search_structured`, `obsidian_get_periodic_note`, `obsidian_sync_status`, … |
-| `write:obsidian`      | Kayan aikin rubutawa 9 — `obsidian_write_note`, `obsidian_append_note`, `obsidian_patch_note`, `obsidian_move_note`, `obsidian_delete_note`, `obsidian_sync_trigger`, …                 |
-| `read:local-corpus`   | `local_corpus_search`, `local_corpus_read`, `local_corpus_status`                                                                                                                       |
+| Bango                 | Kayan aiki                                                                                                                                                                           |
+| :-------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `read:health`         | `get_health`, `get_provider_metrics`, `simulate_route`, `explain_route`, `best_combo_for_task`, `db_health_check`                                                                    |
+| `read:combos`         | `list_combos`, `get_combo_metrics`, `simulate_route`, `best_combo_for_task`, `test_combo`                                                                                            |
+| `write:combos`        | `switch_combo`, `set_routing_strategy`                                                                                                                                               |
+| `read:quota`          | `check_quota`                                                                                                                                                                        |
+| `read:usage`          | `cost_report`, `get_session_snapshot`, `explain_route`                                                                                                                               |
+| `read:models`         | `list_models_catalog`                                                                                                                                                                |
+| `execute:completions` | `route_request`, `test_combo`                                                                                                                                                        |
+| `execute:search`      | `web_search`, `x_search`, `web_fetch`                                                                                                                                                |
+| `write:budget`        | `set_budget_guard`                                                                                                                                                                   |
+| `write:resilience`    | `set_resilience_profile`, `db_health_check`                                                                                                                                          |
+| `pricing:write`       | `sync_pricing`                                                                                                                                                                       |
+| `read:cache`          | `cache_stats`                                                                                                                                                                        |
+| `write:cache`         | `cache_flush`                                                                                                                                                                        |
+| `read:compression`    | `compression_status`, `list_compression_combos`, `compression_combo_stats`                                                                                                           |
+| `write:compression`   | `compression_configure`, `set_compression_engine`                                                                                                                                    |
+| `read:proxies`        | `oneproxy_fetch`, `oneproxy_rotate`, `oneproxy_stats`                                                                                                                                |
+| `read:notion`         | `notion_search`, `notion_get_page`, `notion_list_block_children`, `notion_query_database`, `notion_get_database`                                                                     |
+| `write:notion`        | `notion_append_blocks`                                                                                                                                                               |
+| `read:memory`         | `memory_search`                                                                                                                                                                      |
+| `write:memory`        | `memory_add`, `memory_clear`                                                                                                                                                         |
+| `read:skills`         | `skills_list`, `skills_executions`                                                                                                                                                   |
+| `write:skills`        | `skills_enable`                                                                                                                                                                      |
+| `execute:skills`      | `skills_execute`                                                                                                                                                                     |
+| `read:catalog`        | `agent_skills_list`, `agent_skills_get`, `agent_skills_coverage`                                                                                                                     |
+| `read:tools`          | `omniroute_tool_search`                                                                                                                                                              |
+| `read:radar`          | `omniroute_radar_catalog`                                                                                                                                                            |
+| `read:gamification`   | `gamification_profile`, `gamification_rank`, `gamification_leaderboard`, `gamification_badges`, `gamification_servers`, `gamification_anomalies`                                     |
+| `write:gamification`  | `gamification_invite`, `gamification_transfer`                                                                                                                                       |
+| `read:plugins`        | `plugin_list`, `plugin_executions`                                                                                                                                                   |
+| `write:plugins`       | `plugin_scan`, `plugin_install`, `plugin_uninstall`, `plugin_activate`, `plugin_deactivate`, `plugin_configure`                                                                      |
+| `read:obsidian`       | 13 kayan aikin karatu — `obsidian_list_vault`, `obsidian_read_note`, `obsidian_search_simple`, `obsidian_search_structured`, `obsidian_get_periodic_note`, `obsidian_sync_status`, … |
+| `write:obsidian`      | 9 kayan aikin rubutawa — `obsidian_write_note`, `obsidian_append_note`, `obsidian_patch_note`, `obsidian_move_note`, `obsidian_delete_note`, `obsidian_sync_trigger`, …              |
+| `read:local-corpus`   | `local_corpus_search`, `local_corpus_read`, `local_corpus_status`                                                                                                                    |
 
-Ana goyon bayan faɗin izini na wildcard: `read:*` yana ba da dukkan izinin karantawa, `*` yana ba da cikakkiyar dama.
+Ana tallafi scopes na wildcard: `read:*` yana ba da dukkan read-scopes, `*` yana ba da cikaman dama.
 
-### `mcp:connect` — takamaiman damar hanya (#7895)
+### `mcp:connect` — iyaƙin dawo mai zurfin hanya (#7895)
 
-Isa ga jigilar HTTP/SSE MCP (`/api/mcp/*`) daga adireshin da ba loopback ba yana buƙatar
-keɓancewar LOCAL_ONLY ta `/api/mcp/` (duba `docs/security/ROUTE_GUARD_TIERS.md`). A baya,
-wannan keɓancewar tana karɓar maɓallin API mai cikakken izinin `manage`/`admin` ne kawai — wanda ya yi faɗi sosai ga
-mai kira da kawai yake buƙatar sadarwa da MCP. Yanzu `src/shared/constants/managementScopes.ts`
-yana fitar da `MCP_CONNECT_SCOPE = "mcp:connect"`: ƙarin takamaiman izini (mai bin irin tsarin
-`SELF_USAGE_SCOPE`) wanda ke ba da izini ga kaucewar `/api/mcp/` KAWAI a cikin
-`src/server/authz/policies/management.ts` — ba ya ba da damar shiga wata hanyar gudanarwa
-kuma da gangan BA a saka shi cikin `MANAGEMENT_API_KEY_SCOPES` ba. Maɓallin da ke ɗauke da `manage`/`admin`
-har yanzu yana wuce keɓancewar ba tare da canji ba; `mcp:connect` madadi ne mai ƙarancin gata ga
-masu kiran MCP na nesa kawai, wanda ake bincikawa ta `hasMcpConnectOrManageScope()`.
+Zuwa ga MCP transport na HTTP/SSE (`/api/mcp/*`) daga ba-daga loopback yana buƙatar kaɗe-ɗabi (carve-out) na LOCAL_ONLY na `/api/mcp/` (duba `docs/security/ROUTE_GUARD_TIERS.md`). D tarihi, wannan kaɗe-ɗabi kawai ya karɓi key na API mai cikakken scope na `manage`/`admin` — da yawa ga kirayin da kawai yana buƙatar hulɗa da MCP. `src/shared/constants/managementScopes.ts` yanzu yana fitar da `MCP_CONNECT_SCOPE = "mcp:connect"`: scope mai ƙari, mai zurfin (wanda aka yi amfani da shi daidai da `SELF_USAGE_SCOPE`) wanda yana ba da izinin ga bypass na `/api/mcp/` kawai a cikin `src/server/authz/policies/management.ts` — ba ya ba da dama ga wasu hanyoyin gurbin sarrafa kuma an riƙe shi da gangan ba a cikin `MANAGEMENT_API_KEY_SCOPES`. Key mai riƙe `manage`/`admin` har yanzu yana ratsa kaɗe-ɗabi ba tare da canza ba; `mcp:connect` shi ne madadin da yake ƙananin karfi ga kirayin MCP-kawai na remote, an duba shi ta hanyar `hasMcpConnectOrManageScope()`.
 
-### Ɗaure izinin HTTP ga kowane maɓalli (#7895)
+### Bindin scope na HTTP na kowane key (#7895)
 
-Ta HTTP/SSE, yanzu `open-sse/mcp-server/httpTransport.ts` yana gano ainihin
-`api_keys.scopes` na mai kira ta `resolveMcpCallerAuthInfo()` (`open-sse/mcp-server/httpAuthContext.ts`)
-kuma yana miƙa shi zuwa `transport.handleRequest(req, { authInfo })` na MCP SDK, don haka
-`extra.authInfo.scopes` da ke isa ga kowane kiran kayan aiki yana nuna izinin maɓallin Bearer ɗin kansa.
-`resolveCallerScopeContext()` na `scopeEnforcement.ts` ya riga ya fifita `authInfo` a kan
-madadin `_meta` da env na `OMNIROUTE_MCP_SCOPES` — wannan kawai yana cika wannan tushe na farko,
-mafi fifiko, wanda a baya ba a samar masa da bayanai ta HTTP ba. Idan ba a gano wani maɓallin API ba
-(babu header, ko maɓallin ba daidai ba ne), `authInfo` zai ci gaba da kasancewa `undefined` kuma ganowa zai koma ga
-jerin madadin `meta`/env da ake da shi ba tare da canji ba. stdio ba shi da shaidar kowane mai kira (duba
-`mcpCallerIdentity.ts`) kuma wannan bai shafe shi ba — zai ci gaba da amfani da jerin madadin `_meta`/env.
+A kan HTTP/SSE, `open-sse/mcp-server/httpTransport.ts` yanzu yana warware `api_keys.scopes` na gaske na kirayin ta hanyar `resolveMcpCallerAuthInfo()` (`open-sse/mcp-server/httpAuthContext.ts`) kuma yana watsa shi zuwa ga `transport.handleRequest(req, { authInfo })` na MCP SDK, don haka `extra.authInfo.scopes` da ke isa ga kowane kirar tool yana nuna scopes na key ɗin Bearer a kansa. `resolveCallerScopeContext()` a cikin `scopeEnforcement.ts` zai riga yana ba da hankali ga `authInfo` a sama da `_meta` da babban maƙuri na muhanci `OMNIROUTE_MCP_SCOPES` — wannan yana kawai cika wannan tushen farko, mafi girma daraja, wanda a baya bai samu damar wanda a kan HTTP ba. Idan babu wata key na API da ke warware (babu header, key mai ƙi), `authInfo` zai ci gaba ya kasance `undefined` kuma warware zai ci gaba ya bin tafarkin da yawa na `meta`/muhanci. stdio ba shi da wayewa ga kowane kirayin (duba `mcpCallerIdentity.ts`) kuma ba ya sauɓuwa da bindin na kowane key — yana tsallake matakan `_meta` (`_meta` ana amfani da shi kawai cikin mahalli na tabbaci na HTTP, #15159) kuma yana warware daga maɓalli na muhanci `OMNIROUTE_MCP_SCOPES` kawai.
 
-**Ana tilasta aiwatar da izini ga masu kiran HTTP/SSE masu takamaiman izini ba tare da la’akari da
-`OMNIROUTE_MCP_ENFORCE_SCOPES` ba.** Kasancewar tsoffin ƙimar `OMNIROUTE_MCP_ENFORCE_SCOPES` ita ce `false` yana da
-aminci ne kawai ga tsarin mai aiki guda ɗaya na gida/stdio, inda babu shaidar kowane mai kira da za a daidaita
-da izini. `open-sse/mcp-server/server.ts::withScopeEnforcement()` yana kunna aiwatar da izinin
-kowane kayan aiki ba tare da sharadi ba (`shouldForceScopeEnforcement()` a cikin `scopeEnforcement.ts`)
-duk lokacin da `resolveCallerScopeContext()` ya gano
-`source === "authInfo"` (wato ainihin header na HTTP Authorization na kowane maɓalli, na HTTP/SSE kawai) KUMA
-wannan maɓallin ba ya ɗauke da cikakken izinin `manage`/`admin`. Wannan yana rufe giɓin da maɓallin da ke ɗauke da izinin
-kaucewa na `mcp:connect` KAWAI — wanda aka bayyana a sama cewa ba ya ba da izini ga komai sai
-keɓancewar LOCAL_ONLY ta `/api/mcp/` — zai iya kiran kowane kayan aikin MCP bayan mai gudanarwa
-ya kunna damar MCP ta nesa/wadda ba loopback ba, kawai saboda tsohuwar ƙimar
-`OMNIROUTE_MCP_ENFORCE_SCOPES` ita ce `false`. Cikakken maɓallin `manage`/`admin` ta HTTP, da duk wani
-mai kiran stdio/na gida, za su ci gaba da amfani da halayen da ake da su wanda
-`OMNIROUTE_MCP_ENFORCE_SCOPES` ke sarrafawa ba tare da canji ba.
+**Ana tilasta wa sarrafa scopes ga kirayin na HTTP/SSE masu zurfin scope, ba tare da ko wata ka'ida, ba tare da `OMNIROUTE_MCP_ENFORCE_SCOPES` ba.** Tsarin da `OMNIROUTE_MCP_ENFORCE_SCOPES` tana fara da `false` yana da aminci kawai ga tsarin gari na local/stdio da mai yawa daya, inda babu wayewa ga kowane kirayin don sanar da shi. `open-sse/mcp-server/server.ts::withScopeEnforcement()` yana kunna sarrafa scope na kowane tool ba tare da ko wata sharu ba (`shouldForceScopeEnforcement()` a cikin `scopeEnforcement.ts`) sai kuma idan `resolveCallerScopeContext()` ya warware `source === "authInfo"` (ma'ana, header na Authorization na HTTP na gaske na kowane key, HTTP/SSE kawai) KUMA wannan key ba ya riƙe cikakken scope na `manage`/`admin`. Wannan yana rufe babban rauni inda key mai riƙe KAWAI narrow `mcp:connect` bypass scope — wanda aka tsarar da a sama a cewa yana ba da izinin kawai ga kaɗe-ɗabi na LOCAL_ONLY na `/api/mcp/` — iwata ya iya kira kowane tool na MCP idan mai yawa ya kunna dama na MCP na remote/ba-daga-loopback, kawai saboda `OMNIROUTE_MCP_ENFORCE_SCOPES` ya zo tare da `false` ta tara. Key na cikakken `manage`/`admin` a kan HTTP, da kowane kirayin na stdio/local, sun riƙe halin da yanzu wanda sarrafashi yake da sarrafa `OMNIROUTE_MCP_ENFORCE_SCOPES` ba tare da canza ba.
 
 ---
 

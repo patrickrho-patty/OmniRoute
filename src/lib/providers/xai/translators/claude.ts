@@ -13,7 +13,7 @@
  *       content_block_stop, message_delta, message_stop
  */
 
-import { restoreClaudeToolName } from "@omniroute/open-sse/services/claudeCodeToolRemapper";
+import { restoreDeclaredToolName } from "@omniroute/open-sse/services/declaredToolCasing";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -327,8 +327,9 @@ export function xaiCompletedToClaudeJson(
       } catch {
         inputObj = { _raw: item.arguments };
       }
-      // Fix: Map lowercase tool names from providers to Claude Code expected PascalCase
-      const correctedName = restoreClaudeToolName(item.name);
+      // The client's declared tools[] decides the casing (#17118); the legacy
+      // Claude Code PascalCase upgrade only applies to names it never declared.
+      const correctedName = restoreDeclaredToolName(item.name, null, origReq?.tools ?? null);
       content.push({
         type: "tool_use",
         id: item.call_id ?? item.id ?? genId("toolu"),

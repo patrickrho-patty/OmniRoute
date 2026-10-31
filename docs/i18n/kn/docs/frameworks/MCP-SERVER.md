@@ -72,6 +72,16 @@ curl -i \
 
 `manage` ವ್ಯಾಪ್ತಿ ಇಲ್ಲದ ಕೀಲಿ (ಅಥವಾ Bearer ಇಲ್ಲದಿದ್ದರೆ) `403 LOCAL_ONLY` ಅನ್ನು ಹಿಂದಿರುಗಿಸುತ್ತದೆ. ಪಕ್ಕದ ಪೂರ್ವಪ್ರತ್ಯಯ `/api/cli-tools/runtime/*` ಅನ್ನು ಉದ್ದೇಶಪೂರ್ವಕವಾಗಿ ಬೈಪಾಸ್ ಮಾಡಲು ಸಾಧ್ಯವಿಲ್ಲ — [ರೂಟ್ ಗಾರ್ಡ್ ಹಂತಗಳು — `manage` ವ್ಯಾಪ್ತಿಯ ವಿನಾಯಿತಿ](../security/ROUTE_GUARD_TIERS.md#manage-scope-carve-out) ನೋಡಿ.
 
+### Origin ಪರಿಶೀಲನೆ
+
+ದೃಢೀಕರಣದ ನಂತರ `/api/mcp/*` ಗೆ ಬರುವ ಪ್ರತಿಯೊಂದು ವಿನಂತಿಯ — ಟ್ರಾನ್ಸ್‌ಪೋರ್ಟ್‌ಗಳು ಮತ್ತು `status`, `tools`, `audit`, `restart` ನಂತಹ ನಿರ್ವಹಣಾ ಮಾರ್ಗಗಳು — `Origin` ಹೆಡರ್ ಅನ್ನು ಕರೆ ಮಾಡುವವರು ಯಾರೇ ಆಗಿರಲಿ (API ಕೀ, CLI ಟೋಕನ್, ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ಸೆಷನ್, ಅಥವಾ ಲಾಗಿನ್ ನಿಷ್ಕ್ರಿಯವಾಗಿರುವಾಗ ಅನಾಮಧೇಯ loopback) ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ. ಇದು MCP Streamable HTTP ವಿವರಣೆ ಬಯಸುವ DNS rebinding ರಕ್ಷಣೆ.
+
+- **`Origin` ಹೆಡರ್ ಇಲ್ಲ** → ಅನುಮತಿಸಲಾಗಿದೆ. OmniRoute CLI, SDK ಮತ್ತು IDE ಕ್ಲೈಂಟ್‌ಗಳು ಇದನ್ನು ಕಳುಹಿಸುವುದಿಲ್ಲ.
+- **ಅನುಮತಿಸಲಾದ `Origin`** → ಯಾವುದೇ ಪೋರ್ಟ್‌ನಲ್ಲಿ `localhost` / `127.0.0.1` / `[::1]`, ಅಥವಾ OmniRoute ನ ಸ್ವಂತ ಸಾರ್ವಜನಿಕ origin: `OMNIROUTE_PUBLIC_BASE_URL` / `NEXT_PUBLIC_BASE_URL` / `NEXT_PUBLIC_APP_URL`, ವಿಶ್ವಸನೀಯ ರಿವರ್ಸ್ ಪ್ರಾಕ್ಸಿ ಫಾರ್ವರ್ಡ್ ಮಾಡಿದ origin (`OMNIROUTE_TRUST_PROXY`, base URL ಹೊಂದಿಸದಿದ್ದಾಗ ಮಾತ್ರ), ಅಥವಾ ನೇರವಾಗಿ ಪ್ರವೇಶಿಸಿದ loopback/LAN IP ಹೋಸ್ಟ್. ಕೇವಲ `Host` ಹೆಡರ್ ಎಂದಿಗೂ ಯಾವುದೇ origin ಅನ್ನು ವಿಶ್ವಸನೀಯವಾಗಿಸುವುದಿಲ್ಲ.
+- **`null` ಸೇರಿದಂತೆ ಬೇರೆ ಯಾವುದೇ `Origin`** → JSON-RPC ದೋಷ ಬಾಡಿಯೊಂದಿಗೆ `403`: `id: null`, `error.code: -32000`, `error.data.code: "INVALID_ORIGIN"`. ಮಾನ್ಯ CSRF ಟೋಕನ್ ತೋರಿಸುವ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ಸೆಷನ್ ಅನ್ನು, ಇತರ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ಬರಹಗಳಂತೆಯೇ, ಈಗಲೂ ಸ್ವೀಕರಿಸಲಾಗುತ್ತದೆ.
+
+ರಿವರ್ಸ್ ಪ್ರಾಕ್ಸಿಯ ಹಿಂದೆ ಒದಗಿಸಲಾಗುವ ಬ್ರೌಸರ್ MCP ಕ್ಲೈಂಟ್‌ಗೆ `OMNIROUTE_PUBLIC_BASE_URL` ಬೇಕು; ಇತರ origins ಗೆ ಅನುಮತಿ ಪಟ್ಟಿ ಇಲ್ಲ. CORS ಪ್ರೀಫ್ಲೈಟ್ (`OPTIONS`) ಅನ್ನು Origin ಗಾಗಿ ಪರಿಶೀಲಿಸಲಾಗುವುದಿಲ್ಲ; ನಂತರದ ವಿನಂತಿಯನ್ನು ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.
+
 ## IDE ಸಂರಚನೆ
 
 Claude Desktop, Cursor, Cline ಮತ್ತು ಹೊಂದಾಣಿಕೆಯಾಗುವ MCP ಕ್ಲೈಂಟ್ಗಳ ಸೆಟಪ್ಗಾಗಿ [MCP ಕ್ಲೈಂಟ್ ಸಂರಚನೆ](../guides/SETUP_GUIDE.md#mcp-client-configuration) ನೋಡಿ.
@@ -287,112 +297,103 @@ MCP ಪರಿಕರ/ರೂಟ್ ಪದರವನ್ನು ತಲುಪುವ ಮ
 
 ---
 
-## ದೃಢೀಕರಣ ಮತ್ತು ಸ್ಕೋಪ್ಗಳು
+## ಪ್ರಾಮಾಣೀಕರಣ ಮತ್ತು ಸ್ಕೋಪ್‌ಗಳು
 
-MCP ಟೂಲ್ ಕರೆಗಳು ಕರೆ ಮಾಡುವವರಿಂದ ಸ್ಕೋಪ್ ಸ್ಟ್ರಿಂಗ್ಗಳನ್ನು ಓದುತ್ತವೆ. ಆ ಪರಿಶೀಲನೆಯು ಮೂರು
-ಸ್ವತಂತ್ರ ನೇಮ್ಸ್ಪೇಸ್ಗಳಲ್ಲಿ ಒಂದಾಗಿದೆ. ಒಂದು ಪರಿಶೀಲಕದಿಂದ ದೊರೆಯುವ ಅನುಮೋದನೆಯು ಇತರ ಪರಿಶೀಲಕಗಳಿಂದ ದೊರೆತ ಅನುಮೋದನೆಯಲ್ಲ.
-ನಿಯಮಗಳು [ಮೂರು ಸ್ಕೋಪ್ ನೇಮ್ಸ್ಪೇಸ್ಗಳು](#three-scope-namespaces) ವಿಭಾಗದಲ್ಲಿವೆ.
-ಟೂಲ್ ಕ್ಯಾಟಲಾಗ್ [MCP ಟೂಲ್ ಸ್ಕೋಪ್ಗಳು](#mcp-tool-scopes) ವಿಭಾಗದಲ್ಲಿದೆ.
+MCP ಟೂಲ್ ಕರೆಗಳು ಕರೆದವರಿಂದ ಸ್ಕೋಪ್ ಸ್ಟ್ರಿಂಗ್‌ಗಳನ್ನು ಓದುತ್ತವೆ. ಈ ಪರಿಶೀಲನೆಯು ಮೂರು ಸ್ವತಂತ್ರ ನೇಮ್‌ಸ್ಪೇಸ್‌ಗಳಲ್ಲಿ ಒಂದು.
+ಒಂದು ಚೆಕ್ಕರ್ ಹಾಸಿದರೆ ಅದು ಇತರರಿಂದಯೂ ಹಾಸಿದಂತೆ ಅರ್ಥ ಆಗುವುದಿಲ್ಲ.
+ನಿಯಮಗಳು [ಮೂರು ಸ್ಕೋಪ್ ನೇಮ್‌ಸ್ಪೇಸ್](#three-scope-namespaces) ಅಧಿಕೆ.
+ಟೂಲ್ ಕಾಟಲಾಗ್ ಆಗಿದ್ದ್ದು [MCP ಟೂಲ್ ಸ್ಕೋಪ್‌ಗಳು](#mcp-tool-scopes).
 
-### ಮೂರು ಸ್ಕೋಪ್ ನೇಮ್ಸ್ಪೇಸ್ಗಳು
+### ಮೂರು ಸ್ಕೋಪ್ ನೇಮ್‌ಸ್ಪೇಸ್‌ಗಳು
 
-API ಕೀಲಿಯಲ್ಲಿರುವ `manage`, MCP ಟೂಲ್ನಲ್ಲಿರುವ `read:compression`, ಮತ್ತು
-`oma_live_…` ಪ್ರವೇಶ ಟೋಕನ್ನಲ್ಲಿರುವ `read` ಮೂರು ವಿಭಿನ್ನ ಅನುಮತಿಗಳಾಗಿವೆ. ರೂಪಾಂತರ ಮಾಡುವ
-ನಿರ್ವಹಣಾ ರೂಟ್ಗೆ `read` ಪ್ರವೇಶ ಟೋಕನ್ ಕಳುಹಿಸುವ ಕರೆಗಾರರು HTTP 403
+API ಕೀಯ ಮೇಲಿನ `manage`, MCP ಟೂಲ್ ಮೇಲಿನ `read:compression` ಮತ್ತು `oma_live_…` ಆಕ್ಸೆಸ್ ಟೋಕನ್ ಮೇಲಿನ `read` — ಇವು ಮೂರು ವಿಭಿನ್ನ ಅನುಮತಿಗಳು. `read` ಆಕ್ಸೆಸ್ ಟೋಕನ್ ಅನ್ನು ಬದಲಾಯಿಸುವ ನಿರ್ವಹಣಾ ರೂಟ್‌ಗೆ ಕರೆದವರಿಗೆ HTTP 403
 `Access token scope 'read' is insufficient; 'write' required.`
-ಪಡೆಯುತ್ತಾರೆ. ಆ ಶ್ರೇಣಿಯು `scopeSatisfies` ಆಗಿದೆ. ಅದು MCP ಟೇಬಲ್ ಅನ್ನು ಪರಿಶೀಲಿಸುವುದಿಲ್ಲ ಮತ್ತು MCP
-ಮ್ಯಾಚರ್ ಕೂಡ ಅದನ್ನು ಪರಿಶೀಲಿಸುವುದಿಲ್ಲ.
+ಸಿಕ್ಕುತ್ತದೆ. ಆ ಶ್ರೇಣಿಯನ್ನು `scopeSatisfies` ನಿರ್ಧರಿಸುತ್ತದೆ. ಅದು MCP ಕೋಷ್ಟಕವನ್ನು ಪರಿಶೀಲಿಸುವುದಿಲ್ಲ, ಮತ್ತು MCP ಹೊಂದಾಣಿಕೆಯೂ ಅದನ್ನು ಪರಿಶೀಲಿಸುವುದಿಲ್ಲ.
 
-| ನೇಮ್ಸ್ಪೇಸ್         | ರುಜುವಾತು                                                             | ಪರಿಶೀಲಕ               | ಅನುಮೋದನೆಯಿಂದ ಸಾಧ್ಯವಾಗುವುದು                           |
-| :----------------- | :------------------------------------------------------------------- | :-------------------- | :--------------------------------------------------- |
-| API-ಕೀ ನಿರ್ವಹಣೆ    | `api_keys.scopes`                                                    | `hasManageScope`      | ಆ Bearer ಕೀಗಾಗಿ ನಿರ್ವಹಣಾ REST                        |
-| API-ಕೀ ಸಂಯೋಜಕ      | ಅದೇ ಅರೇ, ಒಂದು ನಿಖರ ಸ್ಟ್ರಿಂಗ್                                         | ಕೆಳಗೆ ಹೆಸರಿಸಲಾದ ಸಹಾಯಕ | ಆ ಒಂದು ಸಾಮರ್ಥ್ಯ ಮಾತ್ರ                                |
-| MCP ಟೂಲ್ ಸ್ಕೋಪ್ಗಳು | ಅದೇ ಅರೇ, ಇಲ್ಲದಿದ್ದರೆ MCP `_meta`, ಇಲ್ಲದಿದ್ದರೆ `OMNIROUTE_MCP_SCOPES` | `scopeMatches`        | ಜಾರಿಗೊಳಿಸುವಿಕೆ ಸಕ್ರಿಯವಾದ ನಂತರ ಆ ಟೂಲ್                 |
-| ಪ್ರವೇಶ ಟೋಕನ್       | `oma_live_…`                                                         | `scopeSatisfies`      | ವಿಧಾನ ಮತ್ತು ಪಥಕ್ಕೆ ಆ ಶ್ರೇಣಿ ಅಗತ್ಯವಿರುವ ನಿರ್ವಹಣಾ ರೂಟ್ |
+| ನೇಮ್‌ಸ್ಪೇಸ್         | ರುದಿ                                                                                    | ಚೆಕ್ಕರ್                | ಹಾಸಿದರೆ ಅನುಮತಿ                                                             |
+| :------------------ | :-------------------------------------------------------------------------------------- | :--------------------- | :------------------------------------------------------------------------- |
+| API ಕೀ ನಿರ್ವಹಣೆ     | `api_keys.scopes`                                                                       | `hasManageScope`       | ಆ Bearer ಕೀಗೆ ನಿರ್ವಹಣಾ REST                                                |
+| API ಕೀ ಸರ್ವಾದೇಶಕ    | ಅದೇ ಅರ್ರೆ, ಒಂದು ನಿಖರ ಸ್ಟ್ರಿಂಗ್                                                          | ಕೆಳಗೆ ಹೆಸರಿಸಿದ ಹೆಲ್ಪರ್ | ಆ ಒಂದೇ ಸಾಮರ್ಥ್ಯ                                                            |
+| MCP ಟೂಲ್ ಸ್ಕೋಪ್‌ಗಳು | ಅದೇ ಅರ್ರೆ, ಇಲ್ಲದಿದ್ದರೆ MCP `_meta` (HTTP/SSE ಮಾತ್ರ), ಇಲ್ಲದಿದ್ದರೆ `OMNIROUTE_MCP_SCOPES` | `scopeMatches`         | ಕಾರ್ಯಗತಗೊಂಡಾಗ ಆ ಟೂಲ್                                                       |
+| ಆಕ್ಸೆಸ್ ಟೋಕನ್       | `oma_live_…`                                                                            | `scopeSatisfies`       | ಯಾವ ನಿರ್ವಹಣಾ ರೂಟ್‌ನ ವಿಧಾನ ಮತ್ತು ಮಾರ್ಗವು ಆ ಶ್ರೇಣಿಯನ್ನು ಅಗತ್ಯಪಡಿಸಿದರೆ ಆ ರೂಟ್ |
 
-ಪ್ರತಿ ರುಜುವಾತನ್ನು ರಚಿಸುವ ವಿಧಾನವನ್ನು
-[ನಿರ್ವಹಣಾ ದೃಢೀಕರಣ](../guides/MANAGEMENT-AUTH.md) ವಿಭಾಗದಲ್ಲಿ ವಿವರಿಸಲಾಗಿದೆ.
+ಪ್ರತಿ ರುದಿಯನ್ನು ನಿರ್ಯಾಪಿಸುವ ಬಗೆ
+[ನಿರ್ವಹಣಾ ಪ್ರಾಮಾಣೀಕರಣ](../guides/MANAGEMENT-AUTH.md) ನಲ್ಲಿ ವಿವರಿಸಲಾಗಿದೆ.
 
-#### API-ಕೀ ಸ್ಕೋಪ್ಗಳು
+#### API ಕೀ ಸ್ಕೋಪ್‌ಗಳು
 
-ಒಂದು `api_keys.scopes` ಅರೇ ಎರಡು ಕಾರ್ಯಗಳಿಗೆ ಪೂರೈಕೆ ಮಾಡುತ್ತದೆ. ಅವು ವಿಭಿನ್ನ ಫಂಕ್ಷನ್ಗಳನ್ನು ಬಳಸುತ್ತವೆ.
+ಒಂದು `api_keys.scopes` ಅರ್ರೆ ಎರಡು ಕೆಲಸಗಳಿಗೆ ಸರಬಹುದು. ಅವು ಅಲ್ಲಾದ ಫಂಕ್ಷನ್‌ಗಳನ್ನು ಬಳಸುತ್ತವೆ.
 
-**ನಿರ್ವಹಣಾ REST.** `manage` ಮತ್ತು `admin`,
-`MANAGEMENT_API_KEY_SCOPES` (`src/shared/constants/managementScopes.ts`) ನ ಸದಸ್ಯಗಳಾಗಿವೆ.
-ಆ ಕೀಗಾಗಿ ನಿರ್ವಹಣಾ ರೂಟ್ಗಳಿಗೆ ಅಧಿಕಾರ ನೀಡುವುದು `hasManageScope`. ಆ ರೂಟ್ಗಳಲ್ಲಿ `admin`
-ನಿರ್ವಹಣಾ ಸಾಮರ್ಥ್ಯವನ್ನು ಹೊಂದಿದೆ. ಇಲ್ಲಿ `admin` ಎಂಬ ಪದವು
-ಪ್ರವೇಶ-ಟೋಕನ್ ಶ್ರೇಣಿಯಲ್ಲ ಮತ್ತು ಅದು MCP ಟೂಲ್ ಸ್ಕೋಪ್ಗಳಾಗಿ ವಿಸ್ತರಿಸುವುದಿಲ್ಲ.
+**ನಿರ್ವಹಣಾ REST.** `manage` ಮತ್ತು `admin` ಎಂಬುವುವು `MANAGEMENT_API_KEY_SCOPES` (`src/shared/constants/managementScopes.ts`) ನ ಸದಸ್ಯರು.
+`hasManageScope` ಆಗಿದ್ದು ಆ ಕೀಗೆ ನಿರ್ವಹಣಾ ರೂಟ್‌ಗಳನ್ನು ಅಧಿಕಾರಿಸುವುದು. ಆ ರೂಟ್‌ಗಳಲ್ಲಿ `admin` ನಿರ್ವಹಣಾ ಸಾಮರ್ಥ್ಯ ಹೊಂದಿದೆ. ಇಲ್ಲಿನ `admin` ಪದವು ಆಕ್ಸೆಸ್ ಟೋಕನ್ ಶ್ರೇಣಿ ಅಲ್ಲ ಮತ್ತು ಅದು MCP ಟೂಲ್ ಸ್ಕೋಪ್‌ಗಳಾಗಿ ವಿಸ್ತರಿಸುವುದಿಲ್ಲ.
 
-**ಸಂಯೋಜಕ ಸ್ಟ್ರಿಂಗ್ಗಳು.** ಪ್ರತಿಯೊಂದೂ ನಿಖರ ಸದಸ್ಯತ್ವ ಪರೀಕ್ಷೆಯಾಗಿದ್ದು, ಪ್ರತಿಯೊಂದೂ
-`MANAGEMENT_API_KEY_SCOPES` ನ ಹೊರಗೇ ಉಳಿಯುತ್ತದೆ.
+**ಸರ್ವಾದೇಶಕ ಸ್ಟ್ರಿಂಗ್‌ಗಳು.** ಪ್ರತಿಯೊಂದು ನಿಖರ ಸದಸ್ಯತ್ವ ಪರೀಕ್ಷೆ, ಮತ್ತು ಪ್ರತಿಯೊಂದು `MANAGEMENT_API_KEY_SCOPES` ನಿರ್ಜೀವಿಸಿದ ಹೊರಗೆಯೇ ಉಳಿಯುತ್ತದೆ.
 
-| ಸ್ಕೋಪ್                         | ಅನುಮೋದನೆಯಿಂದ ಸಾಧ್ಯವಾಗುವುದು                                                                                                                                            |
-| :----------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mcp:connect`                  | ಲೂಪ್ಬ್ಯಾಕ್ ಅಲ್ಲದ `/api/mcp/` LOCAL_ONLY ವಿನಾಯಿತಿ ಮಾತ್ರ (`hasMcpConnectOrManageScope`). `manage` ಅಥವಾ `admin` ಹೊಂದಿರುವ ಕೀ ಕೂಡ ಆ ವಿನಾಯಿತಿಯಲ್ಲಿ ಅನುಮೋದನೆ ಪಡೆಯುತ್ತದೆ.     |
-| `self:usage`                   | ಈ ಕೀಗಾಗಿ `GET /api/v1/me/status` (`src/app/api/v1/me/status/route.ts`). ರಚಿಸುವಾಗ `POST /api/keys` ಈ ಸ್ಕೋಪ್ ಅನ್ನು ಸೇರಿಸುತ್ತದೆ (`normalizeSelfServiceScopesForCreate`). |
-| `self:account-quota`           | ಆ ಸ್ಥಿತಿ ಪೇಲೋಡ್ನಲ್ಲಿರುವ ಅಪ್ಸ್ಟ್ರೀಮ್ ಖಾತೆ ಕೋಟಾಗಳು (`src/lib/usage/apiKeySelfService.ts`). ಸ್ಥಿತಿ ರೂಟ್ಗೆ ಇನ್ನೂ `self:usage` ಅಗತ್ಯವಿದೆ.                                  |
-| `policy:bypass-provider-quota` | ಈ ಕೀಲಿಯ ಇನ್ಫರೆನ್ಸ್ ಕರೆಗಳು ಪೂರೈಕೆದಾರ-ಕೋಟಾ ನೀತಿಯನ್ನು ಬಿಟ್ಟುಬಿಡುತ್ತವೆ (`src/sse/handlers/chat.ts` ನಲ್ಲಿರುವ `hasProviderQuotaBypassScope`).                               |
+| ಸ್ಕೋಪ್                         | ಹಾಸಿದರೆ ಅನುಮತಿ                                                                                                                                                      |
+| :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `mcp:connect`                  | loopback ಅಲ್ಲದ `/api/mcp/` LOCAL_ONLY ಕಾರ್ಯಾರೋ ಮಾತ್ರ (`hasMcpConnectOrManageScope`). `manage` ಅಥವಾ `admin` ಇರುವ ಕೀಯೂ ಆ ಕಾರ್ಯಾರೋವನ್ನು ಉತ್ತೀರ್ಸಿಸುತ್ತದೆ.              |
+| `self:usage`                   | ಈ ಕೀಗೆ `GET /api/v1/me/status` (`src/app/api/v1/me/status/route.ts`). `POST /api/keys` ರಚಿಸುವಾಗ ಈ ಸ್ಕೋಪ್ ಅನ್ನು ಸೇರಿಸುತ್ತದೆ (`normalizeSelfServiceScopesForCreate`). |
+| `self:account-quota`           | ಆ ಸ್ಟ್ಯಾಟಸ್ ಪೇಲೋಡ್‌ನಲ್ಲಿನ ಅಪ್‌ಸ್ಟ್ರೀಮ್ ಖಾತಾ ಕೋಟಾಗಳು (`src/lib/usage/apiKeySelfService.ts`). ಸ್ಟ್ಯಾಟಸ್ ರೂಟ್‌ಗೆ ಇನ್ನೂ `self:usage` ಅಗತ್ಯ.                             |
+| `policy:bypass-provider-quota` | ಈ ಕೀಯ ಇನ್‌ಫರೆನ್ಸ್ ಕರೆಗಳು ಪ್ರೊವೈಡರ್-ಕೋಟಾ ನೀತಿಯನ್ನು ಬಿಟ್ಟುಬಿಡುತ್ತವೆ (`src/sse/handlers/chat.ts` ನಲ್ಲಿ `hasProviderQuotaBypassScope`).                                 |
 
 #### ಹೊಂದಾಣಿಕೆ
 
-ಕ್ಯಾಟಲಾಗ್ ಎಂದರೆ [MCP ಟೂಲ್ ಸ್ಕೋಪ್ಗಳು](#mcp-tool-scopes) ಅಡಿಯಲ್ಲಿರುವ ಟೇಬಲ್.
-`src/shared/constants/mcpScopes.ts` ನಲ್ಲಿರುವ `MCP_SCOPE_LIST` ಅನ್ನು ಆ ಕ್ಯಾಟಲಾಗ್ ಎಂದು
-ಪರಿಗಣಿಸಬೇಡಿ: ಅದು ಮೂಲ ಟೈಪ್ ಮಾಡಿದ ಉಪಸಮೂಹವಾಗಿದೆ. ನಂತರದ ಟೂಲ್ಗಳು ಅದರ ಪಕ್ಕದಲ್ಲೇ ಇನ್ನಷ್ಟು ಸ್ಕೋಪ್ಗಳನ್ನು
-ಘೋಷಿಸುತ್ತವೆ (`read:notion`, `read:skills`, `read:local-corpus`, ಮತ್ತು ಟೇಬಲ್ನ ಉಳಿದವು).
+ಕಾಟಲಾಗ್ ಆಗಿದ್ದ್ದು [MCP ಟೂಲ್ ಸ್ಕೋಪ್‌ಗಳು](#mcp-tool-scopes) ಕೆಳಗಿನ ಕೋಷ್ಟಕ. `src/shared/constants/mcpScopes.ts` ನಲ್ಲಿನ
+`MCP_SCOPE_LIST` ಅನ್ನು ಆ ಕಾಟಲಾಗ್ ಎಂದು ಪರಿಗಣಿಸಬೇಡ:
+ಅದು ಮೂಲ ಟೈಪ್ ಮಾಡಿದ ಉಪಸೆಟ್. ನಂತರದ ಟೂಲ್‌ಗಳು ಅದರ ಜೊತೆಗೆ ಇನ್ನಷ್ಟು ಸ್ಕೋಪ್‌ಗಳನ್ನು ಘೋಷಿಸುತ್ತವೆ
+(`read:notion`, `read:skills`, `read:local-corpus`, ಮತ್ತು ಕೋಷ್ಟಕದ ಉಳಿದವು).
 
-`open-sse/mcp-server/scopeEnforcement.ts` ನಲ್ಲಿರುವ `evaluateToolScopes`, ಅಗತ್ಯವಿರುವ
-ಪ್ರತಿ ಸ್ಕೋಪ್ ಯಾವುದಾದರೂ ಮಂಜೂರಾದ ಸ್ಕೋಪ್ಗೆ ಹೊಂದಿಕೆಯಾದಾಗ ಕರೆಯನ್ನು ಅನುಮತಿಸುತ್ತದೆ:
+`open-sse/mcp-server/scopeEnforcement.ts` ನಲ್ಲಿನ `evaluateToolScopes` ಪ್ರತಿಯೊಂದು ಅಗತ್ಯವಿರುವ
+ಸ್ಕೋಪ್ ನೀಡಿದ ಯಾವುದೇ ಸ್ಕೋಪ್‌ಗೆ ಹೊಂದಿಕೆಯಾದರೆ ಕರೆಯನ್ನು ಅನುಮತಿಸುತ್ತದೆ:
 
-- `*` ಅಗತ್ಯವಿರುವ ಪ್ರತಿಯೊಂದು ಸ್ಕೋಪ್ಗೆ ಹೊಂದುತ್ತದೆ.
-- `*` ನಲ್ಲಿ ಕೊನೆಗೊಳ್ಳುವ ಮಂಜೂರಾದ ಸ್ಕೋಪ್, ನಕ್ಷತ್ರದ ಹಿಂದಿರುವ ಪೂರ್ವಪ್ರತ್ಯಯದಿಂದ
-  ಆರಂಭವಾಗುವ ಅಗತ್ಯವಿರುವ ಸ್ಕೋಪ್ಗೆ ಹೊಂದುತ್ತದೆ. `read:*`, `read:compression` ಗೆ ಹೊಂದುತ್ತದೆ.
-- ಇತರ ಪ್ರತಿಯೊಂದು ಮಂಜೂರಾದ ಸ್ಕೋಪ್, ಅದಕ್ಕೆ ತದ್ರೂಪವಾದ ಅಗತ್ಯವಿರುವ ಸ್ಟ್ರಿಂಗ್ಗೆ ಮಾತ್ರ ಹೊಂದುತ್ತದೆ.
+- `*` ಎಲ್ಲಾ ಅಗತ್ಯವಿರುವ ಸ್ಕೋಪ್‌ಗಳಿಗೆ ಹೊಂದುತ್ತದೆ.
+- ಕೊನೆಯಲ್ಲಿ `*` ಇರುವ ನೀಡಿದ ಸ್ಕೋಪ್, ನಕ್ಷತ್ರದ ಮೊದಲಿನ ಪ್ರಿಫಿಕ್ಸ್‌ನಿಂದ ಪ್ರಾರಂಭವಿಸುವ
+  ಅಗತ್ಯವಿರುವ ಸ್ಕೋಪ್‌ಗೆ ಹೊಂದುತ್ತದೆ. `read:*` ಇದು `read:compression` ಅನ್ನು ಹೊಂದುತ್ತದೆ.
+- ಉಳಿದ ಎಲ್ಲಾ ನೀಡಿದ ಸ್ಕೋಪ್‌ಗಳು ಅದೇ ಅಗತ್ಯವಿರುವ ಸ್ಟ್ರಿಂಗ್‌ಗೆ ಮಾತ್ರ ಹೊಂದುತ್ತವೆ.
 
-`["manage"]` ಸ್ಕೋಪ್ಗಳನ್ನು ಹೊಂದಿರುವ ಕೀ, `read:compression` ಗಾಗಿ `scopeMatches` ನಲ್ಲಿ ವಿಫಲವಾಗುತ್ತದೆ.
-ಮಂಜೂರಾದ ಏಕೈಕ ಸ್ಟ್ರಿಂಗ್ಗಳು `admin`, `mcp:connect`, `read`, ಮತ್ತು `write` ಆಗಿರುವಾಗಲೂ
-ಅದೇ ಕರೆ ವಿಫಲವಾಗುತ್ತದೆ. ಕೊನೆಯಲ್ಲಿ ಬರುವ `*` ಹೊರತುಪಡಿಸಿ MCP ಟೂಲ್ ಸ್ಕೋಪ್ಗಳ ನಡುವೆ
-ಯಾವುದೇ ಶ್ರೇಣಿ ವ್ಯವಸ್ಥೆಯಿಲ್ಲ.
+`["manage"]` ಸ್ಕೋಪ್‌ಗಳಿರುವ ಕೀ `read:compression` ಗೆ `scopeMatches` ಅನ್ನು ವಿಫಲಗೊಳಿಸುತ್ತದೆ.
+ನೀಡಿದ ಸ್ಟ್ರಿಂಗ್‌ಗಳು ಕೇವಲ `admin`, `mcp:connect`, `read` ಮತ್ತು `write` ಆಗಿದ್ದಾಗ ಅದೇ ಕರೆ ಅವುಗಳಿಗೂ ವಿಫಲವಾಗುತ್ತದೆ.
+ಕೊನೆಯ `*` ನ ಹೊರತು MCP ಟೂಲ್ ಸ್ಕೋಪ್‌ಗಳಲ್ಲಿ ಯಾವುದೇ ಶ್ರೇಣಿಬಂಧ ಇಲ್ಲ.
 
-`OMNIROUTE_MCP_ENFORCE_SCOPES=true` ಆಗಿರದ ಹೊರತು ಜಾರಿಗೊಳಿಸುವಿಕೆ ನಿಷ್ಕ್ರಿಯವಾಗಿರುತ್ತದೆ (ಡೀಫಾಲ್ಟ್
-`false`). ಅದು ನಿಷ್ಕ್ರಿಯವಾಗಿರುವಾಗ, `evaluateToolScopes` ಕರೆಯನ್ನು ಅನುಮತಿಸಿ
-ಕ್ಯಾಟಲಾಗ್ ಅನ್ನು ಬಿಟ್ಟುಬಿಡುತ್ತದೆ. ಅದು ಸಕ್ರಿಯವಾಗಿರುವಾಗ, HTTP Bearer ಕೀಲಿಯ `api_keys.scopes` ಅನ್ನು
-`authInfo` ಆಗಿ ಬಳಸುತ್ತದೆ ([ಪ್ರತಿ-ಕೀ HTTP ಸ್ಕೋಪ್ ಬೈಂಡಿಂಗ್](#per-key-http-scope-binding-7895) ನೋಡಿ).
-ಯಾವುದೇ ಕೀ ಸ್ಕೋಪ್ಗಳು ನಿರ್ಧಾರವಾಗದಿದ್ದಾಗ, ಮಂಜೂರಾದ ಸಮೂಹವು ಮೊದಲು MCP `_meta` ಗೆ, ನಂತರ
-`OMNIROUTE_MCP_SCOPES` ಗೆ ಮುಂದುವರಿಯುತ್ತದೆ.
+`OMNIROUTE_MCP_ENFORCE_SCOPES=true` (ಮೂಲ `false`) ಇಲ್ಲದವರೆಗೂ ಕಾರ್ಯಗತಗೊಳಿಸುವಿಕೆ ಆಫ್ ಆಗಿರುತ್ತದೆ. ಅದು ಆಫ್ ಇರುವಾಗ,
+`evaluateToolScopes` ಕರೆಯನ್ನು ಅನುಮತಿಸಿ ಕಾಟಲಾಗ್ ಅನುಕ್ರಮದಲ್ಲಿ ಬಿಡುತ್ತದೆ. ಅದು ಆನ್ ಇರುವಾಗ, HTTP ಇದರಲ್ಲಿ Bearer ಕೀಯ
+`api_keys.scopes` ಅನ್ನು `authInfo` ಆಗಿ ಬಳಸುತ್ತದೆ ([ಪ್ರತಿ-ಕೀ HTTP ಸ್ಕೋಪ್ ಬಂಧನ](#per-key-http-scope-binding-7895)).
+ಯಾವುದೇ ಕೀ ಸ್ಕೋಪ್ ನಿರ್ವರಣೆಗೊಳ್ಳದಿದ್ದರೆ, ನೀಡಿದ ಸೆಟ್ MCP `_meta` ಗೆ ಮುಳ್ಳಿತ್ತದೆ (ಇದು HTTP/SSE ಕರೆದವರಿಗೆ ಮಾತ್ರ, HTTP ಆಥ್ ಕನ್ಟೆಕ್ಸ್ಟ್‌ನಲ್ಲಿ ಮಾನಿಸಲಾಗುತ್ತದೆ; stdio ಕರೆದವರ `_meta` ಅನ್ನು ಕ್ಲೈಂಟ್ ನಿಯಂತ್ರಿಸುತ್ತದೆ ಮತ್ತು ಅದು ಪ್ರತಿ-ಕರೆದವರ ಗುರುತನ್ನು ಹೊಂದಿರುವುದಿಲ್ಲ ಎಂದು ಅದನ್ನು ನಿರ್ಲಕ್ಷಿಸಲಾಗುತ್ತದೆ), ನಂತರ
+`OMNIROUTE_MCP_SCOPES`.
 
-#### ಪ್ರವೇಶ-ಟೋಕನ್ ಸ್ಕೋಪ್ಗಳು
+#### ಆಕ್ಸೆಸ್ ಟೋಕನ್ ಸ್ಕೋಪ್‌ಗಳು
 
-`oma_live_…` ಟೋಕನ್ಗಳು (`src/lib/accessTokens/scopes.ts`) `read`, `write`,
-ಅಥವಾ `admin` ಅನ್ನು ಹೊಂದಿರುತ್ತವೆ. `scopeSatisfies` ಒಂದು ಶ್ರೇಣಿಯಾಗಿದೆ: `admin`, `write` ಮತ್ತು `read`
-ಎರಡನ್ನೂ ಒಳಗೊಳ್ಳುತ್ತದೆ ಹಾಗೂ `write`, `read` ಅನ್ನು ಒಳಗೊಳ್ಳುತ್ತದೆ. ಅಜ್ಞಾತ ಸ್ಕೋಪ್ಗಳು ಯಾವುದನ್ನೂ ಒಳಗೊಳ್ಳುವುದಿಲ್ಲ.
+`oma_live_…` ಟೋಕನ್‌ಗಳು (`src/lib/accessTokens/scopes.ts`) `read`, `write` ಅಥವಾ `admin` ಅನ್ನು ಹೊಂದಿರುತ್ತವೆ.
+`scopeSatisfies` ಒಂದು ಶ್ರೇಣಿ: `admin` ನೀಡಿ `write` ಮತ್ತು `read` ಅನ್ನು ಒಳಗೊಳ್ಳುತ್ತದೆ, ಮತ್ತು `write` ನೀಡಿ `read` ಅನ್ನು ಒಳಗೊಳ್ಳುತ್ತದೆ. ಗೊತ್ತಿಲ್ಲದ ಸ್ಕೋಪ್‌ಗಳು ಏನನ್ನೂ ಒಳಗೊಳ್ಳುವುದಿಲ್ಲ.
 
-`evaluateAccessTokenAuth` (`src/server/authz/accessTokenAuth.ts`), ಆ ಶ್ರೇಣಿಯನ್ನು
-`inferRequiredScope` (`src/server/authz/accessScopes.ts`) ಜೊತೆಗೆ ಹೋಲಿಸುತ್ತದೆ:
+`evaluateAccessTokenAuth` (`src/server/authz/accessTokenAuth.ts`) ಆ ಶ್ರೇಣಿಯನ್ನು `inferRequiredScope`
+(`src/server/authz/accessScopes.ts`) ಜೊತೆಗೆ ಹೋಲಿಸುತ್ತದೆ:
 
-- `GET`, `HEAD`, ಮತ್ತು `OPTIONS` ಗೆ `read` ಅಗತ್ಯವಿದೆ.
-- ಇತರ ಪ್ರತಿಯೊಂದು ವಿಧಾನಕ್ಕೂ `write` ಅಗತ್ಯವಿದೆ.
-- `ADMIN_SCOPE_PREFIXES` ನಲ್ಲಿರುವ ಪಥಗಳಿಗೆ ಪ್ರತಿಯೊಂದು ವಿಧಾನಕ್ಕೂ `admin` ಅಗತ್ಯವಿದೆ. `/api/mcp`
-  ಆ ಪಟ್ಟಿಯಲ್ಲಿರುವುದರಿಂದ, `write` ಪ್ರವೇಶ ಟೋಕನ್ ಇನ್ನೂ MCP HTTP
-  ಮೇಲ್ಮೈಯನ್ನು ಕರೆಯಲು ಸಾಧ್ಯವಿಲ್ಲ.
-- `ADMIN_MUTATION_PREFIXES` ನಲ್ಲಿರುವ ಪಥಗಳಿಗೆ ರೂಪಾಂತರಗಳಿಗಾಗಿ ಮಾತ್ರ `admin` ಅಗತ್ಯವಿದೆ.
+- `GET`, `HEAD` ಮತ್ತು `OPTIONS` ಗಳಿಗೆ `read` ಅಗತ್ಯವಿದೆ.
+- ಇತರ ಎಲ್ಲಾ ವಿಧಾನಗಳಿಗೆ `write` ಅಗತ್ಯವಿದೆ.
+- `ADMIN_SCOPE_PREFIXES` ನಲ್ಲಿನ ಮಾರ್ಗಗಳಿಗೆ ಪ್ರತಿ ವಿಧಾನಕ್ಕೂ `admin` ಅಗತ್ಯವಿದೆ. `/api/mcp`
+  ಅದರ ಪಟ್ಟಿಯಲ್ಲಿದೆ, ಹಾಗಾದರೂ `write` ಆಕ್ಸೆಸ್ ಟೋಕನ್ ಇನ್ನೂ MCP HTTP
+  ಸರ್ಫೇಸ್ ಅನ್ನು ಕರೆಯಲು ಆಗುತ್ತದೆ.
+- `ADMIN_MUTATION_PREFIXES` ನಲ್ಲಿನ ಮಾರ್ಗಗಳಿಗೆ ಮ್ಯುಟೇಷನ್‌ಗಳಿಗೆ ಮಾತ್ರ `admin` ಅಗತ್ಯವಿದೆ.
+- `ADMIN_MUTATION_EXACT_PATHS` ನಲ್ಲಿನ ಮಾರ್ಗಗಳು (`/api/settings`,
+  `/api/settings/require-login`) ಮ್ಯುಟೇಷನ್‌ಗಳಿಗೆ ಮಾತ್ರ ಮತ್ತು ಆ ನಿರ್ದಿಷ್ಟ ಮಾರ್ಗದಲ್ಲಿ ಮಾತ್ರ `admin` ಅಗತ್ಯವಿದೆ — ಇತರ
+  `/api/settings/*` ಉಪ-ಮಾರ್ಗಗಳು `write` ಅನ್ನು ಇರಿಸುತ್ತವೆ.
 
-`PATCH /api/keys/{id}` ಒಂದು ಮ್ಯೂಟೇಶನ್ ಆಗಿದ್ದು, ಅದು ಆ admin ಪಟ್ಟಿಗಳಲ್ಲಿಲ್ಲ, ಆದ್ದರಿಂದ
-`read` ಟೋಕನ್ 403 ಅನ್ನು ಪಡೆಯುತ್ತದೆ:
-`Access token scope 'read' is insufficient; 'write' required.`
-`write` ಅಥವಾ `admin` access token ಆ routeನ ಅವಶ್ಯಕತೆಯನ್ನು ಪೂರೈಸುತ್ತದೆ. dashboard JWT,
-loopback CLI machine-id token ಮತ್ತು `manage` ಅಥವಾ `admin` ಹೊಂದಿರುವ API key
-ಬೇರೆ branches ಅನ್ನು ಬಳಸುತ್ತವೆ ಮತ್ತು ಈ rankನಿಂದ ನಿರ್ಬಂಧಿಸಲ್ಪಡುವುದಿಲ್ಲ.
+`PATCH /api/keys/{id}` ಒಂದು ಮ್ಯುಟೇಷನ್ ಆಗಿದೆ ಮತ್ತು ಅದು ಆ ಆಡ್ಮಿನ್ ಪಟ್ಟಿಗಳಲ್ಲಿ ಇಲ್ಲ, ಹಾಗಾದರೂ `read` ಟೋಕನ್‌ಗೆ 403
+`Access token scope 'read' is insufficient; 'write' required.` ಸಿಗುತ್ತದೆ.
+`write` ಅಥವಾ `admin` ಆಕ್ಸೆಸ್ ಟೋಕನ್ ಆ ಮಾರ್ಗವನ್ನು ಸಂತೃಪ್ತಿಪಡಿಸುತ್ತದೆ. ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ JWT, ಲೂಪ್‌ಬ್ಯಾಕ್ CLI
+ಮೆಶಿನ್-ಐಡಿ ಟೋಕನ್ ಮತ್ತು `manage` ಅಥವಾ `admin` ಹೊಂದಿರುವ API ಕೀ ಇತರ ಶಾಖೆಗಳನ್ನು ಅನುಸರಿಸುತ್ತವೆ ಮತ್ತು ಈ ಶ್ರೇಣಿಯಿಂದ
+ಸೀಮಿತಗೊಳ್ಳುವುದಿಲ್ಲ.
 
-`/api/mcp` ಗಾಗಿ `scopeSatisfies` ಅನ್ನು ಪೂರೈಸುವ access token ಕೇವಲ
-management gate ಅನ್ನು ದಾಟಿರುತ್ತದೆ. Tool calls ಇನ್ನೂ API-key scopes ವಿರುದ್ಧ
-`scopeMatches` ಅನ್ನು ಚಲಾಯಿಸುತ್ತವೆ. Access-token rank, `scopeMatches`ಗೆ input ಅಲ್ಲ.
+`/api/mcp` ಗಾಗಿ `scopeSatisfies` ಅನ್ನು ಪಾಸ್ ಮಾಡುವ ಆಕ್ಸೆಸ್ ಟೋಕನ್ ನಿರ್ವಹಣೆ ಗೇಟ್ ಅನ್ನು ಮಾತ್ರ ಮೀರಿದೆ. ಟೂಲ್ ಕರೆಗಳು ಇನ್ನೂ API-ಕೀ
+ಸ್ಕೋಪ್‌ಗಳ ವಿರುದ್ಧ `scopeMatches` ಅನ್ನು ನಡೆಸುತ್ತವೆ. ಆಕ್ಸೆಸ್-ಟೋಕನ್ ಶ್ರೇಣಿ `scopeMatches` ಗೆ ಇನ್ಪುಟ್ ಅಲ್ಲ.
 
-### MCP tool scopes
+### MCP ಟೂಲ್ ಸ್ಕೋಪ್‌ಗಳು
 
-Scope enforcement ಅನ್ನು `open-sse/mcp-server/scopeEnforcement.ts`ನಲ್ಲಿ ಕೇಂದ್ರೀಕರಿಸಲಾಗಿದೆ.
-ಪ್ರತಿಯೊಂದು toolಗೂ ನಿರ್ದಿಷ್ಟ scopes ಅಗತ್ಯವಿವೆ:
+ಸ್ಕೋಪ್ ಅನುಬಂಧನವನ್ನು `open-sse/mcp-server/scopeEnforcement.ts` ನಲ್ಲಿ ಕೇಂದ್ರೀಕೃತಗೊಳಿಸಲಾಗಿದೆ.
+ಪ್ರತಿ ಟೂಲ್‌ಗೆ ನಿರ್ದಿಷ್ಟ ಸ್ಕೋಪ್‌ಗಳು ಅಗತ್ಯವಿವೆ:
 
-| ವ್ಯಾಪ್ತಿ              | ಪರಿಕರಗಳು                                                                                                                                                                        |
+| ವ್ಯಾಪ್ತಿ              | ಸಾಧನಗಳು                                                                                                                                                                         |
 | :-------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `read:health`         | `get_health`, `get_provider_metrics`, `simulate_route`, `explain_route`, `best_combo_for_task`, `db_health_check`                                                               |
 | `read:combos`         | `list_combos`, `get_combo_metrics`, `simulate_route`, `best_combo_for_task`, `test_combo`                                                                                       |
@@ -424,53 +425,21 @@ Scope enforcement ಅನ್ನು `open-sse/mcp-server/scopeEnforcement.ts`ನ�
 | `write:gamification`  | `gamification_invite`, `gamification_transfer`                                                                                                                                  |
 | `read:plugins`        | `plugin_list`, `plugin_executions`                                                                                                                                              |
 | `write:plugins`       | `plugin_scan`, `plugin_install`, `plugin_uninstall`, `plugin_activate`, `plugin_deactivate`, `plugin_configure`                                                                 |
-| `read:obsidian`       | 13 ಓದುವ ಪರಿಕರಗಳು — `obsidian_list_vault`, `obsidian_read_note`, `obsidian_search_simple`, `obsidian_search_structured`, `obsidian_get_periodic_note`, `obsidian_sync_status`, … |
-| `write:obsidian`      | 9 ಬರೆಯುವ ಪರಿಕರಗಳು — `obsidian_write_note`, `obsidian_append_note`, `obsidian_patch_note`, `obsidian_move_note`, `obsidian_delete_note`, `obsidian_sync_trigger`, …              |
+| `read:obsidian`       | 13 ಓದುವ ಟೂಲ್‌ಗಳು — `obsidian_list_vault`, `obsidian_read_note`, `obsidian_search_simple`, `obsidian_search_structured`, `obsidian_get_periodic_note`, `obsidian_sync_status`, … |
+| `write:obsidian`      | 9 ಬರೆಯುವ ಟೂಲ್‌ಗಳು — `obsidian_write_note`, `obsidian_append_note`, `obsidian_patch_note`, `obsidian_move_note`, `obsidian_delete_note`, `obsidian_sync_trigger`, …              |
 | `read:local-corpus`   | `local_corpus_search`, `local_corpus_read`, `local_corpus_status`                                                                                                               |
 
-ವೈಲ್ಡ್ಕಾರ್ಡ್ ವ್ಯಾಪ್ತಿಗಳಿಗೆ ಬೆಂಬಲವಿದೆ: `read:*` ಎಲ್ಲಾ ಓದುವ ವ್ಯಾಪ್ತಿಗಳನ್ನು ನೀಡುತ್ತದೆ, `*` ಸಂಪೂರ್ಣ ಪ್ರವೇಶವನ್ನು ನೀಡುತ್ತದೆ.
+ವೈಲ್ಡ್‌ಕಾರ್ಡ್ ಸ್ಕೋಪ್‌ಗಳನ್ನು ಬೆಂಬಲಿಸಲಾಗುತ್ತದೆ: `read:*` ಎಲ್ಲಾ ಓದುವ-ಸ್ಕೋಪ್‌ಗಳನ್ನು ನೀಡುತ್ತದೆ, `*` ಪೂರ್ಣ ಪ್ರವೇಶವನ್ನು ನೀಡುತ್ತದೆ.
 
-### `mcp:connect` — ಸೀಮಿತ ರೂಟ್ ಸಾಮರ್ಥ್ಯ (#7895)
+### `mcp:connect` — ಸಂಕುಚಿತ ರೂಟ್ ಸಾಮರ್ಥ್ಯ (#7895)
 
-ಲೂಪ್ಬ್ಯಾಕ್ ಅಲ್ಲದ ಸ್ಥಳದಿಂದ HTTP/SSE MCP ಸಾರಿಗೆಯನ್ನು (`/api/mcp/*`) ತಲುಪಲು
-`/api/mcp/` LOCAL_ONLY ವಿನಾಯಿತಿ ಅಗತ್ಯವಿದೆ (`docs/security/ROUTE_GUARD_TIERS.md` ನೋಡಿ). ಐತಿಹಾಸಿಕವಾಗಿ,
-ಆ ವಿನಾಯಿತಿಯು ಸಂಪೂರ್ಣ `manage`/`admin`-ವ್ಯಾಪ್ತಿಯ API ಕೀಲಿಯನ್ನು ಮಾತ್ರ ಸ್ವೀಕರಿಸುತ್ತಿತ್ತು — ಕೇವಲ
-MCP ಜೊತೆಗೆ ಸಂವಹನ ನಡೆಸಬೇಕಾದ ಕರೆಗಾರನಿಗೆ ಇದು ಅಗತ್ಯಕ್ಕಿಂತ ಹೆಚ್ಚು ವಿಸ್ತಾರವಾಗಿತ್ತು. `src/shared/constants/managementScopes.ts` ಈಗ
-`MCP_CONNECT_SCOPE = "mcp:connect"` ಅನ್ನು ರಫ್ತು ಮಾಡುತ್ತದೆ: ಇದು ಸೇರ್ಪಡೆಗೊಳ್ಳುವ, ಸೀಮಿತ ವ್ಯಾಪ್ತಿಯಾಗಿದ್ದು (`SELF_USAGE_SCOPE` ನಂತೆಯೇ ಪೂರ್ವನಿದರ್ಶನ ಹೊಂದಿದೆ),
-`src/server/authz/policies/management.ts` ನಲ್ಲಿ `/api/mcp/` ಬೈಪಾಸ್ಗೆ ಮಾತ್ರ ಅಧಿಕಾರ ನೀಡುತ್ತದೆ — ಇದು ಬೇರೆ ಯಾವುದೇ ನಿರ್ವಹಣಾ-ರೂಟ್ ಪ್ರವೇಶವನ್ನು
-ನೀಡುವುದಿಲ್ಲ ಮತ್ತು ಉದ್ದೇಶಪೂರ್ವಕವಾಗಿ `MANAGEMENT_API_KEY_SCOPES` ನಿಂದ ಹೊರಗಿಡಲಾಗಿದೆ. `manage`/`admin`
-ಹೊಂದಿರುವ ಕೀಲಿಯು ಈ ವಿನಾಯಿತಿಯನ್ನು ಎಂದಿನಂತೆಯೇ ದಾಟುತ್ತದೆ; ದೂರಸ್ಥ MCP-ಮಾತ್ರ ಕರೆಗಾರರಿಗೆ `mcp:connect`
-ಕಡಿಮೆ-ಸವಲತ್ತಿನ ಪರ್ಯಾಯವಾಗಿದ್ದು, ಇದನ್ನು `hasMcpConnectOrManageScope()` ಮೂಲಕ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.
+HTTP/SSE MCP ಟ್ರಾನ್ಸ್ಪೋರ್ಟ್ (`/api/mcp/*`) ಅನ್ನು loopback ಹೊರತುವರಿಂದ ತಲುಪಿಕೆಗೆ, `/api/mcp/` LOCAL_ONLY ಕಾರ್ಟ್‌ಔಟ್ ಅಗತ್ಯ (`docs/security/ROUTE_GUARD_TIERS.md` ನೋಡಿ). ಪಿನ್ನೆಗೆ ಆ ಕಾರ್ಟ್‌ಔಟ್ ಪೂರ್ಣ `manage`/`admin`-ಸ್ಕೋಪ್ API ಕೀ ಅನ್ನು ಮಾತ್ರ ಸ್ವೀಕರಿಸುತ್ತಿತ್ತು — MCP ಜೊತೆ ಮಾತ್ರ ಮಾತನಾಡಬೇಕಾದ ಕರೆಯದಾರರಿಗೆ ಅತ್ಯಧಿಕ. `src/shared/constants/managementScopes.ts` ಈಗ `MCP_CONNECT_SCOPE = "mcp:connect"` ಅನ್ನು ರಫ್ತು ಮಾಡುತ್ತದೆ: ಸೇರಿಕೆಯಾದ ಸಂಕುಚಿತ ಸ್ಕೋಪ್ (`SELF_USAGE_SCOPE` ನಂತಹವೇ ಮುಂದುವರಿಕೆ) ಅದು `src/server/authz/policies/management.ts` ನಲ್ಲಿರುವ `/api/mcp/` ಬೈಪಾಸ್ ಅನ್ನು ಮಾತ್ರ ಪ್ರಾಧಿಸುತ್ತದೆ — ಇತರ ಯಾವುದೇ ಮ್ಯಾನೇಜ್‌ಮೆಂಟ್-ರೂಟ್ ಪ್ರವೇಶವನ್ನು ನೀಡುವುದಿಲ್ಲ ಮತ್ತು ಇದನ್ನು ಎರಡನೆಯ ಕರೆಯದಾರರಿಗೆ ಪ್ರಾಧಿಸುವ ಉದ್ದೇಶದಿಂದ `MANAGEMENT_API_KEY_SCOPES` ಒಳಗೆ ಇರಬಾರದು ಬಿಡಲಾಗಿದೆ. `manage`/`admin` ಹೊಂದಿರುವ ಕೀ ಈಗಲೂ ಕಾರ್ಟ್‌ಔಟ್ ಅನ್ನು ಬದಲಾಗದೆ ಹಾಗೆ ಪಾಸ್ ಮಾಡುತ್ತದೆ; `mcp:connect` ಇದು ದೂರಸ್ಥಿತಿಯಿರುವ MCP-ಮಾತ್ರ ಕರೆಯದಾರರಿಗಾಗಿ ಕಡಿಮೆ ಅಧಿಕಾರದ ಪರ್ಯಾಯವಾಗಿದೆ, ಅದನ್ನು `hasMcpConnectOrManageScope()` ಮೂಲಕ ಪರಿಶೀಲಿಸಲಾಗುತ್ತದೆ.
 
-### ಪ್ರತಿ-ಕೀಲಿಯ HTTP ವ್ಯಾಪ್ತಿ ಬಂಧಿಸುವಿಕೆ (#7895)
+### ಪ್ರತಿ-ಕೀ HTTP ಸ್ಕೋಪ್ ಬಂಧನ (#7895)
 
-HTTP/SSE ಮೂಲಕ, `open-sse/mcp-server/httpTransport.ts` ಈಗ ಕರೆಗಾರನ ನಿಜವಾದ
-`api_keys.scopes` ಅನ್ನು `resolveMcpCallerAuthInfo()` (`open-sse/mcp-server/httpAuthContext.ts`)
-ಮೂಲಕ ಪರಿಹರಿಸಿ, ಅದನ್ನು MCP SDK ಯ `transport.handleRequest(req, { authInfo })` ಗೆ ರವಾನಿಸುತ್ತದೆ; ಹೀಗಾಗಿ
-ಪ್ರತಿ ಪರಿಕರ ಕರೆಗೆ ತಲುಪುವ `extra.authInfo.scopes`, Bearer ಕೀಲಿಯ ಸ್ವಂತ ವ್ಯಾಪ್ತಿಗಳನ್ನು ಪ್ರತಿಬಿಂಬಿಸುತ್ತದೆ.
-`scopeEnforcement.ts` ನ `resolveCallerScopeContext()` ಈಗಾಗಲೇ `_meta` ಮತ್ತು
-`OMNIROUTE_MCP_SCOPES` env ಪರ್ಯಾಯಕ್ಕಿಂತ `authInfo` ಗೆ ಆದ್ಯತೆ ನೀಡುತ್ತಿತ್ತು — ಇದು ಹಿಂದೆ HTTP ಮೂಲಕ
-ಪೂರೈಸಲಾಗದಿದ್ದ ಆ ಮೊದಲನೆಯ, ಅತ್ಯುನ್ನತ-ಆದ್ಯತೆಯ ಮೂಲವನ್ನು ಮಾತ್ರ ಈಗ ಭರ್ತಿ ಮಾಡುತ್ತದೆ. ಯಾವುದೇ API ಕೀಲಿಯನ್ನು
-ಪರಿಹರಿಸಲಾಗದಿದ್ದಾಗ (ಹೆಡರ್ ಇಲ್ಲದಿರುವುದು, ಅಮಾನ್ಯ ಕೀಲಿ), `authInfo` `undefined` ಆಗಿಯೇ ಉಳಿಯುತ್ತದೆ ಮತ್ತು ಪರಿಹಾರ ಪ್ರಕ್ರಿಯೆಯು
-ಈಗಿರುವ `meta`/env ಸರಪಳಿಗೆ ಎಂದಿನಂತೆಯೇ ಮುಂದುವರಿಯುತ್ತದೆ. stdio ಗೆ ಪ್ರತಿ-ಕರೆಗಾರ ಗುರುತು ಇಲ್ಲ
-(`mcpCallerIdentity.ts` ನೋಡಿ) ಮತ್ತು ಇದರಿಂದ ಯಾವುದೇ ಪರಿಣಾಮವಿಲ್ಲ — ಅದು `_meta`/env ಪರ್ಯಾಯ ಸರಪಳಿಯಲ್ಲೇ ಉಳಿಯುತ್ತದೆ.
+HTTP/SSE ಮೂಲಕ, `open-sse/mcp-server/httpTransport.ts` ಈಗ ಕರೆಯದಾರನ ನಿಜವಾದ `api_keys.scopes` ಅನ್ನು `resolveMcpCallerAuthInfo()` (`open-sse/mcp-server/httpAuthContext.ts`) ಮೂಲಕ ಪರಿಶೀಲಿಸಿ, ಅದನ್ನು MCP SDK ನ `transport.handleRequest(req, { authInfo })` ಗೆ ತಲುಪಿಸುತ್ತದೆ, ಹಾಗಾಗಿ ಪ್ರತಿ ಟೂಲ್ ಕರೆಗೆ ತಲುಪುವ `extra.authInfo.scopes` ಅದೇ Bearer ಕೀಯ ಸ್ಕೋಪ್‌ಗಳನ್ನು ಪ್ರತಿಬಿಸುತ್ತದೆ. `scopeEnforcement.ts` ನ `resolveCallerScopeContext()` ಈಗಾಗಲೇ `_meta` ಮತ್ತು `OMNIROUTE_MCP_SCOPES` env ಪರಿಯಾಲ್ ಬ್ಯಾಕ್‌ಅಪ್ ಮೇಲೆ `authInfo` ಅನ್ನು ಆದ್ಯತೆ ನೀಡುತ್ತಿತ್ತು — ಇದು ಆ ಮೊದಲ, ಅತಿ ಅಗ್ಗತೆಯ ಮೂಲವನ್ನು ಮಾತ್ರ ತುಂಬಿಸುತ್ತದೆ, ಅದು HTTP ಮೂಲಕ ಇದ್ದಾಗ ಖಾಲಿಯಾಗಿದ್ದು. ಯಾವುದೇ API ಕೀ ಪರಿಶೀಲನೆಗೆ ಸಿಗದಿದ್ದರೆ (ಹೆಡರ್ ಇಲ್ಲ, ಅಮಾನ್ಯ ಕೀ), `authInfo` `undefined` ಆಗಿ ಉಳಿಯುತ್ತದೆ ಮತ್ತು ಪರಿಶೀಲನೆ ಈಗಿನ `meta`/env ಸರತರಿಗೆ ಬದಲಾಗದೆ ಹಾಗೆ ಮುಂದುವರುತ್ತದೆ. stdio ಗೆ ಪ್ರತಿ-ಕರೆಯದಾರ ಗುರುತಿನ ಅಗತ್ಯವಿಲ್ಲ (`mcpCallerIdentity.ts` ನೋಡಿ) ಮತ್ತು ಅದು ಪ್ರತಿ-ಕೀ ಬಂಧನದಿಂದ ಪೀಡಬಹುದಿಲ್ಲ — ಅದು `_meta` ಹಂತವನ್ನು ಬಿಟ್ಟುಬಿಡುತ್ತದೆ (`_meta` ಅನ್ನು HTTP ದಾಖಲೆ ಸಂದರ್ಭದಲ್ಲಿ ಮಾತ್ರ ಗೌರವಿಸಲಾಗುತ್ತದೆ, #15159) ಮತ್ತು `OMNIROUTE_MCP_SCOPES` env ಕೀಯಿಂದ ಮಾತ್ರ ಪರಿಶೀಲಿಸುತ್ತದೆ.
 
-**ಸೀಮಿತ-ವ್ಯಾಪ್ತಿಯ HTTP/SSE ಕರೆಗಾರರಿಗೆ `OMNIROUTE_MCP_ENFORCE_SCOPES` ಏನೇ ಇದ್ದರೂ
-ಜಾರಿಗೊಳಿಸುವಿಕೆಯನ್ನು ಕಡ್ಡಾಯವಾಗಿ ಸಕ್ರಿಯಗೊಳಿಸಲಾಗುತ್ತದೆ.** `OMNIROUTE_MCP_ENFORCE_SCOPES` ನ ಪೂರ್ವನಿಯೋಜಿತ ಮೌಲ್ಯ `false` ಆಗಿರುವುದು,
-ವ್ಯಾಪ್ತಿ ಅನ್ವಯಿಸಲು ಪ್ರತಿ-ಕರೆಗಾರ ಗುರುತು ಇಲ್ಲದ ಸ್ಥಳೀಯ/stdio ಏಕ-ನಿರ್ವಾಹಕ ಹರಿವಿಗೆ ಮಾತ್ರ ಸುರಕ್ಷಿತವಾಗಿದೆ.
-`open-sse/mcp-server/server.ts::withScopeEnforcement()` ಪ್ರತಿ-ಪರಿಕರ ವ್ಯಾಪ್ತಿ
-ಜಾರಿಗೊಳಿಸುವಿಕೆಯನ್ನು ಷರತ್ತಿಲ್ಲದೆ ಸಕ್ರಿಯಗೊಳಿಸುತ್ತದೆ (`scopeEnforcement.ts` ನಲ್ಲಿನ `shouldForceScopeEnforcement()`)
-ಯಾವಾಗ `resolveCallerScopeContext()`
-`source === "authInfo"` ಅನ್ನು ಪರಿಹರಿಸಿದೆಯೋ (ಅಂದರೆ ನಿಜವಾದ ಪ್ರತಿ-ಕೀಲಿಯ HTTP Authorization ಹೆಡರ್, HTTP/SSE-ಮಾತ್ರ) ಮತ್ತು ಆ
-ಕೀಲಿಯು ಸಂಪೂರ್ಣ `manage`/`admin` ವ್ಯಾಪ್ತಿಯನ್ನು ಹೊಂದಿಲ್ಲವೋ ಆಗ.
-ಮೇಲೆ ಕೇವಲ `/api/mcp/` LOCAL_ONLY ವಿನಾಯಿತಿಗೆ ಮಾತ್ರ ಅಧಿಕಾರ ನೀಡುತ್ತದೆ ಎಂದು ದಾಖಲಿಸಲಾದ,
-ಸೀಮಿತ `mcp:connect` ಬೈಪಾಸ್ ವ್ಯಾಪ್ತಿಯನ್ನು ಮಾತ್ರ ಹೊಂದಿರುವ ಕೀಲಿಯು, ನಿರ್ವಾಹಕರು ದೂರಸ್ಥ/ಲೂಪ್ಬ್ಯಾಕ್ ಅಲ್ಲದ MCP ಪ್ರವೇಶವನ್ನು
-ಸಕ್ರಿಯಗೊಳಿಸಿದ ನಂತರ, `OMNIROUTE_MCP_ENFORCE_SCOPES` ಪೂರ್ವನಿಯೋಜಿತವಾಗಿ `false` ಆಗಿರುವುದರಿಂದ ಮಾತ್ರ
-ಎಲ್ಲಾ MCP ಪರಿಕರಗಳನ್ನು ಆಹ್ವಾನಿಸಲು ಸಾಧ್ಯವಾಗುತ್ತಿದ್ದ ಲೋಪವನ್ನು ಇದು ಮುಚ್ಚುತ್ತದೆ. HTTP ಮೂಲಕದ ಸಂಪೂರ್ಣ `manage`/`admin` ಕೀಲಿ ಮತ್ತು
-ಪ್ರತಿಯೊಂದು stdio/ಸ್ಥಳೀಯ ಕರೆಗಾರರು ಈಗಿರುವ `OMNIROUTE_MCP_ENFORCE_SCOPES`-ನಿಯಂತ್ರಿತ ವರ್ತನೆಯನ್ನು
-ಯಾವುದೇ ಬದಲಾವಣೆಯಿಲ್ಲದೆ ಉಳಿಸಿಕೊಳ್ಳುತ್ತಾರೆ.
-
----
+**ಸಂಕುಚಿತ-ಸ್ಕೋಪ್ ಹೊಂದಿರುವ HTTP/SSE ಕರೆಯದಾರರಿಗೆ `OMNIROUTE_MCP_ENFORCE_SCOPES` ಅನ್ನು ಹೇಖೆಯೇ ಪರಿಶೀಲನೆ ಅನ್ನು ಶಾಂತವಾಗಿ ಒತ್ತಿಸಲಾಗುತ್ತದೆ.** `OMNIROUTE_MCP_ENFORCE_SCOPES` ನ `false` ಎಂದು ಹೊರತುವರಿಕೆ ಕೇವಲ ಸ್ಥಳೀಯ/stdio ಏಕ-ಚಾಲಕ ಹರಿವಿಗೆ ಸುರಕ್ಷಿತ, ಅಲ್ಲಿ ಸ್ಕೋಪ್ ಮಾಡಲು ಪ್ರತಿ-ಕರೆಯದಾರ ಗುರುತಿನ ಅಗತ್ಯವಿಲ್ಲ. `open-sse/mcp-server/server.ts::withScopeEnforcement()` ಪ್ರತಿ-ಟೂಲ್ ಸ್ಕೋಪ್ ಪರಿಶೀಲನೆಯನ್ನು ಸದಾ ಆನ್ ಮಾಡುತ್ತದೆ (`scopeEnforcement.ts` ನ `shouldForceScopeEnforcement()`) ಯಾವಾಗ `resolveCallerScopeContext()` ನ `source === "authInfo"` ಎಂದು ಪರಿಶೀಲಿಸಿದಾಗ (ಅಂದರೆ ನಿಜವಾದ ಪ್ರತಿ-ಕೀ HTTP Authorization ಹೆಡರ್, HTTP/SSE-ಮಾತ್ರ) ಮತ್ತು ಆ ಕೀಯಲ್ಲಿ ಪೂರ್ಣ `manage`/`admin` ಸ್ಕೋಪ್ ಇಲ್ಲದಿದ್ದರೆ. ಇದು ಆ ಅಂತರವನ್ನು ಮುಚ್ಚುತ್ತದೆ, ಅದರಲ್ಲಿ ಕೇವಲ ಸಂಕುಚಿತ `mcp:connect` ಬೈಪಾಸ್ ಸ್ಕೋಪ್ ಹೊಂದಿರುವ ಕೀ — ಮೇಲೆ ದಾಖಲಾದಂತೆ `/api/mcp/` LOCAL_ONLY ಕಾರ್ಟ್‌ಔಟ್ ಅನ್ನು ಮಾತ್ರ ಪ್ರಾಧಿಸುತ್ತದೆ — ಒಂದು ಚಾಲಕ ದೂರ/loopback ಹೊರದ MCP ಪ್ರವೇಶ ಅನ್ನು ಸಕ್ರಿಯಗೊಳಿಸಿದ ಮೇಲೆ ಎಲ್ಲಾ MCP ಟೂಲ್‌ಗಳನ್ನೂ ಕರೆಯಬಲ್ಲಾಗಬಹುದು, ಸರಿಯಾಗಿ ಏಕೆಂದರೆ `OMNIROUTE_MCP_ENFORCE_SCOPES` ಹೊರತುವರಿಕೆಯಾಗಿ `false` ಆಗಿದೆ. HTTP ಮೂಲಕ ಪೂರ್ಣ `manage`/`admin` ಕೀ ಮತ್ತು ಪ್ರತಿಯ stdio/ಸ್ಥಳೀಯ ಕರೆಯದಾರ ಈಗಿನ `OMNIROUTE_MCP_ENFORCE_SCOPES`-ಗೇಟ್ ವರ್ತನೆಯನ್ನು ಬದಲಾಗದೆ ಹಾಗೆಯೇ ಇಡುತ್ತವೆ.
 
 ## ಪರಿಸರ ಚರಾಂಶಗಳು
 

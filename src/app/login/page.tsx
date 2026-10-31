@@ -1,5 +1,7 @@
 "use client";
 
+import Icon from "@/shared/components/Icon";
+
 import { useTranslations } from "next-intl";
 
 import { useState, useEffect } from "react";
@@ -105,7 +107,7 @@ export default function LoginPage() {
         <div className="bg-black/5 border border-black/10 rounded-xl p-6 shadow-lg shadow-black/5 backdrop-blur-sm">
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-xl bg-black/5 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="material-symbols-outlined text-[#0a0a0b] text-[28px]">error</span>
+              <Icon name="error" size={28} className="text-[#0a0a0b]" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-base font-bold text-[#0a0a0b] mb-1">
@@ -116,13 +118,13 @@ export default function LoginPage() {
               </p>
               <div className="bg-white rounded-lg px-4 py-3 font-mono text-sm border border-black/10">
                 <div className="flex items-center gap-2 text-black/50 mb-1">
-                  <span className="material-symbols-outlined text-[14px]">terminal</span>
+                  <Icon name="terminal" size={14} />
                   <span className="text-xs">{t("nodeIncompatibleFixLabel")}</span>
                 </div>
                 <code className="text-[#0a0a0b]">nvm install 22 && nvm use 22</code>
               </div>
               <p className="text-xs text-black/50 mt-3 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[14px]">info</span>
+                <Icon name="info" size={14} />
                 {t("nodeIncompatibleHint")}
               </p>
             </div>
@@ -236,7 +238,7 @@ export default function LoginPage() {
               className="w-full h-11 text-sm font-medium flex items-center justify-center gap-2"
               onClick={() => (window.location.href = "/api/auth/oidc/login")}
             >
-              <span className="material-symbols-outlined text-lg">login</span>
+              <Icon name="login" className="text-lg" />
               {t("continueWithOidc")}
             </Button>
           </div>
@@ -256,7 +258,7 @@ export default function LoginPage() {
                 />
                 {error && (
                   <p className="text-sm text-[#0a0a0b] flex items-center gap-1.5 pt-1">
-                    <span className="material-symbols-outlined text-base">error</span>
+                    <Icon name="error" className="text-base" />
                     {error}
                   </p>
                 )}
@@ -280,7 +282,7 @@ export default function LoginPage() {
                   className="w-full h-11 text-sm font-medium flex items-center justify-center gap-2"
                   onClick={() => (window.location.href = "/api/auth/oidc/login")}
                 >
-                  <span className="material-symbols-outlined text-lg">login</span>
+                  <Icon name="login" className="text-lg" />
                   {t("continueWithOidc")}
                 </Button>
               </div>

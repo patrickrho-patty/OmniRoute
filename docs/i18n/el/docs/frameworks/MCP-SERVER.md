@@ -72,6 +72,16 @@ curl -i \
 
 Ένα κλειδί χωρίς πεδίο εφαρμογής manage (ή χωρίς Bearer) επιστρέφει `403 LOCAL_ONLY`. Το συγγενικό πρόθεμα `/api/cli-tools/runtime/*` δεν είναι σκόπιμα παρακάμψιμο — βλέπε [Route Guard Tiers — Manage-scope carve-out](../security/ROUTE_GUARD_TIERS.md#manage-scope-carve-out).
 
+### Επικύρωση Origin
+
+Μετά τον έλεγχο ταυτότητας, κάθε αίτημα προς `/api/mcp/*` — τα transports και τις διαδρομές διαχείρισης όπως `status`, `tools`, `audit`, `restart` — ελέγχεται ως προς την κεφαλίδα `Origin`, όποιος κι αν είναι ο καλών (κλειδί API, token του CLI, συνεδρία dashboard ή ανώνυμο loopback με απενεργοποιημένη σύνδεση). Αυτή είναι η προστασία από DNS rebinding που απαιτεί η προδιαγραφή MCP Streamable HTTP.
+
+- **Χωρίς κεφαλίδα `Origin`** → επιτρέπεται. Το CLI του OmniRoute, το SDK και οι πελάτες IDE δεν τη στέλνουν.
+- **Επιτρεπόμενο `Origin`** → `localhost` / `127.0.0.1` / `[::1]` σε οποιαδήποτε θύρα, ή το δημόσιο origin του ίδιου του OmniRoute: `OMNIROUTE_PUBLIC_BASE_URL` / `NEXT_PUBLIC_BASE_URL` / `NEXT_PUBLIC_APP_URL`, το origin που προωθεί ένας αξιόπιστος reverse proxy (`OMNIROUTE_TRUST_PROXY`, μόνο όταν δεν έχει οριστεί base URL), ή άμεση πρόσβαση σε host IP loopback/LAN. Η κεφαλίδα `Host` από μόνη της δεν κάνει ποτέ ένα origin αξιόπιστο.
+- **Οποιοδήποτε άλλο `Origin`, συμπεριλαμβανομένου του `null`** → `403` με σώμα σφάλματος JSON-RPC: `id: null`, `error.code: -32000`, `error.data.code: "INVALID_ORIGIN"`. Μια συνεδρία dashboard με έγκυρο token CSRF εξακολουθεί να γίνεται δεκτή, όπως και στις άλλες εγγραφές του dashboard.
+
+Ένας πελάτης MCP σε browser πίσω από reverse proxy χρειάζεται `OMNIROUTE_PUBLIC_BASE_URL`· δεν υπάρχει λίστα επιτρεπόμενων άλλων origin. Το CORS preflight (`OPTIONS`) δεν ελέγχεται για Origin· το αίτημα που ακολουθεί ελέγχεται.
+
 ## Διαμόρφωση IDE
 
 Δείτε το [Οδηγό Διαμόρφωσης MCP Client](../guides/SETUP_GUIDE.md#mcp-client-configuration) για Claude Desktop,
@@ -289,110 +299,117 @@ OmniRoute μέσω του ίδιου μοντέλου σύνδεσης που χ
 
 ---
 
-## Έλεγχος ταυτότητας & πεδία εφαρμογής
+# Έλεγχος ταυτότητας & Πεδία εφαρμογής
 
-Οι κλήσεις εργαλείων MCP διαβάζουν συμβολοσειρές πεδίων εφαρμογής από τον καλούντα. Αυτός ο έλεγχος είναι ένας από τρεις
-ανεξάρτητους χώρους ονομάτων. Η επιτυχία σε έναν ελεγκτή δεν συνεπάγεται επιτυχία στους άλλους.
-Οι κανόνες βρίσκονται στην ενότητα [Τρεις χώροι ονομάτων πεδίων εφαρμογής](#three-scope-namespaces).
-Ο κατάλογος εργαλείων βρίσκεται στην ενότητα [Πεδία εφαρμογής εργαλείων MCP](#mcp-tool-scopes).
+Οι κλήσεις εργαλείων MCP διαβάζουν τις συμβολοσειρές πεδίων εφαρμογής από τον καλών. Ο έλεγχος αυτός είναι ένας από τρία ανεξάρτητους χώρους ονομάτων. Η επιτυχία σε έναν έλεγχο δεν αποτελεί επιτυχία στους άλλους.
+Οι κανόνες βρίσκονται στο [Τρία χώρους ονομάτων πεδίων εφαρμογής](#three-scope-namespaces).
+Ο κατάλογος εργαλείων βρίσκεται στο [Πεδία εφαρμογής εργαλείων MCP](#mcp-tool-scopes).
 
-### Τρεις χώροι ονομάτων πεδίων εφαρμογής
+### Τρία χώρους ονομάτων πεδίων εφαρμογής
 
 Το `manage` σε ένα κλειδί API, το `read:compression` σε ένα εργαλείο MCP και το `read` σε ένα
-διακριτικό πρόσβασης `oma_live_…` είναι τρεις διαφορετικές εκχωρήσεις. Οι καλούντες που στέλνουν ένα διακριτικό πρόσβασης
-`read` σε μια διαδρομή διαχείρισης που πραγματοποιεί μεταβολές λαμβάνουν HTTP 403
+access token `oma_live_…` είναι τρεις διαφορετικές χορηγήσεις. Οι καλών που στέλνουν ένα access token
+`read` σε μια διαχειριστική διαδρομή που μεταβάλλει κατάσταση λαμβάνουν HTTP 403
 `Access token scope 'read' is insufficient; 'write' required.`
-Αυτή η κατάταξη είναι η `scopeSatisfies`. Δεν συμβουλεύεται τον πίνακα MCP και ο αντιστοιχιστής MCP
-δεν τη συμβουλεύεται.
+Αυτή η κλίμακα είναι η `scopeSatisfies`. Δεν συμβουλεύεται τον πίνακα MCP, και ο αντιστοιχιστής
+MCP δεν συμβουλεύεται αυτήν.
 
-| Χώρος ονομάτων              | Διαπιστευτήριο                                                                   | Ελεγκτής                            | Μια επιτυχία επιτρέπει                                                                 |
-| :-------------------------- | :------------------------------------------------------------------------------- | :---------------------------------- | :------------------------------------------------------------------------------------- |
-| Διαχείριση κλειδιών API     | `api_keys.scopes`                                                                | `hasManageScope`                    | REST διαχείρισης για αυτό το κλειδί Bearer                                             |
-| Πρόσθετα πεδία κλειδιού API | ίδιος πίνακας, μία ακριβής συμβολοσειρά                                          | ο βοηθός που κατονομάζεται παρακάτω | Μόνο τη συγκεκριμένη δυνατότητα                                                        |
-| Πεδία εργαλείων MCP         | ίδιος πίνακας, διαφορετικά το MCP `_meta`, διαφορετικά το `OMNIROUTE_MCP_SCOPES` | `scopeMatches`                      | Αυτό το εργαλείο, αφού ενεργοποιηθεί η επιβολή                                         |
-| Διακριτικό πρόσβασης        | `oma_live_…`                                                                     | `scopeSatisfies`                    | Τη διαδρομή διαχείρισης της οποίας η μέθοδος και η διαδρομή απαιτούν αυτή την κατάταξη |
+| Χώρος ονομάτων                | Διαπιστευτήριο                                                                          | Έλεγχος                          | Μια επιτυχία επιτρέπει                                                                  |
+| :---------------------------- | :-------------------------------------------------------------------------------------- | :------------------------------- | :-------------------------------------------------------------------------------------- |
+| Διαχείριση κλειδιού API       | `api_keys.scopes`                                                                       | `hasManageScope`                 | REST διαχείρισης για το συγκεκριμένο κλειδί Bearer                                      |
+| Πρόσθετα πεδία κλειδιού API   | ίδιος πίνακας, μία ακριβής συμβολοσειρά                                                 | ο βοηθός που αναφέρεται παρακάτω | Μόνο αυτή τη συγκεκριμένη δυνατότητα                                                    |
+| Πεδία εφαρμογής εργαλείων MCP | ίδιος πίνακας, αλλιώς το `_meta` του MCP (μόνο HTTP/SSE), αλλιώς `OMNIROUTE_MCP_SCOPES` | `scopeMatches`                   | Αυτό το εργαλείο, μόλις ενεργοποιηθεί η επιβολή                                         |
+| Access token                  | `oma_live_…`                                                                            | `scopeSatisfies`                 | Τη διαχειριστική διαδρομή της οποίας η μέθοδος και η διαδρομή απαιτούν αυτή την κλίμακα |
 
-Η έκδοση κάθε διαπιστευτηρίου καλύπτεται στην ενότητα
+Η έκδοση κάθε διαπιστευτηρίου καλύπτεται στο
 [Έλεγχος ταυτότητας διαχείρισης](../guides/MANAGEMENT-AUTH.md).
 
 #### Πεδία εφαρμογής κλειδιών API
 
-Ένας πίνακας `api_keys.scopes` εξυπηρετεί δύο εργασίες. Χρησιμοποιούν διαφορετικές συναρτήσεις.
+Ένας πίνακας `api_keys.scopes` τροφοδοτεί δύο λειτουργίες. Χρησιμοποιούν διαφορετικές συναρτήσεις.
 
-**REST διαχείρισης.** Τα `manage` και `admin` είναι τα μέλη του
+**REST διαχείρισης.** Τα `manage` και `admin` είναι τα μέλη των
 `MANAGEMENT_API_KEY_SCOPES` (`src/shared/constants/managementScopes.ts`).
-Η `hasManageScope` είναι αυτή που εξουσιοδοτεί τις διαδρομές διαχείρισης για αυτό το κλειδί. Το `admin`
-παρέχει δυνατότητες διαχείρισης σε αυτές τις διαδρομές. Η λέξη `admin` εδώ δεν είναι η
-κατάταξη του διακριτικού πρόσβασης και δεν επεκτείνεται σε πεδία εφαρμογής εργαλείων MCP.
+Η `hasManageScope` είναι αυτή που εξουσιοδοτεί τις διαχειριστικές διαδρομές για αυτό το κλειδί. Το
+`admin` έχει δικαιώματα διαχείρισης σε αυτές τις διαδρομές. Η λέξη `admin` εδώ δεν είναι η
+κλίμακα των access token και δεν επεκτείνεται σε πεδία εφαρμογής εργαλείων MCP.
 
-**Πρόσθετες συμβολοσειρές.** Κάθε μία αποτελεί έλεγχο ακριβούς συμμετοχής και κάθε μία παραμένει
-εκτός του `MANAGEMENT_API_KEY_SCOPES`.
+**Πρόσθετες συμβολοσειρές.** Καθεμία αποτελεί έναν έλεγχο ακριβούς συμμετοχής, και καθεμία
+παραμένει εκτός των `MANAGEMENT_API_KEY_SCOPES`.
 
-| Πεδίο εφαρμογής                | Μια επιτυχία επιτρέπει                                                                                                                                                                    |
-| :----------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mcp:connect`                  | Μόνο την εξαίρεση LOCAL_ONLY του `/api/mcp/` εκτός loopback (`hasMcpConnectOrManageScope`). Ένα κλειδί με `manage` ή `admin` εξακολουθεί να περνά αυτή την εξαίρεση.                      |
-| `self:usage`                   | `GET /api/v1/me/status` για αυτό το κλειδί (`src/app/api/v1/me/status/route.ts`). Το `POST /api/keys` προσθέτει αυτό το πεδίο κατά τη δημιουργία (`normalizeSelfServiceScopesForCreate`). |
-| `self:account-quota`           | Ποσοστώσεις ανάντη λογαριασμού μέσα σε αυτό το ωφέλιμο φορτίο κατάστασης (`src/lib/usage/apiKeySelfService.ts`). Η διαδρομή κατάστασης εξακολουθεί να απαιτεί `self:usage`.               |
-| `policy:bypass-provider-quota` | Οι κλήσεις συμπερασμού αυτού του κλειδιού παρακάμπτουν την πολιτική ποσόστωσης παρόχου (`hasProviderQuotaBypassScope` στο `src/sse/handlers/chat.ts`).                                    |
+| Πεδίο εφαρμογής                | Μια επιτυχία επιτρέπει                                                                                                                                                                       |
+| :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mcp:connect`                  | Μόνο την εξαίρεση LOCAL_ONLY μη-loopback της διαδρομής `/api/mcp/` (`hasMcpConnectOrManageScope`). Ένα κλειδί με `manage` ή `admin` εξακολουθεί να περνά αυτή την εξαίρεση.                  |
+| `self:usage`                   | Το `GET /api/v1/me/status` για αυτό το κλειδί (`src/app/api/v1/me/status/route.ts`). Το `POST /api/keys` προσθέτει αυτό το πεδίο κατά τη δημιουργία (`normalizeSelfServiceScopesForCreate`). |
+| `self:account-quota`           | Τα όρια λογαριασμού upstream μέσα σε αυτό το payload κατάστασης (`src/lib/usage/apiKeySelfService.ts`). Η διαδρομή κατάστασης εξακολουθεί να απαιτεί `self:usage`.                           |
+| `policy:bypass-provider-quota` | Οι κλήσεις inference αυτού του κλειδιού παρακάμπτουν την πολιτική ορίων πάροχου (`hasProviderQuotaBypassScope` στο `src/sse/handlers/chat.ts`).                                              |
 
-#### Αντιστοίχιση
+#### Αντιστοιχίσεις
 
-Ο κατάλογος είναι ο πίνακας στην ενότητα [Πεδία εφαρμογής εργαλείων MCP](#mcp-tool-scopes). Μην
+Ο κατάλογος είναι ο πίνακας στο [Πεδία εφαρμογής εργαλείων MCP](#mcp-tool-scopes). Μην
 αντιμετωπίζετε το `MCP_SCOPE_LIST` στο `src/shared/constants/mcpScopes.ts` ως αυτόν τον κατάλογο:
-είναι το αρχικό υποσύνολο με τύπους. Μεταγενέστερα εργαλεία δηλώνουν επιπλέον πεδία δίπλα του
-(`read:notion`, `read:skills`, `read:local-corpus` και τα υπόλοιπα του πίνακα).
+είναι το αρχικό τυπωμένο υποσύνολο. Μεταγενέστερα εργαλεία δηλώνουν περαιτέρω πεδία δίπλα του
+(`read:notion`, `read:skills`, `read:local-corpus`, και τα υπόλοιπα του πίνακα).
 
 Η `evaluateToolScopes` στο `open-sse/mcp-server/scopeEnforcement.ts` επιτρέπει μια κλήση
-όταν κάθε απαιτούμενο πεδίο αντιστοιχεί σε κάποιο εκχωρημένο πεδίο:
+όταν κάθε απαιτούμενο πεδίο εφαρμογής αντιστοιχεί σε κάποιο χορηγημένο πεδίο:
 
-- Το `*` αντιστοιχεί σε κάθε απαιτούμενο πεδίο.
-- Ένα εκχωρημένο πεδίο που τελειώνει σε `*` αντιστοιχεί σε ένα απαιτούμενο πεδίο που αρχίζει με
-  το πρόθεμα πριν από τον αστερίσκο. Το `read:*` αντιστοιχεί στο `read:compression`.
-- Κάθε άλλο εκχωρημένο πεδίο αντιστοιχεί μόνο στην πανομοιότυπη απαιτούμενη συμβολοσειρά.
+- Το `*` αντιστοιχεί σε κάθε απαιτούμενο πεδίο εφαρμογής.
+- Ένα χορηγημένο πεδίο εφαρμογής που τελειώνει σε `*` αντιστοιχεί σε ένα απαιτούμενο πεδίο
+  που αρχίζει με το πρόθεμα πριν από τον αστερίσκο. Το `read:*` αντιστοιχεί στο `read:compression`.
+- Κάθε άλλο χορηγημένο πεδίο εφαρμογής αντιστοιχεί μόνο στην πανομοιότυπη απαιτούμενη συμβολοσειρά.
 
-Ένα κλειδί του οποίου τα πεδία είναι `["manage"]` αποτυγχάνει στο `scopeMatches` για το `read:compression`.
-Η ίδια κλήση αποτυγχάνει για τα `admin`, `mcp:connect`, `read` και `write` όταν αυτά
-είναι οι μόνες εκχωρημένες συμβολοσειρές. Δεν υπάρχει ιεραρχία μεταξύ των πεδίων εφαρμογής εργαλείων MCP
-πέρα από το τελικό `*`.
+Ένα κλειδί του οποίου τα πεδία είναι `["manage"]` αποτυγχάνει στο `scopeMatches` για
+`read:compression`. Η ίδια κλήση αποτυγχάνει και για `admin`, `mcp:connect`, `read` και `write` όταν
+αυτά είναι τα μόνα χορηγημένα πεδία. Δεν υπάρχει ιεραρχία μεταξύ των πεδίων εφαρμογής
+εργαλείων MCP πέρα από το τελικό `*`.
 
-Η επιβολή είναι απενεργοποιημένη εκτός εάν `OMNIROUTE_MCP_ENFORCE_SCOPES=true` (προεπιλογή
-`false`). Όσο είναι απενεργοποιημένη, η `evaluateToolScopes` επιτρέπει την κλήση και παρακάμπτει τον
-κατάλογο. Όσο είναι ενεργοποιημένη, το HTTP χρησιμοποιεί το `api_keys.scopes` του κλειδιού Bearer ως
-`authInfo` (δείτε [Σύνδεση πεδίων HTTP ανά κλειδί](#per-key-http-scope-binding-7895)).
-Όταν δεν επιλύονται πεδία κλειδιού, το εκχωρημένο σύνολο μεταπίπτει στο MCP `_meta` και έπειτα
-στο `OMNIROUTE_MCP_SCOPES`.
+Η επιβολή είναι απενεργοποιημένη εκτός αν `OMNIROUTE_MCP_ENFORCE_SCOPES=true` (προεπιλογή
+`false`). Όσο είναι απενεργοποιημένη, η `evaluateToolScopes` επιτρέπει την κλήση και παρακάμπτει
+τον κατάλογο. Όσο είναι ενεργοποιημένη, το HTTP χρησιμοποιεί τα `api_keys.scopes` του κλειδιού
+Bearer ως `authInfo` (δείτε [Αντιστοιχίσεις scope HTTP ανά κλειδί](#per-key-http-scope-binding-7895)).
+Όταν δεν επιλύονται πεδία κλειδιού, το σύνολο των χορηγημένων πεδίων περνά στο `_meta` του MCP (τιμάται μόνο
+για καλών HTTP/SSE, μέσα σε ένα HTTP auth context· το `_meta` ενός καλών stdio αγνοείται
+επειδή τον ελέγχει ο πελάτης και δεν φέρει ταυτότητα ανά καλών), έπειτα
+`OMNIROUTE_MCP_SCOPES`.
 
-#### Πεδία εφαρμογής διακριτικών πρόσβασης
+#### Πεδία εφαρμογής των access token
 
-Τα διακριτικά `oma_live_…` (`src/lib/accessTokens/scopes.ts`) φέρουν `read`, `write`
-ή `admin`. Η `scopeSatisfies` είναι μια κατάταξη: το `admin` καλύπτει τα `write` και `read`, ενώ το
-`write` καλύπτει το `read`. Τα άγνωστα πεδία δεν καλύπτουν τίποτα.
+Τα access token `oma_live_…` (`src/lib/accessTokens/scopes.ts`) φέρουν `read`, `write`
+ή `admin`. Η `scopeSatisfies` είναι μια κλίμακα: το `admin` καλύπτει τα `write` και `read`, και
+το `write` καλύπτει το `read`. Άγνωστα πεδία εφαρμογής δεν καλύπτουν τίποτα.
 
-Η `evaluateAccessTokenAuth` (`src/server/authz/accessTokenAuth.ts`) συγκρίνει αυτή την
-κατάταξη με την `inferRequiredScope` (`src/server/authz/accessScopes.ts`):
+Η `evaluateAccessTokenAuth` (`src/server/authz/accessTokenAuth.ts`) συγκρίνει αυτή
+την κλίμακα με την `inferRequiredScope` (`src/server/authz/accessScopes.ts`):
 
-- Τα `GET`, `HEAD` και `OPTIONS` απαιτούν `read`.
+- Οι μέθοδοι `GET`, `HEAD` και `OPTIONS` απαιτούν `read`.
 - Κάθε άλλη μέθοδος απαιτεί `write`.
-- Οι διαδρομές στο `ADMIN_SCOPE_PREFIXES` απαιτούν `admin` για κάθε μέθοδο. Το `/api/mcp`
-  βρίσκεται σε αυτή τη λίστα, επομένως ένα διακριτικό πρόσβασης `write` εξακολουθεί να μην μπορεί να καλέσει την επιφάνεια HTTP
-  του MCP.
-- Οι διαδρομές στο `ADMIN_MUTATION_PREFIXES` απαιτούν `admin` μόνο για μεταβολές.
+- Οι διαδρομές στο `ADMIN_SCOPE_PREFIXES` απαιτούν `admin` για κάθε μέθοδο. Η
+  `/api/mcp` βρίσκεται σε αυτόν τον κατάλογο, επομένως ένα access token με `write`
+  δεν μπορεί ακόμη να καλέσει την HTTP επιφάνεια του MCP.
+- Οι διαδρομές στο `ADMIN_MUTATION_PREFIXES` απαιτούν `admin` μόνο για μεταλλαγές.
+- Οι διαδρομές στο `ADMIN_MUTATION_EXACT_PATHS` (`/api/settings`,
+  `/api/settings/require-login`) απαιτούν `admin` μόνο για μεταλλαγές, και μόνο σε
+  αυτή την ακριβή διαδρομή — άλλες υποδιαδρομές `/api/settings/*` διατηρούν `write`.
 
-Το `PATCH /api/keys/{id}` είναι μια λειτουργία μεταβολής και δεν βρίσκεται σε αυτές τις λίστες διαχειριστή, επομένως ένα token `read` λαμβάνει 403
-`Το scope του access token 'read' δεν επαρκεί· απαιτείται 'write'.`
-Ένα access token `write` ή `admin` ικανοποιεί τις απαιτήσεις αυτής της διαδρομής. Ένα JWT του dashboard, το machine-id token του loopback CLI και ένα API key με `manage` ή `admin` ακολουθούν
-άλλους κλάδους και δεν περιορίζονται από αυτήν την κατάταξη.
+Το `PATCH /api/keys/{id}` είναι μεταλλαγή και δεν περιλαμβάνεται σε αυτούς τους
+καταλόγους admin, επομένως ένα token με `read` λαμβάνει 403
+`Access token scope 'read' is insufficient; 'write' required.`
+Ένα access token με `write` ή `admin` ικανοποιεί αυτή τη διαδρομή. Ένα JWT του
+dashboard, το machine-id token του CLI σε loopback και ένα API key με `manage` ή
+`admin` ακολουθούν άλλα κλαδιά και δεν περιορίζονται από αυτή την κατάταξη.
 
-Ένα access token που περνά τον έλεγχο `scopeSatisfies` για το `/api/mcp` έχει περάσει μόνο την πύλη
-διαχείρισης. Οι κλήσεις εργαλείων εξακολουθούν να εκτελούν το `scopeMatches` έναντι των scopes των API keys.
-Η κατάταξη του access token δεν αποτελεί είσοδο για το `scopeMatches`.
+Ένα access token που περνά το `scopeSatisfies` για το `/api/mcp` έχει ξεπεράσει μόνο
+την πύλη διαχείρισης. Οι κλήσεις εργαλείων εξακολουθούν να εκτελούν το `scopeMatches`
+έναντι των scopes των API key. Η κατάταξη του access token δεν αποτελεί είσοδο
+στο `scopeMatches`.
 
 ### Scopes εργαλείων MCP
 
-Η επιβολή των scopes είναι συγκεντρωμένη στο `open-sse/mcp-server/scopeEnforcement.ts`.
+Η επιβολή των scopes συγκεντρώνεται στο `open-sse/mcp-server/scopeEnforcement.ts`.
 Κάθε εργαλείο απαιτεί συγκεκριμένα scopes:
 
-| Εύρος                 | Εργαλεία                                                                                                                                                                             |
+| Πεδίο εφαρμογής       | Εργαλεία                                                                                                                                                                             |
 | :-------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `read:health`         | `get_health`, `get_provider_metrics`, `simulate_route`, `explain_route`, `best_combo_for_task`, `db_health_check`                                                                    |
 | `read:combos`         | `list_combos`, `get_combo_metrics`, `simulate_route`, `best_combo_for_task`, `test_combo`                                                                                            |
@@ -428,47 +445,17 @@ OmniRoute μέσω του ίδιου μοντέλου σύνδεσης που χ
 | `write:obsidian`      | 9 εργαλεία εγγραφής — `obsidian_write_note`, `obsidian_append_note`, `obsidian_patch_note`, `obsidian_move_note`, `obsidian_delete_note`, `obsidian_sync_trigger`, …                 |
 | `read:local-corpus`   | `local_corpus_search`, `local_corpus_read`, `local_corpus_status`                                                                                                                    |
 
-Υποστηρίζονται scopes με χαρακτήρες wildcard: το `read:*` παραχωρεί όλα τα scopes ανάγνωσης, ενώ το `*` παραχωρεί πλήρη πρόσβαση.
+Υποστηρίζονται wildcard scopes: το `read:*` παρέχει όλα τα read-scopes, το `*` παρέχει πλήρη πρόσβαση.
 
 ### `mcp:connect` — περιορισμένη δυνατότητα διαδρομής (#7895)
 
-Η πρόσβαση στη μεταφορά HTTP/SSE MCP (`/api/mcp/*`) εκτός loopback απαιτεί την εξαίρεση LOCAL_ONLY για το
-`/api/mcp/` (βλ. `docs/security/ROUTE_GUARD_TIERS.md`). Ιστορικά,
-αυτή η εξαίρεση δεχόταν μόνο ένα API key με πλήρες scope `manage`/`admin` — υπερβολικά ευρύ για έναν
-καλούντα που χρειάζεται μόνο να επικοινωνεί μέσω MCP. Το `src/shared/constants/managementScopes.ts` πλέον
-εξάγει το `MCP_CONNECT_SCOPE = "mcp:connect"`: ένα πρόσθετο, περιορισμένο scope (με το ίδιο προηγούμενο όπως το
-`SELF_USAGE_SCOPE`) που εξουσιοδοτεί ΜΟΝΟ την παράκαμψη `/api/mcp/` στο
-`src/server/authz/policies/management.ts` — δεν παραχωρεί καμία άλλη πρόσβαση σε διαδρομές διαχείρισης
-και σκόπιμα διατηρείται ΕΚΤΟΣ του `MANAGEMENT_API_KEY_SCOPES`. Ένα κλειδί που διαθέτει `manage`/`admin`
-εξακολουθεί να περνά την εξαίρεση χωρίς αλλαγές· το `mcp:connect` αποτελεί εναλλακτική χαμηλότερων προνομίων για
-απομακρυσμένους καλούντες που χρησιμοποιούν αποκλειστικά MCP και ελέγχεται μέσω του `hasMcpConnectOrManageScope()`.
+Η πρόσβαση στο HTTP/SSE MCP transport (`/api/mcp/*`) από μη-loopback απαιτεί την εξαίρεση LOCAL_ONLY `/api/mcp/` (δείτε `docs/security/ROUTE_GUARD_TIERS.md`). Ιστορικά, αυτή η εξαίρεση δεχόταν μόνο ένα API key με πλήρες scope `manage`/`admin` — πολύ ευρύ για έναν caller που χρειάζεται απλώς να επικοινωνεί με το MCP. Το `src/shared/constants/managementScopes.ts` εξάγει πλέον `MCP_CONNECT_SCOPE = "mcp:connect"`: ένα πρόσθετο, περιορισμένο scope (ίδιο πρότυπο με το `SELF_USAGE_SCOPE`) που εξουσιοδοτεί ΜΟΝΟ το bypass του `/api/mcp/` στο `src/server/authz/policies/management.ts` — δεν παρέχει καμία άλλη πρόσβαση σε management routes και σκόπιμα παραμένει ΕΚΤΟΣ του `MANAGEMENT_API_KEY_SCOPES`. Ένα key που διαθέτει `manage`/`admin` εξακολουθεί να περνά την εξαίρεση αμετάβλητο· το `mcp:connect` αποτελεί εναλλακτική χαμηλότερων προνομίων για remote callers που χρησιμοποιούν αποκλειστικά MCP, με έλεγχο μέσω `hasMcpConnectOrManageScope()`.
 
-### Σύνδεση HTTP scope ανά κλειδί (#7895)
+### Αντιστοίχιση scope HTTP ανά key (#7895)
 
-Μέσω HTTP/SSE, το `open-sse/mcp-server/httpTransport.ts` πλέον επιλύει τα πραγματικά
-`api_keys.scopes` του καλούντος μέσω του `resolveMcpCallerAuthInfo()` (`open-sse/mcp-server/httpAuthContext.ts`)
-και τα διαβιβάζει στο `transport.handleRequest(req, { authInfo })` του MCP SDK, ώστε το
-`extra.authInfo.scopes` που φτάνει σε κάθε κλήση εργαλείου να αντικατοπτρίζει τα scopes του ίδιου του Bearer key.
-Το `resolveCallerScopeContext()` του `scopeEnforcement.ts` ήδη έδινε προτεραιότητα στο `authInfo` έναντι
-του `_meta` και της εφεδρικής μεταβλητής περιβάλλοντος `OMNIROUTE_MCP_SCOPES` — αυτή η αλλαγή απλώς τροφοδοτεί την πρώτη,
-υψηλότερης προτεραιότητας πηγή, η οποία προηγουμένως δεν τροφοδοτούνταν μέσω HTTP. Όταν δεν επιλύεται κανένα API key
-(απουσία κεφαλίδας, μη έγκυρο κλειδί), το `authInfo` παραμένει `undefined` και η επίλυση συνεχίζει μέσω της
-υπάρχουσας αλυσίδας `meta`/env χωρίς αλλαγές. Το stdio δεν διαθέτει ταυτότητα ανά καλούντα (βλ.
-`mcpCallerIdentity.ts`) και δεν επηρεάζεται — παραμένει στην εφεδρική αλυσίδα `_meta`/env.
+Μέσω HTTP/SSE, το `open-sse/mcp-server/httpTransport.ts` επιλύει πλέον τα πραγματικά `api_keys.scopes` του caller μέσω του `resolveMcpCallerAuthInfo()` (`open-sse/mcp-server/httpAuthContext.ts`) και τα μεταβιβάζει στο `transport.handleRequest(req, { authInfo })` του MCP SDK, ώστε τα `extra.authInfo.scopes` που φτάνουν σε κάθε κλήση εργαλείου να αντανακλούν τα δικά του scopes του Bearer key. Το `resolveCallerScopeContext()` του `scopeEnforcement.ts` είχε ήδη δώσει προτεραιότητα στο `authInfo` έναντι του `_meta` και του env fallback `OMNIROUTE_MCP_SCOPES` — αυτή η αλλαγή απλώς τροφοδοτεί αυτή την πρώτη, υψηλότερης προτεραιότητας πηγή, η οποία προηγουμένως παρέμενε ανεφόδιαστη μέσω HTTP. Όταν δεν επιλύεται κάποιο API key (καμία κεφαλίδα, άκυρο key), το `authInfo` παραμένει `undefined` και η επίλυση περνά από την υπάρχουσα αλυσίδα `meta`/env αμετάβλητη. Το stdio δεν έχει ταυτότητα ανά caller (δείτε `mcpCallerIdentity.ts`) και δεν επηρεάζεται από την αντιστοίχιση ανά key — παραλείπει το βήμα του `_meta` (το `_meta` τηρείται μόνο εντός HTTP auth context, #15159) και επιλύεται αποκλειστικά από το env key `OMNIROUTE_MCP_SCOPES`.
 
-**Η επιβολή ενεργοποιείται υποχρεωτικά για καλούντες HTTP/SSE με περιορισμένα scopes, ανεξάρτητα από το
-`OMNIROUTE_MCP_ENFORCE_SCOPES`.** Η προεπιλεγμένη τιμή `false` του `OMNIROUTE_MCP_ENFORCE_SCOPES` είναι ασφαλής μόνο
-για την τοπική ροή ενός μοναδικού χειριστή μέσω stdio, όπου δεν υπάρχει ταυτότητα ανά καλούντα βάσει της οποίας να εφαρμοστεί scope.
-Το `open-sse/mcp-server/server.ts::withScopeEnforcement()` ενεργοποιεί άνευ όρων την επιβολή scope
-ανά εργαλείο (`shouldForceScopeEnforcement()` στο `scopeEnforcement.ts`)
-όποτε το `resolveCallerScopeContext()` έχει επιλύσει
-`source === "authInfo"` (δηλαδή μια πραγματική κεφαλίδα HTTP Authorization ανά κλειδί, αποκλειστικά για HTTP/SSE) ΚΑΙ το
-συγκεκριμένο κλειδί δεν διαθέτει πλήρες scope `manage`/`admin`. Αυτό κλείνει το κενό μέσω του οποίου ένα κλειδί που διέθετε ΜΟΝΟ
-το περιορισμένο scope παράκαμψης `mcp:connect` — το οποίο τεκμηριώνεται παραπάνω ως εξουσιοδοτώντας αποκλειστικά την
-εξαίρεση LOCAL_ONLY για το `/api/mcp/` — θα μπορούσε διαφορετικά να καλέσει κάθε εργαλείο MCP μόλις ένας διαχειριστής
-ενεργοποιούσε την απομακρυσμένη/μη-loopback πρόσβαση MCP, απλώς επειδή το `OMNIROUTE_MCP_ENFORCE_SCOPES` διατίθεται
-με προεπιλεγμένη τιμή `false`. Ένα κλειδί με πλήρες scope `manage`/`admin` μέσω HTTP, καθώς και κάθε καλών μέσω stdio/τοπικά, διατηρούν
-χωρίς αλλαγές την υπάρχουσα συμπεριφορά που ελέγχεται από το `OMNIROUTE_MCP_ENFORCE_SCOPES`.
+**Η επιβολή ενεργοποιείται αναγκαστικά για HTTP/SSE callers με περιορισμένο scope, ανεξάρτητα από το `OMNIROUTE_MCP_ENFORCE_SCOPES`.** Η προεπιλογή `false` του `OMNIROUTE_MCP_ENFORCE_SCOPES` είναι ασφαλής μόνο για τη ροή local/stdio με έναν μόνο operator, όπου δεν υπάρχει ταυτότητα ανά caller για scoping. Η `open-sse/mcp-server/server.ts::withScopeEnforcement()` ενεργοποιεί ανεξαιρετικά την επιβολή scope ανά εργαλείο (`shouldForceScopeEnforcement()` στο `scopeEnforcement.ts`) όποτε το `resolveCallerScopeContext()` επέλυσε `source === "authInfo"` (δηλαδή πραγματικό per-key HTTP Authorization header, μόνο HTTP/SSE) ΚΑΙ το εν λόγω key δεν διαθέτει πλήρες scope `manage`/`admin`. Αυτό κλείνει το κενό όπου ένα key που κατέχει ΜΟΝΟ το περιορισμένο bypass scope `mcp:connect` — που τεκμηριώνεται παραπάνω ως εξουσιοδοτών τίποτα πέρα από την εξαίρεση LOCAL_ONLY `/api/mcp/` — θα μπορούσε διαφορετικά να καλέσει κάθε MCP εργαλείο μόλις ένας operator ενεργοποιούσε remote/non-loopback πρόσβαση στο MCP, απλώς επειδή το `OMNIROUTE_MCP_ENFORCE_SCOPES` παρέχεται με `false` από προεπιλογή. Ένα πλήρες `manage`/`admin` key μέσω HTTP, καθώς και κάθε stdio/local caller, διατηρούν αμετάβλητη την υπάρχουσα συμπεριφορά που ελέγχεται από το `OMNIROUTE_MCP_ENFORCE_SCOPES`.
 
 ---
 

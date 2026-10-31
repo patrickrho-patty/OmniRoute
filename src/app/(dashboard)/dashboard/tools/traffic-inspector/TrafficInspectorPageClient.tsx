@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
+import Button from "@/shared/components/Button";
 import type { InterceptedRequest } from "@/mitm/inspector/types";
 import { useTrafficStream } from "./hooks/useTrafficStream";
 import { useTrafficFilters } from "./hooks/useTrafficFilters";
@@ -24,6 +26,7 @@ export function TrafficInspectorPageClient({
   subtitle?: string;
   purpose?: string;
 } = {}) {
+  const t = useTranslations("trafficInspector");
   const [containerHeight, setContainerHeight] = useState(600);
   const listContainerRef = useRef<HTMLDivElement | null>(null);
   const [selectedRequest, setSelectedRequest] = useState<InterceptedRequest | null>(null);
@@ -162,18 +165,16 @@ export function TrafficInspectorPageClient({
         >
           <div className="flex items-center justify-between px-2 py-1 border-b border-border bg-bg-subtle shrink-0">
             <span className="text-xs text-text-muted font-medium">
-              {streamState.total} requests
+              {t("requestCount", { count: streamState.total })}
             </span>
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={toggleCollapse}
-              className="text-text-muted hover:text-text-main focus-ring rounded"
-              aria-label={collapsed ? "Expand list" : "Collapse list"}
-            >
-              <span className="material-symbols-outlined text-[16px]" aria-hidden="true">
-                {collapsed ? "chevron_right" : "chevron_left"}
-              </span>
-            </button>
+              aria-expanded={!collapsed}
+              aria-label={collapsed ? t("expandList") : t("collapseList")}
+              icon={collapsed ? "chevron_right" : "chevron_left"}
+            />
           </div>
 
           {!collapsed && (
@@ -205,7 +206,7 @@ export function TrafficInspectorPageClient({
         {/* Drag handle */}
         <div
           onMouseDown={startDrag}
-          className="w-1 bg-border hover:bg-blue-500 cursor-col-resize shrink-0 transition-colors"
+          className="w-1 bg-border hover:bg-primary cursor-col-resize shrink-0 transition-colors"
           aria-hidden="true"
         />
 

@@ -4,6 +4,7 @@ import {
   type CompressionEngineId,
   type CompressionPipelineStep,
 } from "@omniroute/open-sse/services/compression/types.ts";
+import type { OutputStyleSelectionEntry } from "@omniroute/open-sse/services/compression/outputStyles/apply.ts";
 
 import { backupDbFile } from "./backup";
 import { getDbInstance, rowToCamel } from "./core";
@@ -16,6 +17,7 @@ export interface CompressionCombo {
   languagePacks: string[];
   outputMode: boolean;
   outputModeIntensity: string;
+  outputStyles: OutputStyleSelectionEntry[];
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;
@@ -76,6 +78,17 @@ function normalizeLanguagePacks(value: unknown): string[] {
   return [...new Set(packs.length > 0 ? packs.map((pack) => pack.trim()) : ["en"])];
 }
 
+function normalizeOutputStyles(value: unknown): OutputStyleSelectionEntry[] {
+  return parseJsonArray<OutputStyleSelectionEntry>(value, []).filter(
+    (entry): entry is OutputStyleSelectionEntry =>
+      Boolean(entry) &&
+      typeof entry === "object" &&
+      typeof entry.id === "string" &&
+      entry.id.trim().length > 0 &&
+      ["lite", "full", "ultra"].includes(entry.level)
+  );
+}
+
 function isLegacySeededDefaultPipeline(pipeline: CompressionPipelineStep[]): boolean {
   if (pipeline.length !== 1) return false;
   const [step] = pipeline;
@@ -128,6 +141,7 @@ function ensureCompressionComboTables(): void {
       language_packs TEXT DEFAULT '["en"]',
       output_mode INTEGER DEFAULT 0,
       output_mode_intensity TEXT DEFAULT 'full',
+      output_styles TEXT DEFAULT '[]',
       is_default INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -179,6 +193,7 @@ function rowToCompressionCombo(row: unknown): CompressionCombo | null {
     languagePacks: normalizeLanguagePacks(camel.languagePacks),
     outputMode: Boolean(camel.outputMode),
     outputModeIntensity: String(camel.outputModeIntensity ?? "full"),
+    outputStyles: normalizeOutputStyles(camel.outputStyles),
     isDefault: Boolean(camel.isDefault),
     createdAt: String(camel.createdAt ?? ""),
     updatedAt: String(camel.updatedAt ?? ""),
@@ -216,6 +231,9 @@ function buildComboPayload(data: Partial<CompressionCombo>, existing?: Compressi
           : ["en"],
     outputMode: data.outputMode ?? existing?.outputMode ?? false,
     outputModeIntensity: data.outputModeIntensity ?? existing?.outputModeIntensity ?? "full",
+    // Explicit [] clears the combo's own selection (back to inheriting the global panel);
+    // undefined leaves an existing selection untouched.
+    outputStyles: data.outputStyles ?? existing?.outputStyles ?? [],
     isDefault: data.isDefault ?? existing?.isDefault ?? false,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
@@ -258,9 +276,9 @@ export function createCompressionCombo(data: Partial<CompressionCombo>): Compres
       `
       INSERT INTO compression_combos (
         id, name, description, pipeline, language_packs, output_mode, output_mode_intensity,
-        is_default, created_at, updated_at
+        output_styles, is_default, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `
     ).run(
       combo.id,
@@ -270,6 +288,7 @@ export function createCompressionCombo(data: Partial<CompressionCombo>): Compres
       JSON.stringify(combo.languagePacks),
       combo.outputMode ? 1 : 0,
       combo.outputModeIntensity,
+      JSON.stringify(combo.outputStyles),
       combo.isDefault ? 1 : 0,
       combo.createdAt,
       combo.updatedAt
@@ -295,7 +314,7 @@ export function updateCompressionCombo(
       `
       UPDATE compression_combos
       SET name = ?, description = ?, pipeline = ?, language_packs = ?, output_mode = ?,
-          output_mode_intensity = ?, is_default = ?, updated_at = ?
+          output_mode_intensity = ?, output_styles = ?, is_default = ?, updated_at = ?
       WHERE id = ?
     `
     ).run(
@@ -305,6 +324,7 @@ export function updateCompressionCombo(
       JSON.stringify(combo.languagePacks),
       combo.outputMode ? 1 : 0,
       combo.outputModeIntensity,
+      JSON.stringify(combo.outputStyles),
       combo.isDefault ? 1 : 0,
       combo.updatedAt,
       id

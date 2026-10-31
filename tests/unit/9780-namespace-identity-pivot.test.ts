@@ -61,13 +61,13 @@ test("#9780: namespace identity survives the openai-responses -> kiro pivot", ()
   const identity = identityOf(pivot("kiro"));
 
   assert.equal(identity.size, 1);
-  assert.deepEqual(identity.get("functions__exec"), { namespace: "functions", name: "exec" });
+  assert.deepEqual(identity.get("exec"), { namespace: "functions", name: "exec" });
 });
 
 test("#9780: namespace identity survives the openai-responses -> cursor pivot", () => {
   const identity = identityOf(pivot("cursor"));
 
-  assert.deepEqual(identity.get("functions__exec"), { namespace: "functions", name: "exec" });
+  assert.deepEqual(identity.get("exec"), { namespace: "functions", name: "exec" });
 });
 
 // Regression guard: these two appeared to "keep" a map before the fix, but it
@@ -77,7 +77,7 @@ for (const target of ["claude", "gemini"]) {
     const body = pivot(target);
     const identity = identityOf(body);
 
-    assert.deepEqual(identity.get("functions__exec"), { namespace: "functions", name: "exec" });
+    assert.deepEqual(identity.get("exec"), { namespace: "functions", name: "exec" });
 
     // The alias channel must be untouched: string values, not identities.
     const aliases = body._toolNameMap;
@@ -132,7 +132,7 @@ for (const target of ["kiro", "cursor", "claude", "gemini"]) {
                   index: 0,
                   id: "call_9780",
                   type: "function",
-                  function: { name: "functions__exec", arguments: '{"cmd":"git status"}' },
+                  function: { name: "exec", arguments: '{"cmd":"git status"}' },
                 },
               ],
             },

@@ -10,7 +10,7 @@
  * and reuses the same `provider_connections` row as chat (`provider: "cursor"`).
  *
  * Auth: `credentials.accessToken` / `apiKey` from the Cursor OAuth (or API-key)
- * connection. Tokens matching `crsr_…` are exported as `CURSOR_API_KEY`; other
+ * connection. Cursor user API keys are exported as `CURSOR_API_KEY`; other
  * session JWTs as `CURSOR_AUTH_TOKEN`. The `account::token` composite used by
  * the chat executor is normalized the same way (`split("::")[1]`).
  *
@@ -23,6 +23,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { isCursorApiKey } from "../../../services/cursorApiKeyAuth.ts";
 import { sanitizeErrorMessage } from "../../../utils/error.ts";
 import { saveImageErrorResult, saveImageSuccessResult } from "../../imageGeneration.ts";
 import { IMAGE_PROVIDERS } from "../../../config/imageRegistry.ts";
@@ -101,11 +102,11 @@ export function normalizeCursorSeatToken(raw: string): string {
 
 /**
  * Map a Cursor connection token into the env vars the Agent CLI reads.
- * Prefer API keys (`crsr_…`) as `CURSOR_API_KEY`; otherwise session JWT → `CURSOR_AUTH_TOKEN`.
+ * Prefer user API keys as `CURSOR_API_KEY`; otherwise session JWT → `CURSOR_AUTH_TOKEN`.
  */
 export function buildCursorAgentAuthEnv(token: string): Record<string, string> {
   const clean = normalizeCursorSeatToken(token);
-  if (clean.startsWith("crsr_")) {
+  if (isCursorApiKey(clean)) {
     return { CURSOR_API_KEY: clean };
   }
   return { CURSOR_AUTH_TOKEN: clean };

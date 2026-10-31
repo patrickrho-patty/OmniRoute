@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card } from "@/shared/components";
-import { parseIntegerOrNull } from "@/shared/utils/envParsing";
+import { Button, Card, Input } from "@/shared/components";
 import {
   CLAUDE_LARGE_MESSAGES_MODES,
   DEFAULT_CLAUDE_LARGE_MESSAGES_MAX_MB,
@@ -263,162 +262,48 @@ export default function RequestLimitsTab() {
   ]);
 
   return (
-    <Card className="p-6 mt-4">
-      <div className="flex flex-col gap-6">
-        <section className="flex flex-col gap-3">
-          <div>
-            <p className="font-medium">{t("requestBodyLimitTitle")}</p>
-            <p className="text-sm text-text-muted mt-1">{t("requestBodyLimitDescription")}</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <label htmlFor="request-body-limit-mb" className="sr-only">
-              {t("requestBodyLimitInputLabel")}
-            </label>
-            <input
-              id="request-body-limit-mb"
-              type="number"
-              min={MIN_REQUEST_BODY_LIMIT_MB}
-              max={MAX_REQUEST_BODY_LIMIT_MB}
-              step={1}
-              value={bodyLimitValue}
-              onChange={(event) => {
-                setBodyLimitValue(event.target.value);
-                setMessage(null);
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && dirty) void saveLimit();
-              }}
-              className="w-32 px-3 py-1.5 rounded bg-surface-2 border border-border text-sm text-text-primary"
-              disabled={loading || saving}
-            />
-            <span className="text-xs text-text-muted">MB</span>
-            {bodyLimitValue.trim() !== savedBodyLimitValue && (
-              <span className="text-xs text-text-muted">
-                {t("requestBodyLimitCurrent", { value: savedBodyLimitValue })}
-              </span>
-            )}
-          </div>
-          {bodyLimitValidationError && (
-            <p className="text-xs text-red-500">{bodyLimitValidationError}</p>
-          )}
-          <p className="text-xs text-text-muted">{t("requestBodyLimitClaudeHint")}</p>
-        </section>
-
-        <section className="flex flex-col gap-3 border-t border-border pt-5">
-          <div>
-            <p className="font-medium">{t("claudeLargeMessagesTitle")}</p>
-            <p className="text-sm text-text-muted mt-1">{t("claudeLargeMessagesDescription")}</p>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-text-muted">{t("claudeLargeMessagesThresholdLabel")}</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={MIN_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB}
-                  max={MAX_CLAUDE_LARGE_MESSAGES_THRESHOLD_KB}
-                  step={1}
-                  value={claudeThresholdKb}
-                  onChange={(event) => {
-                    setClaudeThresholdKb(event.target.value);
-                    setMessage(null);
-                  }}
-                  className="w-28 px-3 py-1.5 rounded bg-surface-2 border border-border text-sm text-text-primary"
-                  disabled={loading || saving}
-                />
-                <span className="text-xs text-text-muted">KB</span>
-              </div>
-              <span className="text-xs text-text-muted">
-                {t("claudeLargeMessagesThresholdHelp")}
-              </span>
-            </label>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-text-muted">{t("claudeLargeMessagesModeLabel")}</span>
-              <select
-                value={claudeMode}
-                onChange={(event) => {
-                  setClaudeMode(event.target.value as ClaudeLargeMessagesMode);
-                  setMessage(null);
-                }}
-                className="px-3 py-1.5 rounded bg-surface-2 border border-border text-sm text-text-primary"
-                disabled={loading || saving}
-              >
-                <option value="reject">{t("claudeLargeMessagesModeReject")}</option>
-                <option value="vcc">{t("claudeLargeMessagesModeVcc")}</option>
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-text-muted">{t("claudeLargeMessagesTargetLabel")}</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={MIN_CLAUDE_LARGE_MESSAGES_TARGET_KB}
-                  max={MAX_CLAUDE_LARGE_MESSAGES_TARGET_KB}
-                  step={1}
-                  value={claudeTargetKb}
-                  onChange={(event) => {
-                    setClaudeTargetKb(event.target.value);
-                    setMessage(null);
-                  }}
-                  className="w-28 px-3 py-1.5 rounded bg-surface-2 border border-border text-sm text-text-primary"
-                  disabled={loading || saving}
-                />
-                <span className="text-xs text-text-muted">KB</span>
-              </div>
-              <span className="text-xs text-text-muted">{t("claudeLargeMessagesTargetHelp")}</span>
-            </label>
-
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-text-muted">{t("claudeLargeMessagesMaxLabel")}</span>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min={MIN_CLAUDE_LARGE_MESSAGES_MAX_MB}
-                  max={MAX_CLAUDE_LARGE_MESSAGES_MAX_MB}
-                  step={1}
-                  value={claudeMaxMb}
-                  onChange={(event) => {
-                    setClaudeMaxMb(event.target.value);
-                    setMessage(null);
-                  }}
-                  className="w-28 px-3 py-1.5 rounded bg-surface-2 border border-border text-sm text-text-primary"
-                  disabled={loading || saving}
-                />
-                <span className="text-xs text-text-muted">MB</span>
-              </div>
-              <span className="text-xs text-text-muted">{t("claudeLargeMessagesMaxHelp")}</span>
-            </label>
-          </div>
-
-          {claudeValidationError && <p className="text-xs text-red-500">{claudeValidationError}</p>}
-        </section>
-
-        <div className="flex items-center gap-3">
+    <Card title={t("requestBodyLimitTitle")} subtitle={t("requestBodyLimitDescription")}>
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Input
+            id="request-body-limit-mb"
+            type="number"
+            label={t("requestBodyLimitInputLabel")}
+            min={MIN_REQUEST_BODY_LIMIT_MB}
+            max={MAX_REQUEST_BODY_LIMIT_MB}
+            step={1}
+            value={value}
+            onChange={(event) => {
+              setValue(event.target.value);
+              setMessage(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && dirty) void saveLimit();
+            }}
+            error={validationError || undefined}
+            className="w-40"
+            disabled={loading || saving}
+          />
+          <span className="pb-2.5 text-xs text-text-muted">MB</span>
           <Button
             size="sm"
             variant="primary"
+            className="mb-1"
             disabled={loading || Boolean(validationError) || !dirty}
             onClick={saveLimit}
           >
             {saving ? t("requestBodyLimitSaving") : t("requestBodyLimitSave")}
           </Button>
           {dirty && (
-            <span className="text-xs text-text-muted">{t("requestBodyLimitUnsavedChanges")}</span>
+            <span className="pb-2.5 text-xs text-text-muted">
+              {t("requestBodyLimitCurrent", { value: savedValue })}
+            </span>
           )}
         </div>
-
         {message && (
           <p
-            className={`text-xs ${
-              message.type === "success"
-                ? "text-green-600 dark:text-green-400"
-                : "text-red-600 dark:text-red-400"
-            }`}
+            role={message.type === "success" ? "status" : "alert"}
+            className={`text-xs ${message.type === "success" ? "text-success" : "text-error"}`}
           >
             {message.text}
           </p>

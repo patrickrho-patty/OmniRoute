@@ -11,6 +11,7 @@
 
 import { decrypt, decryptQuiet, looksEncrypted } from "../encryption";
 import { toNumber, toNumberOrNull } from "@/shared/utils/numeric";
+import { mapProviderSpecificDataSecrets } from "./providerSpecificDataSecrets";
 import type { ConnectionRateLimitOverrides } from "./columns";
 
 type JsonRecord = Record<string, unknown>;
@@ -49,6 +50,7 @@ export interface ProviderConnectionView {
   defaultModel: string | null;
   providerSpecificData: JsonRecord;
   lastUsedAt: string | null;
+  syncedModelsAt: string | null;
   consecutiveUseCount: number;
   priority: number;
   lastError: string | null;
@@ -103,6 +105,7 @@ export function toProviderConnection(value: unknown): ProviderConnectionView {
     defaultModel: toStringOrNull(row.defaultModel),
     providerSpecificData: asRecord(row.providerSpecificData),
     lastUsedAt: toStringOrNull(row.lastUsedAt),
+    syncedModelsAt: toStringOrNull(row.syncedModelsAt),
     consecutiveUseCount: toNumber(row.consecutiveUseCount, 0),
     priority: toNumber(row.priority, 999),
     lastError: toStringOrNull(row.lastError),
@@ -141,6 +144,7 @@ function isUndecryptable(value: unknown): boolean {
 export function createLazyConnectionView(row: Record<string, unknown>): ProviderConnectionView {
   const base = toProviderConnection(row);
   let decrypted: Record<string, null | string> | undefined;
+  let providerData: Record<string, unknown> | undefined;
 
   const ensureDecrypted = () => {
     if (!decrypted) {
@@ -171,6 +175,12 @@ export function createLazyConnectionView(row: Record<string, unknown>): Provider
       }
       // #6148 — lazily computed, only when a caller actually asks for it.
       if (prop === "credentialDecryptFailed") return hasUndecryptableCredential();
+      if (prop === "providerSpecificData") {
+        providerData ??= mapProviderSpecificDataSecrets(base.providerSpecificData, (value, field) =>
+          decryptQuiet(value, { connectionId: base.id, provider: base.provider, field })
+        ) as Record<string, unknown>;
+        return providerData;
+      }
       return Reflect.get(_target, prop);
     },
   });
@@ -189,6 +199,21 @@ const CREDENTIAL_FIELDS = new Set(["apiKey", "accessToken", "refreshToken", "idT
  */
 export function createLazyRowProxy(row: Record<string, unknown>): Record<string, unknown> {
   let decrypted: Record<string, string | null | undefined> | undefined;
+  let providerData: unknown;
+  let providerDataLoaded = false;
+  const readProviderData = () => {
+    if (!providerDataLoaded) {
+      providerDataLoaded = true;
+      providerData = mapProviderSpecificDataSecrets(row.providerSpecificData, (value, field) =>
+        decryptQuiet(value, {
+          connectionId: typeof row.id === "string" ? row.id : "",
+          provider: typeof row.provider === "string" ? row.provider : "unknown",
+          field,
+        })
+      );
+    }
+    return providerData;
+  };
 
   const ensureDecrypted = () => {
     if (!decrypted) {
@@ -222,11 +247,16 @@ export function createLazyRowProxy(row: Record<string, unknown>): Record<string,
       if (prop === "credentialDecryptFailed") {
         return hasUndecryptableCredential();
       }
+      if (prop === "providerSpecificData") return readProviderData();
       if (prop === "toJSON") {
         return () => {
           const result: Record<string, unknown> = {};
           for (const key of Object.keys(target)) {
-            result[key] = CREDENTIAL_FIELDS.has(key) ? ensureDecrypted()[key] : target[key];
+            result[key] = CREDENTIAL_FIELDS.has(key)
+              ? ensureDecrypted()[key]
+              : key === "providerSpecificData"
+                ? readProviderData()
+                : target[key];
           }
           return result;
         };

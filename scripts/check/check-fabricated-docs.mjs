@@ -102,6 +102,11 @@ const ENV_VAR_ALLOWLIST = new Set([
   "OMNIROUTE_BUILD_WORKERS",
   "CIRCLE_NODE_TOTAL",
   "OMNIROUTE_BUILD_SHA",
+  "IMAGE_NAME", // GitHub Actions workflow-level env in .github/workflows/build-patty-image.yml
+  // (the fork's ONE kept workflow). It is interpolated by the workflow itself
+  // (`images: ${{ env.IMAGE_NAME }}`), never read through process.env in this
+  // repo's source, so the code-read index cannot see it. Documented in
+  // docs/ops/UPSTREAM_MERGE_GUIDE.md.
   "OMNIROUTE_URL", // used by ad-hoc tooling, validated elsewhere
   "OMNIROUTE_KEY", // ditto
   "OPENCODE_API_KEY", // ditto
@@ -114,6 +119,7 @@ const ENV_VAR_ALLOWLIST = new Set([
   "OPENAI_BASE_URL", // env var OmniRoute passes to downstream CLIs (AGENT_PROTOCOLS_GUIDE.md)
   "NINEROUTER_API_KEY", // injected into the 9router subprocess at spawn (EMBEDDED-SERVICES.md)
   "CLAUDE_CODE_MAX_OUTPUT_TOKENS", // Claude Code CLI's own env var (CODEX-CLI-CONFIGURATION.md)
+  "ANTHROPIC_CUSTOM_HEADERS", // Claude Code CLI's own env var (API_REFERENCE.md, CLAUDE-CODE-CONFIGURATION.md)
   "CODEX_HOME", // Codex CLI's own config-home env var (CODEX-CLI-CONFIGURATION.md)
   // Gemini CLI's own auth-routing env vars. `omniroute run gemini` DELETES them
   // from the spawned child's env (bin/cli/commands/run.mjs) so a stored Vertex /
