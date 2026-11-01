@@ -1289,6 +1289,32 @@ still needs (upstream deleted those test files in its UI-kit migration; the fork
 
 ---
 
+## v3.8.53 deploy record (2026-11-01)
+
+Merged PR #26 (`8470a84640`) into `patty`, built the image (GHCR run `41295421506`,
+success, 11m24s) and deployed with `scripts/deploy-ghcr.sh --vps-only`.
+
+- Image digest moved `sha256:4efc2467…` (built 2026-10-17) → `sha256:754a2638…`
+  (built 2026-11-01) — verified by digest, not by container health.
+- `https://omni.patty.io/api/monitoring/health` → `{"status":"healthy","setupComplete":true}`.
+- **Migration rehome verified on the production DB** (220 applied):
+  `164` = `retire_microsoft_designer_web`, `187` = `proxy_logs_attempts`,
+  `206` = `codex_wakeup_tasks`, **`223` = `patty_settlement_outbox`** — the fork's
+  settlement outbox moved cleanly off the contested slot, and upstream's
+  `206_codex_wakeup_tasks` applied in its place.
+
+### Post-deploy auth state (live probes on omni.patty.io)
+
+| Route                                 | Before                                                | After                                          | Verdict                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `opencode-go/*`                       | 200                                                   | 200                                            | healthy (4 connections active)                                                                                                                                                                                                                                                                                                                                                   |
+| `kmc/kimi-for-coding`, `kmc/k3.1-pro` | 401 `No active credentials for provider: kimi-coding` | 401, same                                      | **there is NO kimi-coding connection row in the production DB at all** — the provider was never connected. The upstream token-preservation fix prevents a _recurrence_; it cannot create a connection. Operator action: connect Kimi Coding (device flow) in the dashboard.                                                                                                      |
+| `opencode-zen/*`                      | 402 `This model requires an opencode API key`         | 401 `Missing API key.` (upstream's own answer) | the connection row exists but its stored credential **does not decrypt** — the app's `decrypt()` returns the literal `DECRYPTION_FAILED`, so the row was written with a different `API_KEY_SECRET` than the one the container uses. The row is already flagged (`test_status=expired`, `error_code=401.0`). Operator action: re-enter the OpenCode Zen API key in the dashboard. |
+
+Both remaining failures are **credential state, not code**: the sync shipped the upstream
+fixes (Kimi token preservation, the OpenCode free-tier credential and published-endpoint
+routing); what is left is data the operator must supply.
+
 ## Browser engine for browser-backed providers (2026-10-17)
 
 Deployed images must ship a browser **revision that matches the installed Playwright**.
