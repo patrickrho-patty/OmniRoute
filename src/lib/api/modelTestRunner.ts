@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getModelTargetFormat } from "@omniroute/open-sse/config/providerModels.ts";
 import { prepareConnectionModelTest } from "@/lib/providerModels/prepareConnectionModelTest";
 import { POST as postChatCompletion } from "@/app/api/v1/chat/completions/route";
+import { POST as postAudioSpeech } from "@/app/api/v1/audio/speech/route";
 import { POST as postAudioTranscription } from "@/app/api/v1/audio/transcriptions/route";
 import { handleValidatedEmbeddingRequestBody } from "@/app/api/v1/embeddings/route";
 import { POST as postRerank } from "@/app/api/v1/rerank/route";
@@ -16,6 +17,7 @@ import { getCustomModels } from "@/lib/db/models";
 import { getProviderNodeById } from "@/lib/db/providers";
 import { requiresWebSessionCredential } from "@/shared/providers/webSessionCredentials";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
+import { isImageOnlyModel } from "@omniroute/open-sse/config/imageRegistry";
 import { withRateLimit } from "@omniroute/open-sse/services/rateLimitManager";
 import {
   isCreditsExhausted,
@@ -34,6 +36,8 @@ const DOLA_PRO_TEST_TIMEOUT_MS = 90_000;
 const DOUBAO_WEB_PROVIDER_ID = "doubao-web";
 const ZAI_WEB_PROVIDER_ID = "zai-web";
 const ZAI_WEB_TEST_TIMEOUT_MS = 60_000;
+const CHATGPT_WEB_PROVIDER_ID = "chatgpt-web";
+const CHATGPT_WEB_TEST_TIMEOUT_MS = 90_000;
 const XIAOMI_MIMO_TOKEN_PLAN_PROVIDER_ID = "xiaomi-mimo-token-plan";
 const XIAOMI_MIMO_TOKEN_PLAN_TEST_TIMEOUT_MS = 60_000;
 const SLOW_WEB_TEST_MODELS = new Set(["dola-pro"]);
@@ -136,6 +140,10 @@ export function resolveModelTestTimeoutMs(
 
   if (normalizedProviderId === ZAI_WEB_PROVIDER_ID) {
     return Math.max(requestedTimeoutMs, ZAI_WEB_TEST_TIMEOUT_MS);
+  }
+
+  if (normalizedProviderId === CHATGPT_WEB_PROVIDER_ID) {
+    return Math.max(requestedTimeoutMs, CHATGPT_WEB_TEST_TIMEOUT_MS);
   }
 
   if (normalizedProviderId === XIAOMI_MIMO_TOKEN_PLAN_PROVIDER_ID) {
@@ -287,6 +295,26 @@ export function buildInternalAudioTranscriptionRequest(
   });
 }
 
+export function buildInternalAudioSpeechRequest(
+  model: string,
+  signal: AbortSignal,
+  connectionId?: string
+) {
+  return new Request(`${INTERNAL_ORIGIN}/v1/audio/speech`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Internal-Test": "combo-health-check",
+      "X-OmniRoute-No-Cache": "true",
+      "X-OmniRoute-Compression": "off",
+      "X-Request-Id": `model-test-${randomUUID()}`,
+      ...(connectionId ? { "X-OmniRoute-Connection": connectionId } : {}),
+    },
+    body: JSON.stringify({ model, input: "Hi", voice: "alloy", response_format: "mp3" }),
+    signal,
+  });
+}
+
 export function detectTestKind(
   modelStr: string,
   customModel: any,
@@ -304,17 +332,33 @@ export function detectTestKind(
   // "All AI backends exhausted for chat".
   const nodeType = typeof nodeApiType === "string" ? nodeApiType : "";
   const lowerModel = modelStr.toLowerCase();
+  // Only the model's own endpoint metadata counts as an explicit chat signal. The node
+  // apiType / apiFormat are fallbacks and must not override per-model detection or the
+  // name heuristics below (an embedding model can live on a chat-typed node).
+  const isExplicitChat =
+    supportedEndpoints.includes("chat") || supportedEndpoints.includes("responses");
   const isAudioTranscription =
-    apiFormat === "audio-transcriptions" ||
-    nodeType === "audio-transcriptions" ||
-    supportedEndpoints.includes("audio-transcriptions");
+    !isExplicitChat &&
+    (apiFormat === "audio-transcriptions" ||
+      nodeType === "audio-transcriptions" ||
+      supportedEndpoints.includes("audio-transcriptions"));
+  const isAudioSpeech =
+    !isExplicitChat &&
+    !isAudioTranscription &&
+    (supportedEndpoints.includes("audio-speech") ||
+      apiFormat === "audio-speech" ||
+      nodeType === "audio-speech");
   const isRerank =
+    !isAudioSpeech &&
+    !isExplicitChat &&
     !isAudioTranscription &&
     (apiFormat === "rerank" ||
       nodeType === "rerank" ||
       supportedEndpoints.includes("rerank") ||
       lowerModel.includes("rerank"));
   const isEmbedding =
+    !isAudioSpeech &&
+    !isExplicitChat &&
     !isAudioTranscription &&
     !isRerank &&
     (apiFormat === "embeddings" ||
@@ -350,19 +394,30 @@ export function detectTestKind(
       // "HTTP 200 but no text content" (#12674's model, #13070's message).
       registryTargetFormat === "openai-responses");
   // Non-chat generation endpoints (image, music, video) should NOT be dispatched
-  // as chat completions — they incur billable generation costs (#13376).
+  // as chat completions — they incur billable generation costs (#13376). An explicit
+  // generation apiFormat, or an image-only registry model that chat.ts rejects
+  // (#6457), wins over the add-model form's default "chat" tick (#17071).
+  const isGenerationFormat = apiFormat === "images-generations" || apiFormat === "video";
+  const isGenerationOnlyTag =
+    !supportedEndpoints.includes("chat") &&
+    ["images", "images-generations", "music", "videos"].some((endpoint) =>
+      supportedEndpoints.includes(endpoint)
+    );
   const isNonChatGeneration =
     !isAudioTranscription &&
     !isRerank &&
     !isEmbedding &&
     !isResponses &&
-    supportedEndpoints.length > 0 &&
-    !supportedEndpoints.includes("chat") &&
-    (supportedEndpoints.includes("images") ||
-      supportedEndpoints.includes("music") ||
-      supportedEndpoints.includes("videos"));
+    (isGenerationFormat || isGenerationOnlyTag || isImageOnlyModel(modelStr));
 
-  return { isRerank, isEmbedding, isAudioTranscription, isResponses, isNonChatGeneration };
+  return {
+    isRerank,
+    isEmbedding,
+    isAudioTranscription,
+    isAudioSpeech,
+    isResponses,
+    isNonChatGeneration,
+  };
 }
 
 /**
@@ -431,9 +486,19 @@ export function classifyModelTestOutput(
 
 export async function extractModelTestResponseText(
   response: Response,
-  streamChat: boolean
+  streamChat: boolean,
+  isAudioSpeech = false
 ): Promise<ModelTestResponseText> {
   const contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (isAudioSpeech) {
+    const audio = await response.arrayBuffer();
+    return {
+      text:
+        contentType.startsWith("audio/") && audio.byteLength > 0
+          ? `Audio generated (${audio.byteLength} bytes)`
+          : "",
+    };
+  }
   if (streamChat && !contentType.includes("application/json")) {
     return extractComboTestStreamResult(await response.text());
   }
@@ -546,13 +611,19 @@ export async function runSingleModelTest(
     findCustomModelMetadata(providerId, fullModelStr),
     findProviderNodeApiType(providerId),
   ]);
-  const { isRerank, isEmbedding, isAudioTranscription, isResponses, isNonChatGeneration } =
-    detectTestKind(
-      fullModelStr,
-      customModel,
-      nodeApiType,
-      getModelTargetFormat(providerId, fullModelStr)
-    );
+  const {
+    isRerank,
+    isEmbedding,
+    isAudioTranscription,
+    isAudioSpeech,
+    isResponses,
+    isNonChatGeneration,
+  } = detectTestKind(
+    fullModelStr,
+    customModel,
+    nodeApiType,
+    getModelTargetFormat(providerId, fullModelStr)
+  );
 
   // #13376: Skip image/music/video generation models — dispatching them as
   // chat completions incurs real billable generations the operator never asked for.
@@ -565,12 +636,16 @@ export async function runSingleModelTest(
       // model's modality cannot be exercised by a chat test. The route passes httpStatus
       // straight to NextResponse — omitting it made Next answer 200 for a skipped test.
       httpStatus: 422,
+      skipped: true,
       error:
         "Skipped: non-chat generation model (images/music/video) — use the corresponding generation endpoint instead",
     };
   }
 
-  if (options.prompt !== undefined && (isEmbedding || isRerank || isAudioTranscription)) {
+  if (
+    options.prompt !== undefined &&
+    (isEmbedding || isRerank || isAudioTranscription || isAudioSpeech)
+  ) {
     return {
       modelId: fullModelStr,
       status: "error",
@@ -634,6 +709,10 @@ export async function runSingleModelTest(
     if (isRerank) {
       return postRerank(buildInternalRerankRequest(testBody, signal, connectionId));
     }
+    if (isAudioSpeech) {
+      return postAudioSpeech(buildInternalAudioSpeechRequest(fullModelStr, signal, connectionId));
+    }
+
     if (isAudioTranscription) {
       return postAudioTranscription(
         buildInternalAudioTranscriptionRequest(fullModelStr, signal, connectionId)
@@ -746,7 +825,11 @@ export async function runSingleModelTest(
       // deactivated") would run outside runAsProbe and could still reach
       // markAccountUnavailable (#9817).
       const parsedResponse = await runAsProbe(() =>
-        extractModelTestResponseText(res, !isEmbedding && !isRerank && !isResponses && streamChat)
+        extractModelTestResponseText(
+          res,
+          !isEmbedding && !isRerank && !isResponses && streamChat,
+          isAudioSpeech
+        )
       );
       responseText = parsedResponse.text;
       streamError = parsedResponse.error;

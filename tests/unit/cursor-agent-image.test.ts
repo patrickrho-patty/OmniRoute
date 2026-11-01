@@ -41,9 +41,12 @@ test("normalizeCursorSeatToken strips account:: prefix like CursorExecutor", () 
   assert.equal(normalizeCursorSeatToken("a::b::c"), "b::c");
 });
 
-test("buildCursorAgentAuthEnv maps crsr_ to CURSOR_API_KEY and JWTs to CURSOR_AUTH_TOKEN", () => {
-  assert.deepEqual(buildCursorAgentAuthEnv("crsr_abc"), { CURSOR_API_KEY: "crsr_abc" });
-  assert.deepEqual(buildCursorAgentAuthEnv("user::crsr_abc"), { CURSOR_API_KEY: "crsr_abc" });
+test("buildCursorAgentAuthEnv maps Cursor user keys to CURSOR_API_KEY and JWTs to CURSOR_AUTH_TOKEN", () => {
+  for (const key of ["crsr_synthetic", "grok_synthetic"]) {
+    assert.deepEqual(buildCursorAgentAuthEnv(key), { CURSOR_API_KEY: key });
+    assert.deepEqual(buildCursorAgentAuthEnv(`user::${key}`), { CURSOR_API_KEY: key });
+    assert.deepEqual(buildCursorAgentAuthEnv(`  ${key}  `), { CURSOR_API_KEY: key });
+  }
   assert.deepEqual(buildCursorAgentAuthEnv("eyJhbGciOi.jwt"), {
     CURSOR_AUTH_TOKEN: "eyJhbGciOi.jwt",
   });

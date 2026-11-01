@@ -332,7 +332,8 @@ sweep deleted it and GHCR silently went stale for a month).
 The fork has already moved twice (`patrickrho-patty` → `patty-internal` 2026-08 →
 back to `patrickrho-patty` 2026-10), and each move silently skipped every build
 because the job guard was an equality check on the old slug. Since 2026-10 the
-workflow derives `IMAGE_NAME` from `github.repository_owner`, guards negatively
+workflow derives its image path from `github.repository_owner` (the workflow-level
+`IMAGE_NAME` env), guards negatively
 (`github.repository != 'diegosouzapw/OmniRoute'`) and `scripts/deploy-ghcr.sh`
 derives the owner from the `origin` remote, so neither needs editing on a
 transfer. The two that still do:

@@ -29,6 +29,23 @@ const KIMI_CONFIG = {
   apiVersion: "2023-06-01",
 };
 
+export function resolveKimiUsageUrl(providerSpecificData?: JsonRecord): string {
+  const customBaseUrl =
+    typeof providerSpecificData?.baseUrl === "string" ? providerSpecificData.baseUrl.trim() : "";
+  if (customBaseUrl) {
+    try {
+      const url = new URL(customBaseUrl);
+      const host = url.hostname.toLowerCase();
+      if (host === "api.kimi.ai" || host === "api.kimi.com") {
+        return `https://${host}/coding/v1/usages`;
+      }
+    } catch {
+      // fall back to default
+    }
+  }
+  return KIMI_CONFIG.usageUrl;
+}
+
 const KIMI_BOOSTER_FIXED_POINT_PER_CENT = 1_000_000;
 
 function toInteger(value: unknown): number | null {
@@ -154,17 +171,30 @@ function applyKimiMembershipRatios(quotas: Record<string, UsageQuota>, usages: u
   const mapping: Array<[string, string, string]> = [
     ["limit_7d", "code_7d", "Code · 7d"],
     ["limit_5h", "code_5h", "Code · 5h"],
+    ["limit_month_total", "monthly", "Monthly"],
   ];
   for (const [source, key, displayName] of mapping) {
-    // Fill-only: the count-based windows (usage / limits[]) are authoritative.
-    // Live payload observed 2026-09-25 (api.kimi.com/coding/v1/usages, API-key
-    // session): usage.used = 66/100 while usages.limit_7d.used_ratio = 0 — the
-    // ratio block is stuck at zero and previously CLOBBERED the real usage,
+    // Fill-only, and only when the ratio block carries no signal of its own.
+    //
+    // Fork rule (2026-09-25): the count-based windows (usage / limits[]) are
+    // authoritative. Live payload observed on api.kimi.com/coding/v1/usages
+    // (API-key session): usage.used = 66/100 while usages.limit_7d.used_ratio = 0 —
+    // the ratio block is stuck at zero and previously CLOBBERED the real usage,
     // pinning the dashboard at "100% remaining" forever.
-    if (key in quotas) continue;
-    const quota = createKimiRatioQuota(rec[source]);
-    if (!quota) continue;
-    quotas[key] = { ...quota, displayName };
+    //
+    // Upstream rule (#18234): the ratio is the membership signal, so a non-zero
+    // used_ratio must win over the count window.
+    //
+    // Both hold with the combined rule below: a STUCK ratio (0) never overwrites
+    // a count-based quota, while a real ratio (non-zero) does.
+    const ratioQuota = createKimiRatioQuota(rec[source]);
+    if (!ratioQuota) continue;
+    if (key in quotas && ratioQuota.used <= 0) continue;
+    quotas[key] = {
+      ...ratioQuota,
+      displayName,
+      ...(key === "monthly" ? { isPercentageOnly: true } : {}),
+    };
   }
 }
 
@@ -243,7 +273,8 @@ export async function getKimiUsage(
       };
 
   try {
-    const response = await fetch(KIMI_CONFIG.usageUrl, {
+    const usageUrl = resolveKimiUsageUrl(providerSpecificData);
+    const response = await fetch(usageUrl, {
       method: "GET",
       headers: {
         ...authHeaders,
@@ -274,9 +305,8 @@ export async function getKimiUsage(
     const dataObj = toRecord(data);
     const billing = buildKimiBillingStatus(dataObj.boosterWallet ?? dataObj.booster_wallet);
 
-    // The managed Kimi Code API reports the Code 7-day quota in `usage`.
-    // The website's separate shared-membership total/Kimi split comes from a
-    // Web-session-only endpoint and cannot be read with a Coding OAuth token.
+    // Older plans report a Code 7-day count in `usage`; newer responses also
+    // include explicit membership ratio windows in `usages`.
     const weeklyQuota = createKimiCountQuota(dataObj.usage);
     if (weeklyQuota) {
       quotas.code_7d = { ...weeklyQuota, displayName: "Code · 7d" };

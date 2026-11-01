@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
+import { Alert } from "@omniroute/ui-kit/alert";
+import Icon from "@/shared/components/Icon";
+import Button from "@/shared/components/Button";
 import BatchListTab from "./BatchListTab";
 import type { FileRecord } from "@/lib/db/files";
 import type { BatchRecord } from "@/lib/db/batches";
@@ -265,9 +268,7 @@ export default function BatchPage() {
               {t("batchStep1Desc")}
             </span>
           </div>
-          <span className="material-symbols-outlined text-[var(--color-text-muted)]">
-            chevron_right
-          </span>
+          <Icon name="chevron_right" className="text-[var(--color-text-muted)]" />
           <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
             <span className="font-medium text-sm text-[var(--color-text-main)]">
               {t("batchStep2")}
@@ -276,9 +277,7 @@ export default function BatchPage() {
               {t("batchStep2Desc")}
             </span>
           </div>
-          <span className="material-symbols-outlined text-[var(--color-text-muted)]">
-            chevron_right
-          </span>
+          <Icon name="chevron_right" className="text-[var(--color-text-muted)]" />
           <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
             <span className="font-medium text-sm text-[var(--color-text-main)]">
               {t("batchStep3")}
@@ -288,15 +287,6 @@ export default function BatchPage() {
             </span>
           </div>
         </div>
-
-        {/* Primary CTA */}
-        <button
-          onClick={() => setShowWizard(true)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-[var(--color-accent)] text-white hover:opacity-90 transition-all duration-200 w-fit"
-        >
-          <span className="material-symbols-outlined text-[16px]">add</span>
-          {t("batchListNewButton")}
-        </button>
       </div>
 
       {/* Deeper explanation (optional, collapsible) */}
@@ -304,56 +294,33 @@ export default function BatchPage() {
 
       {/* "Batch created" success banner (A-6) — auto-dismiss 5s */}
       {createdBanner && (
-        <div
-          role="status"
-          className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2"
-        >
-          <div className="flex items-center gap-2 text-sm text-emerald-400">
-            <span className="material-symbols-outlined text-[16px]">check_circle</span>
-            {t("batchListBatchCreated", { id: createdBanner })}
-          </div>
-          <button
-            type="button"
-            onClick={() => setCreatedBanner(null)}
-            className="text-xs text-emerald-400/80 hover:text-emerald-300 transition-colors px-2 py-0.5 rounded"
-          >
-            {t("batchListBatchCreatedDismiss")}
-          </button>
-        </div>
+        <Alert
+          variant="success"
+          icon={<Icon name="check_circle" size={16} />}
+          title={t("batchListBatchCreated", { id: createdBanner })}
+          dismissLabel={t("batchListBatchCreatedDismiss")}
+          onDismiss={() => setCreatedBanner(null)}
+        />
       )}
 
       {/* Toolbar: auto-refresh indicator + Refresh + New batch */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
-          <span
-            className={`material-symbols-outlined text-[14px] ${loading ? "animate-spin" : "animate-pulse"}`}
-          >
-            sync
-          </span>
+          <Icon name="sync" size={14} className={loading ? "animate-spin" : "animate-pulse"} />
           {t("batchListAutoRefresh")}
         </span>
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="outline"
+            icon="refresh"
             onClick={() => fetchData(false)}
             disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
-              bg-[var(--color-surface)] border border-[var(--color-border)]
-              text-[var(--color-text-secondary)] hover:text-[var(--color-text-main)]
-              hover:border-[var(--color-accent)] transition-all duration-200
-              disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span className="material-symbols-outlined text-[16px]">refresh</span>
             {loading ? t("batchListRefreshing") : t("batchListRefresh")}
-          </button>
-          <button
-            onClick={() => setShowWizard(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
-              bg-[var(--color-accent)] text-white hover:opacity-90
-              transition-all duration-200"
-          >
-            <span className="material-symbols-outlined text-[16px]">add</span>
+          </Button>
+          <Button icon="add" onClick={() => setShowWizard(true)}>
             {t("batchListNewButton")}
-          </button>
+          </Button>
         </div>
       </div>
 

@@ -1,7 +1,17 @@
 // @vitest-environment jsdom
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, beforeAll } from "vitest";
+
+// The kit Table (KEA-7886) mounts a persistent horizontal scrollbar that measures the table
+// with ResizeObserver, which jsdom does not implement.
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+});
 
 type ReplaceOptions = { scroll?: boolean };
 type Replace = (url: string, options?: ReplaceOptions) => void;
@@ -167,7 +177,7 @@ function assertRetainedView(scrollContainer: HTMLDivElement) {
 
   expect(search?.value).toBe("model");
   expect(sort?.value).toBe("oldest");
-  expect(successFilter?.className).toContain("bg-emerald-500/20");
+  expect(successFilter?.className).toContain("bg-success/20");
   expect(rows).toHaveLength(100);
   expect(rows[0]?.textContent).toContain("model-099");
   expect(scrollContainer.scrollTop).toBe(337);

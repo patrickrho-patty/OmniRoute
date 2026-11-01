@@ -52,7 +52,8 @@ function renderModal(isOpen: boolean, reauthConnection?: { id: string }) {
       />
     );
   });
-  return { root, element };
+  // Queries go through document.body: the dialog is portaled there (KEA-7886).
+  return { root, element: document.body };
 }
 
 describe("OAuthModal Grok Device Code", () => {

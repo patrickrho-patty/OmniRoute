@@ -105,6 +105,21 @@ export const PUBLIC_AUTH_ROUTE_MARK = "1";
 export const AUTHZ_HEADER_TRUSTED_PEER_IP = "x-omniroute-trusted-peer-ip";
 
 /**
+ * The resolved client address, stamped by the pipeline AFTER verifying the
+ * token-stamped CLIENT_IP_HEADER: the TCP peer on a direct connection, or the
+ * client a trusted proxy reported for it (loopback / private-network /
+ * Cloudflare proxies and OMNIROUTE_TRUSTED_PROXIES — see peer-stamp.mjs). This
+ * is what the IP allow/deny list judges, and what route handlers that key a
+ * per-client control on "who is calling" (e.g. the relay throttle) must read
+ * instead of X-Forwarded-For / X-Real-IP, which a direct caller controls.
+ * Unlike AUTHZ_HEADER_TRUSTED_PEER_IP it does not collapse every client behind
+ * a reverse proxy into the proxy's address. Set only when the stamp token is
+ * configured and validates; absent otherwise. Stripped from incoming requests
+ * like all other trusted headers.
+ */
+export const AUTHZ_HEADER_TRUSTED_CLIENT_IP = "x-omniroute-trusted-client-ip";
+
+/**
  * Headers the pipeline must NEVER trust on incoming requests. They are
  * stripped before route classification to prevent header-spoofing attacks.
  */
@@ -117,4 +132,5 @@ export const AUTHZ_TRUSTED_HEADERS: ReadonlyArray<string> = [
   AUTHZ_HEADER_PEER_LOCALITY,
   PUBLIC_AUTH_ROUTE_HEADER,
   AUTHZ_HEADER_TRUSTED_PEER_IP,
+  AUTHZ_HEADER_TRUSTED_CLIENT_IP,
 ];

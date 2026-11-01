@@ -166,24 +166,74 @@ export const RENAMED_MIGRATION_COMPATIBILITY = [
     toVersion: "081",
     toName: "inspector_custom_hosts",
   },
+  // PR #10409 circulated through these draft slots before the current release
+  // claimed them. The name guard is mandatory: canonical migrations using the
+  // same numbers must never be rehomed as Team state.
+  {
+    fromVersion: "153",
+    fromName: "team_cost_centers",
+    toVersion: "215",
+    toName: "team_cost_centers",
+  },
+  {
+    fromVersion: "154",
+    fromName: "team_cost_centers",
+    toVersion: "215",
+    toName: "team_cost_centers",
+  },
+  {
+    fromVersion: "155",
+    fromName: "team_cost_centers",
+    toVersion: "215",
+    toName: "team_cost_centers",
+  },
+  {
+    fromVersion: "161",
+    fromName: "team_cost_centers",
+    toVersion: "215",
+    toName: "team_cost_centers",
+  },
+  {
+    fromVersion: "163",
+    fromName: "team_cost_centers",
+    toVersion: "215",
+    toName: "team_cost_centers",
+  },
+  {
+    fromVersion: "164",
+    fromName: "team_cost_centers",
+    toVersion: "215",
+    toName: "team_cost_centers",
+  },
   {
     // Fork-only migration: upstream's 164_retire_microsoft_designer_web took the
     // 164 slot in the v3.8.51 sync. Fork databases that already applied the
-    // settlement outbox under 164 are rehomed to the next free slot (187),
+    // settlement outbox under 164 are rehomed to the current slot (223),
     // freeing 164 for the canonical retirement migration.
     fromVersion: "164",
     fromName: "patty_settlement_outbox",
-    toVersion: "187",
+    toVersion: "223",
     toName: "patty_settlement_outbox",
   },
   {
     // Second rehome of the same fork-only migration: upstream's
     // 187_proxy_logs_attempts took the 187 slot in the v3.8.52 sync, so the
-    // settlement outbox moves on to 206. Chained AFTER the 164 → 187 entry so a
-    // database still sitting on 164 lands on 206 in one pass.
+    // settlement outbox moved on to 206.
     fromVersion: "187",
     fromName: "patty_settlement_outbox",
-    toVersion: "206",
+    toVersion: "223",
+    toName: "patty_settlement_outbox",
+  },
+  {
+    // Third rehome of the same fork-only migration: upstream's
+    // 206_codex_wakeup_tasks took the 206 slot in the v3.8.53 sync, so the
+    // settlement outbox moves on to 223 (the first free slot after upstream's
+    // 222_entra_sso_identities). Every legacy number the fork ever used for
+    // this migration — 164, 187 and 206 — now maps straight to 223, so a
+    // database on any of them is rehomed in one pass.
+    fromVersion: "206",
+    fromName: "patty_settlement_outbox",
+    toVersion: "223",
     toName: "patty_settlement_outbox",
   },
   {

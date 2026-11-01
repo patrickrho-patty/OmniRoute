@@ -1134,6 +1134,161 @@ correlationId, streamSignal)` shape, so `runtimeOptions.claudeLargeMessagesAppli
 
 ---
 
+## v3.8.53 sync record (2026-10-31)
+
+Merged upstream `release/v3.8.53` tip `b2a64106c9` into `patty` (merge-base `be1d878aab` = the
+v3.8.52 sync point; 1,331 upstream commits / 197 fork commits). **247 conflicted paths** —
+the census matched `git merge-tree` exactly: 132 `docs/i18n/*` mirrors + 42 `src/i18n/messages/*.json`
+
+- 22 `.github/workflows/*` + **51 real conflicts**.
+
+> **Why this sync happened:** production OpenCode + Kimi authentication was broken.
+> Live probes against `omni.patty.io` (2026-10-31, before the sync):
+> `kmc/kimi-for-coding` → **401** `No active credentials for provider: kimi-coding`;
+> `opencode-zen/*` → **402** `This model requires an opencode API key`; `opencode-zen/big-pickle`
+> → **429** `Free usage limit reached`. `opencode-go/*` was healthy (200).
+> The Kimi 401 is upstream's #17042 bug (the refresh token was nulled after one rejected
+> refresh) — fixed by upstream v3.8.53. The OpenCode Zen 402 is a missing credential (operator
+> action, not a code fix).
+
+Same rulebook as v3.8.51/v3.8.52 (R1–R7), plus three new instruments:
+the whole-tree esbuild parse sweep, the pure-upstream worktree classifier
+(`/Volumes/nvme_2tb/upstream-check`), and a three-way locale deep-union that resolves a leaf
+conflict by comparing the fork's value against the **merge-base** value (not against upstream's
+English) — that distinction matters: 379 locale leaves were stale upstream translations, not
+fork intent, and zero fork-authored values were lost.
+
+### Conflicts resolved by rule
+
+- **R1 (workflows stay deleted)** — 22 delete/modify conflicts plus 3 workflow files upstream
+  **re-added** in v3.8.53 (`cancel-closed-pr-runs.yml`, `i18n-mirror-refresh.yml`,
+  `ui-kit-upstream-watch.yml`) → deleted again. The fork's ONE workflow
+  (`.github/workflows/build-patty-image.yml`) is untouched.
+- **R3/R4 (docs + locale JSON)** — 174 locale files deep-unioned: **379** leaf conflicts were
+  stale upstream translations (upstream's newer text wins) and **0** were fork-authored values.
+  The 66 `docs/i18n/*/llm.txt` mirrors were regenerated with
+  `scripts/i18n/sync-llm-mirrors.mjs`; the 66 `docs/i18n/*/README.md` DB rows were rewritten to
+  the fork's migration count (220) in each locale's own digits.
+- **R5 (quality baselines)** — `config/quality/eslint-suppressions.json` is the **union** of
+  upstream's 1,038 entries and the fork's 673 (max count per file+rule). Taking upstream's file
+  wholesale dropped the fork's own suppressions and turned the fork's own violations (e.g.
+  `QuotaCardExpanded.tsx`'s `Date.now()`-during-render) into hard lint errors.
+- **R6 (`package.json` union)** — `magic-grid`, `pretendard` and **`material-symbols`** were
+  re-added. `material-symbols` was re-added first and then **removed again** after upstream
+  v3.8.53 deleted the dependency and migrated the app to Lucide: the fork's last four
+  `material-symbols-outlined` users (`login/page.tsx`, `ponytail/page.tsx`, `QuotaCardHeader.tsx`,
+  `batch/page.tsx`) were migrated with upstream's own `scripts/dev/codemod-material-icons.mjs`,
+  `content_cut`/`straighten` were added to `ICON_MAP` (Scissors/Ruler), and the dependency was
+  dropped so upstream's `material-symbols-removed` gate is green again.
+
+### Fork features re-grafted
+
+- **`chatCore.ts` was rebuilt from upstream's file + the fork's deltas.** The fork's copy had
+  fallen behind upstream on the whole compression path (no `adaptBodyForCompression`, no
+  `compressionHeader !== "off"` output-style gate, no `connectionCacheOverride`,
+  `principalId: apiKeyInfo?.id` instead of `compressionPrincipalId`) while upstream's new
+  compression tests failed against it (11 assertions in 3 files). Upstream's structure is now the
+  base; the fork's deltas were re-applied on top: patty settlement (`pattyDecision`,
+  `clientRequestedModel`, the echo precedence), `HIDE_UPSTREAM_METADATA` echo force-enable,
+  the chatgpt-web semantic-cache and dedup exclusions, the SRC-014 independent
+  `reactiveContextCompactionEnabled` gate, and the stable cache-checkpoint reuse
+  (`cacheSessionKey`/`cacheReuseMaxTokens`). `pattyDecision` is now threaded into both leaf
+  calls (`runNonStreamingResponse`, `runStreamingTail`) — the fork's `leaf-deps-contract` test
+  pins that contract.
+- **Migration collision #3** — upstream's `206_codex_wakeup_tasks` took the slot the fork's
+  settlement outbox had been rehomed into. Third rehome `206 → 223`; the ledger now maps
+  **164→223, 187→223 and 206→223** (every number the fork ever used), the
+  `isSchemaAlreadyApplied` guard moved to `case "223"`, and the registry's pinned count is 42.
+- **session-dedup** — the fork keeps its own slot scheme (string content `i*STRIDE`, multipart
+  text part `i*STRIDE+p+1`) and its DCP pass (keep **LAST** tool result, `[dedup:duplicate-tool-result …]`),
+  and upstream's `collectTextSlots`/`applyTextSlots` refactor was **not** adopted: it collects
+  Anthropic `tool_result` text for the cross-message pass, which would make upstream's
+  keep-FIRST policy compete with the fork's keep-LAST policy over the same text. The fork's
+  `suffixDedup.ts` (single-pass O(n)) and the incremental layer stay.
+- **ZCode** — upstream rewrote the executor (+601/−251) for the native protocol; the fork's
+  v3.8.52 implementation was kept because upstream's rewrite 502s in the fork's environment
+  (upstream's own `zcode-executor.test.ts` passes on the pure upstream worktree, but the fork's
+  tree would 502 in production). Upstream's **fixture** (`tests/fixtures/fake-zcode-app-server.mjs`)
+  was taken with it, because the fork's old fixture speaks the pre-rewrite protocol.
+- **chatgpt-web bridge** — the fork keeps its own `chatgptWebFirstParty.ts` (the pinned-module-id
+  shim that survives chatgpt.com's TI→DD rename); upstream's runtime-based integrity resolution
+  is a different mechanism that the fork's `chatgpt-web-bridge-dependency-shim.test.ts` pins.
+  Upstream's `chatgpt-web-first-party-cleanroom.test.ts` is therefore red in the fork (see below).
+- **Kimi usage** — the fork's fill-only rule (a count-based window is authoritative) and upstream's
+  rule (the ratio is the membership signal) were combined: a **stuck** ratio (`used = 0`) never
+  overwrites a count-based quota, a **real** ratio does. Both the fork's
+  `kimi-usage-ratio-clobber.test.ts` and upstream's `kimi-monthly-membership-quota.test.ts` pass.
+- **login page** — the fork keeps its `PattyShell` + light-theme redesign; upstream's UI-kit
+  migration for that page was not taken.
+
+### Gates
+
+`typecheck:core` clean (0 errors — upstream also fixed the 57 base-red errors the fork carried at
+v3.8.52). `typecheck:noimplicit:core`: 15 errors, all in upstream's `open-sse/config/imageRegistry.ts`
+(inherited). `lint`: 0 errors. `check:docs-all`: pass after the count pass (220 migrations /
+13 compression engines / 114 feature flags / 380 providers). Whole-tree esbuild parse sweep: 0 failures.
+
+### Inherited reds (NOT fixed in the sync branch)
+
+- **Workflow-assertion tests (~18 files)** — upstream's CI-shape tests read `.github/workflows/*`,
+  which R1 deletes on purpose. Each sync adds more as upstream grows its CI. No code change can
+  satisfy them without undoing R1.
+- **Upstream base-red** (verified on the pure upstream worktree): `uc-video.test.ts` (the
+  persona timeout case spins 1,000 polls in under the 5 ms deadline on a fast machine),
+  `scripts-dev-ci-discriminate.test.ts`, `cli/tray-runtime-windows-esm-import.test.ts` (2),
+  `build/scripts-direct-run-guard.test.ts`, `cli-helper/tool-detector-win32-7279.test.ts`.
+- **Fork-by-design** (the fork's UI/behaviour diverges from upstream's new gates):
+  `dashboard-kit-sweep` (3), `design-kit-bridge`, `brand-pages-static`,
+  `shared/basePath-client-inlining`, `quota-availability-i18n`, `i18n-find-unreferenced-keys`,
+  `qoder-cli-acp`, `chatgpt-web-first-party-cleanroom`, and the compression trio
+  `compression/live-zone-current-turn` (4), `compression/session-dedup-current-turn` (2),
+  `compression/anthropic-tool-results` (1) — the last three are the keep-LAST DCP policy above.
+
+### Two upstream defects found in this sync (both fixed in the fork)
+
+- **`tests/unit/new-worktree-lock.test.ts` (new in v3.8.53) hangs on macOS** — it spawns
+  `flock(1)`, which does not exist off Linux. The pending promise drains the worker's event loop
+  and **every remaining test file in that worker is reported as "Promise resolution is still
+  pending"** — one hanging file poisoned ~2,900 sibling results. The flock-specific cases are now
+  skipped when `flock` is unavailable.
+- **`next.config.mjs` had a duplicate `webpackBuildWorker` key** — upstream's hard-coded `true`
+  and the fork's env-driven `parseBooleanEnv(...)`. The env-driven value is now the single source
+  (same default, still rollback-able), and the macOS dev overrides stay first in `experimental`.
+
+### The release branch moved mid-sync (16 more commits)
+
+Upstream's default branch is `release/v3.8.53` — **not** `main` (`git ls-remote --symref
+upstream HEAD`). The branch advanced `b2a64106c9` → `139070680f` while the first merge was
+in flight, so a second merge (`413bb02879`) folded the remaining 16 commits in —
+conflict-free, and it carried three security fixes: the SSRF guard now refuses reserved
+`240.0.0.0/4` and broadcast addresses, the `@hono/node-server` override is raised to
+`^2.1.3`, and the Codex / Muse / Z Code / Entra token fingerprints go through the opaque
+helper (CodeQL). Plus reasoning-field preservation through streaming redaction, Claude Code
+classifier turns kept out of Memory, compressed JSON request bodies decoded at chat
+admission, and Cloudflare Workers AI model-discovery pagination.
+
+One upstream doc gap was fixed in the fork (`6f11521327`): `OMNIROUTE_MODEL_SYNC_TIMINGS`
+landed in the code without a `.env.example` / `ENVIRONMENT.md` entry, which turned the
+fork's env-doc contract gate red.
+
+`upstream/main` was checked separately: it holds exactly ONE commit the release branch does
+not (`fix(ci): main-green companion`) — release-green CI tooling plus a test-masking
+allowlist cleanup. It is deliberately **not** taken: the fork runs no upstream release-green
+lane (R1 deletes the workflow), the fork's own `check-test-masking` gate skips the diff
+sub-checks for release-sized PRs, and the allowlist cleanup would remove entries the fork
+still needs (upstream deleted those test files in its UI-kit migration; the fork kept them).
+
+### Follow-ups (deliberately not fixed in the sync branch)
+
+- The fork's chatgpt-web bridge still pins chatgpt.com's module ids (TI/DD). Upstream's
+  runtime-based resolution is more robust — re-evaluate with a live ChatGPT Web account.
+- `live-zone-current-turn` and `session-dedup-current-turn` encode upstream's keep-FIRST policy;
+  aligning them means re-deciding the fork's keep-LAST DCP policy (fork commit `0a12e3a6d8`).
+- The dashboard's UI-kit gates (`dashboard-kit-sweep`, `design-kit-bridge`) now flag the fork's
+  own raw elements and palette literals — a UI-kit migration is the follow-up, not a sync task.
+
+---
+
 ## Browser engine for browser-backed providers (2026-10-17)
 
 Deployed images must ship a browser **revision that matches the installed Playwright**.

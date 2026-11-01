@@ -856,7 +856,11 @@ export const sessionDedupEngine: CompressionEngine = {
       stepConfig,
       minBlockChars,
       options?.principalId,
-      callerSupportsCcrRetrieve(body)
+      callerSupportsCcrRetrieve(body),
+      // Upstream's current-turn boundary for the fuzzy pass. The fork's
+      // currentTurnStartIndex computes the same boundary (index after the last
+      // assistant message) that upstream's calculateCurrentTurnStart returns.
+      currentTurnStartIndex(messages as MessageLike[])
     );
 
     if (toolResultDedupCount + dedupCount + fuzzyCount === 0) {

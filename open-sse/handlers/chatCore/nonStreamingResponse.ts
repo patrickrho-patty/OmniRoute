@@ -4,7 +4,7 @@
  * deps, and the values the barrel reads afterwards leave through carry.
  */
 
-import { meteredBudgetCost } from "@/lib/usage/meteredBudgetPolicy";
+import { isUnpricedMeteredCost, meteredBudgetCost } from "@/lib/usage/meteredBudgetPolicy";
 import { readCpaAuthIndex } from "../chatCore/failureUsage.ts";
 
 import { createRoutingEvent, emitRoutingEvent } from "../../services/routing/index.ts";
@@ -58,11 +58,15 @@ import { buildPostCallGuardrailContext } from "../chatCore/postCallGuardrailCont
 import { buildNonStreamingResponseHeaders } from "../chatCore/nonStreamingResponseHeaders.ts";
 import { maybeWrapForcedNonStreamingResponsesJson } from "../chatCore/responsesJsonToSse.ts";
 import { runProviderExecutionPipeline } from "../chatCore/providerExecutionPipeline.ts";
+import {
+  createRequestFamilyFallback,
+  modelAfterFamilyFallback,
+} from "../../services/modelFamilyFallbackPolicy.ts";
 import { runNonStreamingProviderLeg } from "../chatCore/nonStreamingProviderLeg.ts";
 import type { NonStreamingProviderLegResult } from "@/lib/skills/toolLoopTypes.ts";
 import { finalizeToolLoopError } from "../chatCore/nonStreamingFinalization.ts";
 import { markCodexScopeRateLimited } from "../chatCore/codexFailover.ts";
-import { deleteSessionAccountAffinity } from "@/lib/db/sessionAccountAffinity";
+import { deleteSessionAccountAffinityBestEffort } from "@/lib/db/sessionAccountAffinity";
 import { writeTerminalStatus } from "@/shared/utils/terminalStatus";
 import { MEMORY_BUILTIN_TOOL_NAMES } from "@/lib/skills/memoryBuiltins";
 import { isHideUpstreamMetadataEnabled } from "@/shared/utils/featureFlags";
@@ -94,7 +98,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
     buildCacheUsageLogMeta,
     buildCostCtx,
     buildErrorBody,
-    calculateCost,
+    calculateCostDetailed,
     calibrationEstimatedInputTokens,
     claudePromptCacheLogMeta: _claudePromptCacheLogMeta,
     clientRawRequest,
@@ -117,6 +121,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
     extractSessionAffinityKey,
     extractUsageFromResponse,
     finalBody: _finalBody,
+    geminiPromptCacheMode,
     finalizePendingScope,
     getCurrentConnectionId,
     getManagedLeaseFenceErrorCode,
@@ -132,6 +137,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
     injectionResult,
     isCombo,
     isJsonRecord,
+    isScopedGeminiCacheTarget,
     isLocalStreamLifecycleError,
     isSemaphoreCapacityError,
     isServerOwnedToolLoopEnabled,
@@ -204,9 +210,15 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
     requestToolIdentityMap,
     stream,
     toolNameMap,
+    tokensCompressed,
     traceEnabled,
     videoBridgeObserved,
   } = deps;
+  const familyFallback = createRequestFamilyFallback(provider, {
+    headers: clientRawRequest?.headers,
+    hasApiKeyMetadata: Boolean(apiKeyInfo),
+    connectionId: () => String(getCurrentConnectionId() || connectionId || ""),
+  });
 
   let claudePromptCacheLogMeta,
     currentModel,
@@ -238,6 +250,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
       currentModel = pipelineModel;
       triedModels.add(pipelineModel);
       return runProviderExecutionPipeline({
+        getNextFamilyFallback: familyFallback.getNext,
         policy,
         target: {
           provider,
@@ -259,6 +272,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
             assertManagedLeaseFence(id);
           },
           getProviderCredentials,
+          allowedConnections: deps.allowedConnections ?? null,
         },
         wire: {
           body: translatedBody as Record<string, unknown>,
@@ -306,11 +320,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
               extractSessionAffinityKey(body, clientRawRequest?.headers) ||
               null;
             if (!key) return;
-            try {
-              deleteSessionAccountAffinity(key, "codex");
-            } catch {
-              // best-effort
-            }
+            deleteSessionAccountAffinityBestEffort(key, "codex");
           },
           onAuditAccountRotation: (params) => {
             logAuditEvent({
@@ -343,6 +353,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
         : undefined,
       allowAccountRotation: !managedLease && comboStrategy !== "context-relay",
       allowModelFallback: true,
+      hasApiKeyMetadata: Boolean(apiKeyInfo),
       executeProviderRequest: (modelToCall, allowDedup) =>
         executeProviderRequest(modelToCall, allowDedup),
       runProviderExecution: runNonStreamingPipeline,
@@ -439,7 +450,14 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
         cacheSource: "upstream",
       });
       persistFailureUsage(err.status, err.errorCode || `upstream_${err.status}`);
-      trackPendingRequest(model, provider, pendingConnId, false, undefined, pendingRequestId);
+      trackPendingRequest(
+        model,
+        provider,
+        pendingConnId,
+        false,
+        undefined,
+        pendingScope.owner ?? pendingRequestId
+      );
       return {
         response: err,
         carry: {
@@ -589,7 +607,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
           persistFailureUsage,
           persistAttemptLogs,
           trackPendingRequest,
-          pendingRequestId,
+          pendingRequestId: pendingScope.owner ?? pendingRequestId,
         }),
         carry: {
           translatedBody,
@@ -677,7 +695,15 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
       usage,
       toolLoopUsage != null
     );
-    const cacheUsageLogMeta = buildCacheUsageLogMeta(usage);
+    const cacheUsageLogMeta = buildCacheUsageLogMeta(
+      usage,
+      isScopedGeminiCacheTarget
+        ? {
+            mode: geminiPromptCacheMode,
+            compressionTokens: tokensCompressed || undefined,
+          }
+        : undefined
+    );
     if (usage && typeof usage === "object") {
       attachCompressionUsageReceiptAfterAnalytics(usage as Record<string, unknown>, "provider");
       if (provider === "gemini") {
@@ -780,9 +806,14 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
         ? translatedResponse.usage
         : null;
     const costUsage = normalizeUsage(responseUsage);
-    const estimatedCost = costUsage
-      ? await calculateCost(provider, model, costUsage, { serviceTier: effectiveServiceTier })
-      : 0;
+    const costResult = costUsage
+      ? await calculateCostDetailed(provider, model, costUsage, {
+          serviceTier: effectiveServiceTier,
+        })
+      : null;
+    const estimatedCost = costResult?.costUsd ?? 0;
+    // A metered model with no price must not pass the dollar budget as $0.
+    const unpricedBudgetCost = isUnpricedMeteredCost(provider, costResult);
     const chatCostCtx = buildCostCtx(provider, model, usage, effectiveServiceTier, traceId);
 
     if (postCallGuardrails.blocked) {
@@ -802,13 +833,15 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
         clientResponse: buildErrorBody(HTTP_STATUS.BAD_REQUEST, guardrailMessage),
         claudeCacheMeta: claudePromptCacheLogMeta,
         claudeCacheUsageMeta: cacheUsageLogMeta,
+        geminiPromptCache: cacheUsageLogMeta?.geminiPromptCache,
         cacheSource: "upstream",
       });
       recordChatCallCost(
         apiKeyInfo,
         meteredBudgetCost(provider, estimatedCost),
         chatCostCtx,
-        false
+        false,
+        unpricedBudgetCost
       );
       log?.warn?.(
         "GUARDRAIL",
@@ -903,10 +936,18 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
         clientResponse: malformedClientBody,
         claudeCacheMeta: claudePromptCacheLogMeta,
         claudeCacheUsageMeta: cacheUsageLogMeta,
+        geminiPromptCache: cacheUsageLogMeta?.geminiPromptCache,
         cacheSource: "upstream",
       });
       persistFailureUsage(HTTP_STATUS.BAD_GATEWAY, "malformed_translated_response");
-      trackPendingRequest(model, provider, pendingConnId, false, undefined, pendingRequestId);
+      trackPendingRequest(
+        model,
+        provider,
+        pendingConnId,
+        false,
+        undefined,
+        pendingScope.owner ?? pendingRequestId
+      );
       // Routing event (feedback foundation) — record the malformed outcome so
       // the quality tracker de-prioritizes this model over time.
       void emitRoutingEvent(
@@ -926,6 +967,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
           status: HTTP_STATUS.BAD_GATEWAY,
           finishReason: routingFinishReason(translatedResponse),
           connectionId: credentials?.connectionId ?? null,
+          apiKeyId: apiKeyInfo?.id ?? null,
         })
       );
       return {
@@ -986,9 +1028,16 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
       clientResponse: translatedResponse,
       claudeCacheMeta: claudePromptCacheLogMeta,
       claudeCacheUsageMeta: cacheUsageLogMeta,
+      geminiPromptCache: cacheUsageLogMeta?.geminiPromptCache,
       cacheSource: "upstream",
     });
-    recordChatCallCost(apiKeyInfo, meteredBudgetCost(provider, estimatedCost), chatCostCtx, true);
+    recordChatCallCost(
+      apiKeyInfo,
+      meteredBudgetCost(provider, estimatedCost),
+      chatCostCtx,
+      true,
+      unpricedBudgetCost
+    );
 
     // === Quota Share POST-hook (B/F7) — fire-and-forget, fail-open ===
     await scheduleQuotaShareConsumption({
@@ -1009,9 +1058,10 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
       providerResponse: responseBody,
       clientResponse: translatedResponse,
     });
+    const responseModel = modelAfterFamilyFallback(model, currentModel, effectiveModel, finalBody);
     const responseHeaders = buildNonStreamingResponseHeaders({
       provider,
-      model,
+      model: responseModel,
       startTime,
       responseUsage,
       estimatedCost,
@@ -1026,7 +1076,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
     // differs from the resolved backend id we advertised in the header, leaving
     // strict clients unable to reconcile the two. Rewrite body.model to `model`
     // FIRST, then let #1311 echo override it when the opt-in setting is on.
-    if (typeof model === "string" && model) echoModelInObject(translatedResponse, model);
+    if (responseModel) echoModelInObject(translatedResponse, responseModel);
     // #1311: echo the requested alias/combo name in the non-streaming response model.
     if (echoModel) echoModelInObject(translatedResponse, echoModel);
 
@@ -1078,6 +1128,7 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
         status: 200,
         finishReason: routingFinishReason(translatedResponse),
         connectionId: credentials?.connectionId ?? null,
+        apiKeyId: apiKeyInfo?.id ?? null,
       })
     );
 
@@ -1159,7 +1210,14 @@ export async function runNonStreamingResponse(deps: NonStreamingDeps) {
       },
     };
   } catch (error) {
-    trackPendingRequest(model, provider, pendingConnId, false, undefined, pendingRequestId);
+    trackPendingRequest(
+      model,
+      provider,
+      pendingConnId,
+      false,
+      undefined,
+      pendingScope.owner ?? pendingRequestId
+    );
     const errorMetadata = getSafeErrorMetadata(error);
     const managedLeaseFenceCode = getManagedLeaseFenceErrorCode(errorMetadata.code);
     if (managedLeaseFenceCode)

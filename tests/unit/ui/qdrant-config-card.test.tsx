@@ -35,6 +35,12 @@ function makeContainer(): HTMLElement {
   return container;
 }
 
+function createTestRoot(container: HTMLElement) {
+  const renderedRoot = createRoot(container);
+  cleanupCallbacks.push(() => renderedRoot.unmount());
+  return renderedRoot;
+}
+
 describe("QdrantConfigCard", () => {
   beforeEach(() => {
     (
@@ -65,8 +71,10 @@ describe("QdrantConfigCard", () => {
     });
   });
 
-  afterEach(() => {
-    while (cleanupCallbacks.length > 0) cleanupCallbacks.pop()?.();
+  afterEach(async () => {
+    await act(async () => {
+      while (cleanupCallbacks.length > 0) cleanupCallbacks.pop()?.();
+    });
     document.body.innerHTML = "";
     vi.clearAllMocks();
   });
@@ -75,7 +83,7 @@ describe("QdrantConfigCard", () => {
     const { default: QdrantConfigCard } =
       await import("../../../src/app/(dashboard)/dashboard/memory/components/QdrantConfigCard");
     const container = makeContainer();
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(<QdrantConfigCard />);
     });
@@ -119,7 +127,7 @@ describe("QdrantConfigCard", () => {
     const { default: QdrantConfigCard } =
       await import("../../../src/app/(dashboard)/dashboard/memory/components/QdrantConfigCard");
     const container = makeContainer();
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(<QdrantConfigCard />);
     });
@@ -173,8 +181,10 @@ describe("QdrantConfigCard", () => {
     await act(async () => {
       tutorial?.click();
     });
-    expect(container.querySelector("[role='dialog']")).toBeTruthy();
-    expect(container.textContent).toContain("Rafa Martins");
+    expect(document.body.querySelector("[role='dialog']")).toBeTruthy();
+    expect(document.body.querySelector("[role='dialog']")?.textContent).toContain(
+      "qdrantTutorialCredits"
+    );
   });
 
   it("test connection button calls /api/settings/qdrant/health", async () => {
@@ -207,7 +217,7 @@ describe("QdrantConfigCard", () => {
     const { default: QdrantConfigCard } =
       await import("../../../src/app/(dashboard)/dashboard/memory/components/QdrantConfigCard");
     const container = makeContainer();
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(<QdrantConfigCard />);
     });
@@ -269,7 +279,7 @@ describe("QdrantConfigCard", () => {
     const { default: QdrantConfigCard } =
       await import("../../../src/app/(dashboard)/dashboard/memory/components/QdrantConfigCard");
     const container = makeContainer();
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(<QdrantConfigCard />);
     });
@@ -346,7 +356,7 @@ describe("QdrantConfigCard", () => {
     const { default: QdrantConfigCard } =
       await import("../../../src/app/(dashboard)/dashboard/memory/components/QdrantConfigCard");
     const container = makeContainer();
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(<QdrantConfigCard />);
     });
@@ -406,7 +416,7 @@ describe("QdrantConfigCard", () => {
     const { default: QdrantConfigCard } =
       await import("../../../src/app/(dashboard)/dashboard/memory/components/QdrantConfigCard");
     const container = makeContainer();
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(<QdrantConfigCard />);
     });
@@ -465,7 +475,7 @@ describe("QdrantConfigCard", () => {
     const { default: QdrantConfigCard } =
       await import("../../../src/app/(dashboard)/dashboard/memory/components/QdrantConfigCard");
     const container = makeContainer();
-    const root = createRoot(container);
+    const root = createTestRoot(container);
     await act(async () => {
       root.render(<QdrantConfigCard />);
     });

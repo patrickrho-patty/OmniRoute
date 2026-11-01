@@ -1,3 +1,5 @@
+import { isResponsesTerminalLine, RESPONSES_TERMINAL_EVENT_TYPES } from "./opencodeMuseSpark.ts";
+import { newestChromeProfile } from "../utils/browserProfiles.ts";
 import { getApiKeyCodexServiceTier } from "../../src/lib/providers/codexApiKeyServiceMode";
 import { buildErrorBody } from "../utils/error.ts";
 import { getCodexRequestDefaults } from "@/lib/providers/requestDefaults";
@@ -24,10 +26,9 @@ import { readCodexPeekChunk, buildCodexTimeoutSafePassthroughBody } from "./code
 import { stripCodexPassthroughRejectedParams } from "./codex/stripPassthroughRejectedParams.ts";
 import {
   CODEX_CLI_RS_ORIGINATOR,
-  getCodexClientVersion,
-  getCodexClientVersionFromHeaders,
   getCodexUserAgent,
   normalizeCodexSessionId,
+  resolveCodexAdvertisedVersion,
 } from "../config/codexClient.ts";
 import type { KeyHealth } from "../services/apiKeyRotator.ts";
 import {
@@ -47,6 +48,7 @@ import { normalizeCodexVerbosity } from "../services/codexVerbosity.ts";
 import { getThinkingBudgetConfig, ThinkingMode } from "../services/thinkingBudget.ts";
 import { CORS_HEADERS } from "../utils/cors.ts";
 import { projectCodexPublicError } from "../utils/codexPublicError.ts";
+import { classifyProviderSafetyError } from "../utils/providerSafety.ts";
 import { errorResponse } from "../utils/error.ts";
 import {
   buildSyntheticResponsesFailureId,
@@ -327,7 +329,9 @@ function normalizeEffortValue(value: unknown): string | undefined {
   return normalized || undefined;
 }
 
-function ensureCodexReasoningSummary(body: Record<string, unknown>): void {
+function ensureCodexReasoningSummary(body: Record<string, unknown>, skipDefaults = false): void {
+  // #18124: a Chat-translated request for a safety-block model stays effort-only.
+  if (skipDefaults) return;
   const reasoning =
     body.reasoning && typeof body.reasoning === "object" && !Array.isArray(body.reasoning)
       ? (body.reasoning as Record<string, unknown>)
@@ -346,6 +350,13 @@ function ensureCodexReasoningSummary(body: Record<string, unknown>): void {
   if (!body.include.includes(CODEX_REASONING_ENCRYPTED_CONTENT_INCLUDE)) {
     body.include = [...body.include, CODEX_REASONING_ENCRYPTED_CONTENT_INCLUDE];
   }
+}
+
+// Set by the Chat -> Responses translator (#18124); see REASONING_SUMMARY_OPT_OUT_MARKER.
+function consumeReasoningSummaryOptOutMarker(body: Record<string, unknown>): boolean {
+  const marker = body._omnirouteSkipReasoningSummaryDefault;
+  delete body._omnirouteSkipReasoningSummaryDefault;
+  return marker === true;
 }
 
 function consumeResponsesStoreMarker(body: Record<string, unknown>): unknown {
@@ -464,10 +475,13 @@ function toCodexResponseFailedEvent(parsed: Record<string, unknown>): Record<str
     toStatusCode(response?.status) ??
     toStatusCode(upstreamError.status_code) ??
     toStatusCode(upstreamError.status);
+  const safety = classifyProviderSafetyError({ status: explicitStatus, code, type, message });
   const statusCode =
-    explicitStatus ?? (looksLikeQuotaOrRateLimit(code, type, message) ? 429 : null);
+    explicitStatus ??
+    safety?.status ??
+    (looksLikeQuotaOrRateLimit(code, type, message) ? 429 : null);
   const error: Record<string, unknown> = {
-    ...projectCodexPublicError({ status: statusCode, code, type }),
+    ...projectCodexPublicError({ status: statusCode, code, type, message }),
   };
 
   if (statusCode !== null) error.status_code = statusCode;
@@ -533,6 +547,79 @@ export function filterNonstandardCodexSse(response: Response): Response {
     },
   });
   return new Response(response.body.pipeThrough(transform), {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+}
+
+/**
+ * Codex Responses upstream sometimes leaves the HTTP connection open after
+ * emitting a terminal event (such as `response.completed` with tool calls or
+ * `response.incomplete`), sending keep-alive pings or idling until timeout.
+ * That post-completion silence holds downstream chat completions / SSE streams
+ * open, preventing clients (such as OpenCode or agent loops) from receiving
+ * the final [DONE] marker and executing tool calls.
+ *
+ * Wrap the HTTP SSE response body to cleanly close the stream as soon as an
+ * authoritative Responses terminal line has been forwarded to the client.
+ */
+export function terminateCodexHttpStreamOnTerminal(response: Response): Response {
+  const contentType = response.headers.get("content-type") || "";
+  if (!response.body || !contentType.includes("text/event-stream")) {
+    return response;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+  let buffer = "";
+  let closed = false;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        while (!closed) {
+          const { done, value } = await reader.read();
+          if (done) {
+            buffer += decoder.decode();
+            if (buffer.length > 0 && !closed) {
+              controller.enqueue(encoder.encode(buffer));
+            }
+            if (!closed) {
+              closed = true;
+              controller.close();
+            }
+            return;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+          for (const line of lines) {
+            controller.enqueue(encoder.encode(line + "\n"));
+            if (isResponsesTerminalLine(line)) {
+              closed = true;
+              void reader.cancel().catch(() => undefined);
+              controller.enqueue(encoder.encode("\n"));
+              controller.close();
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        if (!closed) {
+          closed = true;
+          controller.error(err);
+        }
+      }
+    },
+    cancel(reason) {
+      closed = true;
+      reader.cancel(reason).catch(() => undefined);
+    },
+  });
+
+  return new Response(stream, {
     status: response.status,
     statusText: response.statusText,
     headers: response.headers,
@@ -677,7 +764,7 @@ export function encodeResponseSseEvent(raw: string): { sse: string; terminal: bo
         payload = JSON.stringify(failed);
         eventType = "response.failed";
       }
-      terminal = eventType === "response.completed" || eventType === "response.failed";
+      terminal = RESPONSES_TERMINAL_EVENT_TYPES.has(eventType);
     }
   } catch {
     console.warn("[codex] SSE payload parse failed, using raw payload");
@@ -863,6 +950,15 @@ export class CodexExecutor extends BaseExecutor {
           });
         }
       }
+      const finalResp = (httpResult as { response?: Response }).response;
+      if (
+        finalResp?.ok &&
+        finalResp.body &&
+        finalResp.headers.get("content-type")?.includes("text/event-stream")
+      ) {
+        (httpResult as { response: Response }).response =
+          terminateCodexHttpStreamOnTerminal(finalResp);
+      }
       return httpResult;
     }
 
@@ -982,7 +1078,7 @@ export class CodexExecutor extends BaseExecutor {
 
         try {
           ws = await websocketFn(toWebSocketUrl(url), {
-            browser: "chrome_142",
+            browser: newestChromeProfile(),
             os: "windows",
             headers,
           });
@@ -1116,8 +1212,8 @@ export class CodexExecutor extends BaseExecutor {
     // version (e.g. "The 'gpt-6-astra' model requires a newer version of Codex"),
     // so a hardcoded value silently rots whenever the user upgrades their CLI.
     // Falls back to the configured/default version when the caller sends none.
-    const clientVersion = getCodexClientVersionFromHeaders(clientHeaders);
-    headers.Version = clientVersion ?? getCodexClientVersion();
+    const clientVersion = resolveCodexAdvertisedVersion(clientHeaders);
+    headers.Version = clientVersion;
     setUserAgentHeader(headers, getCodexUserAgent(clientVersion));
 
     // Add workspace binding header if workspaceId is persisted
@@ -1244,6 +1340,7 @@ export class CodexExecutor extends BaseExecutor {
     const thinkingBudgetConfig = getThinkingBudgetConfig();
     const allowConnectionReasoningDefaults = thinkingBudgetConfig.mode === ThinkingMode.PASSTHROUGH;
     consumeResponsesStoreMarker(body);
+    const skipReasoningSummaryDefaults = consumeReasoningSummaryOptOutMarker(body);
 
     // Codex /responses rejects stream=false, but /responses/compact rejects the stream field entirely.
     if (isCompactRequest) {
@@ -1399,7 +1496,7 @@ export class CodexExecutor extends BaseExecutor {
       allowConnectionReasoningDefaults,
       getForcedReasoningEffort(credentials)
     );
-    ensureCodexReasoningSummary(body);
+    ensureCodexReasoningSummary(body, skipReasoningSummaryDefaults);
     if (isCompactRequest) {
       delete body.include;
     }

@@ -51,6 +51,9 @@ interface Props {
   onShowQuota?: (scope: QuotaVisibilityScope, quota: any) => void;
   /** Compact home-widget density: narrower cards on the same board. */
   compact?: boolean;
+  overview?: boolean;
+  accounts?: Record<string, HealthAccount>;
+  summaryFailed?: boolean;
 }
 
 const STATUS_RANK: Record<CardStatus, number> = {

@@ -1,5 +1,7 @@
 "use client";
 
+import Icon from "@/shared/components/Icon";
+
 import { useEffect, useState } from "react";
 
 type PonytailAggregate = {
@@ -51,7 +53,7 @@ function StatCard({
   return (
     <div className="card p-4 flex flex-col gap-1">
       <div className="flex items-center gap-2 text-text-muted text-sm">
-        <span className="material-symbols-outlined text-[18px]">{icon}</span>
+        <Icon name={icon} size={18} />
         {label}
       </div>
       <div className="text-2xl font-bold text-text">{value}</div>
@@ -102,7 +104,7 @@ export default function PonytailHistoryPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-bold text-text flex items-center gap-2">
-            <span className="material-symbols-outlined">content_cut</span>
+            <Icon name="content_cut" />
             Ponytail
           </h1>
           <p className="text-sm text-text-muted max-w-2xl">
@@ -134,21 +136,21 @@ export default function PonytailHistoryPage() {
             className="px-3 py-1.5 text-sm rounded-lg border border-border text-text-muted hover:bg-bg-muted flex items-center gap-1"
             title="Refresh"
           >
-            <span className="material-symbols-outlined text-[18px]">refresh</span>
+            <Icon name="refresh" size={18} />
           </button>
         </div>
       </div>
 
       {loading && (
         <div className="flex items-center justify-center py-16 text-text-muted">
-          <span className="material-symbols-outlined animate-spin mr-2">progress_activity</span>
+          <Icon name="progress_activity" className="animate-spin mr-2" />
           Loading Ponytail history…
         </div>
       )}
 
       {error && !loading && (
         <div className="card p-6 text-center text-text-muted">
-          <span className="material-symbols-outlined text-[32px] mb-2 block">error</span>
+          <Icon name="error" size={32} className="mb-2 block" />
           Could not load Ponytail analytics: {error}
         </div>
       )}
@@ -184,7 +186,7 @@ export default function PonytailHistoryPage() {
 
           <div className="card overflow-hidden">
             <div className="px-4 py-3 border-b border-border flex items-center gap-2">
-              <span className="material-symbols-outlined text-[18px] text-text-muted">history</span>
+              <Icon name="history" size={18} className="text-text-muted" />
               <span className="font-medium text-text">Recent runs</span>
               <span className="text-xs text-text-muted">({history.length})</span>
             </div>

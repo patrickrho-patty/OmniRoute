@@ -117,7 +117,7 @@ test("A9: resolveRuleMatchBody hands full text ONLY to allowlisted providers", a
   const structured = { code: "rate_limited", type: "requests" };
   assert.equal(resolveRuleMatchBody("agentrouter", structured, "用户额度不足"), "用户额度不足");
   assert.equal(
-    resolveRuleMatchBody("opencode", structured, "monthly usage limit reached"),
+    resolveRuleMatchBody("opencode-zen", structured, "monthly usage limit reached"),
     structured
   );
   assert.equal(resolveRuleMatchBody("openrouter", null, "some error text"), null);
@@ -141,7 +141,7 @@ test("A10: other providers' checkFallbackError behavior is unchanged (exclusivit
     '{"error":{"message":"organization_quota_exceeded"}}',
     0,
     null,
-    "opencode",
+    "opencode-zen",
     null
   );
   assert.ok(result.shouldFallback);
@@ -176,7 +176,7 @@ test("A13: exclusivity — ruleScope stays undefined for other providers", () =>
     '{"error":{"message":"organization_quota_exceeded"}}',
     0,
     null,
-    "opencode",
+    "opencode-zen",
     null
   );
   assert.equal(opencode.ruleScope, undefined);
@@ -188,7 +188,8 @@ test("A14: honorsRuleLockScope allowlist is agentrouter + opencode family", asyn
   const { honorsRuleLockScope } = await import("../../open-sse/config/providerErrorRules.ts");
   assert.equal(honorsRuleLockScope("agentrouter"), true);
   assert.equal(honorsRuleLockScope("AgentRouter"), true);
-  assert.equal(honorsRuleLockScope("opencode"), true);
+  // The keyless `opencode` provider was removed (docs/reference/REMOVED_PROVIDERS.md).
+  assert.equal(honorsRuleLockScope("opencode"), false);
   assert.equal(honorsRuleLockScope("opencode-zen"), true);
   assert.equal(honorsRuleLockScope("opencode-go"), true);
   assert.equal(honorsRuleLockScope("opencode-cli"), true);

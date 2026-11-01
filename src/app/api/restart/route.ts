@@ -63,7 +63,7 @@ async function runRestartPlan(plan: RestartPlan): Promise<void> {
 }
 
 export async function POST(request: Request) {
-  const authError = await requireManagementAuth(request);
+  const authError = await requireManagementAuth(request, { alwaysRequireAuth: true });
   if (authError) return authError;
 
   const plan = resolveRestartPlan();

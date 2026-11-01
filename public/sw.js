@@ -6,9 +6,25 @@ const APP_SHELL = [
   "/icon-192.png?v=patty-p-dot-20260830",
   "/icon-512.png?v=patty-p-dot-20260830",
 ];
-const EXCLUDED_PATH_PREFIXES = ["/api/", "/a2a", "/dashboard"];
+// Never cache API / proxy surfaces: client-API aliases (/v1, /v1beta, /models, /chat,
+// /responses, /codex) return per-key data, and dashboard/auth pages are session-bound.
+const EXCLUDED_PATH_PREFIXES = [
+  "/api/",
+  "/a2a",
+  "/dashboard",
+  "/v1",
+  "/v1beta",
+  "/models",
+  "/chat",
+  "/responses",
+  "/codex",
+  "/callback",
+  "/login",
+];
 
-function pathIsExcluded(pathname) {
+function pathIsExcluded(rawPathname) {
+  // The server routes /V1/... like /v1/... (classify.ts lowercases), so match the same way.
+  const pathname = rawPathname.toLowerCase();
   return EXCLUDED_PATH_PREFIXES.some((prefix) => {
     const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
     return pathname === base || pathname.startsWith(`${base}/`);

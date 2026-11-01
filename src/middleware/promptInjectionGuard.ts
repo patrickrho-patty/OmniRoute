@@ -11,7 +11,6 @@ import {
   type PromptInjectionGuardrailOptions,
 } from "@/lib/guardrails/promptInjection";
 import { getCachedSettings } from "@/lib/db/readCache";
-import { resolveDisabledGuardrails } from "@/lib/guardrails/registry";
 import {
   checkBodySize,
   checkClaudeMessagesBodySize,
@@ -43,7 +42,9 @@ export function createInjectionGuard(options: PromptInjectionGuardrailOptions = 
     }
 
     const decision = evaluatePromptInjection(body, options, {
-      disabledGuardrails: resolveDisabledGuardrails({ body }),
+      // Mandatory injection block mode intentionally ignores all caller-
+      // controlled disabledGuardrails. Registry-managed guardrails use those
+      // channels independently; never pass them into this middleware.
       // Omitted logger → console fallback: for middleware-only routes (embeddings,
       // images, audio, moderations, …) this guard is the ONLY injection evaluation,
       // so a silent guard would leave blocked requests with zero server-side trace.

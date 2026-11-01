@@ -22,6 +22,7 @@
 
 import { getFeatureFlagOverride } from "./featureFlags";
 import { getDbInstance } from "./core";
+import { loadCatalogOverrides } from "./catalogOverrides";
 import { finishModelCatalogWriteWithoutBackup } from "./models/modelCatalogWriteSignals";
 
 const NAMESPACE = "ccDiscoveryAliases";
@@ -115,29 +116,8 @@ export function setCcAliasModelSetting(
  * Loads every provider/model override in a single query — intended for the
  * catalog builder, which needs the full set rather than per-row lookups.
  */
-export function getCcAliasSettingsBulk(): {
-  providers: Map<string, "on" | "off">;
-  models: Map<string, "on" | "off">;
-} {
-  const db = getDbInstance();
-  const rows = db
-    .prepare("SELECT key, value FROM key_value WHERE namespace = ?")
-    .all(NAMESPACE) as Array<{ key: string; value: string }>;
-
-  const providers = new Map<string, "on" | "off">();
-  const models = new Map<string, "on" | "off">();
-
-  for (const row of rows) {
-    const setting = parseSetting(row.value);
-    if (setting === null) continue;
-    if (row.key.startsWith("provider:")) {
-      providers.set(row.key.slice("provider:".length), setting);
-    } else if (row.key.startsWith("model:")) {
-      models.set(row.key.slice("model:".length), setting);
-    }
-  }
-
-  return { providers, models };
+export function getCcAliasSettingsBulk() {
+  return loadCatalogOverrides(NAMESPACE);
 }
 
 function envForcesGlobalOn(): boolean {

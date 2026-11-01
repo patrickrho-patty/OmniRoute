@@ -167,6 +167,12 @@ test("filterSeedCookiesForWarm drops risk cookies on force warm", () => {
 test("extractAdobeForterTimestampFromValue reads embedded ms", () => {
   const ftr = "abc_1785777856265__UDF43-mnts-ants-x";
   assert.equal(extractAdobeForterTimestampFromValue(ftr), 1785777856265);
+  assert.equal(extractAdobeForterTimestampFromValue("prefix-1785777856265-suffix"), 1785777856265);
+  assert.equal(
+    extractAdobeForterTimestampFromValue("prefix%2D1785777856265%2Dsuffix"),
+    1785777856265
+  );
+  assert.equal(extractAdobeForterTimestampFromValue("x91785777856265y"), 0);
   assert.equal(extractAdobeForterTimestampFromValue(""), 0);
 });
 
