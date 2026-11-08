@@ -961,7 +961,7 @@ async function buildSuccessResult(
   transformedBody: unknown,
   hasTools?: boolean,
   requestedTools?: unknown
-): Promise<MuseSparkExecuteResult> {
+): Promise<MuseSparkExecuteResult | Response> {
   const id = `chatcmpl-meta-${crypto.randomUUID().slice(0, 12)}`;
   const created = Math.floor(Date.now() / 1000);
   const deltas = parsed.deltas.length > 0 ? parsed.deltas : [parsed.content];

@@ -53,5 +53,13 @@ test("auto-trigger can still select lite when the lite engine is explicitly enab
   });
   const plan = selectCompressionPlan(config, null, 1000);
   assert.equal(plan.source, "auto-trigger");
-  assert.equal(plan.mode, "lite");
+  // Upstream v3.8.54 (lossyRequestPolicy): a bare `lite` plan is expressed as a one-step
+  // stacked pipeline and still REPORTS `lite` to the client via reportedMode. The fork's
+  // auto-trigger guard is what this case pins — it must keep selecting lite, not escalate.
+  assert.equal(plan.mode, "stacked");
+  assert.equal(plan.reportedMode, "lite");
+  assert.deepEqual(
+    plan.stackedPipeline.map((step) => step.engine),
+    ["lite"]
+  );
 });

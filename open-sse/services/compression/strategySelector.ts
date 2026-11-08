@@ -153,7 +153,7 @@ function resolveBasePlan(
     const fromHeader = planFromHeader(config, header, combos);
     if (fromHeader) {
       plan = fromHeader; // already tagged "request-header"
-      return applyLossyRequestPolicy(plan, header);
+      return applyLossyRequestPolicy(plan, header, config.stackedPipeline);
     }
   }
 
@@ -189,7 +189,7 @@ function resolveBasePlan(
   // Upstream lossy-request policy (#lossyRequestPolicy.ts): engine toggles declare
   // CAPABILITY, the `allow-lossy` request header declares INTENT — without the header,
   // lossy steps (rtk/llmlingua) are downgraded out of the plan even when toggled on.
-  return applyLossyRequestPolicy(plan, header);
+  return applyLossyRequestPolicy(plan, header, config.stackedPipeline);
 }
 
 /**

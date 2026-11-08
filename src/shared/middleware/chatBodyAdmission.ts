@@ -15,6 +15,8 @@
  * connection's burst cannot starve others (#9654).
  */
 
+import { getCachedBodySizeSettings } from "../../lib/db/readCache";
+import { getSavedBodySizeLimitBytes } from "./bodySizeGuard";
 import { createLogger } from "../utils/logger";
 import { DEFAULT_REQUEST_QUEUE_MAX_WAIT_MS } from "../../lib/resilience/settings";
 import v8 from "node:v8";
@@ -66,6 +68,12 @@ export const CHAT_LARGE_BODY_BYTES = parsePositiveInt(
 export const CHAT_HARD_MAX_BODY_BYTES = parsePositiveInt(
   process.env.OMNIROUTE_CHAT_HARD_MAX_BODY_BYTES,
   50 * 1024 * 1024
+);
+
+/** Set only when the operator chose a chat ceiling; it then caps a saved limit as well. */
+const CHAT_EXPLICIT_HARD_MAX_BODY_BYTES = parsePositiveInt(
+  process.env.OMNIROUTE_CHAT_HARD_MAX_BODY_BYTES,
+  Number.POSITIVE_INFINITY
 );
 
 export const CHAT_MAX_HEAVY_IN_FLIGHT = parsePositiveInt(
@@ -1035,6 +1043,22 @@ function rebuildRequest(request: Request, body: Uint8Array): Request {
 }
 
 /**
+ * The saved `maxBodySizeMb` when there is one, the same limit the header guard uses for these
+ * routes; otherwise the chat default. A read failure also falls back to that default.
+ */
+async function getChatBodyLimitBytes(): Promise<number> {
+  try {
+    const saved = getSavedBodySizeLimitBytes(await getCachedBodySizeSettings());
+    return saved === null
+      ? CHAT_HARD_MAX_BODY_BYTES
+      : Math.min(saved, CHAT_EXPLICIT_HARD_MAX_BODY_BYTES);
+  } catch (error) {
+    shedLog.warn({ err: error }, "Failed to load request body limit; using the chat default");
+    return CHAT_HARD_MAX_BODY_BYTES;
+  }
+}
+
+/**
  * Decode a compressed body exactly once, expanding to at most `hardMaxBytes` (decompression-
  * bomb guard). Identity bodies pass through as the same buffer, with no copy.
  */
@@ -1073,7 +1097,8 @@ export async function admitChatRequest(
   const controller =
     options.controller ?? perConnectionAdmissionController.getController(sessionId);
   const largeBodyBytes = options.largeBodyBytes ?? CHAT_LARGE_BODY_BYTES;
-  const hardMaxBytes = options.hardMaxBytes ?? CHAT_HARD_MAX_BODY_BYTES;
+  // Snapshot the limit once per request: a body in flight keeps the limit it started under.
+  const hardMaxBytes = options.hardMaxBytes ?? (await getChatBodyLimitBytes());
   const queueMs = options.queueMs ?? 0;
   const internalBypass = isInternalAdmissionBypass(request);
   const contentLength = parseContentLength(request.headers.get("content-length"));

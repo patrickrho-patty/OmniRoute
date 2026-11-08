@@ -107,6 +107,9 @@ function maskSensitiveHeaders(headers: HeaderInput): Record<string, unknown> {
     "capability",
     "x-omniroute-lease-owner",
     "x-omniroute-admission-token",
+    // OpenCode free relay: the egress proxy URL (may carry user:password) and the relay secret.
+    "x-opencode-relay-proxy",
+    "x-opencode-relay-auth",
   ];
 
   for (const key of Object.keys(masked)) {
@@ -115,7 +118,13 @@ function maskSensitiveHeaders(headers: HeaderInput): Record<string, unknown> {
     if (lowerKey.startsWith("x-ratelimit-")) {
       continue;
     }
-    if (lowerKey === "x-omniroute-lease-owner" || lowerKey === "x-omniroute-admission-token") {
+    if (
+      lowerKey === "x-omniroute-lease-owner" ||
+      lowerKey === "x-omniroute-admission-token" ||
+      lowerKey === "x-omniroute-self-hop" ||
+      lowerKey === "x-opencode-relay-proxy" ||
+      lowerKey === "x-opencode-relay-auth"
+    ) {
       masked[key] = "[REDACTED]";
       continue;
     }

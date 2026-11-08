@@ -14,7 +14,7 @@
 //   STORAGE_ENCRYPTION_KEY=$(grep ^STORAGE_ENCRYPTION_KEY= ~/.omniroute/.env | cut -d= -f2) \
 //     node --import tsx/esm scripts/ad-hoc/repro-web-cookie-validation.ts          # key restored
 import { getProviderConnections } from "../../src/lib/db/providers.ts";
-import { validateChatGptWebProvider } from "../../src/lib/providers/validation/webProvidersA.ts";
+import { validateChatGptWebProvider } from "../../src/lib/providers/validation/chatgptWeb.ts";
 import {
   isStaleEncryptionConnection,
   STALE_ENCRYPTION_MESSAGE,

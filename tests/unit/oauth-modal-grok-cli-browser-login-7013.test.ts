@@ -27,9 +27,11 @@ test("grok-cli is NOT import-token-only — the Browser Login tab renders", () =
   assert.ok(!extractSet("IMPORT_TOKEN_ONLY_PROVIDERS").includes("grok-cli"));
 });
 
-test("devin-desktop/devin-cli stay import-token-only", () => {
+// contract changed by the Devin CLI browser sign-in: devin-desktop gained a Browser Login tab
+// (callback server on 127.0.0.1:59653); devin-cli stays import-token-only.
+test("devin-cli stays import-token-only; devin-desktop gets the Browser Login tab", () => {
   const set = extractSet("IMPORT_TOKEN_ONLY_PROVIDERS");
-  assert.ok(set.includes("devin-desktop"));
+  assert.ok(!set.includes("devin-desktop"));
   assert.ok(set.includes("devin-cli"));
 });
 

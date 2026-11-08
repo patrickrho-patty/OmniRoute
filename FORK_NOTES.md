@@ -1315,6 +1315,131 @@ Both remaining failures are **credential state, not code**: the sync shipped the
 fixes (Kimi token preservation, the OpenCode free-tier credential and published-endpoint
 routing); what is left is data the operator must supply.
 
+## v3.8.54 sync record (2026-11-08)
+
+Merged upstream `release/v3.8.54` tip `2a8dc2741f` into `patty` (merge-base `139070680f` = the
+v3.8.53 sync point; **415 upstream commits / 203 fork commits**). **197 conflicted paths** —
+132 `docs/i18n/*` (66 `README.md` + 66 `llm.txt`), 41 `src/i18n/messages/*.json`, 7
+`.github/workflows/*` + **17 real** (docs, tests, config, code). 5,402 files changed vs patty
+(+686,328 / −395,321). Same rulebook as v3.8.51–v3.8.53 (R1–R7).
+
+### Conflicts resolved by rule
+
+- **R1 (workflows stay deleted)** — 7 delete/modify conflicts (`ci.yml`, `docker-publish.yml`,
+  `i18n-mirror-refresh.yml`, `nightly-llm-security.yml`, `nightly-release-green.yml`,
+  `quality.yml`, `ui-kit-upstream-watch.yml`) removed again. The fork's ONE workflow
+  (`build-patty-image.yml`) is untouched; upstream's tip ships 36.
+- **R3/R4 (docs + locale JSON)** — the 66 `docs/i18n/*/README.md` took upstream's text and were
+  re-patched to the fork's migration count **225** (upstream said 224), in each locale's own
+  digit system (only `fa` uses Persian-Indic; verified token-by-token, not by regex). The 66
+  `llm.txt` mirrors were regenerated with `scripts/i18n/sync-llm-mirrors.mjs` after the root
+  `llm.txt` was resolved. Root `README.md` / `AGENTS.md` / `llm.txt` took upstream's text + the
+  fork's counts (225 migrations; 13 compression engines — upstream's "12 composable engines" /
+  "12-engine stack" reverted the fork's +1, which `check:docs-counts` caught).
+- **R5 (quality baselines)** — `config/quality/eslint-suppressions.json` is the union of
+  upstream's 948 files/1,032 rules and the fork's 642/646 (**max count per file+rule**, 954
+  files / 1,039 rules). `config/quality/build-typecheck-baseline.json` is upstream's, untouched.
+- **R6 (`package.json` union)** — verified key-by-key against both sides: `magic-grid`,
+  `pretendard`, `cloakbrowser` survive; every upstream key present; **`jsdom` is upstream's move
+  from `devDependencies` to `dependencies`**, not a lost fork dep (a section-blind diff reports
+  it as "lost" — it is not). Lockfile regenerated with `npm install --package-lock-only` and
+  then proven by a real `npm ci`.
+
+### Fork features re-grafted
+
+- **`chatCore.ts`** (4 hunks): upstream's `acquireTurnExecutionWithWait` rename adopted; the echo
+  enable keeps `isHideUpstreamMetadataEnabled()` **and** patty's `clientRequestedModel`
+  precedence on top of upstream's new `resolveClientEchoModel`; the chatgpt-web dedup exclusion
+  kept on upstream's re-worded namespacing comment; **both** `pattyDecision` and
+  `upstreamHttpSelection` now thread into `runStreamingTail` (the leaf already destructured both).
+- **`src/sse/handlers/chat.ts`** — upstream v3.8.54 moved the entry point to
+  `chatAdmission.withChatAdmission((...args) => runWithTurnExecutionOwnership(() => ...))`
+  (#18716). The fork's hand-written `export async function handleChat` (which re-implemented the
+  same admission context + lifecycle attach) is **deleted**; `handleChatImplementation` keeps
+  `runtimeOptions` as its optional 7th arg (no route passes it since v3.8.52; every reader falls
+  back to `getCachedSettings()`). Keeping both exports was a hard build break (duplicate symbol).
+- **`login/page.tsx`** — the fork keeps its `PattyShell` + light-theme redesign, with upstream
+  v3.8.54's **opt-in TOTP MFA** (#16619) grafted in: `mfaRequired` branch, `handleMfaVerify`,
+  and the MFA form (all `mfa*` copy keys exist in every locale after the union). The post-login
+  write is upstream's `omniroute_login_time` — the key `SessionInfoCard.tsx` actually reads; the
+  fork's `patty_login_time` was written by nobody-read, so it is gone.
+- **SRC-014 gate** — `reactiveContextCompactionEnabled` survives on the `CompressionPanel`
+  interface next to upstream's new `defaultMode`/`autoTriggerMode`.
+- **`requestLogger.ts`** — union: the fork's `x-omniroute-admission-token` plus upstream's
+  `x-omniroute-self-hop` / `x-opencode-relay-*` masking.
+- **`clientRawRequest.ts`** — union: upstream's forged-mark/self-hop header deletion + the
+  fork's at-capture credential strip.
+- **`strategySelector.ts`** — upstream's 3-arg `applyLossyRequestPolicy(plan, header,
+config.stackedPipeline)` with the fork's capability-vs-intent comment kept.
+- **`batch/page.tsx`** — took upstream's UI-kit version (`Spinner` + `text-text-muted`); the
+  fork's delta was only the older `var(--color-text-muted)` spelling (609 files vs 20 in-tree).
+
+### Migration collision #4
+
+Upstream's `223_call_logs_queue_wait_ms` took the slot the settlement outbox had been rehomed
+into. Fourth rehome **223 → 228** (first free slot after upstream's
+`227_quota_recovery_due_cover`). The ledger now maps **164→228, 187→228, 206→228 and 223→228**
+(every number the fork ever used), `isSchemaAlreadyApplied` is `case "228"`, and the pinned
+registry test count is **43**. Merged tree: **225 migrations**, no duplicate versions.
+
+### Gates
+
+`typecheck:core` 0 · `typecheck:noimplicit:core` 0 · `check:build-typecheck` **OK** (243
+pre-existing errors inside upstream's frozen baseline) · `check:open-sse-typecheck` **0 errors**
+(26 on the merged tree before the fixes below, 26 on patty pre-merge) · `lint` 0 errors / 3,645
+pre-existing warnings · `check:docs-all` **pass** (STRICT counts: 225 migrations, 120 feature
+flags, 13 compression engines, 380 providers) · whole-tree esbuild parse sweep 0 failures /
+16,154 files.
+
+### Two merge-caused type breakages the new upstream gate exposed
+
+Upstream v3.8.54 introduced `tsconfig.build.json` + `check:build-typecheck`, a surface the fork
+never had. Under it the merged tree failed on 13 (file, error-code) pairs; the single decisive
+check was patty's own raw `tsc -p tsconfig.build.json` run (838 errors, the same counts per
+file), which proved they were **pre-existing fork debt newly gated**, not merge regressions.
+Fixed anyway, because each was a real defect:
+
+- `open-sse/executors/duckduckgo-web.ts` — the breaker's `status`/`retryAfter` were read but never
+  declared (restored to both header interfaces and populated at the 5 construction sites);
+  `execute()` now returns `ExecutorExecuteResult` (the documented union, so the bare-`Response`
+  error paths are legal); `prepareWebToolRequest` gets the same typed message array upstream's
+  muse executor passes.
+- `open-sse/executors/muse-spark-web.ts` — the policy-error path returns a bare `Response`:
+  `buildSuccessResult` widened to `MuseSparkExecuteResult | Response`; `"muse"` added to
+  `WebToolPromptStyle` (the contract builder already treats anything but `chatgpt-web` as
+  standard).
+- `open-sse/translator/response/gemini-to-claude.ts` — the fork's 138-line local
+  `extractXmlInvokeBlocks` duplicated upstream's helper (the import was already there): local
+  copy deleted, canonical helper used.
+- `open-sse/services/pattyGateway.ts` — `isPattyGatewayEnabled(process.env)` hit TS2559 (weak
+  type, no common properties): parameter accepts `NodeJS.ProcessEnv`.
+- `src/lib/db/compressionAnalytics.ts` — the fork's row type never had upstream's `skip_reason`,
+  but upstream's write path passes it: field + lazy column + INSERT column/value re-applied.
+- `scripts/ad-hoc/repro-web-cookie-validation.ts` — `validateChatGptWebProvider` moved to
+  `validation/chatgptWeb.ts`.
+- `RequestLimitsTab.tsx` / `QuotaCardGrid.tsx` / `authz/classify.ts` — a lost
+  `parseIntegerOrNull` import + three JSX identifiers that did not match the component's own
+  state (`value`/`setValue`/`savedValue` vs `bodyLimitValue`/…: a render-time ReferenceError on
+  the advanced settings tab), a missing `HealthAccount` type import, and `"login_page"` missing
+  from `ClassificationReason` (the fork's /login reachability reason).
+
+### Two tooling defects that nearly shipped silent data loss
+
+1. **`execFileSync`'s 1 MB default `maxBuffer`** — the first locale union pass read the three
+   sides with `git show` and swallowed `ENOBUFS` in a `try/catch`, so the union of three nulls
+   wrote **`{}` to 19 locale files** (and dropped a fork-only flat key in 26 more). Caught by the
+   feature-flag locale test, not by the parse sweep (an empty object parses fine). The rewrite
+   reads refs with a 512 MB buffer and **verifies every one of the 67 locale files against
+   `patty ∪ upstream`** afterwards: 0 empty, 0 missing keys.
+2. **A stale `node_modules` fabricates and hides failures** — the sync worktree's `node_modules`
+   was hard-cloned from the main checkout (pre-merge), so `qrcode` (new in v3.8.54 for MFA) was
+   absent: `auth-mfa-login-flow.test.ts` died with `ERR_MODULE_NOT_FOUND` and
+   `dashboardMfa.ts` reported a phantom TS2307. A real `npm ci` fixed both — and it also
+   validated the regenerated lockfile. **Run `npm ci` in a sync worktree before trusting any
+   test or typecheck result, and never diagnose a TS error before it.**
+
+---
+
 ## Browser engine for browser-backed providers (2026-10-17)
 
 Deployed images must ship a browser **revision that matches the installed Playwright**.

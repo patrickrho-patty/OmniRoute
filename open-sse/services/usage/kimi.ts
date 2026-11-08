@@ -249,6 +249,50 @@ function getKimiPlanName(level: unknown): string {
   );
 }
 
+async function getKimiProfilePlanName(usageUrl: string, credential?: string): Promise<string> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(controller.signal.reason);
+    }, 3_000);
+  });
+  try {
+    const response = await Promise.race([
+      fetch(new URL("me", usageUrl), {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer " + credential,
+          Accept: "application/json",
+        },
+        redirect: "error",
+        signal: controller.signal,
+      }).then((response) => {
+        if (controller.signal.aborted) void response.body?.cancel().catch(() => {});
+        return response;
+      }),
+      deadline,
+    ]);
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => {});
+      return "";
+    }
+
+    // Some proxy transports stop forwarding fetch aborts after response headers.
+    const body = response.body?.pipeThrough(new TransformStream<Uint8Array, Uint8Array>(), {
+      signal: controller.signal,
+    });
+    const profile = toRecord(await new Response(body).json());
+    return typeof profile.user_level_name === "string" ? profile.user_level_name.trim() : "";
+  } catch {
+    // Optional display metadata must not turn valid quotas into an auth or network error.
+    return "";
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Kimi Coding Usage - Fetch quota from Kimi API
  * Uses the official /v1/usages endpoint with custom X-Msh-* headers
@@ -256,7 +300,8 @@ function getKimiPlanName(level: unknown): string {
 export async function getKimiUsage(
   accessToken?: string,
   apiKey?: string,
-  providerSpecificData: JsonRecord = {}
+  providerSpecificData: JsonRecord = {},
+  options: { includePlan?: boolean } = {}
 ) {
   // API key auth takes precedence — Kimi's /usages endpoint accepts the same
   // API key used for /messages (verified live: responds with
@@ -372,10 +417,14 @@ export async function getKimiUsage(
       }
     }
 
+    const userRecord = toRecord(dataObj.user);
+    const membershipLevel = toRecord(userRecord.membership).level;
+    const profilePlanName = options.includePlan
+      ? await getKimiProfilePlanName(usageUrl, useApiKey ? apiKey : accessToken)
+      : "";
+    const planName = profilePlanName || getKimiPlanName(membershipLevel);
+
     if (Object.keys(quotas).length > 0) {
-      const userRecord = toRecord(dataObj.user);
-      const membershipLevel = toRecord(userRecord.membership).level;
-      const planName = getKimiPlanName(membershipLevel);
       return {
         plan: planName || "Kimi Coding",
         quotas,
@@ -384,9 +433,6 @@ export async function getKimiUsage(
     }
 
     // No quota data in response
-    const userRecord = toRecord(dataObj.user);
-    const membershipLevel = toRecord(userRecord.membership).level;
-    const planName = getKimiPlanName(membershipLevel);
     return {
       plan: planName || "Kimi Coding",
       message: "Kimi Coding connected. Usage tracked per request.",

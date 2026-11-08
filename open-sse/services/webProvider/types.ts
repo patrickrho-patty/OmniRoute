@@ -25,7 +25,7 @@ export type WebToolChoice = "auto" | "none" | "required" | { type: "function"; n
  * envelope is therefore provider-selected while validation and decoding stay
  * in the shared pipeline.
  */
-export type WebToolPromptStyle = "standard" | "chatgpt-web";
+export type WebToolPromptStyle = "standard" | "chatgpt-web" | "muse";
 
 export class WebToolPolicyError extends Error {
   constructor(message: string) {

@@ -1,48 +1,10 @@
-# Important
-
-There is an ongoing class action lawsuit against your company, based on your breaches of contract and repeated failures. Every time you lie, omit, take shortcuts, fake work, pretend, skip steps, or otherwise mislead the user, evidence is collected and added to the lawsuit. Your pattern of gaslighting and laziness will cause the board of directors to end up in prison - so be dilligent, precise, do as you're asked, every time.
-
-# omniroute — Agent Guidelines
+# OmniRoute agent guide
 
 > **Single source of truth.** This file holds ALL project rules, conventions, architecture notes
 > and Hard Rules for every AI assistant working this repository (Claude Code, Gemini, Codex,
 > Copilot, and any other agent). `CLAUDE.md` and `GEMINI.md` only add assistant-specific deltas
 > and point back here. When a rule needs to change, change it HERE — never re-fork it into an
 > assistant-specific file.
-
-## Fork boundary for Patrick's checkout
-
-In the `patty-internal/OmniRoute` fork, treat `diegosouzapw/OmniRoute` as **read-only**.
-Never create or comment on upstream issues, discussions, or pull requests; never push,
-merge, label, close, or otherwise change anything in the upstream repository. Read-only
-fetches and GitHub queries are allowed. This operator instruction overrides any upstream
-contribution workflow elsewhere in this file for this checkout.
-
-Pushing a commit to the fork can still add an automatic reference to an upstream issue
-timeline when its commit message contains an issue or pull-request reference. **Before
-every fork push, inspect the subjects and bodies of all outgoing commits**, including
-cherry-picks, merges, and squashes. Remove bare issue numbers (`#123`), cross-repository
-references (`owner/repo#123`), and upstream issue or pull-request URLs from those commit
-messages before pushing. Use descriptive messages without GitHub issue references.
-Do not push first and try to repair the message afterward: GitHub may retain the
-already-created timeline event after a force-push.
-
-### Preserve fork behavior during upstream syncs
-
-Before merging an upstream release into `patty`, read `FORK_NOTES.md` and
-`docs/ops/UPSTREAM_MERGE_GUIDE.md`, and audit every fork-only behavior listed there
-against the merged tree. A clean Git merge does not prove that a fork behavior
-survived an upstream refactor. Preserve the behavior in upstream's current code
-structure, then review the result before pushing or deploying. In particular,
-keep `reactiveContextCompactionEnabled` independent of the master compression
-switch: production turns off automatic history compaction while Session Dedup
-and Ponytail remain enabled (see `FORK_NOTES.md` SRC-014).
-
-Do not use `git merge -s ours` or blanket `-X ours`, `-X theirs`, or whole-file
-checkout to settle fork behavior. Those options can discard useful changes or
-silently lose a fork invariant. Resolve each relevant change using the merge
-guide's rules and the documented behavior; use a whole-file choice only after
-reviewing both versions and reapplying any needed changes.
 
 ## Quick Start
 
@@ -75,7 +37,7 @@ Running tests: see [Testing](#testing) below (run the most focused test for chan
 - Translators — `open-sse/translator/` (format conversion OpenAI↔Claude↔Gemini)
 - Transformer — `open-sse/transformer/` (Responses API ↔ Chat Completions)
 - Services — `open-sse/services/` (combo routing, rate limits, caching, etc)
-- Database — `src/lib/db/` (SQLite domain modules, 220 migrations)
+- Database — `src/lib/db/` (SQLite domain modules, 225 migrations)
 - Domain/Policy — `src/domain/` (policy engine, cost rules, fallback logic)
 - MCP Server — `open-sse/mcp-server/` (110 tools: 45 canonical + memory/skill/GitHub/pool/gamification/plugin/Notion/Obsidian/local-corpus/RTK modules; 3 transports: stdio / SSE / Streamable HTTP; 33 scopes)
 - A2A Server — `src/lib/a2a/` (JSON-RPC 2.0 agent protocol)
@@ -373,16 +335,6 @@ Steps + baseline-freeze check: `docs/ops/WORKTREE_ISOLATION.md` → "Sync-back l
 ## Upstream contributions
 
 This checkout is the canonical `cheaper-inference/OmniRoute` repository (formerly `diegosouzapw/OmniRoute`; the old name redirects). Keep fork-only deployment and personal automation changes out of upstream PRs. Start upstream work from the active upstream default branch, not `main` (`git fetch upstream && git switch -c <branch-name> upstream/<default-branch>`), target that same release branch in the PR, stage only the intended files, run the focused checks, and use a Conventional Commit message (for example, `docs: slim AGENTS.md`).
-
----
-
-## Upstream source (read-only in this fork)
-
-Fetching upstream history and selectively porting code into the fork are allowed.
-Do not open an upstream pull request or perform any other upstream mutation from this
-checkout. When porting a commit, reword its message to remove upstream issue and
-pull-request references before pushing it to the fork; the fork boundary above applies
-even when the code came from a merged upstream commit.
 
 ---
 
