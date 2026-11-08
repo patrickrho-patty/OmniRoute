@@ -10,7 +10,7 @@ import {
   normalizeDuckDuckGoModel,
   pickDuckDuckGoModel,
 } from "./duckduckgo-web/models.ts";
-import { BaseExecutor, type ExecuteInput } from "./base.ts";
+import { BaseExecutor, type ExecuteInput, type ExecutorExecuteResult } from "./base.ts";
 import { FETCH_TIMEOUT_MS } from "../config/constants.ts";
 import {
   buildWebToolPolicyErrorResponse,
@@ -145,11 +145,17 @@ function shouldUseBrowserBacked(): boolean {
 interface DuckDuckGoVqdHeaders {
   vqd4: string | null;
   vqdHash1: string | null;
+  // Real upstream HTTP status of the VQD-acquisition attempt (null when no request was
+  // made / a network error was thrown) — lets execute() tell a retryable 429 from a 5xx.
+  status: number | null;
+  retryAfter: string | null;
 }
 
 interface DuckDuckGoAuthHeaders {
   vqd4: string | null;
   vqdHash1: string | null;
+  status: number | null;
+  retryAfter: string | null;
 }
 
 interface DuckDuckGoModelCapabilities {
@@ -449,12 +455,7 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
     }
   }
 
-  async execute(input: ExecuteInput): Promise<{
-    response: Response;
-    url: string;
-    headers: Record<string, string>;
-    transformedBody: unknown;
-  }> {
+  async execute(input: ExecuteInput): Promise<ExecutorExecuteResult> {
     const { model, body, stream, signal, upstreamExtraHeaders } = input;
     const requestedModel = normalizeDuckDuckGoModel(model);
     const bodyObj = (body || {}) as Record<string, unknown>;
@@ -463,7 +464,7 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
       : [];
     const { hasTools, requestedTools, toolChoice, effectiveMessages } = prepareWebToolRequest(
       bodyObj,
-      rawMessages
+      rawMessages as Array<{ role: string; content: unknown }>
     );
     const messages = effectiveMessages;
     const isStreaming = stream !== false;
@@ -736,16 +737,24 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
       });
       this.rememberResponseCookies(resp);
 
-      if (!resp.ok) return { vqd4: null, vqdHash1: null };
+      if (!resp.ok)
+        return {
+          vqd4: null,
+          vqdHash1: null,
+          status: resp.status,
+          retryAfter: resp.headers.get("retry-after"),
+        };
       return {
         vqd4: resp.headers.get("x-vqd-4"),
         vqdHash1: resp.headers.get("x-vqd-hash-1"),
+        status: resp.status,
+        retryAfter: resp.headers.get("retry-after"),
       };
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         throw error;
       }
-      return { vqd4: null, vqdHash1: null };
+      return { vqd4: null, vqdHash1: null, status: null, retryAfter: null };
     }
   }
 
@@ -757,6 +766,8 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
         return {
           vqd4: null,
           vqdHash1: await solveDuckDuckGoChallenge(challenge, FAKE_HEADERS["User-Agent"]),
+          status: null,
+          retryAfter: null,
         };
       } catch (error) {
         void error;
@@ -769,6 +780,8 @@ export class DuckDuckGoWebExecutor extends BaseExecutor {
         return {
           vqd4: headers.vqd4,
           vqdHash1: await solveDuckDuckGoChallenge(headers.vqdHash1, FAKE_HEADERS["User-Agent"]),
+          status: headers.status,
+          retryAfter: headers.retryAfter,
         };
       } catch (error) {
         void error;

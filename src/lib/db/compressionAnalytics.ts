@@ -13,6 +13,10 @@ export interface CompressionAnalyticsRow {
   tokens_saved: number;
   duration_ms?: number | null;
   request_id?: string | null;
+  // Set on a no-op/skipped row: compression was attempted (mode active, engines ran) but
+  // produced no recordable saving. NULL on a normal saving row. Lets analytics distinguish
+  // "ran but saved nothing" from "never ran" (upstream #4268, re-applied in the v3.8.54 sync).
+  skip_reason?: string | null;
   actual_prompt_tokens?: number | null;
   actual_completion_tokens?: number | null;
   actual_total_tokens?: number | null;
@@ -92,6 +96,7 @@ const COMPRESSION_ANALYTICS_COLUMNS = [
   ["rtk_raw_output_bytes", "INTEGER"],
   ["rtk_raw_output_pointers", "TEXT"],
   ["rtk_raw_output_total_bytes", "INTEGER"],
+  ["skip_reason", "TEXT"],
 ] as const;
 
 function ensureCompressionAnalyticsColumns(): void {
@@ -120,9 +125,9 @@ export function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): voi
       actual_total_tokens, actual_cache_read_tokens, actual_cache_write_tokens,
       estimated_usd_saved, mcp_description_tokens_saved, multimodal_skip_count,
       receipt_source, validation_fallback, output_mode, rtk_raw_output_pointer, rtk_raw_output_bytes,
-      rtk_raw_output_pointers, rtk_raw_output_total_bytes
+      rtk_raw_output_pointers, rtk_raw_output_total_bytes, skip_reason
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `
   ).run(
     row.timestamp,
@@ -150,7 +155,8 @@ export function insertCompressionAnalyticsRow(row: CompressionAnalyticsRow): voi
     row.rtk_raw_output_pointer ?? null,
     row.rtk_raw_output_bytes ?? null,
     row.rtk_raw_output_pointers ?? null,
-    row.rtk_raw_output_total_bytes ?? null
+    row.rtk_raw_output_total_bytes ?? null,
+    row.skip_reason ?? null
   );
 }
 

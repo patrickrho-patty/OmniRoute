@@ -426,6 +426,13 @@ function ensureColumn(db: SqliteAdapter, tableName: string, columnName: string, 
   }
 }
 
+function triggerHasWhenClause(db: SqliteAdapter, triggerName: string): boolean {
+  const trigger = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = ?")
+    .get(triggerName) as { sql: string } | undefined;
+  return trigger !== undefined && /\bWHEN\b/i.test(trigger.sql);
+}
+
 function isSchemaAlreadyApplied(
   db: SqliteAdapter,
   migration: { version: string; name: string }
@@ -593,6 +600,11 @@ function isSchemaAlreadyApplied(
         hasColumn(db, "provider_nodes", "daily_quota_reset_timezone") &&
         hasColumn(db, "provider_nodes", "daily_quota_reset_hour")
       );
+    case "178":
+      // 178 only exists to give memory_fts_au a WHEN clause. A released ledger slot
+      // (#18952) can replay it long after 203 rewrote that trigger, and the replay would
+      // drop 203's memory_id condition, which is what indexes new memories (#15707).
+      return triggerHasWhenClause(db, "memory_fts_au");
     case "179":
       // proxy_logs.upstream_status may already exist if ensureProxyLogsColumns ran first;
       // a bare ADD COLUMN would then throw. Renumbering the migration means renaming this case
@@ -618,14 +630,16 @@ function isSchemaAlreadyApplied(
       // attempt_number at boot. Keyed by version only — a stale number here
       // would answer for another migration's schema and skip it.
       return hasColumn(db, "proxy_logs", "attempt_number");
-    case "223":
-      // Fork migration rehomed three times: 164 → 187 (upstream's
+    case "228":
+      // Fork migration rehomed four times: 164 → 187 (upstream's
       // 164_retire_microsoft_designer_web took that slot in the v3.8.51 sync),
       // 187 → 206 (upstream's 187_proxy_logs_attempts took the 187 slot in the
-      // v3.8.52 sync) and 206 → 223 (upstream's 206_codex_wakeup_tasks took the
-      // 206 slot in the v3.8.53 sync). Fork databases that already applied it
-      // under any of those numbers already have the table; the ledger rewrites
-      // themselves are registered in RENAMED_MIGRATION_COMPATIBILITY.
+      // v3.8.52 sync), 206 → 223 (upstream's 206_codex_wakeup_tasks took the
+      // 206 slot in the v3.8.53 sync) and 223 → 228 (upstream's
+      // 223_call_logs_queue_wait_ms took the 223 slot in the v3.8.54 sync).
+      // Fork databases that already applied it under any of those numbers
+      // already have the table; the ledger rewrites themselves are registered
+      // in RENAMED_MIGRATION_COMPATIBILITY.
       return hasTable(db, "patty_settlement_outbox");
     case "194":
       // 194 adds TWO timing columns. Boot-time ensureProxyLogsColumns can

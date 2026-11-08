@@ -47,7 +47,15 @@
  * fail-open, so this never throws into the install.
  */
 
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, sep } from "node:path";
 
@@ -126,6 +134,26 @@ function isPackageIntact(targetNodeModulesDir, name) {
 }
 
 /**
+ * `cpSync` filter for the no-clobber merge. With `verbatimSymlinks`, cpSync
+ * throws EEXIST when a link already sits at the destination, which would stop
+ * the merge halfway through a partially traced package. A link has no payload
+ * to preserve, so the traced one gives way to the source package's.
+ *
+ * @param {string} source
+ * @param {string} destination
+ * @returns {true}
+ */
+function replaceTracedSymlink(source, destination) {
+  if (
+    lstatSync(source).isSymbolicLink() &&
+    lstatSync(destination, { throwIfNoEntry: false })?.isSymbolicLink()
+  ) {
+    rmSync(destination);
+  }
+  return true;
+}
+
+/**
  * Co-locate the SLM optional dependency closure from `<rootDir>/node_modules`
  * into a standalone bundle's `node_modules`.
  *
@@ -187,10 +215,16 @@ export function colocateLlmlinguaOptionals({
       // force:false merges into a partially traced directory: files the trace
       // already materialized are kept, missing ones (the package payload) are
       // filled in from the root tree.
+      // verbatimSymlinks: without it cpSync rewrites a package's relative links
+      // (global-agent's node_modules/.bin/semver) to absolute paths into this
+      // machine's root node_modules, which dangle in any shipped bundle and
+      // make the Electron web-build refuse to pack it.
       cpSync(join(rootNm, name), dest, {
         recursive: true,
         force: false,
         errorOnExist: false,
+        verbatimSymlinks: true,
+        filter: replaceTracedSymlink,
       });
       copied++;
     } catch (err) {

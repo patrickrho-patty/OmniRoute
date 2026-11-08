@@ -27,6 +27,7 @@ import {
   type QuotaVisibilityScope,
 } from "./utils";
 import { PROVIDER_ORDER } from "./constants";
+import type { HealthAccount } from "./healthOverview";
 import { compareTr } from "@/shared/utils/turkishText";
 
 interface Props {

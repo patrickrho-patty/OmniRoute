@@ -25,6 +25,7 @@ export type RouteClass = "PUBLIC" | "CLIENT_API" | "MANAGEMENT";
  * deterministic and reviewable.
  */
 export type ClassificationReason =
+  | "login_page"
   | "public_prefix"
   | "public_readonly_prefix"
   | "dashboard_prefix"

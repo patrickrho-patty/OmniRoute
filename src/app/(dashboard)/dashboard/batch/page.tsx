@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslations } from "next-intl";
 import { Alert } from "@omniroute/ui-kit/alert";
+import { PageHeader } from "@omniroute/ui-kit/page-header";
 import Icon from "@/shared/components/Icon";
+import { Spinner } from "@/shared/components/Loading";
 import Button from "@/shared/components/Button";
 import BatchListTab from "./BatchListTab";
 import type { FileRecord } from "@/lib/db/files";
@@ -251,40 +253,32 @@ export default function BatchPage() {
     <div className="flex flex-col gap-6">
       {/* Stable outcome-oriented header (replaces the collapsible card as primary orientation) */}
       <div className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold text-[var(--color-text-main)]">
-            {t("batchConceptTitle")}
-          </h1>
-          <p className="text-sm text-[var(--color-text-muted)]">{t("batchHeaderSubtitle")}</p>
-        </div>
+        <PageHeader
+          compact
+          title={t("batchConceptTitle")}
+          description={t("batchHeaderSubtitle")}
+          actions={
+            <Button icon="add" onClick={() => setShowWizard(true)}>
+              {t("batchListNewButton")}
+            </Button>
+          }
+        />
 
         {/* Three-step strip */}
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
-            <span className="font-medium text-sm text-[var(--color-text-main)]">
-              {t("batchStep1")}
-            </span>
-            <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
-              {t("batchStep1Desc")}
-            </span>
+          <div className="flex items-center gap-1.5 rounded-lg bg-surface border border-border px-3 py-2">
+            <span className="font-medium text-sm text-text-main">{t("batchStep1")}</span>
+            <span className="text-xs text-text-muted hidden sm:inline">{t("batchStep1Desc")}</span>
           </div>
-          <Icon name="chevron_right" className="text-[var(--color-text-muted)]" />
-          <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
-            <span className="font-medium text-sm text-[var(--color-text-main)]">
-              {t("batchStep2")}
-            </span>
-            <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
-              {t("batchStep2Desc")}
-            </span>
+          <Icon name="chevron_right" className="text-text-muted" />
+          <div className="flex items-center gap-1.5 rounded-lg bg-surface border border-border px-3 py-2">
+            <span className="font-medium text-sm text-text-main">{t("batchStep2")}</span>
+            <span className="text-xs text-text-muted hidden sm:inline">{t("batchStep2Desc")}</span>
           </div>
-          <Icon name="chevron_right" className="text-[var(--color-text-muted)]" />
-          <div className="flex items-center gap-1.5 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2">
-            <span className="font-medium text-sm text-[var(--color-text-main)]">
-              {t("batchStep3")}
-            </span>
-            <span className="text-xs text-[var(--color-text-muted)] hidden sm:inline">
-              {t("batchStep3Desc")}
-            </span>
+          <Icon name="chevron_right" className="text-text-muted" />
+          <div className="flex items-center gap-1.5 rounded-lg bg-surface border border-border px-3 py-2">
+            <span className="font-medium text-sm text-text-main">{t("batchStep3")}</span>
+            <span className="text-xs text-text-muted hidden sm:inline">{t("batchStep3Desc")}</span>
           </div>
         </div>
       </div>
@@ -305,8 +299,12 @@ export default function BatchPage() {
 
       {/* Toolbar: auto-refresh indicator + Refresh + New batch */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1">
-          <Icon name="sync" size={14} className={loading ? "animate-spin" : "animate-pulse"} />
+        <span className="text-xs text-text-muted flex items-center gap-1">
+          {loading ? (
+            <Spinner decorative size="xs" />
+          ) : (
+            <Icon name="sync" size={14} className="animate-pulse" />
+          )}
           {t("batchListAutoRefresh")}
         </span>
         <div className="flex gap-2">

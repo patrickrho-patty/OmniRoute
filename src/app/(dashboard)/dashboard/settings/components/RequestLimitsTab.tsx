@@ -20,6 +20,7 @@ import {
   type ClaudeLargeMessagesMode,
 } from "@/shared/constants/bodySize";
 import { useTranslations } from "next-intl";
+import { parseIntegerOrNull } from "@/shared/utils/envParsing";
 
 type Message = { type: "success" | "error"; text: string };
 
@@ -272,9 +273,9 @@ export default function RequestLimitsTab() {
             min={MIN_REQUEST_BODY_LIMIT_MB}
             max={MAX_REQUEST_BODY_LIMIT_MB}
             step={1}
-            value={value}
+            value={bodyLimitValue}
             onChange={(event) => {
-              setValue(event.target.value);
+              setBodyLimitValue(event.target.value);
               setMessage(null);
             }}
             onKeyDown={(event) => {
@@ -296,10 +297,11 @@ export default function RequestLimitsTab() {
           </Button>
           {dirty && (
             <span className="pb-2.5 text-xs text-text-muted">
-              {t("requestBodyLimitCurrent", { value: savedValue })}
+              {t("requestBodyLimitCurrent", { value: savedBodyLimitValue })}
             </span>
           )}
         </div>
+        <p className="text-xs text-text-muted">{t("requestBodyLimitChatHint")}</p>
         {message && (
           <p
             role={message.type === "success" ? "status" : "alert"}

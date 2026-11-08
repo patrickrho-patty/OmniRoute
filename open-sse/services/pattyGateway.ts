@@ -102,9 +102,9 @@ function gatewayConfig(deps: PattyGatewayDeps): { baseUrl: string; token: string
 }
 
 export function isPattyGatewayEnabled(
-  env: Partial<
-    Record<"PATTY_GATEWAY_URL" | "PATTY_GATEWAY_TOKEN", string | undefined>
-  > = process.env
+  env:
+    | Partial<Record<"PATTY_GATEWAY_URL" | "PATTY_GATEWAY_TOKEN", string | undefined>>
+    | NodeJS.ProcessEnv = process.env
 ): boolean {
   return Boolean(env.PATTY_GATEWAY_URL?.trim() && env.PATTY_GATEWAY_TOKEN?.trim());
 }
