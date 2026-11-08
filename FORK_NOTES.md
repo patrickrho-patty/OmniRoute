@@ -1440,6 +1440,32 @@ Fixed anyway, because each was a real defect:
 
 ---
 
+## v3.8.54 deploy record (2026-11-08)
+
+Merged PR #27 (`6f29d60de1`) into `patty`, built the image (GHCR run `42490792086`,
+success, 12m23s) and deployed with `scripts/deploy-ghcr.sh --vps-only`.
+
+- Image digest moved `sha256:e61c0173…` (built 2026-11-01, revision `f39cdcdba0`) →
+  **`sha256:73b56f69…`** (revision `6f29d60de1`) — verified by digest + the
+  `org.opencontainers.image.revision` label, not by container health.
+- Container `omniroute-p5` recreated and started `2026-11-08T15:00:14Z`, **0 restarts**,
+  no fatal/startup errors in the first 15 minutes.
+- `https://omni.patty.io/api/monitoring/health` → `{"status":"healthy","setupComplete":true}`.
+- Model sync after boot: `Cycle complete: 7/7 synced in 4467ms` — the provider connections
+  and catalog survive the merge.
+- **Migration rehome verified on the production DB** (225 applied, max version 228):
+  `164` = `retire_microsoft_designer_web`, `187` = `proxy_logs_attempts`,
+  `206` = `codex_wakeup_tasks`, `223` = `call_logs_queue_wait_ms`,
+  **`228` = `patty_settlement_outbox`** — the fourth rehome applied cleanly and the ledger
+  rewrites moved the fork's outbox off every slot upstream has since taken.
+
+Observation (not a failure): `[HEALTHZ] event-loop lag 3605ms` fired once during the
+post-boot model-sync burst. HTTP stayed 200 and the container reported healthy; the line is
+a "busy != ready" notice, not an error. Worth remembering if startup responsiveness is ever
+investigated.
+
+---
+
 ## Browser engine for browser-backed providers (2026-10-17)
 
 Deployed images must ship a browser **revision that matches the installed Playwright**.
