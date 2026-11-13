@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# deploy-vps.sh — deploy patty to Contabo VPS (jebo.ai)
+# deploy-vps.sh — deploy patty to the Hostinger VPS (187.127.115.221, NetBird 10.200.133.10)
+#
+# OmniRoute lives on this box now; contabo-japan (109.123.231.227) keeps
+# Harbor, OpenBao and Caddy, and forwards 20128/20129 here.
 #
 # Usage: ./scripts/deploy-vps.sh
 #
@@ -9,13 +12,13 @@
 
 set -euo pipefail
 
-VPS="root@109.123.231.227"
+VPS="root@187.127.115.221"
 KEY="$HOME/.ssh/t1_fetcher_ed25519"
 SSH="ssh -i $KEY -o ConnectTimeout=20 -o StrictHostKeyChecking=no"
 PORT=12160
 
 # ── Step 1: Upload a self-contained deploy script to the VPS ──
-echo "=== Deploying to jebo.ai ==="
+echo "=== Deploying to the Hostinger VPS (187.127.115.221) ==="
 
 $SSH $VPS 'cat > /tmp/omniroute-deploy.sh && chmod +x /tmp/omniroute-deploy.sh' <<'REMOTE_SCRIPT'
 #!/usr/bin/env bash
@@ -98,7 +101,7 @@ while true; do
   if echo "$TAIL" | grep -q "DEPLOY SUCCESS"; then
     echo ""
     echo "=== DEPLOY COMPLETE ==="
-    echo "  https://jebo.ai is live"
+    echo "  the service is live on 187.127.115.221 (NetBird 10.200.133.10)"
     $SSH $VPS 'rm -f /tmp/omniroute-deploy.sh /tmp/omniroute-deploy.log'
     exit 0
   fi

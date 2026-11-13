@@ -11,8 +11,8 @@
  * that performs the side effects and rolls back when the smoke fails.
  *
  * Usage:
- *   node scripts/ops/deploy-canary.mjs --host root@192.168.0.17 --tarball ./omniroute-3.8.50.tgz \
- *        --base-url http://192.168.0.17:20128 --model cx/gpt-5.6-terra --model qct/deepseek-v4-flash-0731
+ *   node scripts/ops/deploy-canary.mjs --host root@187.127.115.221 --tarball ./omniroute-3.8.50.tgz \
+ *        --base-url http://10.200.133.10:20128 --model cx/gpt-5.6-terra --model qct/deepseek-v4-flash-0731
  *
  * Flags:
  *   --host       ssh target (required)

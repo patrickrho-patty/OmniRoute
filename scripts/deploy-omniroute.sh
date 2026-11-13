@@ -22,12 +22,17 @@
 #   live ~2h late because of this). Builds also moved off the box on
 #   2026-08-05: in-Docker `next build` OOM-killed the swap-less host.
 #
-# Box reality (audited live 2026-09-28):
-#   - Contabo 109.123.231.227 — THE OmniRoute box. `omniroute-p5` runs behind
-#     Caddy there; omni.patty.io's AWS edge IPs front exactly this host.
-#     App dir: /opt/omniroute (docker-compose.yml, .env, data/).
-#   - Hostinger 187.127.115.221 — NO LONGER RUNS OMNIROUTE (now Backstage +
-#     Postgres). Removed as a deploy target; do not re-add without re-auditing.
+# Box reality (audited live 2026-11-13):
+#   - Hostinger 187.127.115.221 (NetBird 10.200.133.10) — THE OmniRoute box.
+#     `omniroute-p5` and `omniroute-redis-p5` run here, alongside Backstage
+#     and its Postgres. App dir: /opt/omniroute (docker-compose.yml, .env,
+#     data/). omni.patty.io's TLS stays on contabo-japan's Caddy, which
+#     proxies to this host.
+#   - Contabo 109.123.231.227 (NetBird 10.200.85.232) — Harbor, OpenBao and
+#     the Caddy Proxy Manager live here. It also runs the omniroute-forward-
+#     20128/20129 socket units that forward to this host. The old container
+#     copy that used to sit here was killed by that port conflict (exit 137)
+#     and has been removed; do not re-add it.
 #
 # Usage:
 #   ./scripts/deploy-omniroute.sh                # deploy HEAD (CI must be green for it)
@@ -46,7 +51,7 @@ set -euo pipefail
 # ── Config ───────────────────────────────────────────────────────────────────
 KEY="${OMNIROUTE_DEPLOY_KEY:-$HOME/.ssh/t1_fetcher_ed25519}"
 SSH_BASE=(-i "$KEY" -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o BatchMode=yes)
-BOX_IP="109.123.231.227"
+BOX_IP="187.127.115.221"
 BOX_DIR="/opt/omniroute"
 BOX_CONTAINER="omniroute-p5"
 BOX_SERVICE="omniroute"

@@ -40,13 +40,13 @@ WORKFLOW="${OMNIROUTE_DEPLOY_WORKFLOW:-build-patty-image.yml}"
 ORIGIN_URL="$(git config --get remote.origin.url 2>/dev/null || true)"
 ORIGIN_OWNER="$(printf '%s' "$ORIGIN_URL" | sed -E 's#.*[:/]([^/]+)/[^/]+$#\1#')"
 GHCR_IMAGE="${OMNIROUTE_DEPLOY_IMAGE:-ghcr.io/${ORIGIN_OWNER:-patrickrho-patty}/omniroute:latest}"
-VPS_HOST="${OMNIROUTE_DEPLOY_HOST:-root@109.123.231.227}"
+VPS_HOST="${OMNIROUTE_DEPLOY_HOST:-root@187.127.115.221}"
 VPS_KEY="${OMNIROUTE_DEPLOY_KEY:-$HOME/.ssh/t1_fetcher_ed25519}"
 VPS_COMPOSE_DIR="${OMNIROUTE_DEPLOY_COMPOSE_DIR:-/opt/omniroute}"
 VPS_SERVICE="${OMNIROUTE_DEPLOY_SERVICE:-omniroute}"
 VPS_CONTAINER="${OMNIROUTE_DEPLOY_CONTAINER:-omniroute-p5}"
 # Health endpoint — the box binds the dashboard to its internal LAN IP:
-VPS_HEALTH_URL="${OMNIROUTE_DEPLOY_HEALTH_URL:-http://10.200.85.232:20128/api/monitoring/health}"
+VPS_HEALTH_URL="${OMNIROUTE_DEPLOY_HEALTH_URL:-http://10.200.133.10:20128/api/monitoring/health}"
 
 
 # ── Flags ────────────────────────────────────────────────────────────────────
