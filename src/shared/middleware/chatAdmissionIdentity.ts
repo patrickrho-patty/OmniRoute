@@ -1,11 +1,11 @@
 import { createHmac, randomBytes } from "crypto";
 import { isOwnListenerSelfHop, SELF_HOP_HEADER } from "@omniroute/open-sse/utils/selfHop.ts";
-import { timingSafeCompare } from "@/shared/utils/timingSafeCompare";
 import { getProcessStore, sharedSymbol } from "@/shared/utils/processSingleton";
 
-const ADMISSION_BYPASS_VALUE = "internal";
 const FINGERPRINT_KEY = "omniroute-admission-fingerprint-v1";
 
+// Descriptive marker an internal sub-request sends next to the process token. It is
+// never trusted on its own: any client can set it.
 export const ADMISSION_BYPASS_HEADER = "x-omniroute-admission-bypass";
 // Fork-only: a process-local proof that lets a self-loop which already carries a
 // valid API key prove admission-bypass authority without replacing Authorization.
@@ -28,9 +28,9 @@ export function resolveSessionId(request: Request): string {
 // operator hasn't set OMNIROUTE_API_KEY/ROUTER_API_KEY (#13679: the previous fallback
 // was the checked-in literal "sk_omniroute", a predictable shared secret anyone reading
 // the source could forge). Both the in-process caller (audioBridgeHelpers /
-// visionBridgeHelpers) and the verifiers (isInternalAdmissionBypass, API-key
-// validation) read this same value. It lives on globalThis because the proxy (Next
-// middleware bundle) and the route handlers load separate copies of this module.
+// visionBridgeHelpers) and the verifier (API-key validation) read this same value. It
+// lives on globalThis because the proxy (Next middleware bundle) and the route handlers
+// load separate copies of this module.
 const SELF_LOOP_SECRET_KEY = sharedSymbol("selfLoopSecret");
 const selfLoopStore = globalThis as unknown as Record<symbol, string | undefined>;
 
@@ -56,6 +56,14 @@ export function resolveSelfLoopBearer(): string {
   );
 }
 
+/**
+ * True only for a request this process sent to its own listener: our own fetches (#13593)
+ * and the internal sub-requests that also send ADMISSION_BYPASS_HEADER (the vision bridge
+ * describe call) carry the per-process token, held in memory only. The bypass header and
+ * any API key, the deployment env key (OMNIROUTE_API_KEY / ROUTER_API_KEY) included, are
+ * things a client can send, so neither vouches for the bypass (same rule as the internal
+ * test mark, #19292). The token compare is constant-time (isOwnListenerSelfHop).
+ */
 export function isInternalAdmissionBypass(request: Request): boolean {
   // #13593: our own fetch to this listener already holds the parent lease.
   if (isOwnListenerSelfHop(request.headers.get(SELF_HOP_HEADER))) return true;

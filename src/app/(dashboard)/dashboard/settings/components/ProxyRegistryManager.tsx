@@ -60,6 +60,7 @@ import {
   repairRelayResponseSchema,
   useProxyBulkImportLimit,
 } from "./proxyRegistryData";
+import Notice from "@/shared/components/Notice";
 
 export default function ProxyRegistryManager({
   onRedeployRelay,
@@ -637,7 +638,9 @@ export default function ProxyRegistryManager({
       <Card className="p-6">
         <div className="mb-4 flex flex-col gap-3">
           <div className="w-full min-w-0">
-            <h3 className="text-lg font-semibold">{t("title")}</h3>
+            <h3 className="ci-heading" data-size="lg">
+              {t("title")}
+            </h3>
             <p className="text-sm text-text-muted">{t("description")}</p>
           </div>
           <div className="w-full border-t border-border" aria-hidden="true" />
@@ -748,20 +751,14 @@ export default function ProxyRegistryManager({
         </div>
 
         {error && (
-          <div
-            role="alert"
-            className="mb-3 px-3 py-2 rounded border border-error/30 bg-error-bg text-sm text-error"
-          >
+          <Notice variant="critical" className="mb-3">
             {error}
-          </div>
+          </Notice>
         )}
         {relayTested !== null && relayAlive !== null && (
-          <div
-            role="status"
-            className="mb-3 px-3 py-2 rounded border border-border bg-bg-subtle text-xs text-text-muted"
-          >
+          <Notice className="mb-3">
             {t("relayProbeSummary", { tested: relayTested, alive: relayAlive })}
-          </div>
+          </Notice>
         )}
 
         {loading ? (
@@ -771,7 +768,7 @@ export default function ProxyRegistryManager({
         ) : items.length === 0 ? (
           <EmptyState icon="dns" title={t("noProxies")} />
         ) : (
-          <Table scrollbarLabel={t("title")}>
+          <Table scrollbarLabel={t("title")} scrollLabel={t("title")} variant="plain">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8">
@@ -854,7 +851,7 @@ export default function ProxyRegistryManager({
                         )}
                         {repairErrorById[item.id] && (
                           <span
-                            className="ml-1 text-[10px] text-error"
+                            className="ml-1 text-3xs text-error"
                             title={repairErrorById[item.id]}
                           >
                             {t("relayRepairError")}
@@ -870,10 +867,9 @@ export default function ProxyRegistryManager({
                         </Button>
                         <Button
                           size="sm"
-                          variant="ghost"
+                          variant="destructive-ghost"
                           icon="delete"
                           onClick={() => void handleDelete(item.id)}
-                          className="text-error"
                         >
                           {t("delete")}
                         </Button>
@@ -1238,7 +1234,8 @@ export default function ProxyRegistryManager({
           <Textarea
             aria-labelledby={bulkImportDescId}
             data-testid="proxy-registry-bulk-import-textarea"
-            className="font-mono text-xs leading-relaxed placeholder:whitespace-pre-wrap"
+            mono
+            className="leading-relaxed placeholder:whitespace-pre-wrap"
             rows={14}
             value={bulkImportText}
             placeholder={BULK_IMPORT_PLACEHOLDER}
@@ -1294,10 +1291,11 @@ export default function ProxyRegistryManager({
           {bulkImportParsedOnce && bulkImportParsed.length > 0 && (
             <Table
               scrollbarLabel={t("bulkImportTitle")}
-              containerClassName="max-h-48 overflow-y-auto"
-              className="text-xs"
+              maxHeight="12rem"
+              scrollLabel={t("bulkImportTitle")}
+              density="compact"
             >
-              <TableHeader className="sticky top-0">
+              <TableHeader>
                 <TableRow>
                   <TableHead>{t("tableName")}</TableHead>
                   <TableHead>{t("labelType")}</TableHead>
@@ -1311,7 +1309,7 @@ export default function ProxyRegistryManager({
               <TableBody>
                 {bulkImportParsed.map((entry, idx) => (
                   <TableRow key={idx}>
-                    <TableCell className="font-medium text-text-main">{entry.name}</TableCell>
+                    <TableCell className="text-text-main">{entry.name}</TableCell>
                     <TableCell>
                       <Badge size="sm">{entry.type}</Badge>
                     </TableCell>
@@ -1343,16 +1341,13 @@ export default function ProxyRegistryManager({
 
           {/* Import result */}
           {bulkImportResult && (
-            <div
-              role="status"
-              className="px-3 py-2 rounded border border-success/30 bg-success-bg text-sm text-success"
-            >
+            <Notice variant="success">
               {t("bulkImportSuccess", {
                 created: bulkImportResult.created,
                 updated: bulkImportResult.updated,
                 failed: bulkImportResult.failed,
               })}
-            </div>
+            </Notice>
           )}
 
           {/* Actions */}

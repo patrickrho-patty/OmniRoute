@@ -22,6 +22,7 @@ import { compressAggressive } from "./aggressive.ts";
 import { ultraCompress, ultraCompressHeuristic } from "./ultra.ts";
 import { createCompressionStats } from "./stats.ts";
 import { registerBuiltinCompressionEngines } from "./engines/index.ts";
+import { applyCcrProtocolInstruction } from "./engines/ccr/protocolInstruction.ts";
 import { getCompressionEngine, getEngineEntry } from "./engines/registry.ts";
 import { applyRtkCompression } from "./engines/rtk/index.ts";
 import { applyOmniglyphSingleMode } from "./engines/omniglyphSingleMode.ts";
@@ -1075,7 +1076,77 @@ function finalizeStackedResult(
       return true;
     });
   }
-  return { body: currentBody, compressed, stats };
+=======
+
+  // T02 / H1 / #6480: honest aggregate inflation guard, gated on the loop-level `compressed`
+  // flag so a pipeline where nothing ever advanced isn't mislabeled as a reverted fallback.
+  // See `applyStackedInflationGuard` in `pipelineGuards.ts` for the full rationale.
+  // The marker-protocol note is added only AFTER the guard (see withMarkerProtocolNote).
+  return withMarkerProtocolNote(
+    applyStackedInflationGuard(originalBody, currentBody, compressed, stats)
+  );
+}
+
+/**
+ * Marker-protocol post-pass (#8033), applied by `finalizeStackedResult` for the sync +
+ * async stacked runners: after every engine, the hard budget and the inflation guard,
+ * one leading system note explains any `[CCR retrieve hash=...]` / `[dedup:ref sha=...]`
+ * marker left in the final body (idempotent: a replayed prior note carrying the sentinel
+ * suppresses a second). The note is a protocol explanation, not a compression, so it runs
+ * AFTER the guard: its fixed size must never count against the inflation guard (on a
+ * small body the guard would otherwise revert the very compression the note explains),
+ * and the hard budget can never drop it. Stats describe the compression alone. When the
+ * guard reverted, only markers already in the original body are explained.
+ */
+function withMarkerProtocolNote(result: CompressionResult): CompressionResult {
+  const applied = applyCcrProtocolInstruction(result.body);
+  return applied.injected ? { ...result, body: applied.body } : result;
+}
+
+// ── Shared per-step helpers (used by the sync + async stacked loops; keep them in lockstep) ──
+
+interface StepCommitCtx {
+  bailout?: BailoutConfig;
+  breakerOn: boolean;
+  breaker: PipelineCircuitBreakerConfig;
+  fidelityGate?: FidelityGateConfig;
+}
+
+/** Failure path: record the breaker failure (when on) + keep the verbatim body, surfacing it in telemetry. */
+function recordStepFailure(
+  acc: StackAccumulator,
+  engineId: string,
+  err: unknown,
+  ctx: StepCommitCtx
+): void {
+  if (ctx.breakerOn) recordEngineFailure(engineId, ctx.breaker);
+  acc.validationErrors.add(
+    `${engineId}: bailed out — ${err instanceof Error ? err.message : String(err)}`
+  );
+  acc.fallbackApplied = true;
+}
+
+/**
+ * Success path: record the breaker success (when on), merge telemetry, and decide whether to
+ * advance `currentBody`. Advance rule: TV1 bail-out uses min-gain (`decideStep`); otherwise the
+ * legacy `result.compressed`. Returns the (possibly unchanged) body + whether it advanced.
+ */
+function commitStepResult(
+  acc: StackAccumulator,
+  step: CompressionPipelineStep,
+  result: CompressionResult,
+  currentBody: Record<string, unknown>,
+  ctx: StepCommitCtx
+): { body: Record<string, unknown>; advanced: boolean } {
+  if (ctx.breakerOn) recordEngineSuccess(step.engine, ctx.breaker);
+  mergeStackStep(acc, step.engine, result);
+  const advance = ctx.bailout?.enabled
+    ? decideStep(result, ctx.bailout).advance
+    : result.compressed;
+  if (advance && gateAdvance(result, currentBody, ctx.fidelityGate, acc, step.engine)) {
+    return { body: result.body, advanced: true };
+  }
+  return { body: currentBody, advanced: false };
 }
 
 export function applyStackedCompression(

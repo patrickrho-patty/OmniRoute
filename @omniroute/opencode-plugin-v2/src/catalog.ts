@@ -8,6 +8,13 @@ import {
   type ProviderResolve,
 } from "./provider-filter.js";
 import type { LegacyModel } from "./legacy-model.js";
+import {
+  catalogOrderComparator,
+  DEFAULT_CATALOG_ORDER,
+  toOrderEntry,
+  type CatalogOrderEntry,
+  type CatalogOrderSpec,
+} from "./catalog-order.js";
 import { isUserComboRow, usesModelsComboSource, type CombosSource } from "./combos-source.js";
 import {
   comboLookupName,
@@ -36,11 +43,13 @@ import {
   type OmniRouteRawModelEntry,
   applyEnrichment,
   buildCanonicalToAliasMap,
+  buildModelDisplayName,
   canonicalDedupSet,
   countFreeTierMatch,
   createLogger,
   defaultOmniRouteEnrichmentFetcher,
   defaultOmniRouteProvidersFetcher,
+  disambiguateDisplayNames,
   ensureV1Suffix,
   isUsableCombo,
   isUsableRawModelId,
@@ -48,6 +57,7 @@ import {
   mapComboToModelV2,
   mapRawModelToModelV2,
   usableProviderAliasSet,
+  withInferredFreeLabel,
 } from "./shared/index.js";
 import {
   compileModelListFilter,
@@ -107,7 +117,7 @@ export interface ResolvedOptions extends FreeOptions {
   logLevel?: LogLevel;
   startupDebug?: boolean;
   modelCacheTtlMs: number;
-  /** v1 parity: prefix the display name with the upstream provider label. */
+  /** Whether to render the editor in a trailing parenthesis (default true). */
   providerTag?: boolean;
   displayName?: string;
   apiFormat?: ApiFormatV2;
@@ -126,6 +136,11 @@ export interface ResolvedOptions extends FreeOptions {
   toolsOnly?: boolean;
   visionOnly?: boolean;
   enrichment?: OmniRouteEnrichmentMap | boolean;
+  /**
+   * Ordered catalog sort criteria; each with an optional direction. Absent or
+   * empty applies the default chain `provider → name → recency → id`.
+   */
+  modelOrder?: readonly CatalogOrderSpec[];
   /**
    * Per-provider showcase size. Absent means the catalog default
    * (`SHOWCASE_PER_OWNER`); direct callers keep working without it.
@@ -707,6 +722,7 @@ async function publishCombos(
         continue;
       }
       const mapped = mapComboToModelV2(combo, memberEntries, X, opts.baseURL, opts.apiFormat);
+      mapped.name = buildModelDisplayName({ rawId: mapped.name, isCombo: true });
       const comboEnrichment = lookupEnrichment(combo.id, enrichment, canonicalToAlias);
       applyEnrichment(mapped, comboEnrichment, {
         isCombo: true,
@@ -731,7 +747,7 @@ async function publishCombos(
             } satisfies CapabilityPresetFlags)
       )
         continue;
-      if (comboInferred) mapped.name += INFERRED_FREE_LABEL;
+      if (comboInferred) mapped.name = withInferredFreeLabel(mapped.name, INFERRED_FREE_LABEL);
       const mid = mapped.id.startsWith(X + "/") ? mapped.id.slice(X.length + 1) : mapped.id;
       const key = X + "/" + mid;
       if (publishedKeys.has(key)) {
@@ -959,6 +975,10 @@ export async function collectCatalog(
       baseURL: opts.baseURL,
       apiFormat: opts.apiFormat,
     });
+    if (servedCombo) {
+      // From the raw id: the mapper's name already carries the provider prefix.
+      mapped.name = buildModelDisplayName({ rawId: entry.id, isCombo: true });
+    }
     const enrichmentEntry = lookupEnrichment(
       entry.id,
       enrichment,
@@ -966,7 +986,9 @@ export async function collectCatalog(
       entry.owned_by
     );
     applyEnrichment(mapped, enrichmentEntry, {
-      providerTag: opts.providerTag !== false,
+      isCombo: servedCombo,
+      rawModelId: entry.id,
+      providerTag: opts.providerTag,
     });
     const inferred = isInferredFree(entry.id, enrichmentEntry, opts, enrichment, canonicalToAlias);
     if (
@@ -979,7 +1001,7 @@ export async function collectCatalog(
     )
       continue;
     afterPresets += 1;
-    if (inferred) mapped.name += INFERRED_FREE_LABEL;
+    if (inferred) mapped.name = withInferredFreeLabel(mapped.name, INFERRED_FREE_LABEL);
     const mid = mapped.id.startsWith(X + "/") ? mapped.id.slice(X.length + 1) : mapped.id;
     const key = X + "/" + mid;
     collected.set(key, mapped);
@@ -1013,7 +1035,8 @@ export async function collectCatalog(
         entry.owned_by
       );
       applyEnrichment(mapped, restoreEnrichment, {
-        providerTag: opts.providerTag !== false,
+        rawModelId: entry.id,
+        providerTag: opts.providerTag,
       });
       const restoreInferred = isInferredFree(
         entry.id,
@@ -1031,7 +1054,7 @@ export async function collectCatalog(
         } satisfies CapabilityPresetFlags)
       )
         continue;
-      if (restoreInferred) mapped.name += INFERRED_FREE_LABEL;
+      if (restoreInferred) mapped.name = withInferredFreeLabel(mapped.name, INFERRED_FREE_LABEL);
       const mid = mapped.id.startsWith(X + "/") ? mapped.id.slice(X.length + 1) : mapped.id;
       const key = X + "/" + mid;
       collected.set(key, mapped);
@@ -1078,7 +1101,19 @@ export async function collectCatalog(
       `[omniroute-v2] catalog refresh: served=${rawModels.length} default=${afterDefaultView} presets=${afterPresets} published=${published} unmatched-free=${freeUnmatched}`
     );
   };
+  // Same-named entries stay distinguishable: one disambiguation pass over
+  // the published set renames collisions with a route suffix. Local to
+  // this collect call — nothing survives the return.
+  const applyNameDisambiguation = (): void => {
+    const renamed = disambiguateDisplayNames(
+      [...collected].map(([id, entry]) => ({ id, name: entry.name }))
+    );
+    for (const [id, name] of renamed) {
+      collected.get(id)!.name = name;
+    }
+  };
   if (comboResult === undefined) {
+    applyNameDisambiguation();
     emitSummary(collected.size);
     return { entries: collected, counts: { models: modelCount, combos: 0 } };
   }
@@ -1094,6 +1129,7 @@ export async function collectCatalog(
     warnProviderMatchedNothing(providerFilter, warnedCombos, log);
   }
 
+  applyNameDisambiguation();
   emitSummary(collected.size);
   return {
     entries: collected,
@@ -1122,7 +1158,14 @@ export function buildProviderPayload(
     integrationID: X,
   } as unknown as StableProviderInfo;
   const models: StableModelInfo[] = [];
-  for (const [key, legacy] of collected.entries) {
+  const specs =
+    opts.modelOrder && opts.modelOrder.length > 0 ? opts.modelOrder : DEFAULT_CATALOG_ORDER;
+  const ordered: Array<{ key: string; legacy: LegacyModel; entry: CatalogOrderEntry }> = [
+    ...collected.entries,
+  ].map(([key, legacy]) => ({ key, legacy, entry: toOrderEntry(key, legacy) }));
+  const compare = catalogOrderComparator(specs);
+  ordered.sort((a, b) => compare(a.entry, b.entry));
+  for (const { key, legacy } of ordered) {
     const slash = key.indexOf("/");
     const bareId = slash > 0 ? key.slice(slash + 1) : legacy.id;
     models.push(legacyToStable(X, bareId, legacy, opts.apiKey, opts.baseURL));

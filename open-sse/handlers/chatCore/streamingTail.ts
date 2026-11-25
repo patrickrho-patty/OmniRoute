@@ -1,3 +1,4 @@
+import { readStreamBuyerCost } from "../../utils/buyerCostMicro.ts";
 import { inheritEmptyTurnPolicy } from "../../utils/emptyTurnPolicy.ts";
 import { getCodexClientSessionId } from "../../config/codexIdentity.ts";
 import { modelAfterFamilyFallback } from "../../services/modelFamilyFallbackPolicy.ts";
@@ -20,12 +21,14 @@ import { clearPostOutputFailureStreak } from "../../services/accountFallback/pos
 import { FORMATS } from "../../translator/formats.ts";
 import { needsTranslation } from "../../translator/index.ts";
 import { runEmptyTurnRetryLoop } from "./emptyTurnRetryLoop.ts";
+import { requestFollowsToolCalls } from "../../utils/emptyTurnRetry.ts";
 import { buildErrorBody } from "../../utils/error.ts";
 import {
   createPassthroughStreamWithLogger,
   createSSETransformStreamWithLogger,
 } from "../../utils/stream.ts";
 import * as streamFailure from "../../utils/streamFailureFinalization.ts";
+import { isCustomJsonProviderData } from "../../utils/customJson.ts";
 import { ensureStreamReadiness } from "../../utils/streamReadiness.ts";
 import { resolveStreamReadinessTimeout } from "../../utils/streamReadinessPolicy.ts";
 import { maybeFallbackAfterReadiness } from "./streamReadinessFallback.ts";
@@ -58,6 +61,7 @@ import { storeStreamingSemanticCacheResponse } from "./streamingSemanticCacheSto
 import { recordFinalInputCalibration } from "./contextEstimation.ts";
 import { emitStreamingRoutingEvent } from "./streamingRoutingEvent.ts";
 import { recordStreamingUsageStats } from "./streamingUsageStats.ts";
+import { resolveSessionTurn } from "./agentContext.ts";
 import { maybeSyncClaudeExtraUsageState } from "./telemetryHelpers.ts";
 import {
   getExecutorTimeoutMs,
@@ -72,6 +76,10 @@ import { isRegisteredFeatureFlagEnabled } from "../../utils/registeredFeatureFla
 import { isEmptyStreamSiblingRecoveryEnabled } from "../../services/streamRecovery.ts";
 import { getProviderCredentials } from "@/sse/services/auth";
 import { resolveCredentialGate } from "@/lib/streamingCredentialTransform";
+import {
+  runWithCodexResponseFence,
+  inheritCodexResponseFence,
+} from "../../services/codexAccount/fences.ts";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deps bag mirrors the barrel closure
 type Loose = any;
@@ -114,6 +122,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
     customToolNames,
     echoModel,
     effectiveModel,
+    agentContext,
     endpointPath,
     executeProviderRequest,
     executor,
@@ -132,7 +141,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
     model,
     modelInfo,
     onRequestSuccess,
-    onStreamFailure,
+    onStreamFailure: unfencedStreamFailure,
     pattyDecision,
     pendingConnId,
     pendingRequestId,
@@ -163,6 +172,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
     traceId,
     translatedBody,
     videoBridgeObserved,
+    piiTokensMinted,
   } = deps;
   let providerResponse, finalBody, effectiveServiceTier;
   providerResponse = deps.providerResponse;
@@ -181,7 +191,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
   // upstream body and synthesize an equivalent OpenAI SSE stream so the
   // streaming pipeline (and the client) get a valid stream.
   const jsonConversion = await convertJsonBodyWithinCap(providerResponse, { log, provider, model });
-  providerResponse = jsonConversion.response;
+  providerResponse = inheritCodexResponseFence(providerResponse, jsonConversion.response);
   const streamReadinessPolicy = resolveStreamReadinessTimeout({
     baseTimeoutMs: STREAM_READINESS_TIMEOUT_MS,
     provider,
@@ -214,6 +224,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
       provider,
       model,
       log,
+      signal: streamController.signal,
       // #16438 opt-in: briefly probe Claude/Codex streams for usable output after the first
       // lifecycle event so an empty turn can be retried on a sibling connection.
       contentProbeMs:
@@ -297,7 +308,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
       carry: { onPipelineStreamError, onClientDisconnectFinalize, turnExecutionHandedOffToStream },
     };
   }
-  providerResponse = streamReadiness.response;
+  providerResponse = inheritCodexResponseFence(providerResponse, streamReadiness.response);
 
   // Flush-empty retry (opt-in `FLUSH_EMPTY_RETRY_ENABLED`, default off): when the
   // upstream turn carries no usable content (reasoning-only 200, or a
@@ -323,7 +334,14 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
   if (stream && providerResponse.ok && providerResponse.body) {
     let flushEmptyRetryArmed = false;
     try {
-      flushEmptyRetryArmed = isRegisteredFeatureFlagEnabled("FLUSH_EMPTY_RETRY_ENABLED");
+      // #20092: post-tool continuations arm the retry by default — an empty
+      // continuation silently breaks an agentic loop, and the probe cost only
+      // lands on turns that already carry submitted tool results.
+      // A custom JSON business call may already have taken effect: an empty reply is final.
+      flushEmptyRetryArmed =
+        (isRegisteredFeatureFlagEnabled("FLUSH_EMPTY_RETRY_ENABLED") ||
+          requestFollowsToolCalls(body)) &&
+        !isCustomJsonProviderData(credentials?.providerSpecificData);
     } catch {
       flushEmptyRetryArmed = false;
     }
@@ -363,8 +381,14 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
   }
 
   // Notify success - caller can clear error status if needed
+  // Freeze the final upstream response's owner before constructing asynchronous callbacks.
+  const failureResponseOwner = providerResponse;
+  const onStreamFailure = unfencedStreamFailure
+    ? (...args: unknown[]) =>
+        runWithCodexResponseFence(failureResponseOwner, () => unfencedStreamFailure(...args))
+    : undefined;
   if (onRequestSuccess) {
-    await onRequestSuccess();
+    await runWithCodexResponseFence(failureResponseOwner, () => onRequestSuccess(), true);
   }
 
   const responseModel = modelAfterFamilyFallback(model, currentModel, effectiveModel, finalBody);
@@ -379,6 +403,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
     isCombo, // #14116: foreign-account quota-header strip (only meaningful when true)
     requestedConnectionId: forcedConnectionId || null,
     selectedConnectionId: credentials?.connectionId ?? null,
+    apiKeyInfo, // per-key upstream anthropic-ratelimit-* header policy (#14862)
   });
   if (pattyDecision) {
     Object.assign(responseHeaders, pattyHeaders(pattyDecision as PattyDecision));
@@ -411,6 +436,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
   const onStreamComplete = ({
     status: streamStatus,
     usage: streamUsage,
+    buyerCostMicro,
     responseBody: streamResponseBody,
     providerPayload,
     clientPayload,
@@ -558,6 +584,15 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
       comboStrategy,
       endpoint: endpointPath,
       cpaAuthIndex: readCpaAuthIndex(providerResponse),
+      agentContext,
+      sessionTurn: resolveSessionTurn({
+        clientRawRequest,
+        body,
+        responses: [clientPayload?.summary, streamResponseBody],
+        streamStatus: normalizedStreamStatus,
+        agentContext,
+        apiKeyInfo,
+      }),
       partialUsage: streamPartialUsage,
       emittedOutput: streamEmittedOutput(transformStream),
     });
@@ -592,6 +627,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
       // A stream that ended early (499 / mid-stream failure) has no `usage`, but its call log
       // still shows the tokens already generated (estimates are flagged via `estimated`).
       tokens: streamUsage || streamPartialUsage || {},
+      buyerCostMicro,
       responseBody: streamResponseBody ?? undefined,
       providerRequest: finalBody || translatedBody,
       providerResponse: providerPayload,
@@ -652,6 +688,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
         memoryOwnerId,
         memorySettings,
         videoBridgeObserved,
+        piiTokensMinted,
         pipelineSessionId,
         requestBody: body as Record<string, unknown>,
         responseBody: (streamResponseBody ?? null) as Record<string, unknown> | null,
@@ -673,6 +710,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
       streamUsage,
       log,
       videoTranscriptSensitive: videoBridgeObserved,
+      piiTokensMinted,
     });
 
     // Plugin onStreamComplete hook — fire-and-forget, fail-open (#9571)
@@ -698,6 +736,7 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
     onStreamFailure,
     hasEmittedOutput: () => streamEmittedOutput(transformStream),
     readPartialUsage: () => readStreamPartialUsage(transformStream),
+    readBuyerCostMicro: () => readStreamBuyerCost(transformStream),
   });
   const handleStreamFailure = streamFailureFinalizers.handleStreamFailure;
   onPipelineStreamError = streamFailureFinalizers.onPipelineStreamError;
@@ -905,11 +944,14 @@ export async function runStreamingTail(deps: StreamingTailDeps) {
     response: { status: 200, streamed: true },
   });
 
-  const response = inheritEmptyTurnPolicy(
+  const response = inheritCodexResponseFence(
     providerResponse,
-    new Response(clientFacingStream, {
-      headers: responseHeaders,
-    })
+    inheritEmptyTurnPolicy(
+      providerResponse,
+      new Response(clientFacingStream, {
+        headers: responseHeaders,
+      })
+    )
   );
   turnExecutionHandedOffToStream = true;
   return {

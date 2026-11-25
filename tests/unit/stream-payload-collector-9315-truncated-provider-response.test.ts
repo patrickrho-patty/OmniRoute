@@ -20,7 +20,7 @@ const collector = await import("../../open-sse/utils/streamPayloadCollector.ts")
 
 test("buildStreamSummaryFromEvents loses tool_calls and finish_reason when collector caps are exceeded (#9315)", () => {
   const maxEvents = 50;
-  const c = collector.createStructuredSSECollector({ maxEvents });
+  const c = collector.createStructuredSSECollector({ maxEvents, retainEvents: true });
   // Fill the collector with 48 content delta chunks (leaving 2 event slots)
   for (let i = 0; i < 48; i++) {
     c.push({
@@ -146,7 +146,7 @@ test("buildStreamSummaryFromEvents loses tool_calls and finish_reason when colle
 test("providerPayload built from responseBody retains all data regardless of collector truncation", () => {
   // Simulate a small collector cap that causes heavy truncation
   const maxEvents = 3;
-  const c = collector.createStructuredSSECollector({ maxEvents });
+  const c = collector.createStructuredSSECollector({ maxEvents, retainEvents: true });
 
   c.push({
     id: "chatcmpl-test",

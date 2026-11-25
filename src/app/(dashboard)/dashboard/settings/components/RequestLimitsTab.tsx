@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Card, Input } from "@/shared/components";
+import { Button, Card, NumberInput } from "@/shared/components";
 import {
   CLAUDE_LARGE_MESSAGES_MODES,
   DEFAULT_CLAUDE_LARGE_MESSAGES_MAX_MB,
@@ -20,8 +20,7 @@ import {
   type ClaudeLargeMessagesMode,
 } from "@/shared/constants/bodySize";
 import { useTranslations } from "next-intl";
-import { parseIntegerOrNull } from "@/shared/utils/envParsing";
-
+import { parseIntegerOrNull } from "@/shared/utils/envP
 type Message = { type: "success" | "error"; text: string };
 
 interface SettingsResponse {
@@ -266,17 +265,18 @@ export default function RequestLimitsTab() {
     <Card title={t("requestBodyLimitTitle")} subtitle={t("requestBodyLimitDescription")}>
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-end gap-3">
-          <Input
+          <NumberInput
             id="request-body-limit-mb"
-            type="number"
             label={t("requestBodyLimitInputLabel")}
+            suffix="MB"
             min={MIN_REQUEST_BODY_LIMIT_MB}
             max={MAX_REQUEST_BODY_LIMIT_MB}
+            // The screen shows its own range error; the field does not replace the value.
+            clamp={false}
             step={1}
             value={bodyLimitValue}
             onChange={(event) => {
-              setBodyLimitValue(event.target.value);
-              setMessage(null);
+              setBodyLimitValue(event.target              setMessage(null);
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && dirty) void saveLimit();
@@ -285,7 +285,6 @@ export default function RequestLimitsTab() {
             className="w-40"
             disabled={loading || saving}
           />
-          <span className="pb-2.5 text-xs text-text-muted">MB</span>
           <Button
             size="sm"
             variant="primary"

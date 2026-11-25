@@ -288,19 +288,51 @@ function discoveryError(error: unknown, fallback: string): Error {
   return error instanceof Error ? error : new Error(fallback);
 }
 
-async function collectPageAssetCandidates(page: Page): Promise<string[]> {
-  const sources = await page.evaluate(() => ({
-    modulePreloadUrls: Array.from(
-      document.querySelectorAll<HTMLLinkElement>('link[rel="modulepreload"][href]'),
-      (link) => link.href
-    ),
-    resourceUrls: performance.getEntriesByType("resource").map((entry) => entry.name),
-  }));
-  const candidates = collectChatGptWebFirstPartyAssetCandidates(
+const NAVIGATION_RETRY_ATTEMPTS = 3;
+
+/**
+ * Playwright reports a frame replaced by a navigation with one of these two messages.
+ * Matched exactly: an unrelated failure such as "Navigation timeout of 30000 ms exceeded"
+ * is not a destroyed context and must surface as-is instead of being retried.
+ */
+function isExecutionContextLossError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Execution context was destroyed|Cannot find context with specified id/.test(message);
+}
+
+/**
+ * A legitimate ChatGPT redirect can replace the execution context between page load
+ * and a read-only page probe. Retry only that probe, once the new document has loaded;
+ * never replay a submitted chat turn and never bypass ChatGPT's content-security policy.
+ */
+async function evaluateAcrossNavigation<T>(page: Page, probe: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await probe();
+    } catch (error) {
+      if (!isExecutionContextLossError(error) || attempt >= NAVIGATION_RETRY_ATTEMPTS) {
+        throw error;
+      }
+      await page.waitForLoadState("domcontentloaded", { timeout: 4_000 }).catch(() => {});
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+}
+
+export async function collectPageAssetCandidates(page: Page): Promise<string[]> {
+  const sources = await evaluateAcrossNavigation(page, () =>
+    page.evaluate(() => ({
+      modulePreloadUrls: Array.from(
+        document.querySelectorAll<HTMLLinkElement>('link[rel="modulepreload"][href]'),
+        (link) => link.href
+      ),
+      resourceUrls: performance.getEntriesByType("resource").map((entry) => entry.name),
+    }))
+  );
+  return collectChatGptWebFirstPartyAssetCandidates(
     sources.resourceUrls,
     sources.modulePreloadUrls
   );
-  return candidates;
 }
 
 async function inspectFirstPartyAsset(
@@ -420,78 +452,152 @@ async function discoverFirstPartyModule(page: Page): Promise<FirstPartyModuleRes
   });
 }
 
-export function buildBridgeModuleSource(
+=======
+/** Keep only first-party chunk URLs, deduplicated and in page order. */
+function integrityCandidateChunkUrls(candidateAssetUrls: readonly string[]): string[] {
+  const accepted: string[] = [];
+  for (const candidate of candidateAssetUrls) {
+    try {
+      const url = requireChatGptAssetUrl(candidate);
+      if (!accepted.includes(url)) accepted.push(url);
+    } catch {
+      continue;
+    }
+  }
+  return accepted;
+}
+
+/**
+ * Resolve ChatGPT's Sentinel integrity module through the page's own Rspack runtime.
+ *
+ * The integrity factory is a webpack-style `(module, exports, require)` function whose
+ * `require` resolves minified module ids. Those ids are assigned per deployment: the uuid
+ * helper this factory calls already moved from `TI` to `DD`, and the module moved to a
+ * different chunk with it. Hand-instantiating the factory against a pinned id map
+ * therefore breaks on any chatgpt.com rebuild that reshuffles the module graph.
+ *
+ * The runtime chunk instead exports `__webpack_require__` with every loaded chunk's modules
+ * registered, so requiring the module through it executes ChatGPT's own code with ChatGPT's
+ * own ids — no id is pinned here and the factory's dependencies are never stubbed.
+ *
+ * Resolution stays lazy on purpose: the installer only registers the bridge, and the chunks
+ * are imported on the first turn that actually needs an integrity proof.
+ *
+ * Expects `names` (the discovered contract) and `importChunk(url)` in scope.
+ */
+export function buildChatGptWebIntegrityResolutionSource(
+  candidateAssetUrls: readonly string[]
+): string {
+  const chunkUrlsLiteral = JSON.stringify(integrityCandidateChunkUrls(candidateAssetUrls));
+  return [
+    `const integrityChunkUrls = ${chunkUrlsLiteral};`,
+    `const loadIntegrityModule = async () => {`,
+    `for (const url of integrityChunkUrls) {`,
+    `let namespace;`,
+    `try { namespace = await importChunk(url); } catch { continue; }`,
+    `const runtimeRequire = namespace?.__webpack_require__;`,
+    `if (typeof runtimeRequire !== "function") continue;`,
+    `let integrityModule;`,
+    `try { integrityModule = runtimeRequire(names.resolveIntegrityModule); } catch { integrityModule = undefined; }`,
+    `if (integrityModule) return integrityModule;`,
+    `}`,
+    `throw new Error("ChatGPT integrity module " + names.resolveIntegrityModule + " is not registered in the page runtime (" + integrityChunkUrls.length + " chunks loaded)");`,
+    `};`,
+    `const resolveIntegrity = async proof => {`,
+    `const integrityModule = await loadIntegrityModule();`,
+    `const handler = integrityModule[names.resolveIntegrity];`,
+    `if (typeof handler !== "function") throw new Error("ChatGPT integrity resolver is unavailable");`,
+    `return handler(proof);`,
+    `};`,
+  ].join("");
+}
+
+/**
+ * Build the in-page installer of the first-party bridge, as source text.
+ *
+ * ChatGPT's CSP rejects `blob:` module scripts, so the bridge is no longer injected as a
+ * module script: the installer runs through `page.evaluate` and loads only same-origin
+ * chatgpt.com chunks with a native dynamic `import()`, which `script-src 'self'` allows.
+ * No browser security setting is relaxed.
+ *
+ * It stays source text on purpose. A function literal handed to `page.evaluate` is
+ * serialized with `Function.prototype.toString` AFTER this file went through tsx/esbuild
+ * or the Next bundler, and those rewrite `import()` into an interop wrapper and inject
+ * helpers such as `__name` that do not exist inside chatgpt.com.
+ *
+ * Returns the source of `async (importChunk) => void`; the caller supplies the importer.
+ */
+export function buildChatGptWebBridgeInstallerSource(
   assetUrl: string,
   contract: ChatGptWebFirstPartyModuleContract
 ): string {
   const urlLiteral = JSON.stringify(requireChatGptAssetUrl(assetUrl));
   const contractLiteral = JSON.stringify(contract);
   const keyLiteral = JSON.stringify(FIRST_PARTY_BRIDGE_KEY);
-  if (contract.resolveIntegrity && contract.resolveIntegrityModule) {
-    return [
-      `import * as upstream from ${urlLiteral};`,
-      `const names = ${contractLiteral};`,
-      `const modules = upstream.__webpack_modules__;`,
-      `const factory = modules?.[names.resolveIntegrityModule];`,
-      `if (typeof factory !== "function") throw new Error("ChatGPT integrity module factory is unavailable");`,
-      `const exports = {};`,
-      `const requireShim = id => {`,
-      // The integrity module reaches for one helper: a fresh UUID generator. Its webpack
-      // module id is a per-build name, so a chatgpt.com deploy renames it and the bridge used
-      // to die with "Unsupported ChatGPT integrity dependency: <id>" even though nothing about
-      // the contract changed. Observed names: TI (through 2026-08), DD (2026-10). Keep the set
-      // explicit — a genuinely different module must still fail loudly instead of silently
-      // returning a UUID function and producing an invalid integrity token.
-      `if (${JSON.stringify(UUID_DEPENDENCY_IDS)}.includes(id)) return { a: () => crypto.randomUUID() };`,
-      `throw new Error("Unsupported ChatGPT integrity dependency: " + id +`,
-      `" (known UUID helpers: " + ${JSON.stringify(UUID_DEPENDENCY_IDS)}.join(", ") +`,
-      `"). A chatgpt.com build may have renamed it; add the new id to UUID_DEPENDENCY_IDS in open-sse/utils/chatgptWebFirstParty.ts.");`,
-      `};`,
-      `requireShim.d = (target, definitions) => {`,
-      `for (const [name, getter] of Object.entries(definitions)) {`,
-      `Object.defineProperty(target, name, { enumerable: true, get: getter });`,
-      `}`,
-      `};`,
-      `factory({}, exports, requireShim);`,
-      `const resolveIntegrity = exports[names.resolveIntegrity];`,
-      `if (typeof resolveIntegrity !== "function") throw new Error("ChatGPT integrity resolver is unavailable");`,
-      `const sessionPromise = fetch("/api/auth/session", { credentials: "include" }).then(async response => {`,
-      `if (!response.ok) throw new Error("ChatGPT browser session is unavailable");`,
-      `return response.json();`,
-      `});`,
-      `const requestClient = {`,
-      `safePost: async (path, options = {}) => {`,
-      `const headers = new Headers(options.additionalHeaders || {});`,
-      `const session = await sessionPromise;`,
-      `if (typeof session?.accessToken === "string" && session.accessToken) {`,
-      `headers.set("Authorization", "Bearer " + session.accessToken);`,
-      `}`,
-      `headers.set("Accept", "application/json");`,
-      `if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");`,
-      `const body = typeof options.requestBody === "string" ? options.requestBody : JSON.stringify(options.requestBody ?? {});`,
-      `const response = await fetch("/backend-api" + path, {`,
-      `method: "POST", credentials: "include", headers, body, signal: options.signal`,
-      `});`,
-      `if (options.skipJsonTransform) return response;`,
-      `if (!response.ok) throw new Error("ChatGPT request failed with status " + response.status);`,
-      `return response.json();`,
-      `}`,
-      `};`,
-      `window[${keyLiteral}] = { requestClient, resolveIntegrity };`,
-    ].join("");
-  }
+=======
+  const install =
+    contract.resolveIntegrity && contract.resolveIntegrityModule
+      ? [
+          buildChatGptWebIntegrityResolutionSource(candidateAssetUrls),
+          `const sessionPromise = fetch("/api/auth/session", { credentials: "include" }).then(async response => {`,
+          `if (!response.ok) throw new Error("ChatGPT browser session is unavailable");`,
+          `return response.json();`,
+          `});`,
+          `const requestClient = {`,
+          `safePost: async (path, options = {}) => {`,
+          `const headers = new Headers(options.additionalHeaders || {});`,
+          `const session = await sessionPromise;`,
+          `if (typeof session?.accessToken === "string" && session.accessToken) {`,
+          `headers.set("Authorization", "Bearer " + session.accessToken);`,
+          `}`,
+          `headers.set("Accept", "application/json");`,
+          `if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");`,
+          `const body = typeof options.requestBody === "string" ? options.requestBody : JSON.stringify(options.requestBody ?? {});`,
+          `const response = await fetch("/backend-api" + path, {`,
+          `method: "POST", credentials: "include", headers, body, signal: options.signal`,
+          `});`,
+          `if (options.skipJsonTransform) return response;`,
+          `if (!response.ok) throw new Error("ChatGPT request failed with status " + response.status);`,
+          `return response.json();`,
+          `}`,
+          `};`,
+          `root[${keyLiteral}] = { requestClient, resolveIntegrity };`,
+        ]
+      : [
+          // Legacy upstream export path. The URL was validated as an exact chatgpt.com
+          // asset above, before it entered this source.
+          `const upstream = await importChunk(${urlLiteral});`,
+          `root[${keyLiteral}] = {`,
+          `finalizeRequirements: upstream[names.finalizeRequirements],`,
+          `proofManager: upstream[names.proofManager],`,
+          `turnstileManager: upstream[names.turnstileManager],`,
+          `requestClient: upstream[names.requestClient],`,
+          `buildSentinelHeaders: upstream[names.buildSentinelHeaders],`,
+          `resolveIntegrity: names.resolveIntegrity ? upstream[names.resolveIntegrity] : undefined`,
+          `};`,
+        ];
   return [
-    `import * as upstream from ${urlLiteral};`,
+    `async importChunk => {`,
+    `const root = globalThis;`,
+    `if (typeof root[${keyLiteral}] === "object" && root[${keyLiteral}] !== null) return;`,
     `const names = ${contractLiteral};`,
-    `window[${keyLiteral}] = {`,
-    `finalizeRequirements: upstream[names.finalizeRequirements],`,
-    `proofManager: upstream[names.proofManager],`,
-    `turnstileManager: upstream[names.turnstileManager],`,
-    `requestClient: upstream[names.requestClient],`,
-    `buildSentinelHeaders: upstream[names.buildSentinelHeaders],`,
-    `resolveIntegrity: names.resolveIntegrity ? upstream[names.resolveIntegrity] : undefined`,
-    `};`,
-  ].join("");
+    // A CSP `script-src` refusal is only observable inside the page: it does not surface
+    // as a failed request, and the rejected import() carries no reason (#14773). It is
+    // folded into the thrown message so it survives back across the evaluate boundary.
+    `let cspDetail = "";`,
+    `const onViolation = event => { if (!cspDetail) cspDetail = event.violatedDirective + " blocked " + event.blockedURI; };`,
+    `document.addEventListener("securitypolicyviolation", onViolation);`,
+    `try {`,
+    ...install,
+    `} catch (error) {`,
+    `await new Promise(resolve => setTimeout(resolve, 0));`,
+    `if (cspDetail) throw new Error("csp: " + cspDetail);`,
+    `throw error;`,
+    `} finally {`,
+    `document.removeEventListener("securitypolicyviolation", onViolation);`,
+    `}`,
+    `}`,
+  ].join("\n");
 }
 
 /// One captured explanation for why the bridge module did not load.
@@ -519,10 +625,10 @@ export function collectBridgeFailureSignals(
     failure: () => { errorText: string } | null;
   }) => {
     const url = request.url();
-    // Only the module asset and the blob wrapper matter here. The page keeps
-    // making its own requests while we wait, and an unrelated failure would be
-    // a misleading explanation rather than no explanation.
-    if (url !== assetUrl && !url.startsWith("blob:")) return;
+    // Only the module asset matters here. The page keeps making its own requests
+    // while we wait, and an unrelated failure would be a misleading explanation
+    // rather than no explanation.
+    if (url !== assetUrl) return;
     signals.push({
       kind: "requestfailed",
       detail: `${url} failed: ${request.failure()?.errorText ?? "unknown error"}`,
@@ -566,6 +672,40 @@ export function describeBridgeLoadFailure(signals: ChatGptWebBridgeFailureSignal
   return `${base}: ${ranked.kind}: ${ranked.detail}`;
 }
 
+/**
+ * Validate the saved browser context with ChatGPT's own session endpoint
+ * before inspecting signed-in JS modules. Only the ready flag leaves the page.
+ * A login redirect must be diagnosed, not disguised as a module-contract error.
+ */
+export async function assertChatGptWebSignedIn(page: Page): Promise<void> {
+  const session = await evaluateAcrossNavigation(page, () =>
+    page.evaluate(async () => {
+      const response = await fetch("/api/auth/session", {
+        credentials: "include",
+        signal: AbortSignal.timeout(8_000),
+      });
+      const result = response.ok ? await response.json().catch(() => undefined) : null;
+      return {
+        ready: typeof result?.user?.id === "string" && result.user.id.length > 0,
+        httpStatus: response.status,
+        unparsable: result === undefined,
+      };
+    })
+  );
+  if (session.ready) return;
+  // Only an answer that proves there is no signed-in user (a JSON session without a
+  // user, or 401) is a credential problem. A challenge page, a rate limit or an upstream
+  // error says nothing about the login and must stay a local bridge failure, so one
+  // transient response cannot put the account on cooldown.
+  const okStatus = session.httpStatus >= 200 && session.httpStatus < 300;
+  if (session.httpStatus === 401 || (okStatus && !session.unparsable)) {
+    throw new Error(
+      "ChatGPT Web credentials require an authenticated browser session; re-import a complete Playwright storage state"
+    );
+  }
+  throw new Error(`ChatGPT Web session check is unavailable (HTTP ${session.httpStatus})`);
+}
+
 async function ensureFirstPartyBridge(page: Page): Promise<void> {
   const ready = await page.evaluate((key) => {
     const root = globalThis as typeof globalThis & Record<string, unknown>;
@@ -573,58 +713,32 @@ async function ensureFirstPartyBridge(page: Page): Promise<void> {
   }, FIRST_PARTY_BRIDGE_KEY);
   if (ready) return;
 
+  await assertChatGptWebSignedIn(page);
   const { assetUrl, contract } = await discoverFirstPartyModule(page);
-  const moduleSource = buildBridgeModuleSource(assetUrl, contract);
+=======
+  // The integrity module is required through the page's own runtime, so whichever chunk
+  // exposes `__webpack_require__` has to travel with the bridge source.
+  const candidateAssetUrls =
+    contract.resolveIntegrity && contract.resolveIntegrityModule
+      ? await collectPageAssetCandidates(page)
+      : [];
+  const installerSource = buildChatGptWebBridgeInstallerSource(
+    assetUrl,
+    contract,
+    candidateAssetUrls
+  );
   const collected = collectBridgeFailureSignals(page, assetUrl);
   try {
-    await page.evaluate(
-      ({ bridgeKey, moduleSource: source }) =>
-        new Promise<void>((resolve, reject) => {
-          const root = globalThis as typeof globalThis & Record<string, unknown>;
-          if (typeof root[bridgeKey] === "object" && root[bridgeKey] !== null) {
-            resolve();
-            return;
-          }
-          // A CSP `script-src` refusal is only observable inside the page: it
-          // does not surface as a failed request, and `script.onerror` carries
-          // no reason. Captured here and folded into the rejection so it
-          // survives back across the evaluate boundary.
-          let cspDetail = "";
-          const violationListener = new AbortController();
-          document.addEventListener(
-            "securitypolicyviolation",
-            (event) => {
-              if (!cspDetail) {
-                cspDetail = `${event.violatedDirective} blocked ${event.blockedURI}`;
-              }
-            },
-            { signal: violationListener.signal }
-          );
-          const blobUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
-          const script = document.createElement("script");
-          script.type = "module";
-          script.src = blobUrl;
-          script.onload = () => {
-            URL.revokeObjectURL(blobUrl);
-            violationListener.abort();
-            if (typeof root[bridgeKey] === "object" && root[bridgeKey] !== null) resolve();
-            else reject(new Error("ChatGPT Web first-party bridge did not initialize"));
-          };
-          script.onerror = () => {
-            URL.revokeObjectURL(blobUrl);
-            violationListener.abort();
-            reject(new Error(cspDetail ? `csp: ${cspDetail}` : "no in-page reason"));
-          };
-          document.head.appendChild(script);
-        }),
-      { bridgeKey: FIRST_PARTY_BRIDGE_KEY, moduleSource }
-    );
+    // Evaluated as text so no bundler can rewrite the native import() (see the builder).
+    await page.evaluate(`(${installerSource})((url) => import(url))`);
   } catch (error) {
     const inPage = error instanceof Error ? error.message : String(error);
     const signals = [...collected.signals];
-    if (inPage.startsWith("csp: ")) {
-      signals.unshift({ kind: "csp", detail: inPage.slice("csp: ".length) });
-    } else if (inPage && inPage !== "no in-page reason") {
+    // Playwright prefixes the in-page message ("page.evaluate: Error: csp: ...").
+    const csp = /\bcsp: ([^\n]+)/.exec(inPage);
+    if (csp) {
+      signals.unshift({ kind: "csp", detail: csp[1]! });
+    } else if (inPage && !signals.some((signal) => signal.detail === inPage)) {
       signals.push({ kind: "pageerror", detail: inPage });
     }
     // `cause` keeps the original for anyone reading a stack; the message is what
