@@ -17,6 +17,7 @@ import type {
 import type { IncrementalContext } from "./incremental/types.ts";
 import { incrementalCompress } from "./incremental/incrementalCompressor.ts";
 import { applyLiteCompression } from "./lite.ts";
+import { applyStackedInflationGuard } from "./pipelineGuards.ts";
 import { cavemanCompress } from "./caveman.ts";
 import { compressAggressive } from "./aggressive.ts";
 import { ultraCompress, ultraCompressHeuristic } from "./ultra.ts";
@@ -1076,7 +1077,6 @@ function finalizeStackedResult(
       return true;
     });
   }
-=======
 
   // T02 / H1 / #6480: honest aggregate inflation guard, gated on the loop-level `compressed`
   // flag so a pipeline where nothing ever advanced isn't mislabeled as a reverted fallback.
@@ -1101,52 +1101,6 @@ function finalizeStackedResult(
 function withMarkerProtocolNote(result: CompressionResult): CompressionResult {
   const applied = applyCcrProtocolInstruction(result.body);
   return applied.injected ? { ...result, body: applied.body } : result;
-}
-
-// ── Shared per-step helpers (used by the sync + async stacked loops; keep them in lockstep) ──
-
-interface StepCommitCtx {
-  bailout?: BailoutConfig;
-  breakerOn: boolean;
-  breaker: PipelineCircuitBreakerConfig;
-  fidelityGate?: FidelityGateConfig;
-}
-
-/** Failure path: record the breaker failure (when on) + keep the verbatim body, surfacing it in telemetry. */
-function recordStepFailure(
-  acc: StackAccumulator,
-  engineId: string,
-  err: unknown,
-  ctx: StepCommitCtx
-): void {
-  if (ctx.breakerOn) recordEngineFailure(engineId, ctx.breaker);
-  acc.validationErrors.add(
-    `${engineId}: bailed out — ${err instanceof Error ? err.message : String(err)}`
-  );
-  acc.fallbackApplied = true;
-}
-
-/**
- * Success path: record the breaker success (when on), merge telemetry, and decide whether to
- * advance `currentBody`. Advance rule: TV1 bail-out uses min-gain (`decideStep`); otherwise the
- * legacy `result.compressed`. Returns the (possibly unchanged) body + whether it advanced.
- */
-function commitStepResult(
-  acc: StackAccumulator,
-  step: CompressionPipelineStep,
-  result: CompressionResult,
-  currentBody: Record<string, unknown>,
-  ctx: StepCommitCtx
-): { body: Record<string, unknown>; advanced: boolean } {
-  if (ctx.breakerOn) recordEngineSuccess(step.engine, ctx.breaker);
-  mergeStackStep(acc, step.engine, result);
-  const advance = ctx.bailout?.enabled
-    ? decideStep(result, ctx.bailout).advance
-    : result.compressed;
-  if (advance && gateAdvance(result, currentBody, ctx.fidelityGate, acc, step.engine)) {
-    return { body: result.body, advanced: true };
-  }
-  return { body: currentBody, advanced: false };
 }
 
 export function applyStackedCompression(

@@ -82,7 +82,6 @@ describe("migrationRunner/constants — exact small-table snapshots", () => {
 
 describe("migrationRunner/constants — large-table integrity", () => {
   // Fork: 124 upstream entries + 5 fork-only patty_settlement_outbox rehomes (164/187/206/223/228 -> 242).
-=======
   it("RENAMED_MIGRATION_COMPATIBILITY has 129 well-formed entries", () => {
     assert.equal(RENAMED_MIGRATION_COMPATIBILITY.length, 129);
     assert.deepEqual(
@@ -337,8 +336,8 @@ describe("migrationRunner/constants — large-table integrity", () => {
     );
   });
 
-  it("name-locks every legacy patty_settlement_outbox slot to canonical migration 242", () => {
-    // Fork-only migration, rehomed five times (164 → 187 → 206 → 223 → 228 → 242) as
+  it("name-locks every legacy patty_settlement_outbox slot to canonical migration 20261125060000", () => {
+    // Fork-only migration, rehomed five times (164 → 187 → 206 → 223 → 228 → 20261125060000) as
     // upstream took each slot in the v3.8.51/v3.8.52/v3.8.53/v3.8.54/v3.8.55 syncs.
     // 242 sits above the frozen legacy numeric set (241), so no future upstream numeric
     // migration can take it.
@@ -349,7 +348,7 @@ describe("migrationRunner/constants — large-table integrity", () => {
       ["164", "187", "206", "223", "228"].map((fromVersion) => ({
         fromVersion,
         fromName: "patty_settlement_outbox",
-        toVersion: "242",
+        toVersion: "20261125060000",
         toName: "patty_settlement_outbox",
       }))
     );

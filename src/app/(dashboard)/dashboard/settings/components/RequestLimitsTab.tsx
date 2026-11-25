@@ -20,7 +20,7 @@ import {
   type ClaudeLargeMessagesMode,
 } from "@/shared/constants/bodySize";
 import { useTranslations } from "next-intl";
-import { parseIntegerOrNull } from "@/shared/utils/envP
+import { parseIntegerOrNull } from "@/shared/utils/envParsing";
 type Message = { type: "success" | "error"; text: string };
 
 interface SettingsResponse {
@@ -276,7 +276,8 @@ export default function RequestLimitsTab() {
             step={1}
             value={bodyLimitValue}
             onChange={(event) => {
-              setBodyLimitValue(event.target              setMessage(null);
+              setBodyLimitValue(event.target.value);
+              setMessage(null);
             }}
             onKeyDown={(event) => {
               if (event.key === "Enter" && dirty) void saveLimit();

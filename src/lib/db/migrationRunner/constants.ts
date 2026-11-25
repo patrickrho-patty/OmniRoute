@@ -574,7 +574,7 @@ export const RENAMED_MIGRATION_COMPATIBILITY = [
     // freeing 164 for the canonical retirement migration.
     fromVersion: "164",
     fromName: "patty_settlement_outbox",
-    toVersion: "242",
+    toVersion: "20261125060000",
     toName: "patty_settlement_outbox",
   },
   {
@@ -583,7 +583,7 @@ export const RENAMED_MIGRATION_COMPATIBILITY = [
     // settlement outbox moved on to 206.
     fromVersion: "187",
     fromName: "patty_settlement_outbox",
-    toVersion: "242",
+    toVersion: "20261125060000",
     toName: "patty_settlement_outbox",
   },
   {
@@ -593,7 +593,7 @@ export const RENAMED_MIGRATION_COMPATIBILITY = [
     // 222_entra_sso_identities).
     fromVersion: "206",
     fromName: "patty_settlement_outbox",
-    toVersion: "242",
+    toVersion: "20261125060000",
     toName: "patty_settlement_outbox",
   },
   {
@@ -603,7 +603,7 @@ export const RENAMED_MIGRATION_COMPATIBILITY = [
     // 227_quota_recovery_due_cover).
     fromVersion: "223",
     fromName: "patty_settlement_outbox",
-    toVersion: "242",
+    toVersion: "20261125060000",
     toName: "patty_settlement_outbox",
   },
   {
@@ -617,7 +617,7 @@ export const RENAMED_MIGRATION_COMPATIBILITY = [
     // (its version is already in the ledger).
     fromVersion: "228",
     fromName: "patty_settlement_outbox",
-    toVersion: "242",
+    toVersion: "20261125060000",
     toName: "patty_settlement_outbox",
   },
   {

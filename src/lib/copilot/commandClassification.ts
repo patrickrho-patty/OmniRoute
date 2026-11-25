@@ -36,7 +36,6 @@ const CLASSIFICATION_RULES: ClassificationRule[] = [
       /\b(?:set|create|add|update|config\s+set|config\s+unset|providers?\s+add|keys?\s+create|keys?\s+revoke|settings?\s+update)\b/i,
     category: "mutating",
     reason: "This operation changes configuration or creates resources.",
-=======
   },
 ];
 

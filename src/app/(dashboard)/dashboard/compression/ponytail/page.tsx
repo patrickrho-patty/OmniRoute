@@ -56,7 +56,7 @@ function StatCard({
         <Icon name={icon} size={18} />
         {label}
       </div>
-      <div className="text-2xl font-bold text-text">{value}</div>
+      <div className="text-2xl font-semibold text-text">{value}</div>
       {sub && <div className="text-xs text-text-muted">{sub}</div>}
     </div>
   );
@@ -103,7 +103,7 @@ export default function PonytailHistoryPage() {
     <div className="flex flex-col gap-6 p-1">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold text-text flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-text flex items-center gap-2">
             <Icon name="content_cut" />
             Ponytail
           </h1>

@@ -5,7 +5,8 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Patty",
     short_name: "Patty",
-    description: "Patty — where AI becomes everyone's super    start_url: "/dashboard",
+    description: "Patty — where AI becomes everyone's superpower.",
+    start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     orientation: "any",

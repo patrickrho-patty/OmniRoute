@@ -8,7 +8,6 @@ import { invalidateDbCache } from "./readCache";
 
 export type NumericModelCapabilityOverrideKey =
   "max_input_tokens" | "max_output_tokens" | "max_token";
-=======
 
 export type BooleanModelCapabilityOverrideKey =
   "structured_output" | "tool_calling" | "vision" | "attachment" | "temperature";

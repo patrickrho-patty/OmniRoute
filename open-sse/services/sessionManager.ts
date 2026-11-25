@@ -42,11 +42,10 @@ const sessions = new Map<string, SessionEntry>();
 // Hard cap on active sessions to prevent memory exhaustion
 const MAX_SESSIONS = 200;
 
-=======
 // Auto-cleanup sessions older than the TTL (15 minutes by default, reduced from 30).
 // Operators with long agent sessions can raise it via OMNIROUTE_SESSION_TTL_MIN
 // without a rebuild; invalid values (blank/NaN/≤0) keep the default.
-const SESSION_TTL_MS = resolveTtlMsFromEnv("OMNIROUTE_SESSION_TTL_MIN", 15);
+export const SESSION_TTL_MS = resolveTtlMsFromEnv("OMNIROUTE_SESSION_TTL_MIN", 15);
 const _cleanupTimer = setInterval(() => {
   const now = Date.now();
   // Evict expired sessions

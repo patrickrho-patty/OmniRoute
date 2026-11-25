@@ -2111,7 +2111,6 @@ Used by `scripts/cli/omniroute-media-mcp.mjs`. Set these in the local tool proce
 | `OMNIROUTE_MEDIA_MODEL` | `auto` | Model submitted by the media tool. Its provider must support the requested media types. |
 | `OMNIROUTE_MEDIA_API_KEY` | Configured provider API key or its environment reference | Optional credential override. Keep it in the local process environment; never commit it. |
 
-=======
 ## Fork: Patty Gateway, Metadata Redaction, VCC & Deep Health
 
 Fork-added variables registered during the v3.8.51 docs-contract sync (2026-09-25).

@@ -3,7 +3,7 @@
   "version": "3.8.55",
   "providers": 394,
   "providerReferenceTotal": 394,
-  "migrations": 252,
+  "migrations": 256,
   "locales": 67,
   "routingStrategies": 22,
   "scoringFactors": 16,
@@ -23,7 +23,7 @@
     "freeFirst": 2223725000,
     "freeGated": 6000000,
     "freePools": 34,
-    "engines": 12,
+    "engines": 13,
     "cliTotal": 39,
     "cliCode": 28,
     "cliAgent": 11,
@@ -213,6 +213,219 @@
         },
         {
           "provider": "fireworks",
+          "v": 1000000
+        },
+        {
+          "provider": "nebius",
+          "v": 1000000
+        },
+        {
+          "provider": "qoder",
+          "v": 1000000
+        },
+        {
+          "provider": "scaleway",
+          "v": 1000000
+        },
+        {
+          "provider": "novita",
+          "v": 500000
+        }
+      ],
+      "uncappedNames": [
+        "Agnes AI",
+        "AINative Studio",
+        "Aion Labs",
+        "Baidu",
+        "Gemini",
+        "GLM Coding",
+        "Kilo Gateway",
+        "NVIDIA NIM",
+        "onomeo",
+        "Requesty",
+        "Routeway",
+        "SEA-LION",
+        "Token Harbor"
+      ],
+      "gatedProviderNames": ["ModelScope"]
+    },
+    "headlineSteady": 1623200000,
+    "headlineFirst": 2212700000,
+    "headlineGated": 6000000,
+    "headlineSocialGated": 0,
+    "rowSumLive": 12744500000,
+    "rowSumRetired": 0,
+    "rowSumTotal": 12744500000,
+    "rowSumRetiredShare": 0,
+    "freeProviders": {
+      "total": 62,
+      "apiKey": 54,
+      "keyless": 6,
+      "toolAccount": 1,
+      "webChat": 1
+    },
+    "freeModels": 323,
+    "freeAccessRows": 387,
+    "freePublishedPools": 21,
+    "hasFreeProviders": 160,
+    "freeSearchProviders": 8,
+    "freeAudioProviders": 1,
+    "headlineSteadyLabel": "~1.6B",
+    "headlineFirstLabel": "~2.2B",
+    "rowSumLiveLabel": "~12.7B",
+    "rowSumTotalLabel": "~12.7B",
+    "publicFreeTierBudget": {
+      "steady": 1623200000,
+      "first": 2212700000,
+      "boost": 24000000,
+      "gated": 6000000,
+      "poolCount": 24,
+      "modelCount": 394,
+      "discontinued": 7,
+      "avoidProviders": 0,
+      "pools": [
+        {
+          "provider": "mistral",
+          "name": "Mistral",
+          "tokens": 1000000000,
+          "caps": 0
+        },
+        {
+          "provider": "nara",
+          "name": "NaraRouter",
+          "tokens": 210000000,
+          "caps": 0
+        },
+        {
+          "provider": "llm7",
+          "name": "LLM7.io",
+          "tokens": 150000000,
+          "caps": 0
+        },
+        {
+          "provider": "xkiro",
+          "name": "xKiro",
+          "tokens": 150000000,
+          "caps": 0
+        },
+        {
+          "provider": "groq",
+          "name": "Groq",
+          "tokens": 30000000,
+          "caps": 5
+        },
+        {
+          "provider": "cloudflare-ai",
+          "name": "Cloudflare Workers AI",
+          "tokens": 30000000,
+          "caps": 0
+        },
+        {
+          "provider": "api-airforce",
+          "name": "Api.airforce",
+          "tokens": 24000000,
+          "caps": 0
+        },
+        {
+          "provider": "bluesminds",
+          "name": "BluesMinds",
+          "tokens": 7200000,
+          "caps": 0
+        },
+        {
+          "provider": "sambanova",
+          "name": "SambaNova",
+          "tokens": 6000000,
+          "caps": 0
+        },
+        {
+          "provider": "arcee-ai",
+          "name": "Arcee AI",
+          "tokens": 4800000,
+          "caps": 0
+        },
+        {
+          "provider": "navy",
+          "name": "NavyAI",
+          "tokens": 4500000,
+          "caps": 0
+        },
+        {
+          "provider": "bazaarlink",
+          "name": "BazaarLink",
+          "tokens": 3600000,
+          "caps": 0
+        },
+        {
+          "provider": "openrouter",
+          "name": "OpenRouter",
+          "tokens": 1200000,
+          "caps": 0
+        },
+        {
+          "provider": "cohere",
+          "name": "Cohere",
+          "tokens": 800000,
+          "caps": 0
+        },
+        {
+          "provider": "huggingchat",
+          "name": "HuggingChat",
+          "tokens": 500000,
+          "caps": 0
+        },
+        {
+          "provider": "morph",
+          "name": "Morph",
+          "tokens": 400000,
+          "caps": 0
+        },
+        {
+          "provider": "huggingface",
+          "name": "HuggingFace",
+          "tokens": 200000,
+          "caps": 0
+        }
+      ],
+      "oneTime": [
+        {
+          "provider": "vertex",
+          "v": 300000000
+        },
+        {
+          "provider": "agentrouter",
+          "v": 200000000
+        },
+        {
+          "provider": "predibase",
+          "v": 25000000
+        },
+        {
+          "provider": "glm-cn",
+          "v": 20000000
+        },
+        {
+          "provider": "doubao",
+          "v": 15000000
+        },
+        {
+          "provider": "longcat",
+          "v": 10000000
+        },
+        {
+          "provider": "deepseek",
+          "v": 5000000
+        },
+        {
+          "provider": "hyperbolic",
+          "v": 5000000
+        },
+        {
+          "provider": "nscale",
+          "v": 5000000
+        },
+        {
+          "provider": "deepinfra",
           "v": 1000000
         },
         {

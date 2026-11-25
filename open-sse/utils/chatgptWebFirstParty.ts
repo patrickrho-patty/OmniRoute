@@ -22,13 +22,11 @@ export interface ChatGptWebFirstPartyRequest {
   selection: ChatGptWebUiSelection;
 }
 
-/** Picker labels the adapter can resolve; each one maps to an upstream model id below. */
-export type ChatGptWebPickerLabel = "GPT-5.6 Sol" | "GPT-5.5" | "GPT-6 Sol";
-
 export type ChatGptWebUiSelection =
   | {
       kind: "picker";
-      modelLabel: ChatGptWebPickerLabel;
+      /** Model family radio in the first-party picker, not the upstream slug. */
+      modelLabel: "GPT-6 Sol" | "GPT-5.6 Sol" | "GPT-5.5";
       effortIndex: 0 | 1 | 2 | 3 | 4;
     }
   | {
@@ -62,15 +60,6 @@ const CHATGPT_ASSET_PATH_RE =
   /^\/(?:cdn|unauth-mweb|auth-mweb)\/(?:assets|scripts)\/[A-Za-z0-9._-]+\.js$/;
 const OAI_UPLOAD_HOST_RE = /(?:^|\.)oaiusercontent\.com$/i;
 const FIRST_PARTY_BRIDGE_KEY = "__omnirouteChatGptFirstPartyV1";
-
-/**
- * Webpack module ids the ChatGPT integrity module requires for its UUID helper. The id is part
- * of the page's build, not of the contract, so it changes when OpenAI ships a new bundle.
- * Observed: `TI` (through 2026-08), `DD` (2026-10). Unknown ids must keep failing loudly — a
- * silently wrong helper yields an invalid integrity token, which is harder to diagnose than a
- * named error.
- */
-export const UUID_DEPENDENCY_IDS = ["TI", "DD"] as const;
 const FIRST_PARTY_ABORT_KEY = "__omnirouteChatGptAbortV1";
 const FIRST_PARTY_REQUEST_KEY = "__omnirouteChatGptRequestV1";
 const MAX_ASSET_SOURCE_BYTES = 24 * 1024 * 1024;
@@ -452,7 +441,6 @@ async function discoverFirstPartyModule(page: Page): Promise<FirstPartyModuleRes
   });
 }
 
-=======
 /** Keep only first-party chunk URLs, deduplicated and in page order. */
 function integrityCandidateChunkUrls(candidateAssetUrls: readonly string[]): string[] {
   const accepted: string[] = [];
@@ -529,12 +517,12 @@ export function buildChatGptWebIntegrityResolutionSource(
  */
 export function buildChatGptWebBridgeInstallerSource(
   assetUrl: string,
-  contract: ChatGptWebFirstPartyModuleContract
+  contract: ChatGptWebFirstPartyModuleContract,
+  candidateAssetUrls: readonly string[] = []
 ): string {
   const urlLiteral = JSON.stringify(requireChatGptAssetUrl(assetUrl));
   const contractLiteral = JSON.stringify(contract);
   const keyLiteral = JSON.stringify(FIRST_PARTY_BRIDGE_KEY);
-=======
   const install =
     contract.resolveIntegrity && contract.resolveIntegrityModule
       ? [
@@ -715,7 +703,6 @@ async function ensureFirstPartyBridge(page: Page): Promise<void> {
 
   await assertChatGptWebSignedIn(page);
   const { assetUrl, contract } = await discoverFirstPartyModule(page);
-=======
   // The integrity module is required through the page's own runtime, so whichever chunk
   // exposes `__webpack_require__` has to travel with the bridge source.
   const candidateAssetUrls =
@@ -750,31 +737,48 @@ async function ensureFirstPartyBridge(page: Page): Promise<void> {
 }
 
 /**
- * Picker label → the `model` string chatgpt.com's backend expects. Adding a web model is a
- * row in the chatgpt-web registry, a branch in chatgptWebExecutorAdapter.resolveSelection,
- * and this map — the label is the join key between them.
+ * Picker family → upstream `/f/conversation` slug. ChatGPT names the family in
+ * the UI (Sol / Astra) but the conversation slug is version-only, and the Pro
+ * lane is a distinct `-pro` model rather than a higher effort on the base one.
  */
-const UPSTREAM_MODEL_BY_LABEL: Record<ChatGptWebPickerLabel, string> = {
+const PICKER_FAMILY_SLUGS = {
+  "GPT-6 Sol": "gpt-6",
   "GPT-5.6 Sol": "gpt-5-6",
   "GPT-5.5": "gpt-5-5",
-  // Fork addition (2026-10-17). Not yet verified against a live account: if chatgpt.com
-  // rejects this as an unknown model, the id it wants goes here (e.g. gpt-6-sol).
-  "GPT-6 Sol": "gpt-6",
-};
+} as const satisfies Record<
+  Extract<ChatGptWebUiSelection, { kind: "picker" }>["modelLabel"],
+  string
+>;
 
-/** Exported for unit tests: maps a resolved UI selection to the upstream request shape. */
-export function directModel(selection: ChatGptWebUiSelection): { model: string; reason: boolean } {
+/** Ability-slider positions 1-3: Medium, High and Extra High. */
+const PICKER_THINKING_EFFORT = { 1: "standard", 2: "extended", 3: "max" } as const;
+
+type ChatGptWebThinkingEffort = "standard" | "extended" | "max";
+
+interface ChatGptWebConversationMode {
+  model: string;
+  /** Free accounts only: the Think toggle travels as a system hint, not an effort. */
+  reason: boolean;
+  thinkingEffort?: ChatGptWebThinkingEffort;
+}
+
+function directModel(selection: ChatGptWebUiSelection): ChatGptWebConversationMode {
   if (selection.kind === "free") return { model: "auto", reason: selection.thinkEnabled };
-  const base = UPSTREAM_MODEL_BY_LABEL[selection.modelLabel];
-  if (!base) {
-    // Previously an unmapped label silently fell through to gpt-5-5, which sent the wrong
-    // model upstream instead of failing where the operator can see it.
-    throw new Error(
-      `ChatGPT Web: no upstream model id mapped for picker label ${selection.modelLabel}`
-    );
+  const family = PICKER_FAMILY_SLUGS[selection.modelLabel];
+  if (selection.effortIndex === 4) {
+    // The Pro lane is its own model; captured GPT-5.5 Pro keeps the extended depth.
+    return {
+      model: `${family}-pro`,
+      reason: false,
+      thinkingEffort: family === "gpt-5-5" ? "extended" : "standard",
+    };
   }
-  if (selection.effortIndex === 4) return { model: `${base}-pro`, reason: false };
-  return { model: base, reason: selection.effortIndex > 0 };
+  if (selection.effortIndex === 0) return { model: family, reason: false };
+  return {
+    model: `${family}-thinking`,
+    reason: false,
+    thinkingEffort: PICKER_THINKING_EFFORT[selection.effortIndex],
+  };
 }
 
 async function registerAttachments(
@@ -785,6 +789,11 @@ async function registerAttachments(
   return page.evaluate(
     async ({ abortKey, attachments: metadata, bridgeKey, requestId }) => {
       const root = globalThis as typeof globalThis & Record<string, unknown>;
+      // The request-scoped abort controller is needed even for text-only turns.
+      const abortStore = (root[abortKey] ??= {}) as Record<string, AbortController>;
+      const controller = new AbortController();
+      abortStore[requestId] = controller;
+      if (metadata.length === 0) return [];
       const bridge = root[bridgeKey] as {
         requestClient?: {
           safePost(path: string, options: JsonRecord): Promise<unknown>;
@@ -793,9 +802,6 @@ async function registerAttachments(
       if (typeof bridge?.requestClient?.safePost !== "function") {
         throw new Error("ChatGPT Web first-party request client is unavailable");
       }
-      const abortStore = (root[abortKey] ??= {}) as Record<string, AbortController>;
-      const controller = new AbortController();
-      abortStore[requestId] = controller;
       const registered: BrowserRegisteredAttachment[] = [];
       for (const attachment of metadata) {
         const useCase = attachment.kind === "image" ? "multimodal" : "my_files";
@@ -905,6 +911,7 @@ async function processRegisteredAttachments(
 ): Promise<void> {
   await page.evaluate(
     async ({ abortKey, bridgeKey, registered, requestId }) => {
+      if (registered.length === 0) return;
       const root = globalThis as typeof globalThis & Record<string, unknown>;
       const bridge = root[bridgeKey] as {
         requestClient?: { safePost(path: string, options: JsonRecord): Promise<unknown> };
@@ -1009,6 +1016,9 @@ async function storeConversationDraft(
           ],
           parent_message_id: "client-created-root",
           model: mode.model,
+          // The ability slider travels as its own field; `system_hints` carries
+          // only Free's Think toggle. Positions 1-3 are held in PICKER_THINKING_EFFORT.
+          ...(mode.thinkingEffort ? { thinking_effort: mode.thinkingEffort } : {}),
           timezone_offset_min: new Date().getTimezoneOffset(),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           history_and_training_disabled: true,
@@ -1184,6 +1194,13 @@ async function readConversationResponse(page: Page, requestId: string): Promise<
             throw new Error("ChatGPT Web conversation response exceeded the size limit");
           }
           chunks.push(decoder.decode(value, { stream: true }));
+          // Settle as soon as a complete client tool envelope is available. This
+          // function is serialized into the browser page, so the boundary detector
+          // stays self-contained instead of closing over a module-level constant.
+          if (/(?:<|\\u003c)\\?\/tool(?:>|\\u003e)/i.test(chunks.join(""))) {
+            await reader.cancel().catch(() => {});
+            return chunks.join("");
+          }
         }
         chunks.push(decoder.decode());
       } finally {
@@ -1212,6 +1229,11 @@ async function processAndSubmit(
   const browserRegistered = browserConversationAttachments(registered);
   await processRegisteredAttachments(page, requestId, browserRegistered);
   await storeConversationDraft(page, input, requestId, browserRegistered);
+  // Re-verify (and if needed re-inject) the bridge right before signing: the SPA
+  // can navigate between the initial handshake and this point, which wipes the
+  // bridge from `window`. storeConversationHeaders() still throws when the bridge
+  // is incomplete, so an unsigned request is never sent.
+  await ensureFirstPartyBridge(page);
   await storeConversationHeaders(page, requestId);
   await submitConversationRequest(page, requestId);
   return readConversationResponse(page, requestId);
