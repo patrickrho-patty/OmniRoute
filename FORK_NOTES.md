@@ -1540,6 +1540,11 @@ checks, `login/page.tsx` setState rules.
       (`OMNIROUTE_TRANSLATION_*`); 27,970 UI values stay untranslated.
 - [ ] Re-run the full unit suite on the merged tip and diff against
       `fail-patty.txt` before merging the sync PR.
+- [ ] `chatgptWebFirstParty.ts` kept the fork's version (gpt6 picker labels +
+      `UUID_DEPENDENCY_IDS` shim, both imported by fork tests); upstream's
+      Rspack-runtime integrity resolver was **not** taken. Revisit if chatgpt.com
+      reshuffles the integrity module ids again — upstream's approach avoids the
+      pinned-id failure mode this fork's file carries.
 
 ## Browser engine for browser-backed providers (2026-10-17)
 
