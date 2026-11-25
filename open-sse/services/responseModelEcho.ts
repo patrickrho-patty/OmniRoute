@@ -9,12 +9,60 @@
  *
  * The behavior is gated by a global setting (`echoRequestedModelName`, default off),
  * so the default response stays byte-for-byte unchanged.
+ *
+ * Three payload shapes carry the model, and all three must be rewritten or a client
+ * still sees the upstream id:
+ *   - `{ model }`                  — Chat Completions JSON / OpenAI SSE chunks
+ *   - `{ response: { model } }`     — Responses API events (#3697)
+ *   - `{ message: { model } }`      — Anthropic Messages streaming `message_start`
+ *     (and every later `message_*` event is model-less, so this is the only leak site)
  */
 
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 /**
- * Rewrite the top-level `model` field of a parsed response object (Chat Completions
- * JSON or an OpenAI SSE chunk) to `echoModel`. Mutates and returns `obj`. No-op when
- * `echoModel` is falsy or `obj` has no string `model` field.
+ * Rewrite every known model location on one parsed payload in place.
+ * Returns whether anything changed (the SSE path needs to know to re-serialize).
+ */
+function applyEchoToRecord(rec: JsonRecord, echoModel: string): boolean {
+  let changed = false;
+
+  if (typeof rec.model === "string") {
+    rec.model = echoModel;
+    changed = true;
+  }
+
+  // #3697: Responses API events nest the model under `response.model`.
+  if (isRecord(rec.response) && typeof rec.response.model === "string") {
+    rec.response.model = echoModel;
+    changed = true;
+  }
+
+  // Anthropic Messages streaming: `message_start` nests the model under
+  // `message.model` (`event: message_start` + `data: { type: "message_start", message:
+  // { type: "message", model: "<upstream>" } }`). Rewriting only the top level left the
+  // upstream id visible to every Claude Code / Claude Desktop stream. The guard keeps
+  // unrelated payloads that happen to hold a `message.model` untouched.
+  if (isRecord(rec.message)) {
+    const isAnthropicMessage = rec.type === "message_start" || rec.message.type === "message";
+    if (isAnthropicMessage && typeof rec.message.model === "string") {
+      rec.message.model = echoModel;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+/**
+ * Rewrite the `model` field of a parsed response object (Chat Completions JSON, an OpenAI
+ * SSE chunk, a Responses API event, or an Anthropic `message_start`) to `echoModel`.
+ * Mutates and returns `obj`. No-op when `echoModel` is falsy or no known model field is a
+ * string.
  *
  * #3697: the Responses API nests `model` one level down — `{ type: "response.completed",
  * response: { model, ... } }` — so also rewrite `obj.response.model` when present. This is
@@ -23,19 +71,7 @@
  */
 export function echoModelInObject(obj: unknown, echoModel: string | null | undefined): unknown {
   if (!echoModel) return obj;
-  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
-    const rec = obj as Record<string, unknown>;
-    if (typeof rec.model === "string") {
-      rec.model = echoModel;
-    }
-    const nested = rec.response;
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-      const nestedRec = nested as Record<string, unknown>;
-      if (typeof nestedRec.model === "string") {
-        nestedRec.model = echoModel;
-      }
-    }
-  }
+  if (isRecord(obj)) applyEchoToRecord(obj, echoModel);
   return obj;
 }
 
@@ -50,23 +86,11 @@ export function echoModelInSseLine(line: string, echoModel: string | null | unde
   const payload = line.slice(5).trim();
   if (!payload || payload === "[DONE]" || payload[0] !== "{") return line;
   try {
-    const parsed = JSON.parse(payload) as Record<string, unknown>;
-    let changed = false;
-    if (typeof parsed.model === "string") {
-      parsed.model = echoModel;
-      changed = true;
-    }
-    // #3697: Responses API events nest `model` under `response.model` — see
-    // echoModelInObject for the shape.
-    const nested = parsed.response;
-    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
-      const nestedRec = nested as Record<string, unknown>;
-      if (typeof nestedRec.model === "string") {
-        nestedRec.model = echoModel;
-        changed = true;
-      }
-    }
-    if (!changed) return line;
+    const parsed = JSON.parse(payload) as JsonRecord;
+    // #3697 (Responses API `response.model`) and the Anthropic Messages
+    // `message_start` `message.model` are both handled by the shared helper — see
+    // echoModelInObject.
+    if (!applyEchoToRecord(parsed, echoModel)) return line;
     return `data: ${JSON.stringify(parsed)}`;
   } catch {
     return line;
