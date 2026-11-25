@@ -1,5 +1,7 @@
 "use client";
 
+import { InlineCode } from "@omniroute/ui-kit/inline-code";
+import { Progress } from "@omniroute/ui-kit/progress";
 import Icon from "@/shared/components/Icon";
 import { Spinner } from "@/shared/components/Loading";
 
@@ -40,6 +42,8 @@ import Textarea from "@/shared/components/Textarea";
 import Toggle from "@/shared/components/Toggle";
 import Tooltip from "@/shared/components/Tooltip";
 import { ComboCompressionModeSelect } from "@/shared/components/compression/ComboCompressionModeSelect";
+import IconChip from "@/shared/components/IconChip";
+import Notice from "@/shared/components/Notice";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { FieldLabelWithHelp, WeightTotalBar } from "./parts";
 import { ComboTargetOptions } from "./ComboQuotaOnlyFallbackToggle";
@@ -90,16 +94,14 @@ import {
   resolveComboBuilderProviderId,
   type ComboBuilderStage,
 } from "@/lib/combos/builderDraft";
+import { buildDuplicateComboPayload } from "@/lib/combos/duplicatePayload";
 import { normalizeComboConfigMode } from "@/shared/constants/comboConfigMode";
 import type { z } from "zod";
 import { comboRuntimeConfigSchema } from "@/shared/validation/schemas/combo";
 import AutoComboCatalog from "./AutoComboCatalog";
 import ComboHeaderActions from "./ComboHeaderActions";
-import {
-  AutoComboTruncatedNote,
-  getComboStepKindLabel,
-  getI18nOrFallback,
-} from "./comboPageHelpers";
+import { ComboTestSummaryNote, getComboStepKindLabel, getI18nOrFallback } from "./comboPageHelpers";
+import ComboReferencePicker from "./ComboReferencePicker";
 import ComboStepTestButton from "./ComboStepTestButton";
 import KimiComboPresetCard from "./KimiComboPresetCard";
 import { KIMI_CODING_PRESET, hasKimiCodingPreset } from "./kimiComboPreset";
@@ -123,6 +125,7 @@ import {
   normalizeIntelligentRoutingFilter,
   normalizeIntelligentRoutingConfig,
 } from "@/lib/combos/intelligentRouting";
+import { toDecisionPreviewModels } from "@/lib/combos/decisionModelDraft";
 import { getComboStepTarget } from "@/lib/combos/steps";
 import {
   findComboStepConnectionLabel,
@@ -136,7 +139,12 @@ import { resolveProviderAlias } from "@omniroute/open-sse/services/providerAlias
 import { resolveServerErrorMessage } from "@/lib/api/serverErrorMessage";
 import { useTranslations } from "next-intl";
 import { cn } from "@/shared/utils/cn";
-import { strategyBadgeClass } from "./strategyPalette";
+import { strategyBadgeTone } from "./strategyPalette";
+import {
+  COMBO_ENDPOINTS,
+  COMBO_NON_CHAT_STRATEGIES,
+  type ComboEndpoint,
+} from "@omniroute/open-sse/config/comboEndpoints.ts";
 import { useConfirmDialog } from "@/shared/hooks/useConfirmDialog";
 
 const ModelSelectModal = dynamic(() => import("@/shared/components/ModelSelectModal"), {
@@ -148,12 +156,42 @@ const ProxyConfigModal = dynamic(() => import("@/shared/components/ProxyConfigMo
 
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_/.\-\[\] ]+$/;
 
+const COMBO_ENDPOINT_MODEL_TAGS: Record<ComboEndpoint, string[]> = {
+  chat: ["chat", "responses", "messages", "completions"],
+  search: ["search"],
+  "web-fetch": ["web-fetch"],
+  embeddings: ["embeddings", "multimodal-embeddings"],
+  rerank: ["rerank"],
+  images: ["images"],
+  "image-edits": ["images", "image-edits"],
+  videos: ["videos"],
+  music: ["music"],
+  ocr: ["ocr"],
+  "audio-speech": ["audio-speech"],
+  "audio-transcriptions": ["audio-transcriptions"],
+  "audio-translations": ["audio-transcriptions", "audio-translations"],
+  "audio-generation": ["audio-generation", "sound-generation"],
+};
+
+/** Check whether a picker model advertises support for a capability tab. */
+function modelSupportsComboEndpoint(model: unknown, endpoint: ComboEndpoint): boolean {
+  const candidate =
+    model && typeof model === "object" ? (model as { supportedEndpoints?: unknown }) : null;
+  const supported = Array.isArray(candidate?.supportedEndpoints)
+    ? candidate.supportedEndpoints
+    : [];
+  if (supported.length === 0) return endpoint === "chat";
+  return COMBO_ENDPOINT_MODEL_TAGS[endpoint].some((tag) => supported.includes(tag));
+}
+
 const STRATEGY_OPTIONS = ROUTING_STRATEGIES.map((strategy) => ({
   value: strategy.value,
   labelKey: strategy.labelKey,
   descKey: strategy.combosDescKey,
   icon: strategy.icon,
 }));
+
+const MODALITY_SAFE_STRATEGIES = new Set<string>(COMBO_NON_CHAT_STRATEGIES);
 
 const STRATEGY_LABEL_FALLBACK = {
   priority: "Priority",
@@ -246,6 +284,13 @@ const STRATEGY_GUIDANCE_FALLBACK = {
     avoid: "Avoid when most accounts have no quota snapshots.",
     example:
       "Example: 10 Antigravity Gemini accounts with different 5h/weekly resets; skip empty ones and pick among the rest in proportion to leftover.",
+  },
+  jev: {
+    when: "Use when you want to rank providers yourself and let TypeSafe Jev decide which of those entries run for each request.",
+    avoid:
+      "Avoid when you have no TypeSafe API key, or when you need a strict priority schedule that never skips a healthy favorite.",
+    example:
+      "Example: Opus → mid GPT → small GLM; Jev sends short chats to GLM and keeps Opus for hard coding turns.",
   },
 };
 
@@ -644,10 +689,6 @@ function getStrategyDescription(t, strategy) {
 }
 
 // Strategy badge colour: one shared palette on the kit chart tokens (strategyPalette.ts, P8).
-function getStrategyBadgeClass(strategy) {
-  return strategyBadgeClass(strategy);
-}
-
 function moveArrayItem(items, fromIndex, toIndex) {
   const nextItems = [...items];
   const [movedItem] = nextItems.splice(fromIndex, 1);
@@ -808,6 +849,67 @@ function formatComboStepWithAccount(
     connectionId,
     connectionLabel,
   })}`;
+}
+
+type CapabilityDraft = {
+  models: ComboStep[];
+  strategy: string;
+  config: Record<string, unknown>;
+};
+type CapabilityDrafts = Partial<Record<ComboEndpoint, CapabilityDraft>>;
+
+/** A weighted route with targets must add up to exactly 100%. */
+function hasInvalidWeightedRoute(drafts: CapabilityDrafts): boolean {
+  return Object.values(drafts).some(
+    (draft) =>
+      draft &&
+      draft.models.length > 0 &&
+      draft.strategy === "weighted" &&
+      draft.models.reduce((sum, entry) => sum + (entry.weight || 0), 0) !== 100
+  );
+}
+
+/** Every target of every capability route, for the allowed-provider restriction sync. */
+function routeTargets(routes: CapabilityDrafts): Array<{ providerId?: string; model?: string }> {
+  return Object.values(routes).flatMap((route) => route?.models || []) as Array<{
+    providerId?: string;
+    model?: string;
+  }>;
+}
+
+/** Serialize the configured capability tabs; empty ones are not persisted. */
+function buildCapabilityRoutes(drafts: CapabilityDrafts, isExpertMode: boolean): CapabilityDrafts {
+  return Object.fromEntries(
+    COMBO_ENDPOINTS.flatMap((endpoint) => {
+      const draft = drafts[endpoint];
+      if (!draft || draft.models.length === 0) return [];
+      const routeConfig = applyQuotaOnlyFallbackConfig(
+        draft.strategy,
+        draft.models,
+        sanitizeComboRuntimeConfig(draft.config)
+      );
+      persistStickyRoundRobinLimit(draft.strategy, routeConfig, draft.config);
+      persistConnectionAwareExpansion(draft.strategy, routeConfig, draft.config);
+      if (
+        isIntelligentBuilderStrategy(draft.strategy) &&
+        !isExpertMode &&
+        (!Array.isArray(routeConfig.candidatePool) || routeConfig.candidatePool.length === 0)
+      ) {
+        const candidates = deriveCandidatePoolFromModels(draft.models);
+        if (candidates.length > 0) routeConfig.candidatePool = candidates;
+      }
+      return [
+        [
+          endpoint,
+          {
+            models: draft.models,
+            strategy: draft.strategy,
+            ...(Object.keys(routeConfig).length > 0 ? { config: routeConfig } : {}),
+          },
+        ],
+      ];
+    })
+  ) as CapabilityDrafts;
 }
 
 function deriveCandidatePoolFromModels(models) {
@@ -1057,7 +1159,12 @@ function CombosPageContent() {
         notify.success(t("comboCreated"));
       } else {
         const err = await res.json();
-        notify.error(err.error?.message || err.error || t("failedCreate"));
+        notify.error(
+          resolveServerErrorMessage(
+            err,
+            typeof err?.error === "string" ? err.error : t("failedCreate")
+          )
+        );
       }
     } catch {
       notify.error(t("errorCreating"));
@@ -1078,7 +1185,12 @@ function CombosPageContent() {
         return true;
       } else {
         const err = await res.json();
-        notify.error(err.error?.message || err.error || t("failedUpdate"));
+        notify.error(
+          resolveServerErrorMessage(
+            err,
+            typeof err?.error === "string" ? err.error : t("failedUpdate")
+          )
+        );
       }
     } catch {
       notify.error(t("errorUpdating"));
@@ -1117,12 +1229,11 @@ function CombosPageContent() {
       newName = `${baseName}-copy-${counter}`;
     }
 
-    const data = {
-      name: newName,
-      models: combo.models,
-      strategy: combo.strategy || "priority",
-      config: sanitizeComboRuntimeConfig(combo.config),
-    };
+    const data = buildDuplicateComboPayload(
+      combo,
+      newName,
+      sanitizeComboRuntimeConfig(combo.config)
+    );
 
     await handleCreate(data);
   };
@@ -1384,9 +1495,7 @@ function CombosPageContent() {
                   `Combo "${recentlyCreatedCombo}" ready to validate`
                 )}
               </p>
-              <code className="inline-block text-[11px] mt-0.5 px-1.5 py-0.5 rounded bg-success/15 text-success">
-                {recentlyCreatedCombo}
-              </code>
+              <InlineCode className="mt-0.5 inline-block">{recentlyCreatedCombo}</InlineCode>
               <p className="text-xs text-text-muted mt-0.5">
                 {getI18nOrFallback(
                   t,
@@ -1651,11 +1760,11 @@ function ComboUsageGuide({ onHide, onHideForever, onCreateCombo }) {
     <Card padding="sm">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="size-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <Icon name="tips_and_updates" size={16} className="text-primary" />
-          </div>
+          <IconChip tone="accent" size="sm" className="shrink-0">
+            <Icon name="tips_and_updates" />
+          </IconChip>
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold">
+            <h2 className="ci-heading" data-size="sm">
               {getI18nOrFallback(t, "wizardGuideTitle", "Getting Started with Combos")}
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
@@ -1668,15 +1777,10 @@ function ComboUsageGuide({ onHide, onHideForever, onCreateCombo }) {
           </div>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <Button size="sm" variant="ghost" onClick={onHide} className="!h-6 px-2 text-[10px]">
+          <Button size="2xs" variant="ghost" onClick={onHide}>
             {getI18nOrFallback(t, "usageGuideHide", "Hide")}
           </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onHideForever}
-            className="!h-6 px-2 text-[10px]"
-          >
+          <Button size="2xs" variant="ghost" onClick={onHideForever}>
             {getI18nOrFallback(t, "usageGuideDontShowAgain", "Don't show again")}
           </Button>
         </div>
@@ -1690,7 +1794,7 @@ function ComboUsageGuide({ onHide, onHideForever, onCreateCombo }) {
               className="relative rounded-lg border border-border bg-bg-subtle p-2.5"
             >
               <div className="flex items-center gap-1.5 mb-1.5">
-                <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                <span className="inline-flex size-5 items-center justify-center rounded-full bg-primary/10 text-3xs font-semibold text-primary">
                   {step.step}
                 </span>
                 <Icon name={step.icon} size={14} className="text-primary" />
@@ -1698,7 +1802,7 @@ function ComboUsageGuide({ onHide, onHideForever, onCreateCombo }) {
               <p className="text-xs font-medium">
                 {getI18nOrFallback(t, step.titleKey, step.titleKey)}
               </p>
-              <p className="mt-1 text-[11px] leading-4 text-text-muted">
+              <p className="mt-1 text-xs leading-4 text-text-muted">
                 {getI18nOrFallback(t, step.descKey, step.descKey)}
               </p>
               {index < COMBO_WIZARD_STEPS.length - 1 && (
@@ -1712,24 +1816,24 @@ function ComboUsageGuide({ onHide, onHideForever, onCreateCombo }) {
       </div>
 
       <div className="mt-3 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-        <p className="text-[11px] font-semibold text-primary">
+        <p className="text-2xs font-semibold text-primary">
           {getI18nOrFallback(t, "usageGuideInvokeTitle", "How to call this combo")}
         </p>
-        <p className="mt-1 text-[11px] leading-4 text-text-muted">
+        <p className="mt-1 text-xs leading-4 text-text-muted">
           {getI18nOrFallback(
             t,
             "usageGuideInvokeDesc",
             'Send the combo\'s exact name as the model, e.g. model: "my-combo" (or combo/my-combo).'
           )}
         </p>
-        <p className="mt-1 text-[11px] leading-4 text-text-muted">
+        <p className="mt-1 text-xs leading-4 text-text-muted">
           {getI18nOrFallback(
             t,
             "usageGuideInvokeAutoNote",
             "auto and auto/* are a separate zero-config router that does not use your combos (unless a combo is literally named auto)."
           )}
         </p>
-        <p className="mt-1 text-[11px] leading-4 text-text-muted">
+        <p className="mt-1 text-xs leading-4 text-text-muted">
           {getI18nOrFallback(
             t,
             "usageGuideInvokeOpenrouterNote",
@@ -1742,7 +1846,7 @@ function ComboUsageGuide({ onHide, onHideForever, onCreateCombo }) {
         <Button size="sm" icon="add" onClick={onCreateCombo}>
           {getI18nOrFallback(t, "createFirstCombo", "Create Your First Combo")}
         </Button>
-        <span className="text-[10px] text-text-muted">
+        <span className="text-3xs text-text-muted">
           {getI18nOrFallback(t, "wizardGuideHint", "or click + Create Combo above")}
         </span>
       </div>
@@ -1753,11 +1857,11 @@ function ComboUsageGuide({ onHide, onHideForever, onCreateCombo }) {
 function StrategyGuidanceCard({ strategy }) {
   const t = useTranslations("combos");
   return (
-    <div className="rounded-lg border border-border bg-bg-subtle p-2.5">
-      <div className="text-[11px] text-text-muted">
+    <Card.Section>
+      <div className="text-2xs text-text-muted">
         {getI18nOrFallback(t, "strategyGuideTitle", "How to use this strategy")}
       </div>
-      <div className="mt-1.5 flex flex-col gap-1.5 text-[11px]">
+      <div className="mt-1.5 flex flex-col gap-1.5 text-xs">
         <p className="text-text-main">
           <span className="font-semibold">
             {getI18nOrFallback(t, "strategyGuideWhen", "When to use")}:
@@ -1777,7 +1881,7 @@ function StrategyGuidanceCard({ strategy }) {
           {getStrategyGuideText(t, strategy, "example")}
         </p>
       </div>
-    </div>
+    </Card.Section>
   );
 }
 
@@ -1789,18 +1893,18 @@ function StrategyRecommendationsPanel({ strategy, onApply, showNudge }) {
   const tips = getStrategyRecommendationText(t, strategy, "tips");
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-2.5">
+    <Card.Section>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[11px] text-text-muted">
+          <p className="text-2xs text-text-muted">
             {getI18nOrFallback(t, "recommendationsLabel", "Recommended setup")}
           </p>
           <p className="text-xs font-semibold text-text-main mt-0.5">
             {title} · <span className="text-primary">{strategyLabel}</span>
           </p>
-          <p className="text-[10px] text-text-muted mt-0.5">{description}</p>
+          <p className="text-xs text-text-muted mt-0.5">{description}</p>
         </div>
-        <Button size="sm" variant="ghost" onClick={onApply} className="!h-6 px-2 text-[10px]">
+        <Button size="2xs" variant="ghost" onClick={onApply}>
           {getI18nOrFallback(t, "applyRecommendations", "Apply recommendations")}
         </Button>
       </div>
@@ -1812,25 +1916,22 @@ function StrategyRecommendationsPanel({ strategy, onApply, showNudge }) {
             className="flex items-start gap-1 rounded-md bg-bg-subtle px-1.5 py-1"
           >
             <Icon name="check" size={12} className="text-primary mt-0.5" />
-            <p className="text-[10px] text-text-main">{tip}</p>
+            <p className="text-xs text-text-main">{tip}</p>
           </div>
         ))}
       </div>
 
       {showNudge && (
-        <div
-          data-testid="strategy-change-nudge"
-          className="mt-2 rounded-md border border-primary/20 bg-primary/10 px-2 py-1 text-[10px] text-primary"
-        >
+        <Notice variant="info" data-testid="strategy-change-nudge" className="mt-2">
           {getI18nOrFallback(
             t,
             "recommendationsUpdated",
             "Recommendations updated for {strategy}.",
             { strategy: strategyLabel }
           ).replace("{strategy}", strategyLabel)}
-        </div>
+        </Notice>
       )}
-    </div>
+    </Card.Section>
   );
 }
 
@@ -1851,13 +1952,13 @@ function ComboReadinessPanel({ checks, blockers, showDescription = true }) {
           size={14}
           className={hasBlockers ? "text-warning" : "text-success"}
         />
-        <p className="text-[11px] font-medium text-text-main">
+        <p className="text-2xs font-medium text-text-main">
           {getI18nOrFallback(t, "readinessTitle", "Ready to save?")}
         </p>
       </div>
 
       {showDescription && (
-        <p className="text-[10px] text-text-muted mt-0.5">
+        <p className="text-xs text-text-muted mt-0.5">
           {getI18nOrFallback(
             t,
             "readinessDescription",
@@ -1877,7 +1978,7 @@ function ComboReadinessPanel({ checks, blockers, showDescription = true }) {
               size={12}
               className={check.ok ? "text-success" : "text-warning"}
             />
-            <span className="text-[10px] text-text-main">{check.label}</span>
+            <span className="text-3xs text-text-main">{check.label}</span>
           </div>
         ))}
       </div>
@@ -1887,7 +1988,7 @@ function ComboReadinessPanel({ checks, blockers, showDescription = true }) {
           data-testid="combo-save-blockers"
           className="mt-2 rounded-md border border-warning/30 bg-warning/10 px-2 py-1.5"
         >
-          <p className="text-[10px] font-medium text-warning">
+          <p className="text-xs font-medium text-warning">
             {getI18nOrFallback(
               t,
               "saveBlockedTitle",
@@ -1896,7 +1997,7 @@ function ComboReadinessPanel({ checks, blockers, showDescription = true }) {
           </p>
           <div className="mt-1 flex flex-col gap-0.5">
             {blockers.map((blocker, index) => (
-              <p key={`${blocker}-${index}`} className="text-[10px] text-warning">
+              <p key={`${blocker}-${index}`} className="text-xs text-warning">
                 • {blocker}
               </p>
             ))}
@@ -1958,11 +2059,12 @@ function ComboCardInner({
               onDragEnd={onDragEnd}
               disabled={dragDisabled}
               data-testid={`combo-drag-handle-${combo.id}`}
+              tone="muted"
               className={cn(
                 "shrink-0",
                 dragDisabled
                   ? "cursor-not-allowed text-text-muted/40"
-                  : "cursor-grab active:cursor-grabbing text-text-muted"
+                  : "cursor-grab active:cursor-grabbing"
               )}
               title={getI18nOrFallback(t, "reorderHandle", "Drag to reorder combo")}
               aria-label={getI18nOrFallback(t, "reorderHandle", "Drag to reorder combo")}
@@ -1971,20 +2073,16 @@ function ComboCardInner({
             </Button>
           )}
 
-          <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-            <Icon name="layers" size={18} className="text-primary" />
-          </div>
+          <IconChip tone="accent" size="sm" className="shrink-0">
+            <Icon name="layers" />
+          </IconChip>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <code className="text-sm font-medium font-mono truncate">{combo.name}</code>
               <Tooltip content={strategyDescription}>
-                <span
-                  className={`text-[9px] uppercase font-semibold px-1.5 py-0.5 rounded-full ${getStrategyBadgeClass(
-                    strategy
-                  )}`}
-                >
+                <Badge size="sm" tone={strategyBadgeTone(strategy)}>
                   {getStrategyLabel(t, strategy)}
-                </span>
+                </Badge>
               </Tooltip>
               {hasProxy && (
                 <Badge
@@ -2004,9 +2102,11 @@ function ComboCardInner({
                   e.stopPropagation();
                   onCopy(combo.name, `combo-${combo.id}`);
                 }}
-                className="text-text-muted opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-                // Named by its title only (as before): an aria-label "Copy combo name" would also
-                // match label lookups for the "Combo name" field of the editor.
+                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+                tone="muted"
+                // The kit tooltip names this icon button (aria-label "Copy combo name"), which a
+                // label lookup for the "Combo name" field of the editor also matches: find that
+                // field by role.
                 title={t("copyComboName")}
               >
                 <Icon name={copied === `combo-${combo.id}` ? "check" : "content_copy"} size={14} />
@@ -2020,22 +2120,19 @@ function ComboCardInner({
                 models.slice(0, 3).map((entry, index) => {
                   const { weight } = normalizeModelEntry(entry);
                   return (
-                    <code
-                      key={index}
-                      className="text-[10px] font-mono bg-bg-subtle px-1.5 py-0.5 rounded text-text-muted"
-                    >
+                    <InlineCode key={index} className="text-text-muted">
                       {formatComboEntryDisplay(entry, {
                         providerNodes,
                         includeConnection: true,
                         showFullEmails: emailsVisible,
                       })}
                       {strategy === "weighted" && weight > 0 ? ` (${weight}%)` : ""}
-                    </code>
+                    </InlineCode>
                   );
                 })
               )}
               {models.length > 3 && (
-                <span className="text-[10px] text-text-muted">
+                <span className="text-3xs text-text-muted">
                   {t("more", { count: models.length - 3 })}
                 </span>
               )}
@@ -2043,16 +2140,16 @@ function ComboCardInner({
 
             {metrics && (
               <div className="flex items-center gap-3 mt-1">
-                <span className="text-[10px] text-text-muted">
+                <span className="text-3xs text-text-muted">
                   <span className="text-success">{metrics.totalSuccesses}</span>/
                   {metrics.totalRequests} {t("reqs")}
                 </span>
-                <span className="text-[10px] text-text-muted">
+                <span className="text-3xs text-text-muted">
                   {metrics.successRate}% {t("success")}
                 </span>
-                <span className="text-[10px] text-text-muted">~{metrics.avgLatencyMs}ms</span>
+                <span className="text-3xs text-text-muted">~{metrics.avgLatencyMs}ms</span>
                 {metrics.fallbackRate > 0 && (
-                  <span className="text-[10px] text-warning">
+                  <span className="text-3xs text-warning">
                     {t("fallbackSummary", {
                       rate: metrics.fallbackRate,
                       skips: metrics.skipsPerRequest,
@@ -2072,7 +2169,7 @@ function ComboCardInner({
               onChange={onToggle}
               title={isDisabled ? t("enableCombo") : t("disableCombo")}
             />
-            <span className="text-[10px] text-text-muted md:hidden">
+            <span className="text-3xs text-text-muted md:hidden">
               {isDisabled ? "Disabled" : "Active"}
             </span>
           </div>
@@ -2103,7 +2200,8 @@ function ComboCardInner({
               size="icon"
               onClick={onTest}
               disabled={testing}
-              className="text-text-muted hover:text-success"
+              className="hover:text-success"
+              tone="muted"
               title={t("testCombo")}
               aria-label={t("testCombo")}
             >
@@ -2113,7 +2211,7 @@ function ComboCardInner({
               variant="ghost"
               size="icon"
               onClick={onDuplicate}
-              className="text-text-muted"
+              tone="muted"
               title={t("duplicate")}
               aria-label={t("duplicate")}
             >
@@ -2123,7 +2221,7 @@ function ComboCardInner({
               variant="ghost"
               size="icon"
               onClick={onProxy}
-              className="text-text-muted"
+              tone="muted"
               title={t("proxyConfig")}
               aria-label={t("proxyConfig")}
             >
@@ -2133,17 +2231,16 @@ function ComboCardInner({
               variant="ghost"
               size="icon"
               onClick={onEdit}
-              className="text-text-muted"
+              tone="muted"
               title={tc("edit")}
               aria-label={tc("edit")}
             >
               <Icon name="edit" size={16} />
             </Button>
             <Button
-              variant="ghost"
+              variant="destructive-ghost"
               size="icon"
               onClick={onDelete}
-              className="text-error hover:bg-error/10"
               title={tc("delete")}
               aria-label={tc("delete")}
             >
@@ -2194,7 +2291,7 @@ function ComboTestResultRow({
       />
       <div className="min-w-0 flex-1">
         <code className="font-mono font-medium block truncate text-text-main">{r.model}</code>
-        <div className="mt-0.5 text-[10px] text-text-muted truncate">
+        <div className="mt-0.5 text-3xs text-text-muted truncate">
           {displayLabel ? `${displayLabel} · ` : ""}
           {accountStr}
         </div>
@@ -2208,7 +2305,9 @@ function ComboTestResultRow({
       {r.latencyMs !== undefined && (
         <span className="text-text-muted shrink-0">{r.latencyMs}ms</span>
       )}
-      <span className={cn("text-[10px] uppercase font-medium shrink-0", tone)}>{r.status}</span>
+      <span data-size="3xs" data-weight="medium" className={cn("ci-eyebrow shrink-0", tone)}>
+        {r.status}
+      </span>
     </div>
   );
 }
@@ -2221,10 +2320,7 @@ function ComboTestResolvedBy({ results, emailsVisible }: { results: any; emailsV
       <Icon name="check_circle" size={18} className="text-success" />
       <div className="min-w-0">
         <div>
-          First healthy target in combo order:{" "}
-          <code className="text-xs bg-success/10 text-success px-1.5 py-0.5 rounded font-mono">
-            {results.resolvedBy}
-          </code>
+          First healthy target in combo order: <InlineCode>{results.resolvedBy}</InlineCode>
         </div>
         {target?.connectionId || target?.label ? (
           <div className="mt-1 text-xs text-text-muted">
@@ -2294,11 +2390,7 @@ function TestResultsView({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-xs text-text-muted">
-        Targets are tested independently. This checks model health, not the combo’s routing strategy
-        or fallback order.
-      </p>
-      <AutoComboTruncatedNote results={results} />
+      <ComboTestSummaryNote results={results} />
       <ComboTestResolvedBy results={results} emailsVisible={emailsVisible} />
       {results.results?.map((r, i) => (
         <ComboTestResultRow key={i} result={r} emailsVisible={emailsVisible} />
@@ -2359,12 +2451,26 @@ function ComboFormModal({
   const notify = useNotificationStore();
   const isExpertMode = normalizeComboConfigMode(comboConfigMode) === "expert";
   const createDraftStateRef = useRef<CreateDraftSnapshot>(getEmptyCreateDraftSnapshot());
+  const initialChatRoute = combo
+    ? {
+        models: combo.models,
+        strategy: combo.strategy,
+        config: combo.config,
+      }
+    : undefined;
   const [name, setName] = useState(combo?.name || "");
   const [description, setDescription] = useState<string>(combo?.description || "");
   const [models, setModels] = useState(() => {
-    return (combo?.models || []).map((m) => normalizeModelEntry(m));
+    return (initialChatRoute?.models || combo?.models || []).map((m) => normalizeModelEntry(m));
   });
-  const [strategy, setStrategy] = useState(combo?.strategy || "priority");
+  const [strategy, setStrategy] = useState(
+    initialChatRoute?.strategy || combo?.strategy || "priority"
+  );
+  const [activeEndpoint, setActiveEndpoint] = useState<ComboEndpoint>("chat");
+  const [configuredEndpoints, setConfiguredEndpoints] = useState<Set<ComboEndpoint>>(
+    () => new Set(initialChatRoute?.models?.length || combo?.models?.length ? ["chat"] : [])
+  );
+  const capabilityDraftsRef = useRef<Partial<Record<ComboEndpoint, CapabilityDraft>>>({});
   const [showModelSelect, setShowModelSelect] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState("");
@@ -2386,7 +2492,9 @@ function ComboFormModal({
   const [builderError, setBuilderError] = useState("");
   const [builderStage, setBuilderStage] = useState<ComboBuilderStage>(COMBO_BUILDER_STAGES[0]);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [config, setConfig] = useState(sanitizeComboRuntimeConfig(combo?.config));
+  const [config, setConfig] = useState(
+    sanitizeComboRuntimeConfig(initialChatRoute?.config || combo?.config)
+  );
   // Validate persisted enum; ensure reset on combo change not just first mount.
   const initialSortMethod = normalizeSortMethod(
     (config.modelSort as { method?: unknown } | undefined)?.method
@@ -2410,6 +2518,40 @@ function ComboFormModal({
   useEffect(() => {
     sortMethodRef.current = sortMethod;
   }, [sortMethod]);
+  const switchCapability = useCallback(
+    (endpoint: ComboEndpoint) => {
+      if (endpoint === activeEndpoint) return;
+      capabilityDraftsRef.current[activeEndpoint] = {
+        models: models as ComboStep[],
+        strategy,
+        config: sanitizeComboRuntimeConfig(config),
+      };
+      setConfiguredEndpoints((current) => {
+        const nextConfigured = new Set(current);
+        if (models.length > 0) nextConfigured.add(activeEndpoint);
+        else nextConfigured.delete(activeEndpoint);
+        return nextConfigured;
+      });
+      const next = capabilityDraftsRef.current[endpoint] || {
+        models: [],
+        strategy: "priority",
+        config: {},
+      };
+      setActiveEndpoint(endpoint);
+      setModels(next.models);
+      setStrategy(next.strategy);
+      setConfig(next.config);
+      const nextSort = normalizeSortMethod(
+        (next.config?.modelSort as { method?: unknown } | undefined)?.method
+      );
+      setSortMethod(nextSort);
+      sortMethodRef.current = nextSort;
+      setBuilderStage(next.models.length > 0 ? "strategy" : "steps");
+      setBuilderError("");
+      setManualModelError("");
+    },
+    [activeEndpoint, config, models, strategy]
+  );
   const [showStrategyNudge, setShowStrategyNudge] = useState(false);
   const strategyChangeMountedRef = useRef(false);
   // Agent features (#399 / #401 / #454)
@@ -2423,29 +2565,63 @@ function ComboFormModal({
   );
   const [contextLengthError, setContextLengthError] = useState<string>("");
   const comboBuilderStages = useMemo(() => getComboBuilderStages({ strategy }), [strategy]);
+  const availableStrategyOptions = useMemo(
+    () =>
+      activeEndpoint === "chat"
+        ? STRATEGY_OPTIONS
+        : STRATEGY_OPTIONS.filter((option) => MODALITY_SAFE_STRATEGIES.has(option.value)),
+    [activeEndpoint]
+  );
   const visibleStageMeta = useMemo(
     () => COMBO_FORM_STAGE_META.filter((stageMeta) => comboBuilderStages.includes(stageMeta.id)),
     [comboBuilderStages]
   );
   const usesIntelligentBuilderStage = isIntelligentBuilderStrategy(strategy);
   const intelligentConfig = useMemo(() => normalizeIntelligentRoutingConfig(config), [config]);
+  const decisionStepModels = useMemo(() => toDecisionPreviewModels(models), [models]);
 
   const resetFormForCombo = useCallback(
     (nextCombo, comboDefaults = null) => {
+      const persistedRoutes =
+        nextCombo?.routes && typeof nextCombo.routes === "object" ? nextCombo.routes : {};
+      const nextDrafts: Partial<Record<ComboEndpoint, CapabilityDraft>> = {};
+      for (const endpoint of COMBO_ENDPOINTS) {
+        const route = persistedRoutes[endpoint];
+        if (!route || !Array.isArray(route.models) || route.models.length === 0) continue;
+        nextDrafts[endpoint] = {
+          models: route.models.map((entry) => normalizeModelEntry(entry)),
+          strategy: route.strategy || "priority",
+          config: sanitizeComboRuntimeConfig(route.config),
+        };
+      }
+      const nextChat = {
+        models: (nextCombo?.models || []).map((entry) => normalizeModelEntry(entry)),
+        strategy: nextCombo?.strategy || comboDefaults?.strategy || "priority",
+        config: sanitizeComboRuntimeConfig(nextCombo?.config),
+      };
+      nextDrafts.chat = nextChat;
+      capabilityDraftsRef.current = nextDrafts;
+      setConfiguredEndpoints(
+        new Set(
+          COMBO_ENDPOINTS.filter((endpoint) => (nextDrafts[endpoint]?.models.length ?? 0) > 0)
+        )
+      );
+      setActiveEndpoint("chat");
       const nextDefaults =
         nextCombo || comboDefaults
           ? {
               ...(comboDefaults || {}),
             }
           : {};
-      const nextConfig = nextCombo?.config
-        ? sanitizeComboRuntimeConfig(nextCombo.config)
-        : sanitizeComboRuntimeConfig(
-            Object.fromEntries(Object.entries(nextDefaults).filter(([key]) => key !== "strategy"))
-          );
+      const nextConfig =
+        Object.keys(nextChat.config).length > 0
+          ? sanitizeComboRuntimeConfig(nextChat.config)
+          : sanitizeComboRuntimeConfig(
+              Object.fromEntries(Object.entries(nextDefaults).filter(([key]) => key !== "strategy"))
+            );
 
       // Validate persisted enum; tolerate hand-edited DB values.
-      const loadedMethod = normalizeSortMethod(nextCombo?.config?.modelSort?.method);
+      const loadedMethod = normalizeSortMethod(nextChat.config?.modelSort?.method);
       // Generation guard so a stale score fetch can't clobber the next combo.
       const myGen = ++resetSortGenerationRef.current;
       setSortMethod(loadedMethod);
@@ -2455,9 +2631,9 @@ function ComboFormModal({
       // Branch so only one setModels runs (no raw-then-sorted double set).
       // Score branch is async; guard with generation + cancelled from the caller's effect.
       if (loadedMethod === "manual") {
-        setModels((nextCombo?.models || []).map((m) => normalizeModelEntry(m)));
+        setModels(nextChat.models);
       } else if (loadedMethod === "score") {
-        const base = (nextCombo?.models || []).map((mm) => normalizeModelEntry(mm)) as ComboStep[];
+        const base = nextChat.models;
         fetchProviderRankings()
           .then((rk) => sortComboStepsByScore(base, rk))
           .then((sorted) => {
@@ -2469,10 +2645,10 @@ function ComboFormModal({
             setModels(base);
           });
       } else {
-        const base = (nextCombo?.models || []).map((mm) => normalizeModelEntry(mm)) as ComboStep[];
+        const base = nextChat.models;
         setModels(sortComboStepsSync(base, loadedMethod));
       }
-      setStrategy(nextCombo?.strategy || comboDefaults?.strategy || "priority");
+      setStrategy(nextChat.strategy);
       setConfig(nextConfig);
       setShowAdvanced(isExpertMode);
       setNameError("");
@@ -2540,9 +2716,21 @@ function ComboFormModal({
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
 
   const builderProviders = useMemo(
-    () => builderOptions.providers || [],
-    [builderOptions.providers]
+    () =>
+      (builderOptions.providers || [])
+        .map((provider) => ({
+          ...provider,
+          models: (provider.models || []).filter((model) =>
+            modelSupportsComboEndpoint(model, activeEndpoint)
+          ),
+        }))
+        .filter((provider) => provider.models.length > 0),
+    [activeEndpoint, builderOptions.providers]
   );
+  // Manual entry (expert mode) is how a model the catalog does not list gets added, so the typed
+  // prefix resolves against every configured provider — `builderProviders` drops a provider that
+  // has no catalog model for the active capability tab, which is right for the pickers only.
+  const manualEntryProviders = builderOptions.providers || [];
 
   const allGlobalModels = useMemo(() => buildGlobalModelList(builderProviders), [builderProviders]);
 
@@ -2595,7 +2783,7 @@ function ComboFormModal({
     builderCandidateStep && hasExactModelStepDuplicate(models, builderCandidateStep);
   const manualModelStep = buildManualComboModelStep({
     value: manualModelInput,
-    providers: builderProviders,
+    providers: manualEntryProviders,
   });
   const manualModelHasDuplicate =
     manualModelStep && hasExactModelStepDuplicate(models, manualModelStep);
@@ -2969,7 +3157,7 @@ function ComboFormModal({
 
     const resolvedProviderId = resolveComboBuilderProviderId(
       parsedManualModel.providerId,
-      builderProviders
+      manualEntryProviders
     );
     if (!resolvedProviderId) {
       setManualModelError(
@@ -2980,7 +3168,7 @@ function ComboFormModal({
 
     const nextStep = buildManualComboModelStep({
       value: manualModelInput,
-      providers: builderProviders,
+      providers: manualEntryProviders,
     });
 
     if (!nextStep) {
@@ -3008,6 +3196,7 @@ function ComboFormModal({
 
   const handleAddComboReference = () => {
     if (!builderComboRefName) return;
+    if (strategy === "jev") return;
 
     setModels([
       ...models,
@@ -3318,18 +3507,39 @@ function ComboFormModal({
 
   const handleSave = async () => {
     if (!validateName(name)) return;
-    if (hasNoModels || hasInvalidWeightedTotal || hasCostOptimizedWithoutPricing) return;
+    if (models.length > 0 && (hasInvalidWeightedTotal || hasCostOptimizedWithoutPricing)) return;
+    const drafts: Partial<Record<ComboEndpoint, CapabilityDraft>> = {
+      ...capabilityDraftsRef.current,
+      [activeEndpoint]: {
+        models: models as ComboStep[],
+        strategy,
+        config: sanitizeComboRuntimeConfig(config),
+      },
+    };
+    const chatDraft = drafts.chat;
+    if (!chatDraft || chatDraft.models.length === 0) {
+      setBuilderError(t("endpointChatTargetRequired"));
+      return;
+    }
+    if (hasInvalidWeightedRoute(drafts)) {
+      setBuilderError(t("endpointWeightedRouteTotalInvalid"));
+      return;
+    }
     setSaving(true);
+
+    const routes = buildCapabilityRoutes(drafts, isExpertMode);
+    const savedChat = routes.chat!;
 
     const saveData: any = {
       name: name.trim(),
-      models,
-      strategy,
+      models: savedChat.models,
+      strategy: savedChat.strategy,
+      routes,
     };
 
     // When editing an existing combo from the dashboard form, synchronize allowedProviders
     // and clear legacy family restrictions so adding steps across providers never triggers COMBO_008
-    Object.assign(saveData, computeAllowedRestrictionSync(isEdit, combo, models));
+    Object.assign(saveData, computeAllowedRestrictionSync(isEdit, combo, routeTargets(routes)));
 
     // Per-combo description (#5005). Free-text, optional, persisted in combo data.
     if (description.trim()) {
@@ -3339,31 +3549,7 @@ function ComboFormModal({
       saveData.description = null;
     }
 
-    const configToSave = applyQuotaOnlyFallbackConfig(
-      strategy,
-      models,
-      sanitizeComboRuntimeConfig(config)
-    );
-    if (strategy === "round-robin") {
-      if (config.concurrencyPerModel !== undefined)
-        configToSave.concurrencyPerModel = config.concurrencyPerModel;
-      if (config.queueTimeoutMs !== undefined) configToSave.queueTimeoutMs = config.queueTimeoutMs;
-    }
-    if (strategy === "weighted" && config.stickyWeightedLimit !== undefined) {
-      configToSave.stickyWeightedLimit = config.stickyWeightedLimit;
-    }
-    persistStickyRoundRobinLimit(strategy, configToSave, config);
-    persistConnectionAwareExpansion(strategy, configToSave, config);
-    if (
-      usesIntelligentBuilderStage &&
-      !isExpertMode &&
-      (!Array.isArray(configToSave.candidatePool) || configToSave.candidatePool.length === 0)
-    ) {
-      const derivedCandidatePool = deriveCandidatePoolFromModels(models);
-      if (derivedCandidatePool.length > 0) {
-        configToSave.candidatePool = derivedCandidatePool;
-      }
-    }
+    const configToSave = sanitizeComboRuntimeConfig(savedChat.config);
     const hasConfigToSave = Object.keys(configToSave).length > 0;
     const hadExistingConfig = Object.keys(sanitizeComboRuntimeConfig(combo?.config)).length > 0;
     if (hasConfigToSave || (isEdit && hadExistingConfig)) {
@@ -3430,14 +3616,42 @@ function ComboFormModal({
         size="full"
       >
         <div className="flex flex-col gap-3">
+          <Card.Section>
+            <div className="mb-2">
+              <p className="text-xs font-semibold text-text-main">{t("endpointBehaviorTitle")}</p>
+              <p className="mt-0.5 text-xs text-text-muted">{t("endpointBehaviorDescription")}</p>
+            </div>
+            <div className="flex flex-wrap gap-2" role="tablist" aria-label={t("endpointTabsAria")}>
+              {COMBO_ENDPOINTS.map((endpoint) => {
+                const configured =
+                  endpoint === activeEndpoint
+                    ? models.length > 0
+                    : configuredEndpoints.has(endpoint);
+                return (
+                  <Button
+                    key={endpoint}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeEndpoint === endpoint}
+                    variant={activeEndpoint === endpoint ? "primary" : "secondary"}
+                    size="sm"
+                    onClick={() => switchCapability(endpoint)}
+                  >
+                    {t(`endpointTabs.${endpoint}`)}
+                    {configured ? " •" : ""}
+                  </Button>
+                );
+              })}
+            </div>
+          </Card.Section>
           {!isExpertMode && (
-            <div className="rounded-lg border border-border bg-bg-subtle p-3">
+            <Card.Section>
               <div className="flex items-center justify-between gap-2 mb-2">
                 <div>
                   <p className="text-xs font-semibold text-text-main">
                     {getI18nOrFallback(t, "builderFlowTitle", "Combo Builder Flow")}
                   </p>
-                  <p className="text-[10px] text-text-muted mt-0.5">
+                  <p className="text-xs text-text-muted mt-0.5">
                     {getI18nOrFallback(
                       t,
                       "builderStagesDescription",
@@ -3445,7 +3659,7 @@ function ComboFormModal({
                     )}
                   </p>
                 </div>
-                <span className="text-[10px] uppercase tracking-wide text-text-muted">
+                <span className="ci-eyebrow" data-size="3xs">
                   {Math.max(currentStageIndex + 1, 1)}/{visibleStageMeta.length}
                 </span>
               </div>
@@ -3467,12 +3681,20 @@ function ComboFormModal({
                             ? usesIntelligentBuilderStage
                             : builderStageChecks.strategy;
 
+                  const stageStatus =
+                    index < currentStageIndex
+                      ? getI18nOrFallback(t, "builderStageVisited", "Visited")
+                      : isActive
+                        ? getI18nOrFallback(t, "builderStageCurrent", "Current")
+                        : canVisitStage
+                          ? getI18nOrFallback(t, "builderStagePending", "Pending")
+                          : getI18nOrFallback(t, "builderStageLocked", "Locked");
+
                   return (
-                    // kit-exception: a stage tile of the builder stepper (icon, label,
-                    // description, status line); the kit Button is a single-line pill.
-                    <button
+                    // A stage of the builder stepper: a kit Tile (action), with the current
+                    // stage marked by aria-current="step" rather than a pressed toggle.
+                    <Tile
                       key={stageMeta.id}
-                      type="button"
                       aria-current={isActive ? "step" : undefined}
                       data-testid={`combo-builder-stage-${stageMeta.id}`}
                       onClick={() => {
@@ -3480,15 +3702,10 @@ function ComboFormModal({
                         setBuilderStage(stageMeta.id);
                       }}
                       disabled={!canVisitStage}
-                      className={`text-start rounded-lg border px-3 py-2 transition-all ${
-                        isActive
-                          ? "border-primary bg-primary/8"
-                          : canVisitStage
-                            ? "border-border bg-surface hover:border-primary/40"
-                            : "border-border bg-bg-subtle opacity-60 cursor-not-allowed"
+                      className={`gap-2 px-3 py-2 ${
+                        isActive ? "border-primary bg-primary/8 hover:border-primary" : ""
                       }`}
-                    >
-                      <div className="flex items-center gap-1.5">
+                      icon={
                         <Icon
                           name={isCompleted && !isActive ? "check_circle" : stageMeta.icon}
                           size={14}
@@ -3500,35 +3717,24 @@ function ComboFormModal({
                                 : "text-text-muted"
                           }
                         />
-                        <span className="text-[11px] font-semibold text-text-main">
-                          {getI18nOrFallback(
-                            t,
-                            `builderStage.${stageMeta.id}.label`,
-                            stageMeta.fallbackLabel
-                          )}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-text-muted mt-1 leading-[1.45]">
-                        {getI18nOrFallback(
-                          t,
-                          `builderStage.${stageMeta.id}.description`,
-                          stageMeta.fallbackDescription
-                        )}
-                      </p>
-                      <p className="text-[9px] uppercase tracking-wide mt-1 text-text-muted">
-                        {index < currentStageIndex
-                          ? getI18nOrFallback(t, "builderStageVisited", "Visited")
-                          : isActive
-                            ? getI18nOrFallback(t, "builderStageCurrent", "Current")
-                            : canVisitStage
-                              ? getI18nOrFallback(t, "builderStagePending", "Pending")
-                              : getI18nOrFallback(t, "builderStageLocked", "Locked")}
-                      </p>
-                    </button>
+                      }
+                      title={getI18nOrFallback(
+                        t,
+                        `builderStage.${stageMeta.id}.label`,
+                        stageMeta.fallbackLabel
+                      )}
+                      description={getI18nOrFallback(
+                        t,
+                        `builderStage.${stageMeta.id}.description`,
+                        stageMeta.fallbackDescription
+                      )}
+                    >
+                      <span className="ci-eyebrow">{stageStatus}</span>
+                    </Tile>
                   );
                 })}
               </div>
-            </div>
+            </Card.Section>
           )}
 
           {showBasicsSection && (
@@ -3567,12 +3773,12 @@ function ComboFormModal({
               </Field>
 
               {!isEdit && !isExpertMode && (
-                <div className="rounded-lg border border-border bg-bg-subtle p-3">
+                <Card.Section>
                   <div className="mb-2">
                     <p className="text-xs font-medium">
                       {getI18nOrFallback(t, "templatesTitle", COMBO_TEMPLATE_FALLBACK.title)}
                     </p>
-                    <p className="text-[10px] text-text-muted mt-0.5">
+                    <p className="text-xs text-text-muted mt-0.5">
                       {getI18nOrFallback(
                         t,
                         "templatesDescription",
@@ -3613,7 +3819,7 @@ function ComboFormModal({
                       </Tile>
                     ))}
                   </div>
-                </div>
+                </Card.Section>
               )}
             </>
           )}
@@ -3635,7 +3841,7 @@ function ComboFormModal({
                 onValueChange={setStrategy}
                 className="[&>.ci-radio-group__items]:grid-cols-2 [&>.ci-radio-group__items]:gap-1.5 sm:[&>.ci-radio-group__items]:grid-cols-3"
               >
-                {STRATEGY_OPTIONS.map((s) => (
+                {availableStrategyOptions.map((s) => (
                   <div
                     key={s.value}
                     data-testid={`strategy-option-${s.value}`}
@@ -3657,9 +3863,20 @@ function ComboFormModal({
                   </div>
                 ))}
               </RadioGroup>
+              {strategy === "jev" && (
+                <div className="mt-2 rounded-md border border-primary/20 bg-primary/5 px-2.5 py-2">
+                  <p className="text-xs text-primary">
+                    {getI18nOrFallback(
+                      t,
+                      "jevPrivacyNote",
+                      "Order is who you trust. TypeSafe Jev chooses which of these models run for each request. The latest user message is sent to TypeSafe for that decision. Store a TypeSafe API key under Providers. Continuations with a live session pin skip Jev and stay on the pinned model."
+                    )}
+                  </p>
+                </div>
+              )}
               {!isExpertMode && (
                 <>
-                  <p className="text-[10px] text-text-muted mt-0.5">
+                  <p className="text-xs text-text-muted mt-0.5">
                     {getStrategyDescription(t, strategy)}
                   </p>
                   <div className="mt-2">
@@ -3680,8 +3897,10 @@ function ComboFormModal({
           {showIntelligentSection && (
             <BuilderIntelligentStep
               t={t}
+              strategy={strategy}
               config={config}
               activeProviders={builderProviders}
+              stepModels={decisionStepModels}
               onChange={(nextIntelligentConfig: any) =>
                 setConfig((previousConfig) => ({
                   ...previousConfig,
@@ -3699,7 +3918,9 @@ function ComboFormModal({
           {showStepsSection && (
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <h3 className="text-sm font-medium">{t("models")}</h3>
+                <h3 className="ci-heading" data-size="sm">
+                  {t("models")}
+                </h3>
                 {strategy === "weighted" && models.length > 1 && (
                   <Button size="sm" variant="ghost" icon="balance" onClick={handleAutoBalance}>
                     {t("autoBalance")}
@@ -3707,14 +3928,14 @@ function ComboFormModal({
                 )}
               </div>
 
-              <div className="rounded-lg border border-border bg-bg-subtle p-3 mb-2">
+              <Card.Section className="mb-2">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold text-text-main">
                       {getI18nOrFallback(t, "builderTitle", "Precision Builder")}
                     </p>
                     {!isExpertMode && (
-                      <p className="text-[10px] text-text-muted mt-0.5">
+                      <p className="text-xs text-text-muted mt-0.5">
                         {getI18nOrFallback(
                           t,
                           "builderStepsDescription",
@@ -3740,7 +3961,7 @@ function ComboFormModal({
                     <div className="flex flex-col sm:flex-row sm:items-end gap-2">
                       <Input
                         className="flex-1"
-                        inputClassName="font-mono"
+                        mono
                         label={getI18nOrFallback(t, "manualModel", "Manual model")}
                         type="text"
                         value={manualModelInput}
@@ -3767,14 +3988,14 @@ function ComboFormModal({
                       </Button>
                     </div>
                     {(manualModelError || manualModelHasDuplicate) && (
-                      <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-[10px] text-warning">
+                      <Notice variant="warning" className="mt-2">
                         {manualModelError ||
                           getI18nOrFallback(
                             t,
                             "builderDuplicateExact",
                             "This exact provider/model/account step is already in the combo."
                           )}
-                      </div>
+                      </Notice>
                     )}
                   </div>
                 )}
@@ -3861,7 +4082,7 @@ function ComboFormModal({
                     {builderConnectionId === COMBO_BUILDER_AUTO_CONNECTION &&
                     selectedBuilderConnections.length > 1 ? (
                       <div className="mt-2 rounded-md border border-border bg-surface px-2.5 py-2">
-                        <p className="text-xs font-medium uppercase tracking-wide text-text-muted mb-1.5">
+                        <p className="ci-eyebrow mb-1.5" data-weight="medium">
                           {getI18nOrFallback(
                             t,
                             "builderRestrictAccounts",
@@ -3892,7 +4113,7 @@ function ComboFormModal({
                             );
                           })}
                         </div>
-                        <p className="text-[10px] text-text-muted mt-1.5">
+                        <p className="text-xs text-text-muted mt-1.5">
                           {getI18nOrFallback(
                             t,
                             "builderRestrictAccountsHint",
@@ -3913,7 +4134,7 @@ function ComboFormModal({
                           {getI18nOrFallback(t, "builderAddStep", "Add detailed step")}
                         </Button>
                         {builderHasDuplicate && (
-                          <span className="text-[10px] text-warning">
+                          <span className="text-xs text-warning">
                             {getI18nOrFallback(
                               t,
                               "builderDuplicateExact",
@@ -3924,7 +4145,7 @@ function ComboFormModal({
                       </div>
                     ) : (
                       <div className="mt-2 rounded-md border border-border bg-surface px-2.5 py-2">
-                        <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                        <p className="ci-eyebrow" data-size="3xs">
                           {getI18nOrFallback(t, "builderPreview", "Current step preview")}
                         </p>
                         <p className="text-xs text-text-main mt-1">
@@ -3946,7 +4167,7 @@ function ComboFormModal({
                             {getI18nOrFallback(t, "builderAddStep", "Add detailed step")}
                           </Button>
                           {builderHasDuplicate && (
-                            <span className="text-[10px] text-warning">
+                            <span className="text-xs text-warning">
                               {getI18nOrFallback(
                                 t,
                                 "builderDuplicateExact",
@@ -3958,44 +4179,24 @@ function ComboFormModal({
                       </div>
                     )}
 
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <div className="flex flex-col sm:flex-row sm:items-end gap-2">
-                        <Select
-                          className="flex-1"
-                          label={getI18nOrFallback(t, "builderComboRef", "Reference another combo")}
-                          value={builderComboRefName}
-                          onChange={(e) => setBuilderComboRefName(e.target.value)}
-                          placeholder={getI18nOrFallback(
-                            t,
-                            "selectComboToReference",
-                            "Select an existing combo to reference"
-                          )}
-                          options={builderComboRefs.map((comboRef) => ({
-                            value: comboRef.name,
-                            label: `${comboRef.name} · ${comboRef.strategy} · ${comboRef.stepCount} step${
-                              comboRef.stepCount === 1 ? "" : "s"
-                            }`,
-                          }))}
-                        />
-                        <Button
-                          onClick={handleAddComboReference}
-                          variant="ghost"
-                          size="sm"
-                          disabled={!builderComboRefName}
-                        >
-                          {getI18nOrFallback(t, "builderAddComboRef", "Add combo ref")}
-                        </Button>
-                      </div>
-                    </div>
+                    {strategy !== "jev" && (
+                      <ComboReferencePicker
+                        t={t}
+                        value={builderComboRefName}
+                        onChange={setBuilderComboRefName}
+                        options={builderComboRefs}
+                        onAdd={handleAddComboReference}
+                      />
+                    )}
                   </>
                 )}
 
                 {builderError && (
-                  <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-[10px] text-warning">
+                  <Notice variant="warning" className="mt-2">
                     {builderError}
-                  </div>
+                  </Notice>
                 )}
-              </div>
+              </Card.Section>
 
               <div className="flex items-center justify-between gap-2 mb-2">
                 <ComboSortSelect
@@ -4006,10 +4207,12 @@ function ComboFormModal({
               </div>
 
               {models.length === 0 ? (
-                <div className="text-center py-4 border border-dashed border-border rounded-lg bg-bg-subtle">
-                  <Icon name="layers" size={20} className="mx-auto mb-1 text-text-muted" />
-                  <p className="text-xs text-text-muted">{t("noModelsYet")}</p>
-                </div>
+                <EmptyState
+                  layout="inline"
+                  border="dashed"
+                  icon="layers"
+                  title={t("noModelsYet")}
+                />
               ) : (
                 <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto">
                   {models.map((entry, index) => (
@@ -4034,7 +4237,7 @@ function ComboFormModal({
                       />
 
                       {/* Index badge */}
-                      <span className="text-[10px] font-medium text-text-muted w-3 text-center shrink-0">
+                      <span className="text-3xs font-medium text-text-muted w-3 text-center shrink-0">
                         {index + 1}
                       </span>
 
@@ -4054,7 +4257,7 @@ function ComboFormModal({
                             />
                           )}
                         </div>
-                        <div className="text-[10px] text-text-muted truncate">
+                        <div className="text-3xs text-text-muted truncate">
                           {getComboStepKindLabel(t, entry)}
                         </div>
                       </div>
@@ -4084,7 +4287,7 @@ function ComboFormModal({
                             aria-label={getI18nOrFallback(t, "weightPercent", "Weight (%)")}
                             className="w-14 text-center"
                           />
-                          <span className="text-[10px] text-text-muted">%</span>
+                          <span className="text-3xs text-text-muted">%</span>
                         </div>
                       )}
 
@@ -4095,7 +4298,7 @@ function ComboFormModal({
                           size="icon-sm"
                           onClick={() => handleMoveUp(index)}
                           disabled={index === 0}
-                          className="text-text-muted"
+                          tone="muted"
                           title={t("moveUp")}
                           aria-label={t("moveUp")}
                         >
@@ -4106,7 +4309,7 @@ function ComboFormModal({
                           size="icon-sm"
                           onClick={() => handleMoveDown(index)}
                           disabled={index === models.length - 1}
-                          className="text-text-muted"
+                          tone="muted"
                           title={t("moveDown")}
                           aria-label={t("moveDown")}
                         >
@@ -4137,7 +4340,7 @@ function ComboFormModal({
 
               {strategy === "cost-optimized" && models.length > 0 && (
                 <div className="mt-2 rounded-md border border-border bg-bg-subtle px-2 py-1.5">
-                  <div className="flex items-center justify-between text-[10px]">
+                  <div className="flex items-center justify-between text-3xs">
                     <span className="text-text-muted">
                       {getI18nOrFallback(t, "pricingCoverage", "Pricing coverage")}
                     </span>
@@ -4145,20 +4348,23 @@ function ComboFormModal({
                       {pricedModelCount}/{models.length} ({pricingCoveragePercent}%)
                     </span>
                   </div>
-                  <div className="h-1.5 mt-1 rounded-full bg-bg-subtle overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${
-                        pricingCoveragePercent === 100
-                          ? "bg-success"
-                          : pricingCoveragePercent > 0
-                            ? "bg-warning"
-                            : "bg-error"
-                      }`}
-                      style={{ width: `${pricingCoveragePercent}%` }}
-                    />
-                  </div>
+                  <Progress
+                    className="mt-1"
+                    size="sm"
+                    semantics="meter"
+                    animate={false}
+                    value={pricingCoveragePercent}
+                    tone={
+                      pricingCoveragePercent === 100
+                        ? "success"
+                        : pricingCoveragePercent > 0
+                          ? "warning"
+                          : "danger"
+                    }
+                    aria-label={getI18nOrFallback(t, "pricingCoverage", "Pricing coverage")}
+                  />
                   {!isExpertMode && (
-                    <p className="text-[10px] text-text-muted mt-1">
+                    <p className="text-xs text-text-muted mt-1">
                       {getI18nOrFallback(
                         t,
                         "pricingCoverageHint",
@@ -4170,59 +4376,46 @@ function ComboFormModal({
               )}
 
               {hasNoModels && (
-                <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-[10px] text-warning flex items-center gap-1">
-                  <Icon name="warning" size={12} />
-                  <span>{t("noModelsYet")}</span>
-                </div>
+                <Notice variant="warning" icon="warning" className="mt-2">
+                  {t("noModelsYet")}
+                </Notice>
               )}
 
               {hasInvalidWeightedTotal && (
-                <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-[10px] text-warning flex items-center gap-1">
-                  <Icon name="warning" size={12} />
-                  <span>
-                    {t("weighted")} {weightTotal}% {"\u2260"} 100%. {t("autoBalance")}
-                  </span>
-                </div>
+                <Notice variant="warning" icon="warning" className="mt-2">
+                  {t("weighted")} {weightTotal}% {"\u2260"} 100%. {t("autoBalance")}
+                </Notice>
               )}
 
               {!isExpertMode && hasRoundRobinSingleModel && (
-                <div className="mt-2 rounded-md border border-info/20 bg-info/10 px-2 py-1.5 text-[10px] text-info flex items-center gap-1">
-                  <Icon name="info" size={12} />
-                  <span>
-                    {getI18nOrFallback(
-                      t,
-                      "warningRoundRobinSingleModel",
-                      "Round-robin is most useful with at least 2 models."
-                    )}
-                  </span>
-                </div>
+                <Notice variant="info" icon="info" className="mt-2">
+                  {getI18nOrFallback(
+                    t,
+                    "warningRoundRobinSingleModel",
+                    "Round-robin is most useful with at least 2 models."
+                  )}
+                </Notice>
               )}
 
               {hasCostOptimizedPartialPricing && (
-                <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-[10px] text-warning flex items-center gap-1">
-                  <Icon name="warning" size={12} />
-                  <span>
-                    {typeof t.has === "function" && t.has("warningCostOptimizedPartialPricing")
-                      ? t("warningCostOptimizedPartialPricing", {
-                          priced: pricedModelCount,
-                          total: models.length,
-                        })
-                      : `Only ${pricedModelCount} of ${models.length} models have pricing. Routing may be partially cost-aware.`}
-                  </span>
-                </div>
+                <Notice variant="warning" icon="warning" className="mt-2">
+                  {typeof t.has === "function" && t.has("warningCostOptimizedPartialPricing")
+                    ? t("warningCostOptimizedPartialPricing", {
+                        priced: pricedModelCount,
+                        total: models.length,
+                      })
+                    : `Only ${pricedModelCount} of ${models.length} models have pricing. Routing may be partially cost-aware.`}
+                </Notice>
               )}
 
               {hasCostOptimizedWithoutPricing && (
-                <div className="mt-2 rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-[10px] text-warning flex items-center gap-1">
-                  <Icon name="warning" size={12} />
-                  <span>
-                    {getI18nOrFallback(
-                      t,
-                      "warningCostOptimizedNoPricing",
-                      "No pricing data found for this combo. Cost-optimized may route unexpectedly."
-                    )}
-                  </span>
-                </div>
+                <Notice variant="warning" icon="warning" className="mt-2">
+                  {getI18nOrFallback(
+                    t,
+                    "warningCostOptimizedNoPricing",
+                    "No pricing data found for this combo. Cost-optimized may route unexpectedly."
+                  )}
+                </Notice>
               )}
 
               {showInlineReadinessPanel && (
@@ -4240,7 +4433,8 @@ function ComboFormModal({
                 icon="travel_explore"
                 fullWidth
                 onClick={() => setShowModelSelect(true)}
-                className="mt-2 border-dashed text-text-muted"
+                className="mt-2 border-dashed"
+                tone="muted"
                 data-testid="combo-browse-catalog"
               >
                 {getI18nOrFallback(t, "browseLegacyCatalog", "Browse legacy model catalog")}
@@ -4258,14 +4452,15 @@ function ComboFormModal({
                   icon={showAdvanced ? "expand_less" : "expand_more"}
                   aria-expanded={showAdvanced}
                   onClick={() => setShowAdvanced(!showAdvanced)}
-                  className="self-start text-text-muted"
+                  className="self-start"
+                  tone="muted"
                 >
                   {t("advancedSettings")}
                 </Button>
               )}
 
               {advancedConfigVisible && (
-                <div className="flex flex-col gap-2 p-3 bg-bg-subtle rounded-lg border border-border">
+                <Card.Section className="flex flex-col gap-2">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <FieldLabelWithHelp
@@ -4729,7 +4924,7 @@ function ComboFormModal({
                       </div>
                       {!isExpertMode && (
                         <div className="md:col-span-3 rounded-md border border-chart-3/20 bg-chart-3/5 px-2 py-1.5">
-                          <p className="text-[10px] text-chart-3">
+                          <p className="text-xs text-chart-3-ink">
                             {getI18nOrFallback(
                               t,
                               "contextRelayProviderNote",
@@ -4846,17 +5041,15 @@ function ComboFormModal({
                       </div>
                     </div>
                   )}
-                  {!isExpertMode && (
-                    <p className="text-[10px] text-text-muted">{t("advancedHint")}</p>
-                  )}
-                </div>
+                  {!isExpertMode && <p className="text-xs text-text-muted">{t("advancedHint")}</p>}
+                </Card.Section>
               )}
             </>
           )}
 
           {/* Response Validation (4985) */}
           {showStrategySection && (
-            <div className="flex flex-col gap-2 p-3 bg-bg-subtle rounded-lg border border-border">
+            <Card.Section className="flex flex-col gap-2">
               <div className="flex items-center gap-1.5 mb-1">
                 <Icon name="rule" size={14} className="text-primary" />
                 <p className="text-xs font-medium">
@@ -4868,19 +5061,19 @@ function ComboFormModal({
                 onChange={(next) => setConfig({ ...config, responseValidation: next })}
                 t={t}
               />
-            </div>
+            </Card.Section>
           )}
 
           {/* Agent Features (#399 / #401 / #454) */}
           {showStrategySection && (
-            <div className="flex flex-col gap-2 p-3 bg-bg-subtle rounded-lg border border-border">
+            <Card.Section className="flex flex-col gap-2">
               <div className="flex items-center gap-1.5 mb-1">
                 <Icon name="smart_toy" size={14} className="text-primary" />
                 <p className="text-xs font-medium">
                   {getI18nOrFallback(t, "agentFeaturesTitle", "Agent features")}
                 </p>
                 {!isExpertMode && (
-                  <span className="text-[10px] text-text-muted">
+                  <span className="text-xs text-text-muted">
                     {getI18nOrFallback(
                       t,
                       "agentFeaturesDescription",
@@ -4929,7 +5122,7 @@ function ComboFormModal({
                 value={agentToolFilter}
                 onChange={(e) => setAgentToolFilter(e.target.value)}
                 placeholder="e.g. ^(bash|computer)$"
-                inputClassName="font-mono"
+                mono
                 hint={
                   !isExpertMode
                     ? getI18nOrFallback(
@@ -4971,65 +5164,65 @@ function ComboFormModal({
                 t={t}
                 showHint={!isExpertMode}
               />
-            </div>
+            </Card.Section>
           )}
 
           {showReviewSection && (
             <div className="flex flex-col gap-3">
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="rounded-lg border border-border bg-bg-subtle p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewName", "Name")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1 break-all">
                     {name || "—"}
                   </p>
-                </div>
-                <div className="rounded-lg border border-border bg-bg-subtle p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                </Card.Section>
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewStrategy", "Strategy")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1">
                     {getStrategyLabel(t, strategy)}
                   </p>
-                </div>
-                <div className="rounded-lg border border-border bg-bg-subtle p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                </Card.Section>
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewSteps", "Steps")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1">{models.length}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-bg-subtle p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                </Card.Section>
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewAccounts", "Pinned accounts")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1">{pinnedAccountCount}</p>
-                </div>
+                </Card.Section>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                <div className="rounded-lg border border-border bg-surface p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewProviders", "Providers")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1">{uniqueProviderCount}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-surface p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                </Card.Section>
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewComboRefs", "Combo refs")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1">{comboRefCount}</p>
-                </div>
-                <div className="rounded-lg border border-border bg-surface p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                </Card.Section>
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewAdvanced", "Advanced config")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1">
                     {Object.keys(config || {}).length}
                   </p>
-                </div>
-                <div className="rounded-lg border border-border bg-surface p-3">
-                  <p className="text-[10px] uppercase tracking-wide text-text-muted">
+                </Card.Section>
+                <Card.Section>
+                  <p className="ci-eyebrow" data-size="3xs">
                     {getI18nOrFallback(t, "reviewAgentFlags", "Agent flags")}
                   </p>
                   <p className="text-sm font-semibold text-text-main mt-1">
@@ -5041,7 +5234,7 @@ function ComboFormModal({
                       ].filter(Boolean).length
                     }
                   </p>
-                </div>
+                </Card.Section>
               </div>
 
               {usesIntelligentBuilderStage && (
@@ -5054,19 +5247,19 @@ function ComboFormModal({
                   </div>
                   <dl className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3 text-sm">
                     <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
+                      <dt className="ci-eyebrow" data-size="3xs">
                         {getI18nOrFallback(t, "modePackLabel", "Mode Pack")}
                       </dt>
                       <dd className="text-text-main mt-1">{intelligentConfig.modePack}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
+                      <dt className="ci-eyebrow" data-size="3xs">
                         {getI18nOrFallback(t, "routerStrategyLabel", "Router Strategy")}
                       </dt>
                       <dd className="text-text-main mt-1">{intelligentConfig.routerStrategy}</dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
+                      <dt className="ci-eyebrow" data-size="3xs">
                         {getI18nOrFallback(t, "explorationRateLabel", "Exploration Rate")}
                       </dt>
                       <dd className="text-text-main mt-1">
@@ -5074,7 +5267,7 @@ function ComboFormModal({
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
+                      <dt className="ci-eyebrow" data-size="3xs">
                         {getI18nOrFallback(t, "candidatePoolLabel", "Candidate Pool")}
                       </dt>
                       <dd className="text-text-main mt-1">
@@ -5084,7 +5277,7 @@ function ComboFormModal({
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[10px] uppercase tracking-wide text-text-muted">
+                      <dt className="ci-eyebrow" data-size="3xs">
                         {getI18nOrFallback(t, "budgetCapLabel", "Budget Cap (USD / request)")}
                       </dt>
                       <dd className="text-text-main mt-1">
@@ -5097,13 +5290,13 @@ function ComboFormModal({
                 </div>
               )}
 
-              <div className="rounded-lg border border-border bg-bg-subtle p-3">
+              <Card.Section>
                 <p className="text-xs font-semibold text-text-main">
                   {getI18nOrFallback(t, "reviewSequence", "Execution sequence")}
                 </p>
                 <div className="mt-2 flex flex-col gap-1.5 max-h-[260px] overflow-y-auto">
                   {models.length === 0 ? (
-                    <p className="text-[11px] text-text-muted">
+                    <p className="text-xs text-text-muted">
                       {getI18nOrFallback(t, "reviewNoSteps", "No steps added yet.")}
                     </p>
                   ) : (
@@ -5113,14 +5306,14 @@ function ComboFormModal({
                         className="rounded-md border border-border bg-surface px-2.5 py-2"
                       >
                         <div className="flex items-start gap-2">
-                          <span className="text-[10px] font-semibold text-text-muted mt-0.5">
+                          <span className="text-3xs font-semibold text-text-muted mt-0.5">
                             {index + 1}
                           </span>
                           <div className="min-w-0 flex-1">
                             <p className="text-xs text-text-main truncate">
                               {formatModelDisplay(entry)}
                             </p>
-                            <p className="text-[10px] text-text-muted mt-0.5">
+                            <p className="text-3xs text-text-muted mt-0.5">
                               {getComboStepKindLabel(t, entry)}
                               {strategy === "weighted" && entry.weight > 0
                                 ? ` · ${entry.weight}%`
@@ -5132,7 +5325,7 @@ function ComboFormModal({
                     ))
                   )}
                 </div>
-              </div>
+              </Card.Section>
 
               <ComboReadinessPanel checks={readinessChecks} blockers={saveBlockers} />
             </div>
@@ -5177,7 +5370,7 @@ function ComboFormModal({
           )}
 
           {(isExpertMode || builderStage !== "review") && !canAdvanceFromCurrentStage && (
-            <div className="rounded-md border border-warning/20 bg-warning/10 px-2 py-1.5 text-[10px] text-warning">
+            <Notice variant="warning">
               {builderStage === "basics"
                 ? getI18nOrFallback(
                     t,
@@ -5189,7 +5382,7 @@ function ComboFormModal({
                     "addStepBeforeContinue",
                     "Add at least one step before continuing to the next stage."
                   )}
-            </div>
+            </Notice>
           )}
         </div>
       </Modal>
@@ -5207,6 +5400,7 @@ function ComboFormModal({
         selectedModel={null}
         addedModelValues={models.map((m) => m.model)}
         keepOpenOnSelect
+        includeWebTargets={activeEndpoint === "search" || activeEndpoint === "web-fetch"}
       />
     </>
   );

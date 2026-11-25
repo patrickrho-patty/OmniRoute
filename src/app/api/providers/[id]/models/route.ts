@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
+import { FalClient } from "@omniroute/open-sse/handlers/fal/client";
+import { runWithProxyContext } from "@omniroute/open-sse/utils/proxyFetch";
+import { isFalNativeEnabled } from "@/shared/utils/featureFlags";
+import {
+  captureCodexConnectionFence,
+  runWithCodexConnectionFence,
+  isCodexConnectionFenceCurrent,
+  StaleCodexOperationError,
+} from "@/lib/db/codexConnectionFences";
 import {
   getProviderConnectionFamilyIds,
   isClaudeCodeCompatibleProvider,
   isAnthropicCompatibleProvider,
   isOpenAICompatibleProvider,
-  NOAUTH_PROVIDERS,
 } from "@/shared/constants/providers";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
 import { getModelsByProviderId } from "@/shared/constants/models";
@@ -106,6 +114,7 @@ import {
   persistNonEmptyDiscoveredModels,
 } from "@/lib/providerModels/modelDiscovery";
 import { buildProviderModelsUrl, getDiscoveryClientVersionOptions } from "./discoveryClientVersion";
+import { shouldKeepStoredCodexCatalog } from "./codexDegradedGuard";
 import { getAdobeModels } from "./adobeFireflyDiscovery";
 import { getSyncedAvailableModels, getCustomModels, getModelIsHidden } from "@/lib/db/models";
 import { isConnectionUnavailableToAuxiliaryActivity } from "@/lib/exclusiveLeaseIsolation";
@@ -127,6 +136,7 @@ import {
   isLocalOpenAIStyleProvider,
   mergeLocalCatalogModels,
   mergeSpecialtyCatalogIntoLiveModels,
+  enrichLiveModelsWithDiscoveredCapabilities,
   buildOptionalBearerHeaders,
   buildNamedOpenAiStyleHeaders,
   enrichOllamaLocalModels,
@@ -164,7 +174,14 @@ import { maybeHandleTwinmindModelDiscovery } from "./twinmindDiscovery";
 import { maybeHandleDevinDesktopModelDiscovery } from "./devinDesktopDiscovery";
 import { maybeHandleMuseCodeModelDiscovery } from "./museCodeDiscovery";
 import { maybeHandleVertexModelDiscovery } from "./vertexDiscovery";
-import { buildNoAuthModelsResponse, filterModelsForRoute } from "./modelRouteProjection";
+import { maybeHandleCodeBuddyIntlModelDiscovery } from "./codebuddyIntlDiscovery";
+import { buildChatGptModelsResponse } from "./chatgptModels";
+import {
+  buildNoAuthModelsResponse,
+  filterModelsForRoute,
+  resolveNoAuthProviderId,
+} from "./modelRouteProjection";
+import { isCustomJsonProviderData } from "@omniroute/open-sse/utils/customJson.ts";
 
 /**
  * GET /api/providers/[id]/models - Get models list from provider
@@ -192,14 +209,7 @@ export async function GET(
       typeof connection?.provider === "string" && connection.provider.trim().length > 0
         ? connection.provider
         : null;
-    const noAuthProviderId =
-      (NOAUTH_PROVIDERS as Record<string, { noAuth?: boolean }>)[id]?.noAuth === true
-        ? id
-        : connectionProvider &&
-            (NOAUTH_PROVIDERS as Record<string, { noAuth?: boolean }>)[connectionProvider]
-              ?.noAuth === true
-          ? connectionProvider
-          : null;
+    const noAuthProviderId = resolveNoAuthProviderId(id, connectionProvider);
 
     // No-auth providers may persist a connection row solely for fingerprints
     // and account-proxy metadata. That row must not turn public model discovery
@@ -228,10 +238,12 @@ export async function GET(
     if (staleEncryptionResponse) return staleEncryptionResponse;
 
     const provider = connectionProvider;
+    const codexFence = provider === "codex" ? captureCodexConnectionFence(connection, id) : null;
     if (!provider) {
       return NextResponse.json({ error: "Invalid connection provider" }, { status: 400 });
     }
     const usesCuratedModelsOnly = providerUsesCuratedModelsOnly(provider);
+    if (provider === "chatgpt") return buildChatGptModelsResponse(connection, excludeHidden);
 
     // Resolve proxy for this provider (provider-level → global → direct)
     const proxy = await resolveProxyForProvider(provider);
@@ -299,6 +311,40 @@ export async function GET(
     const connectionId = typeof connection.id === "string" ? connection.id : id;
     const apiKey = typeof connection.apiKey === "string" ? connection.apiKey : "";
     const accessToken = typeof connection.accessToken === "string" ? connection.accessToken : "";
+    if (provider === "fal-ai" && isFalNativeEnabled()) {
+      const falProxy = await resolveProxyForConnection(connectionId, undefined, "fal-ai");
+      const client = new FalClient(apiKey || accessToken, (url, init) =>
+        runWithProxyContext(falProxy.proxy, () => fetch(url, init))
+      );
+      const query = new URLSearchParams();
+      for (const field of ["q", "category", "cursor", "limit"]) {
+        const value = searchParams.get(field);
+        if (value !== null) query.set(field, value);
+      }
+      const page = await client.discover(query, request.signal);
+      const models = (
+        page.models as Array<{
+          endpoint_id: string;
+          metadata?: { display_name?: string; category?: string };
+        }>
+      ).map((model) => ({
+        id: model.endpoint_id,
+        name: model.metadata?.display_name || model.endpoint_id,
+        category: model.metadata?.category ?? null,
+        execution_path: "/v1/fal/run",
+        verification: "discovered",
+        capabilitySource: "fal-catalog",
+      }));
+      // Do not label a catalog-only entry as chat-compatible or schema-validated.
+      return buildResponse({
+        provider,
+        connectionId,
+        models,
+        source: "api",
+        next_cursor: page.next_cursor,
+        has_more: page.has_more,
+      });
+    }
     const codexDiscoveryMode =
       provider === "codex" ? getCodexDiscoveryMode(connection.providerSpecificData) : "off";
     const autoFetchModels =
@@ -464,7 +510,13 @@ export async function GET(
         // OpenRouter's embeddingRegistry catalog) into the live-discovery
         // response; the live /v1/models endpoint only lists chat models, and
         // the specialty catalog otherwise only reached local_catalog fallback.
-        const mergedModels = mergeSpecialtyCatalogIntoLiveModels(models, provider);
+        // #19337 — keep the raw live cards (and every model the upstream listed)
+        // but carry the normalized capability fields so imports keep endpoints,
+        // provenance, vision and token limits.
+        const mergedModels = mergeSpecialtyCatalogIntoLiveModels(
+          enrichLiveModelsWithDiscoveredCapabilities(models, discoveredModels),
+          provider
+        );
         return buildResponse({
           provider,
           connectionId,
@@ -678,6 +730,21 @@ export async function GET(
       }
     }
 
+    const codebuddyIntlResponse = await maybeHandleCodeBuddyIntlModelDiscovery({
+      provider,
+      connectionId,
+      apiKey,
+      accessToken,
+      proxy,
+      refresh,
+      maybeReturnCachedDiscovery,
+      maybeReturnAutoFetchDisabled,
+      buildDiscoveryFallbackResponse,
+      buildResponse,
+      buildApiDiscoveryResponse,
+    });
+    if (codebuddyIntlResponse) return codebuddyIntlResponse;
+
     const webDiscoveryArgs = {
       provider,
       connectionId,
@@ -796,6 +863,16 @@ export async function GET(
       isLocalOpenAIStyleProvider(provider) ||
       isNamedOpenAIStyleProvider(provider)
     ) {
+      // Custom JSON API nodes expose no /models catalog: model IDs are configured by hand.
+      if (isCustomJsonProviderData(connection.providerSpecificData)) {
+        return buildResponse({
+          provider,
+          connectionId,
+          models: [],
+          source: "local_catalog",
+          warning: "Custom JSON endpoints use manually configured model IDs",
+        });
+      }
       const cachedResponse = maybeReturnCachedDiscovery();
       if (cachedResponse) return cachedResponse;
 
@@ -807,7 +884,7 @@ export async function GET(
           ? getRegistryEntry(provider)
           : null;
       const rawBaseUrl =
-        getProviderBaseUrl(connection.providerSpecificData) ||
+        getProviderBaseUrl(connection.providerSpecificData, provider) ||
         (typeof registryEntry?.baseUrl === "string" ? registryEntry.baseUrl : null);
       const baseUrl = rawBaseUrl;
       if (!baseUrl) {
@@ -2185,7 +2262,9 @@ export async function GET(
           cachedDiscoveryModels.every((model, index) => model.id === models[index]?.id)
         )
           return;
-        await persistDiscoveredModels(provider, connectionId, models);
+        await runWithCodexConnectionFence(codexFence, () =>
+          persistDiscoveredModels(provider, connectionId, models)
+        );
       };
 
       if (!refresh && cachedDiscoveryModels.length > 0) {
@@ -2225,6 +2304,12 @@ export async function GET(
       const githubCatalogDiscovery = await fetchCodexGithubCatalogModels({
         fetchImpl: createCodexDiscoveryFetch(proxy, "public-only"),
       });
+      if (codexFence && !isCodexConnectionFenceCurrent(codexFence)) {
+        return errorResponse(
+          409,
+          "Codex connection changed during model discovery; retry with current credentials."
+        );
+      }
       const liveModels = liveDiscovery.models;
       const githubCatalogModels = githubCatalogDiscovery.models;
       if (liveModels && liveModels.length > 0) {
@@ -2232,9 +2317,20 @@ export async function GET(
           githubCatalogModels && githubCatalogModels.length > 0
             ? enrichCodexModelsFromGithubCatalog(liveModels, githubCatalogModels)
             : liveModels;
-        const catalog = reconcileCodexCatalog(enrichedLiveModels);
-        await persistDiscoveredModels(provider, connectionId, catalog.activeModels);
+        const liveCatalog = reconcileCodexCatalog(enrichedLiveModels);
         const clientVersionSource = getCodexClientVersionSource();
+        // #16714: a degraded (refresh-failed) discovery must not shrink the stored catalog.
+        const keepStored = shouldKeepStoredCodexCatalog(
+          clientVersionSource,
+          liveCatalog.activeModels,
+          cachedDiscoveryModels
+        );
+        const catalog = keepStored ? reconcileCodexCatalog(cachedDiscoveryModels) : liveCatalog;
+        if (!keepStored) {
+          await runWithCodexConnectionFence(codexFence, () =>
+            persistDiscoveredModels(provider, connectionId, catalog.activeModels)
+          );
+        }
         return buildResponse({
           provider,
           connectionId,
@@ -2602,6 +2698,9 @@ export async function GET(
 
     return buildApiDiscoveryResponse(allModels);
   } catch (error) {
+    if (error instanceof StaleCodexOperationError) {
+      return errorResponse(409, error.message);
+    }
     if (error instanceof SafeOutboundFetchError && error.code === "URL_GUARD_BLOCKED") {
       return NextResponse.json({ error: sanitizeErrorMessage(error.message) }, { status: 400 });
     }

@@ -1466,6 +1466,81 @@ investigated.
 
 ---
 
+## v3.8.55 sync record (2026-11-25)
+
+Upstream `release/v3.8.55` @ `ae94881fcf` merged into `patty`
+(`--no-ff`), merge-base `2a8dc2741f`: **3,653 upstream commits**, 10,412 files
+changed, +1,176,014 / −558,520. 255 conflicted paths.
+
+Upstream's tip is **base-red**: `cheaper-inference/OmniRoute#21193`
+(`batch-input-regressions.test.tsx` + i18n drift). Inherited, not fixed here.
+
+### Conflicts resolved by rule
+
+| Rule     | Count | What                                                             |
+| -------- | ----- | ---------------------------------------------------------------- |
+| R1       | 26    | `.github/workflows/*` kept deleted; the 6 fork pipelines survive |
+| R3       | 132   | `docs/i18n/*` upstream prose (then `release:refresh-derived`)    |
+| R4       | 67    | `src/i18n/messages/*.json` 3-way deep union                      |
+| R2/R5/R6 | 30    | code, baselines, package.json/lock                               |
+
+R4 was scripted as a real 3-way merge (fork-only keys added, fork-edited values
+kept, upstream otherwise). Verified after: 103 fork-only keys **all** present,
+931 upstream-new keys **all** present, 15,888 leaves. `git execFileSync` default
+`maxBuffer` (1 MB) silently truncated every 1.3 MB locale until raised — that
+is why the first pass "merged 11/67".
+
+### Fork features re-grafted
+
+- Echo pipeline + `HIDE_UPSTREAM_METADATA`: all eleven `chatCore.ts` deltas,
+  the streaming pipe stage, `/v1/models` cache key (now composed with upstream's
+  new launch-session identity), combo-failure redaction.
+- Patty settlement: `pattyDecision` threaded next to upstream's new
+  `agentContext` in `runNonStreamingResponse` / `runStreamingTail`; the
+  emergency-hop guard keeps **both** `providerFailoverPending` and
+  `pattyDecision`.
+- Admission bypass: took upstream's #19292 rule (self-hop token only). The
+  vision bridge already sends `SELF_HOP_HEADER`, so its two bypass tests pass;
+  the fork's constants stay exported for `chatBodyAdmission`.
+- Feature-flag counts: 139 = upstream 138 + `HIDE_UPSTREAM_METADATA`; the doc
+  row and the three pinned count tests updated together.
+
+### Migration collision #5
+
+Upstream claimed **228** (`228_purge_orphaned_provider_catalogs`), the slot the
+fork's `patty_settlement_outbox` had used since v3.8.54 — and the production
+ledger has `228 | patty_settlement_outbox | 2026-08-25`. Left alone, production
+would skip upstream's purge migration forever. The fork migration moves to
+`20261125060000_patty_settlement_outbox.sql` (timestamp form: numeric slots are
+frozen at 241 and `check:migration-numbering` rejects new numerics), with rehome
+entries `164/187/206/223/228 → 20261125060000`.
+
+### Gates
+
+typecheck-core clean · lint 0 errors (3645 pre-existing warnings) ·
+`check:migration-numbering` OK (256 migrations) · type-scale ratchet 11/0 ·
+`check:docs-all` clean · `release:refresh-derived` clean ·
+**FLAG GATE 5/5** (`hide-upstream-metadata-units`, `response-model-echo-1311`,
+`response-model-echo-client-requested`, `codex-effort-model-echo-3697`,
+`hide-upstream-metadata-combo-echo`) · `admission-bypass-process-secret` 6/6 ·
+migration + feature-flag suites 10/10, 67/67, 4/4.
+
+Inherited reds (also red on pre-merge `patty`, not touched): catalog-cache
+#10313 probe ("no Map.set observed"), `.github/workflows` admission-policy
+checks, `login/page.tsx` setState rules.
+
+### Follow-ups
+
+- [ ] Graft `recordStepFailure` / `commitStepResult` into both stacked loops in
+      `strategySelector.ts`. Upstream's per-engine circuit-breaker accounting
+      arrived as helpers the fork's loops do not call; the dead helpers were
+      removed so lint stays clean, so breaker accounting is **lost** relative to
+      upstream until this lands.
+- [ ] `release:refresh-derived` ui-keys step needs a translation backend
+      (`OMNIROUTE_TRANSLATION_*`); 27,970 UI values stay untranslated.
+- [ ] Re-run the full unit suite on the merged tip and diff against
+      `fail-patty.txt` before merging the sync PR.
+
 ## Browser engine for browser-backed providers (2026-10-17)
 
 Deployed images must ship a browser **revision that matches the installed Playwright**.
