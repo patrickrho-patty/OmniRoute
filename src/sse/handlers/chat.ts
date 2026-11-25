@@ -1,10 +1,14 @@
-import { hasQoderCallerTools } from "@omniroute/open-sse/services/qoderCapabilities";
+import { requiresQoderHttpTransport } from "@omniroute/open-sse/services/qoderCapabilities";
 import { getRequestedModelEndpointMismatch } from "@/lib/providerModels/modelEndpointGuard";
 import { randomUUID } from "crypto";
 import { resolveChatRequestBody } from "./requestBody";
 import { getComboCredentialAvailability } from "./comboCredentialAvailability.ts";
 import * as chatAdmission from "./chatAdmission.ts";
 import { buildClientRawRequest, resolveDispatchClientRawRequest } from "./chat/clientRawRequest.ts";
+import {
+  comboStalledConnectionIds,
+  type ComboStalledConnections,
+} from "./chat/comboStalledConnections.ts";
 export { buildClientRawRequest, resolveDispatchClientRawRequest };
 import { normalizeReasoningRequest } from "@/shared/reasoning/effortStandardization";
 import { isDetailedLoggingEnabled } from "@/lib/db/detailedLogs";
@@ -34,13 +38,16 @@ import {
   resolveAvalancheSettings,
 } from "@omniroute/open-sse/services/accountFallback/antiAvalanche.ts";
 import { estimateTokens } from "@omniroute/open-sse/services/contextManager.ts";
+import { getCodexPlanType } from "@omniroute/open-sse/services/codexPlanEligibility.ts";
 import { getCombo, getComboForModel, getModelInfo } from "../services/model";
 import { stripContextWindowSuffix } from "@omniroute/open-sse/services/model.ts";
 import { resolveBareModelToConnectionDefault } from "@omniroute/open-sse/services/model.ts";
 import { errorResponse } from "@omniroute/open-sse/utils/error.ts";
 import { trustedInternalTestMark } from "@omniroute/open-sse/utils/selfHop.ts";
+import { ASSESSMENT_PROBE_MARK, refuseUnisolatedChatProbe } from "@/lib/providers/chatProbePolicy";
 import { getImageModelEntry, isImageOnlyModel } from "@omniroute/open-sse/config/imageRegistry.ts";
 import { acceptHeaderForcesStream } from "@omniroute/open-sse/utils/aiSdkCompat.ts";
+import { normalizeVisionImagesInBody } from "@omniroute/open-sse/utils/visionImageNormalization.ts";
 import {
   isAntigravityRefusalReplay,
   usesAntigravity429Budget,
@@ -61,6 +68,7 @@ import { isMarkedLocalProcessPressureResponse } from "@omniroute/open-sse/utils/
 import {
   HTTP_STATUS,
   ANTIGRAVITY_PRE_RESPONSE_TIMEOUT_CODE,
+  REQUEST_SCOPED_UPSTREAM_TIMEOUT_CODE,
 } from "@omniroute/open-sse/config/constants.ts";
 import {
   getTargetFormat,
@@ -72,8 +80,15 @@ import {
   PROVIDER_ID_TO_ALIAS,
 } from "@omniroute/open-sse/config/providerModels.ts";
 import { getPassthroughProviders } from "@omniroute/open-sse/config/providerRegistry.ts";
+import { isPassiveCodex } from "@omniroute/open-sse/services/tokenRefresh/passiveCodex.ts";
 import * as log from "../utils/logger";
 import { checkAndRefreshToken } from "../services/tokenRefresh";
+import {
+  isCodexResponseCurrent,
+  runWithCodexResponseFence,
+  STALE_CODEX_OPERATION_CODE,
+  StaleCodexOperationError,
+} from "@/lib/db/codexConnectionFences";
 import { createHookContext, runHooks, initPreRequestRegistry } from "@/lib/middleware/registry";
 import { rejectPeerRequest } from "@/shared/resilience/peerRouting";
 import { isRuntimeProviderRetirementError } from "@/shared/constants/providerRetirement";
@@ -90,13 +105,22 @@ import {
   evictSessionAccountAffinityForConnectionAsync as evictSessionAccountAffinityForConnection,
 } from "@/lib/db/sessionAccountAffinity";
 import { dispatchChatWithAffinityEviction } from "./chatDispatch";
+import { expandChatPromptTemplates } from "@/lib/promptTemplateExpand";
 import { getCachedSettings, getCombosCacheVersion } from "@/lib/db/readCache";
 import { isManagedComboUnsupported } from "./chat/managedComboSupport.ts";
 import * as muse from "./chat/museOwnership.ts";
 import { comboCheckProvider, ghComboGate } from "./chat/githubLiveCatalogFilter.ts";
 import { markEmergencyFallback } from "./emergencyFallbackHeader.ts";
 import { resolveEmergencyFallbackDecision } from "./emergencyFallbackHeader.ts";
+import { resolveInternalUpstreamStartTimeoutMs } from "../services/internalUpstreamStartTimeout";
+import { resolveResilienceSettings } from "@/lib/resilience/settings";
+import { resolvePreferredConnectionUpstreamStartTimeoutMs } from "../services/preferredConnectionFailover";
 import { evaluateComboTargetPreflight } from "./chat/comboTargetKeyPolicy.ts";
+import {
+  agentGuardFusionJudgeRefusal,
+  agentGuardRefusal,
+  settleAgentGuardCombo,
+} from "./chat/agentGuardGate.ts";
 import * as resolvedPolicy from "./chat/resolvedModelPolicy.ts";
 import { recordGateRejection, recordQuotaParkedSkip } from "./quotaParkedSkipUsage";
 import { getCombos } from "@/lib/db/combos";
@@ -106,6 +130,8 @@ import {
   isOpenAIResponsesStoreEnabled,
 } from "@/lib/providers/requestDefaults";
 import { guardrailRegistry, resolveDisabledGuardrails } from "@/lib/guardrails";
+import { getActiveRequestTokenVault } from "@/lib/pii/tokenVault";
+import { runWithRequestTokenVault } from "@/lib/pii/requestTokenVaultScope";
 import {
   resolveModelOrError,
   comboTargetCredentialProviderId,
@@ -142,7 +168,16 @@ import {
 import { markAntigravityMissingCloudCodeProject } from "@omniroute/open-sse/services/antigravityProjectPersistence.ts";
 import { connectionHasExtraKeys } from "@omniroute/open-sse/services/apiKeyRotator.ts";
 import { wrapResponseWithOAuthSessionRelease } from "@omniroute/open-sse/services/oauthSessionOccupancy.ts";
-import { inheritProviderProbeResponse, inheritResponsePolicies } from "./chat/responsePolicies.ts";
+import {
+  inheritProviderProbeResponse,
+  inheritResponsePolicies,
+  isNoReplayResponse,
+  markCustomJsonNoReplay,
+} from "./chat/responsePolicies.ts";
+import {
+  isCustomOpenAICompatibleProvider,
+  markAmbiguousCustomNodeFailure,
+} from "./chat/customNodeReplayPolicy.ts";
 import { resolveProviderId } from "@/shared/constants/providers";
 import {
   extractReasoningIntent,
@@ -155,6 +190,7 @@ import {
   filterReasoningCombo,
 } from "./reasoningRouting";
 import { createVirtualAutoCombo, resolveAutoRoutingState } from "./autoRouting";
+import { dispatchWithProviderFailover } from "./chat/providerFailover.ts";
 import { getComboFailureLogError } from "./comboFailureLogging";
 import {
   logAdmissionRejection,
@@ -168,6 +204,7 @@ import { classify429FromError, type FailureKind } from "@/shared/utils/classify4
 import { isSubscriptionQuotaText } from "@omniroute/open-sse/services/quotaTextCooldowns.ts";
 import { resolveUseUpstream429BreakerHints } from "@/shared/utils/providerHints";
 import { isFeatureFlagEnabled, isRotationAttributionEnabled } from "@/shared/utils/featureFlags";
+import * as reEgress from "../services/sameAccountEgressRetry";
 import * as agyLease from "../services/antigravityLeaseLifecycle";
 import { shouldIsolateProbeFailures } from "@/shared/utils/probeOrigin";
 import { getCircuitBreaker, isLocalStreamLifecycleError } from "../../shared/utils/circuitBreaker";
@@ -379,6 +416,19 @@ const comboPromoteDeps = { updateCombo, info: log.info, warn: log.warn };
 // callbacks the breaker stores therefore never close over request state.
 function breakerCountsAsFailure(error: unknown): boolean {
   return !isLocalStreamLifecycleError(error);
+}
+
+/** The trusted live combo test's agent guard exemption, also when a safety-net redirect carries it. */
+function hasAgentGuardLiveTestExemption(options: {
+  forceLiveComboTest?: boolean;
+  agentGuardTrustedLiveTest?: boolean;
+}): boolean {
+  return options.forceLiveComboTest === true || options.agentGuardTrustedLiveTest === true;
+}
+
+/** A combo target's traffic type: shadow targets meet the agent guard without recording state. */
+function trafficTypeOf(target: { trafficType?: "production" | "shadow" } | undefined) {
+  return target?.trafficType;
 }
 
 function logBreakerStateChange(name: string, from: string, to: string): void {
@@ -631,6 +681,11 @@ async function handleChatInternal(
     );
   }
 
+  // Opt-in prompt templates (OMNIROUTE_PROMPT_TEMPLATES=1): expand `template://slug` messages.
+  const templated = expandChatPromptTemplates(body);
+  if (templated instanceof Response) return templated;
+  body = templated;
+
   // Reject non-string `model` before it reaches downstream code that calls
   // `.toLowerCase()` / `.split()` / `.startsWith()` on it (crash-then-500 with an
   // empty body, escaping the error sanitizer — #6407). An explicit `null`/`undefined`
@@ -813,6 +868,12 @@ async function handleChatInternal(
   }
 
   const isComboLiveTest = trustedInternalTestMark(request.headers) === "combo-health-check";
+  // Every automated probe, a live test or an assessment, is gated against leaving a conversation
+  // on a signed-in account; only the live test also bypasses breakers, cooldowns and quota policy.
+  // That bypass needs this process's token; the assessment mark only makes its own request
+  // stricter, so it is read as sent (assessment probes do not always reach the stamped listener).
+  const isAutomatedProbe =
+    isComboLiveTest || request.headers?.get?.("x-internal-test") === ASSESSMENT_PROBE_MARK;
 
   if (!modelStr) {
     log.warn("CHAT", "Missing model");
@@ -1015,6 +1076,7 @@ async function handleChatInternal(
     model: modelStr,
     signal,
     stream: body?.stream === true,
+    tokenVault: getActiveRequestTokenVault() ?? null,
   });
   if (preCallGuardrails.blocked) {
     log.warn("GUARDRAIL", "Request blocked during pre-call guardrails", {
@@ -1040,6 +1102,20 @@ async function handleChatInternal(
   const modelBeforeGuardrails =
     typeof body?.model === "string" && body.model.length > 0 ? body.model : modelStr;
   body = preCallGuardrails.payload;
+  // Opt-in (OMNIROUTE_IMAGE_NORMALIZATION=1): normalize inline vision images
+  // (RGB, ≤4096 long edge, ~4MP, baseline JPEG/PNG) before any dispatch —
+  // every combo target and retry sees the same normalized bytes. No-op and
+  // zero cost when the env is unset. Fail-open on any per-image failure.
+  {
+    const visionNorm = await normalizeVisionImagesInBody(body);
+    if (visionNorm.normalized > 0) {
+      log.info(
+        "VISION",
+        `Normalized ${visionNorm.normalized} inline image(s) for upstream vision pipeline`,
+        { skipped: visionNorm.skipped }
+      );
+    }
+  }
   ({ body, modelStr } = await RoutingModelOps.reconcileGuardrailReroute({
     body,
     modelBeforeGuardrails,
@@ -1241,6 +1317,16 @@ async function handleChatInternal(
     ]);
     if (managedLease && isManagedComboUnsupported(combo, settings, allCombos))
       return managedComboRejection();
+    // A configured fusion judge the agent guard refuses fails before the panel fans out.
+    const judgeRefusal = agentGuardFusionJudgeRefusal({
+      request,
+      combo,
+      settings,
+      apiKeyInfo,
+      sourceFormat,
+      trustedLiveTest: isComboLiveTest,
+    });
+    if (judgeRefusal) return judgeRefusal;
     log.info(
       "CHAT",
       `Combo "${modelStr}" [${combo.strategy || "priority"}] with ${combo.models.length} models`
@@ -1261,6 +1347,7 @@ async function handleChatInternal(
         allowedConnectionIds?: string[] | null;
         executionKey?: string | null;
         providerId?: string | null;
+        trafficType?: "production" | "shadow";
       }
     ) => {
       const preflightDecision = await evaluateComboTargetPreflight({
@@ -1291,7 +1378,15 @@ async function handleChatInternal(
         throw error;
       }
       if (modelInfo?.errorType === "model_not_found") return "model_not_in_catalog";
-      const provider = comboCheckProvider(modelString, modelInfo, target?.providerId);
+      const provider = comboCheckProvider(
+        modelString,
+        modelInfo,
+        comboTargetCredentialProviderId(target)
+      );
+      // A shadow target is checked without touching the foreground request's guard state.
+      const recordState = trafficTypeOf(target) !== "shadow";
+      if (agentGuardRefusal({ request, provider, modelStr: modelString, apiKeyInfo, recordState }))
+        return "agent_guard_refused" as const;
       const resolvedModel = modelInfo.model || modelString;
       const githubGate = await ghComboGate(comboPreselectedCredentials, provider, resolvedModel);
       if (githubGate !== null) return githubGate;
@@ -1318,7 +1413,7 @@ async function handleChatInternal(
         resolvedModel,
         {
           connectionRestrictionSources: restrictions.sources,
-          requireToolCalling: hasQoderCallerTools(body),
+          requireToolCalling: requiresQoderHttpTransport(body),
           sessionKey: sessionAffinityKey,
           preferredConnectionIds: apiKeyInfo?.preferredConnections ?? null,
           ...(target?.allowRateLimitedConnection ? { allowRateLimitedConnections: true } : {}),
@@ -1359,7 +1454,9 @@ async function handleChatInternal(
     // because only this layer knows which connectionId was actually selected.
     const { defer: deferContextOverflowWhenCompressible, exclusions: compressionExclusions } =
       await resolveComboContextOverflowDeferral(log, apiKeyInfo);
-    const response = await (handleComboChat as any)({
+    // Accounts this combo request's per-target timeout abandoned; later targets prefer others.
+    const comboStalledConnections: ComboStalledConnections = new Map();
+    let response = await (handleComboChat as any)({
       body,
       combo,
       deferContextOverflowWhenCompressible,
@@ -1390,6 +1487,7 @@ async function handleChatInternal(
           effectiveComboStrategy?: string | null;
           modelAbortSignal?: AbortSignal | null;
           fallbackAttempts?: number;
+          trafficType?: "production" | "shadow";
         }
       ) =>
         handleSingleModelChat(
@@ -1404,6 +1502,7 @@ async function handleChatInternal(
             sessionId,
             sessionAffinityKey,
             forceLiveComboTest: isComboLiveTest,
+            automatedProbe: isAutomatedProbe,
             ...resolvedPolicy.comboAuthorizationOptions(apiKeyInfo, resolvedModelStr),
             forcedConnectionId: target?.connectionId ?? null,
             allowedConnectionIds: target?.allowedConnectionIds ?? null,
@@ -1440,6 +1539,8 @@ async function handleChatInternal(
             // entry (trackPendingRequest(false) never runs) — live incident,
             // log id 1784418258231-14961a.
             modelAbortSignal: target?.modelAbortSignal ?? null,
+            trafficType: trafficTypeOf(target),
+            comboStalledConnections,
             fallbackAttempts: target?.fallbackAttempts,
           },
           target?.effectiveComboStrategy ?? combo.strategy,
@@ -1504,6 +1605,7 @@ async function handleChatInternal(
                 sessionAffinityKey,
                 emergencyFallbackTried: true,
                 forceLiveComboTest: isComboLiveTest,
+                automatedProbe: isAutomatedProbe,
                 conversationId,
                 managedLease,
                 videoBridgeLog,
@@ -1530,6 +1632,9 @@ async function handleChatInternal(
       }
     }
     // ─────────────────────────────────────────────────────────────────────────
+
+    // A combo whose every guarded target the agent guard refused answers the policy error.
+    response = settleAgentGuardCombo(request, response, sourceFormat, combo);
 
     // Record telemetry
     recordTelemetry(telemetry);
@@ -1582,35 +1687,61 @@ async function handleChatInternal(
       } catch {}
     }
   }
-  const response = await handleSingleModelChat(
-    body,
-    resolvedModelStr,
-    clientRawRequest,
-    request,
-    null,
+  // A body that continues another provider's session (opaque reasoning, continuation
+  // ids, a response id) or an already-owned Muse session must not be replayed on a
+  // different provider: provider failover is pinned for it.
+  const bodyObject = (body ?? {}) as Record<string, unknown>;
+  const boundContinuation =
+    muse.bodyCarriesBoundContinuation(bodyObject) ||
+    (await muse.museSessionIsOwned({
+      body: bodyObject,
+      headers: request?.headers ?? null,
+      apiKeyId: apiKeyInfo?.id ?? null,
+    }));
+  const response = await dispatchWithProviderFailover({
+    modelStr: resolvedModelStr,
     apiKeyInfo,
-    telemetry,
-    {
-      sessionId,
-      sessionAffinityKey,
-      forceLiveComboTest: isComboLiveTest,
+    request,
+    signal: clientRawRequest?.signal ?? request?.signal ?? null,
+    pins: {
       forcedConnectionId: requestedConnectionId,
-      correlationId: reqId,
-      conversationId,
-      routingComboId,
-      reasoningDecision,
-      reasoningIntent,
-      reasoningRequestTags: requestRoutingTags.tags,
-      pattyDecision,
       managedLease,
-      videoBridgeLog,
-      previousResponseResumed:
-        (body as { _omniroutePreviousResponseResumed?: unknown })
-          ._omniroutePreviousResponseResumed === true || undefined,
+      comboLiveTest: isComboLiveTest,
+      boundContinuation,
     },
-    null,
-    false
-  );
+    dispatch: (targetModelStr, failoverOptions) =>
+      handleSingleModelChat(
+        body,
+        targetModelStr,
+        clientRawRequest,
+        request,
+        null,
+        apiKeyInfo,
+        telemetry,
+        {
+          ...failoverOptions,
+          sessionId,
+          sessionAffinityKey,
+          forceLiveComboTest: isComboLiveTest,
+          automatedProbe: isAutomatedProbe,
+          forcedConnectionId: requestedConnectionId,
+          correlationId: reqId,
+          conversationId,
+          routingComboId,
+          reasoningDecision,
+          reasoningIntent,
+          reasoningRequestTags: requestRoutingTags.tags,
+          pattyDecision,
+          managedLease,
+          videoBridgeLog,
+          previousResponseResumed:
+            (body as { _omniroutePreviousResponseResumed?: unknown })
+              ._omniroutePreviousResponseResumed === true || undefined,
+        },
+        null,
+        false
+      ),
+  });
   recordTelemetry(telemetry);
   return withModalityBridgeHeader(
     withConversationId(
@@ -1624,9 +1755,13 @@ async function handleChatInternal(
 // One turn-execution ownership scope per client request (#18716): every account retry, rotation
 // and combo leg of this request re-enters chatCore under it and reuses the turn slot the request
 // already holds instead of 409ing itself. A scope per dispatch would not span those attempts.
+// The reversible PII vault is scoped the same way: one vault per client request, restored once
+// on the response that leaves here (a no-op unless both PII vault flags are on).
 export const handleChat = chatAdmission.withChatAdmission(
   (...args: Parameters<typeof handleChatImplementation>) =>
-    runWithTurnExecutionOwnership(() => handleChatImplementation(...args))
+    runWithRequestTokenVault(() =>
+      runWithTurnExecutionOwnership(() => handleChatImplementation(...args))
+    )
 );
 function readEmptyStreamSiblingRecoveryFlag(): boolean {
   try {
@@ -1646,7 +1781,10 @@ async function handleSingleModelChat(
   telemetry: any = null,
   runtimeOptions: {
     emergencyFallbackTried?: boolean;
+    providerFailoverPending?: boolean; // another provider of this model is queued (providerFailover.ts)
     forceLiveComboTest?: boolean;
+    /** An automated probe (live test or assessment): must not leave an account conversation. */
+    automatedProbe?: boolean;
     sessionId?: string | null;
     sessionAffinityKey?: string | null;
     forcedConnectionId?: string | null;
@@ -1685,11 +1823,19 @@ async function handleSingleModelChat(
      * the signal used for the actual dispatch, not left unused.
      */
     modelAbortSignal?: AbortSignal | null;
+    /** Accounts an earlier target of this combo request stalled on (comboStalledConnections.ts). */
+    comboStalledConnections?: ComboStalledConnections | null;
     fallbackAttempts?: number;
+    /** A shadow target's dispatch: the agent guard decides without recording request state. */
+    trafficType?: "production" | "shadow";
+    /** Carries the trusted live combo test's agent guard exemption alone, without breaker bypass. */
+    agentGuardTrustedLiveTest?: boolean;
   } = {},
   comboStrategy: string | null = null,
   isCombo: boolean = false
 ): Promise<Response> {
+  const requestUpstreamStartTimeoutMs = resolveInternalUpstreamStartTimeoutMs(request);
+
   // 1. Resolve model → provider/model
   const resolved = await resolveModelOrError(
     modelStr,
@@ -1717,7 +1863,22 @@ async function handleSingleModelChat(
     // down so getKnownContextOverflow's target-aware deferral check can never drift
     // from chatCore's own native-codex-passthrough decision.
     const sNetSourceFormat = detectFormatFromEndpoint(body, clientRawRequest?.endpoint || "");
-    return handleComboChat({
+    // A combo target redirected here keeps sharing its outer combo request's record.
+    const sNetStalledConnections: ComboStalledConnections =
+      runtimeOptions.comboStalledConnections ?? new Map();
+    // The trusted live test keeps its agent guard exemption through the redirect.
+    const sNetTrustedLiveTest = hasAgentGuardLiveTestExemption(runtimeOptions);
+    // Same judge pre-check as the main combo path; this combo runs with `settings: {}`.
+    const sNetJudgeRefusal = agentGuardFusionJudgeRefusal({
+      request,
+      combo: redirectCombo,
+      settings: {},
+      apiKeyInfo,
+      sourceFormat: sNetSourceFormat,
+      trustedLiveTest: sNetTrustedLiveTest,
+    });
+    if (sNetJudgeRefusal) return sNetJudgeRefusal;
+    const sNetResponse = await handleComboChat({
       body,
       combo: redirectCombo,
       deferContextOverflowWhenCompressible: sNetDefer,
@@ -1744,9 +1905,14 @@ async function handleSingleModelChat(
           {
             sessionId: "", // safety-net redirect doesn't have session context
             forceLiveComboTest: false,
+            agentGuardTrustedLiveTest: sNetTrustedLiveTest,
+            // A probe stays a probe through the redirect, so each target is gated as one.
+            automatedProbe: runtimeOptions.automatedProbe === true,
             authorizationContextModel: runtimeOptions.authorizationContextModel ?? modelStr,
-            forcedConnectionId: runtimeOptions?.forcedConnectionId ?? null,
-            allowedConnectionIds: null,
+            // The redirected combo's own target pin and allow-list win over the caller's pin.
+            forcedConnectionId:
+              resolvedTarget?.connectionId ?? runtimeOptions?.forcedConnectionId ?? null,
+            allowedConnectionIds: resolvedTarget?.allowedConnectionIds ?? null,
             comboStepId: null,
             comboExecutionKey: null,
             skipUpstreamRetry: resolvedTarget?.failoverBeforeRetry === true,
@@ -1762,6 +1928,7 @@ async function handleSingleModelChat(
             previousResponseResumed: runtimeOptions.previousResponseResumed,
             // #7360 follow-up — see the primary handleSingleModel closure above.
             modelAbortSignal: target?.modelAbortSignal ?? null,
+            comboStalledConnections: sNetStalledConnections,
             fallbackAttempts: target?.fallbackAttempts,
           },
           resolvedTarget?.effectiveComboStrategy ?? redirectCombo.strategy ?? "priority",
@@ -1779,6 +1946,7 @@ async function handleSingleModelChat(
         signal: clientRawRequest?.signal ?? request?.signal ?? null,
       }),
     });
+    return settleAgentGuardCombo(request, sNetResponse, sNetSourceFormat, redirectCombo);
   }
 
   const {
@@ -1798,6 +1966,9 @@ async function handleSingleModelChat(
     if (modelStr.startsWith(runtimeOptions.providerId + "/")) return resolvedProvider;
     return runtimeOptions.providerId;
   })();
+  // Custom OpenAI-compatible node: a POST with an ambiguous outcome is never replayed
+  // (see chat/customNodeReplayPolicy.ts); definite rejections keep normal fallback.
+  const customProviderNoReplay = isCustomOpenAICompatibleProvider(provider);
   const resolvedModelGate = resolvedPolicy.createVisibleResolvedModelGate({
     apiKeyInfo,
     request,
@@ -1810,6 +1981,24 @@ async function handleSingleModelChat(
   const modelPolicyRejection = await resolvedModelGate([`${provider}/${model}`]);
   if (modelPolicyRejection) return modelPolicyRejection;
   const forceLiveComboTest = runtimeOptions.forceLiveComboTest === true;
+  // Agent guard (block mode), on the provider this target resolved to: after the key's own
+  // model policy, before any breaker, cooldown or credential is touched.
+  const agentRefusal = agentGuardRefusal({
+    request,
+    provider,
+    modelStr,
+    apiKeyInfo,
+    sourceFormat,
+    trustedLiveTest: hasAgentGuardLiveTestExemption(runtimeOptions),
+    recordState: runtimeOptions.trafficType !== "shadow",
+  });
+  if (agentRefusal) return agentRefusal;
+  // #14780: a probe must not leave a conversation on a signed-in account. Decided here,
+  // once the target's provider is final, so every probe path and combo target is covered.
+  const probeRefusal = runtimeOptions.automatedProbe
+    ? await refuseUnisolatedChatProbe(provider)
+    : null;
+  if (probeRefusal) return probeRefusal;
   const budgetRejection = rejectIfMeteredBudgetExceeded(apiKeyInfo?.id, provider, modelStr);
   if (budgetRejection) return budgetRejection;
   const bypassProviderQuotaPolicy = hasProviderQuotaBypassScope(apiKeyInfo?.scopes);
@@ -1885,15 +2074,20 @@ async function handleSingleModelChat(
   });
 
   const userAgent = request?.headers?.get("user-agent") || "";
-  const baseRetrySettings = resolveCooldownAwareRetrySettings(
-    runtimeOptions.cachedSettings ?? (await getCachedSettings().catch(() => ({})))
-  );
+  const cachedRuntimeSettings =
+    runtimeOptions.cachedSettings ?? (await getCachedSettings().catch(() => ({})));
+  const baseRetrySettings = resolveCooldownAwareRetrySettings(cachedRuntimeSettings);
+  // The read cache invalidates on settings writes (up to its 5s TTL).
+  // No restart is needed for newly dispatched chat requests.
+  const preferredFailoverSettings =
+    resolveResilienceSettings(cachedRuntimeSettings).preferredAccountFailover;
   const retrySettings = disableCooldownAwareRetry(
     baseRetrySettings,
     provider === "claude-web" ||
       isCombo ||
       forceLiveComboTest ||
-      runtimeOptions.emergencyFallbackTried === true
+      runtimeOptions.emergencyFallbackTried === true ||
+      runtimeOptions.providerFailoverPending === true
   );
   const requestSignal = clientRawRequest?.signal ?? request?.signal ?? null;
   // Cumulative cap across all waits for this request (#7360 follow-up) — mirrors
@@ -1926,7 +2120,38 @@ async function handleSingleModelChat(
   // STREAM_EARLY_EOF_SIBLING_FAILOVER_ENABLED: at most ONE sibling hop per request. Keeps the
   // original early-EOF 502 so an exhausted sibling pool surfaces it verbatim (combo detection).
   let earlyEofOriginal: Response | null = null;
+  // Preferred connection start timeout is a single-hop routing hint, never a cooldown.
+  let preferredTimeoutOriginal: Response | null = null;
+  let preferredFailoverUsed = false;
   const sameAccountTransportRetries = new Map<string, number>();
+  // An obsolete Codex selection/response is not a fault of the current account. Reselect once
+  // without cooling or excluding its connection ID; never replay a successful response.
+  let staleCodexReselected = false;
+  let accountFallbacks = 0;
+  let selectedConnectionPlan: string | null = null;
+  let sameAccountRetries = 0;
+  let egressRetries = 0; // PROXY_REEGRESS_ON_QUOTA_429 (see sameAccountEgressRetry.ts)
+  const egressTriedKeys = new Set<string>();
+  let pendingEgress: reEgress.PendingEgress | null = null;
+  let routingWaitMs = 0;
+  const accountFallbackReasons: string[] = [];
+  let pendingFallback: { reason: string; previousConnectionId: string } | null = null;
+  let pendingStreamRetryConnectionId: string | null = null;
+  // An intention to rotate is not yet a completed account switch.
+  const noteAccountFallback = (reason: string, previousConnectionId: string): void => {
+    pendingFallback = { reason, previousConnectionId };
+  };
+  const routingTelemetry = () => ({
+    accountFallbacks,
+    selectedConnectionPlan,
+    accountFallbackReasons,
+    sameAccountRetries,
+    routingWaitMs,
+  });
+  const withRoutingTelemetry = (
+    response: Response,
+    connectionId: string | null | undefined
+  ): Response => withSelectedConnectionHeader(response, connectionId, routingTelemetry());
   const occupancySessionKey =
     runtimeOptions.sessionAffinityKey ?? runtimeOptions.sessionId ?? `request:${randomUUID()}`;
   let initialPreselectedCredentials = runtimeOptions.preselectedCredentials;
@@ -1968,6 +2193,12 @@ async function handleSingleModelChat(
       ) {
         emptyTurnExcluded.add(runtimeOptions.emptyTurnConnectionId);
       }
+      // A combo per-target timeout abandoned these accounts earlier in this combo request.
+      // Not flag-gated: it only applies once a target timed out, with the same fallback below.
+      if (!hasForcedConnection && !museOwner && !runtimeOptions.managedLease) {
+        const stalled = runtimeOptions.comboStalledConnections;
+        for (const id of comboStalledConnectionIds(stalled, provider)) emptyTurnExcluded.add(id);
+      }
       const selectCredentials = (excluded: Set<string>) =>
         getProviderCredentialsWithQuotaPreflight(
           provider,
@@ -1976,7 +2207,7 @@ async function handleSingleModelChat(
           model,
           {
             connectionRestrictionSources: restrictions.sources,
-            requireToolCalling: hasQoderCallerTools(body),
+            requireToolCalling: requiresQoderHttpTransport(body),
             sessionKey: museOwner ? null : occupancySessionKey,
             preferredConnectionIds: apiKeyInfo?.preferredConnections ?? null,
             reserveOAuthSession: true,
@@ -2025,8 +2256,8 @@ async function handleSingleModelChat(
         emptyTurnExcluded.size > excludedConnectionIds.size &&
         (!credentials || "allRateLimited" in credentials || "allExpired" in credentials)
       ) {
-        // Empty turns are stochastic, not account faults. Prefer an allowed sibling,
-        // but a singleton still spends its existing retry on its original account.
+        // Empty turns and combo target timeouts are not account faults. Prefer an allowed
+        // sibling, but a singleton still spends its existing retry on its original account.
         credentials = await selectCredentials(excludedConnectionIds);
       }
       preselectedCredentials = null;
@@ -2053,7 +2284,8 @@ async function handleSingleModelChat(
         "allExpired" in credentials ||
         !credentials.connectionId
       ) {
-        if (earlyEofOriginal) return earlyEofOriginal;
+        if (preferredTimeoutOriginal) return preferredTimeoutOriginal;
+        if (earlyEofOriginal) return withRoutingTelemetry(earlyEofOriginal, null);
         if (!credentials?.allRateLimited && agy.earliestRetryHintAtMs !== null)
           return agyLease.buildAntigravityPoolBusyResponse(agy.earliestRetryHintAtMs);
         if (credentials?.allRateLimited) {
@@ -2086,6 +2318,7 @@ async function handleSingleModelChat(
               return errorResponse(499, "Request aborted");
             }
 
+            routingWaitMs += retryDecision.waitMs;
             requestRetryAttempt += 1;
             requestRetryBudgetLeftMs = Math.max(0, requestRetryBudgetLeftMs - retryDecision.waitMs);
             log.info(
@@ -2150,9 +2383,33 @@ async function handleSingleModelChat(
           excludedConnectionIds.size > 0
             ? Array.from(excludedConnectionIds)[excludedConnectionIds.size - 1]
             : null;
-        return withSelectedConnectionHeader(noCredsRes, lastFailedConnectionId);
+        // No account was selected for this response; don't report a previous attempt's plan.
+        selectedConnectionPlan = null;
+        return withRoutingTelemetry(noCredsRes, lastFailedConnectionId);
       }
 
+      if (pendingFallback !== null) {
+        const candidate = pendingFallback;
+        pendingFallback = null;
+        if (credentials.connectionId !== candidate.previousConnectionId) {
+          accountFallbacks += 1;
+          if (accountFallbackReasons.length < 8) accountFallbackReasons.push(candidate.reason);
+        }
+      }
+      if (pendingStreamRetryConnectionId !== null) {
+        if (credentials.connectionId === pendingStreamRetryConnectionId) {
+          sameAccountRetries += 1;
+        } else {
+          accountFallbacks += 1;
+          if (accountFallbackReasons.length < 8) {
+            accountFallbackReasons.push("empty_content_sibling");
+          }
+        }
+        pendingStreamRetryConnectionId = null;
+      }
+      // Refresh on every selected credential so fallback never reports a stale plan.
+      selectedConnectionPlan =
+        provider === "codex" ? getCodexPlanType(credentials.providerSpecificData) : null;
       const accountId = credentials.connectionId.slice(0, 8);
       const releaseOAuthSession = credentials.releaseOAuthSession ?? (() => {});
       // Undefined whenever the lease flag is off, which makes every release/hold below a no-op.
@@ -2191,16 +2448,23 @@ async function handleSingleModelChat(
         requestBody = { ...body, model: modelStr };
       }
       if (!runtimeOptions.reasoningDecision && runtimeOptions.reasoningIntent) {
-        const connectionRouting = await applyConnectionReasoningRule({
-          requestBody,
-          provider,
-          effectiveModel,
-          credentials,
-          apiKeyInfo,
-          reasoningIntent: runtimeOptions.reasoningIntent,
-          reasoningDecision: runtimeOptions.reasoningDecision,
-          requestRoutingTags: runtimeOptions.reasoningRequestTags,
-        }).catch(agyLease.releasingRethrow(leaseId));
+        let connectionRouting;
+        try {
+          connectionRouting = await applyConnectionReasoningRule({
+            requestBody,
+            provider,
+            effectiveModel,
+            credentials,
+            apiKeyInfo,
+            reasoningIntent: runtimeOptions.reasoningIntent,
+            reasoningDecision: runtimeOptions.reasoningDecision,
+            requestRoutingTags: runtimeOptions.reasoningRequestTags,
+          }).catch(agyLease.releasingRethrow(leaseId));
+        } catch (error) {
+          // The slot was taken above; a rule-store error must not keep the account occupied.
+          releaseOAuthSession();
+          throw error;
+        }
         if (connectionRouting.response) {
           releaseOAuthSession();
           agyLease.release(leaseId);
@@ -2252,7 +2516,10 @@ async function handleSingleModelChat(
         );
       } catch (error) {
         releaseOAuthSession();
-        throw error;
+        if (!(error instanceof StaleCodexOperationError)) throw error;
+        if (staleCodexReselected) return errorResponse(error.status, error.message);
+        staleCodexReselected = true;
+        continue;
       }
       const museBindFailure =
         museOwner &&
@@ -2291,13 +2558,18 @@ async function handleSingleModelChat(
         );
       }
       let proxyInfo;
+      const preResolvedEgress = reEgress.takePendingEgress(pendingEgress, credentials.connectionId);
+      pendingEgress = null;
       try {
-        proxyInfo = await safeResolveProxy(
-          credentials.connectionId,
-          apiKeyInfo?.id,
-          provider,
-          comboName
-        ).catch(agyLease.releasingRethrow(leaseId));
+        proxyInfo = preResolvedEgress
+          ? preResolvedEgress.proxyInfo
+          : await safeResolveProxy(
+              credentials.connectionId,
+              apiKeyInfo?.id,
+              provider,
+              comboName,
+              runtimeOptions.sessionAffinityKey ?? null
+            ).catch(agyLease.releasingRethrow(leaseId));
       } catch (error) {
         releaseOAuthSession();
         throw error;
@@ -2312,6 +2584,22 @@ async function handleSingleModelChat(
         reselectPoolMember?: () => Promise<unknown>;
       } = { proxy: null };
       const proxyStartTime = Date.now();
+      // A preferred API-key account can be given one shorter time-to-headers
+      // deadline when a vetted sibling exists. Pins/leases/combo/Muse are excluded.
+      const preferredDeadline = resolvePreferredConnectionUpstreamStartTimeoutMs(
+        provider,
+        credentials,
+        requestUpstreamStartTimeoutMs,
+        effectiveModel,
+        preferredFailoverUsed ||
+          hasForcedConnection ||
+          runtimeOptions.managedLease ||
+          museOwner ||
+          customProviderNoReplay ||
+          isCombo
+          ? { ...preferredFailoverSettings, enabled: false }
+          : preferredFailoverSettings
+      );
       // 4. Execute chat via core after breaker gate checks (with optional TLS tracking)
       if (telemetry) telemetry.startPhase("connect");
       const dispatchClientRawRequest = resolveDispatchClientRawRequest(
@@ -2353,6 +2641,7 @@ async function handleSingleModelChat(
             providerProfile,
             cachedSettings: runtimeOptions.cachedSettings,
             skipUpstreamRetry: runtimeOptions.skipUpstreamRetry ?? false,
+            nonReplayableRequest: customProviderNoReplay,
             correlationId: runtimeOptions?.correlationId ?? null,
             conversationId: runtimeOptions?.conversationId ?? null,
             modelPinned: runtimeOptions?.modelPinned ?? false,
@@ -2364,6 +2653,7 @@ async function handleSingleModelChat(
             videoBridgeLog: runtimeOptions.videoBridgeLog,
             previousResponseResumed: runtimeOptions.previousResponseResumed,
             fallbackAttempts: runtimeOptions.fallbackAttempts,
+            requestUpstreamStartTimeoutMs: preferredDeadline.timeoutMs,
             beforeUpstreamAttempt:
               museOwner && muse.museBeforeUpstreamAttempt(museOwner, credentials),
             forcedConnectionId: hasForcedConnection ? forcedConnectionId : null, // #14116
@@ -2382,6 +2672,8 @@ async function handleSingleModelChat(
         return execution.localResourcePressureResult.response;
       }
       const { result, tlsFingerprintUsed, wasProviderProbe } = execution;
+      markCustomJsonNoReplay(result.response, credentials?.providerSpecificData);
+      markAmbiguousCustomNodeFailure(provider, result);
       if (!result.success) releaseOAuthSession();
       if (result.success && agyLease.isStreamingAntigravityResponse(result.response))
         result.response = inheritProviderProbeResponse(
@@ -2393,6 +2685,29 @@ async function handleSingleModelChat(
           )
         );
       else agyLease.release(leaseId);
+      const staleCodexFailure = !result.success && !isCodexResponseCurrent(result.response);
+      if (
+        staleCodexFailure &&
+        isPassiveCodex(provider) &&
+        (result.status === 401 || result.status === 403)
+      ) {
+        // Passive auth recovery already tried an eligible synchronized token below. Restarting
+        // the whole request loses its rejection history and can replay an expired or rejected
+        // token after an A -> B -> A rollback. Do not cool/exclude the replacement account.
+        return result.response;
+      }
+      if (result.errorCode === STALE_CODEX_OPERATION_CODE || staleCodexFailure) {
+        if (staleCodexReselected) {
+          return staleCodexFailure
+            ? withRoutingTelemetry(
+                errorResponse(409, new StaleCodexOperationError().message),
+                credentials?.connectionId
+              )
+            : result.response;
+        }
+        staleCodexReselected = true;
+        continue;
+      }
       const proxyLatency = Date.now() - proxyStartTime;
       const providerAlias = PROVIDER_ID_TO_ALIAS[provider] || provider;
       const effectiveTargetFormat =
@@ -2418,9 +2733,13 @@ async function handleSingleModelChat(
         correlationId: rotationAttributionOn ? (runtimeOptions?.correlationId ?? null) : null,
       });
 
+      // An in-pipeline account rotation rewrites refreshedCredentials, not credentials.
+      const servedConnectionId = refreshedCredentials?.connectionId || credentials.connectionId;
       if (result.success) {
-        clearModelLock(provider, credentials.connectionId, model);
-        markQuotaHealthy(credentials.connectionId);
+        if (isCodexResponseCurrent(result.response, true)) {
+          clearModelLock(provider, servedConnectionId, model);
+          markQuotaHealthy(servedConnectionId);
+        }
         // Acquired probes were settled inside execute(); other successes settle here or in combo.
         if (
           !wasProviderProbe &&
@@ -2433,9 +2752,9 @@ async function handleSingleModelChat(
         }
         if (telemetry) telemetry.startPhase("finalize");
         if (telemetry) telemetry.endPhase();
-        const successResponse = withSelectedConnectionHeader(
+        const successResponse = withRoutingTelemetry(
           museOwner ? muse.museRecordOutput(museOwner, result.response) : result.response,
-          credentials?.connectionId
+          servedConnectionId
         );
         if (requestBody.stream === true) {
           return inheritResponsePolicies(
@@ -2445,6 +2764,35 @@ async function handleSingleModelChat(
         }
         releaseOAuthSession();
         return successResponse;
+      }
+      // Custom JSON API node: the business call may already have taken effect. Surface
+      // its failure as-is — no account cooldown, no replay on this or another connection.
+      if (isNoReplayResponse(result.response)) {
+        return withSelectedConnectionHeader(result.response, credentials.connectionId);
+      }
+
+      // A trusted caller's deadline must not cool a shared connection.
+      // A shorter *preferred* deadline may perform one in-request sibling hop,
+      // without recording a connection failure or evicting session affinity.
+      if (result.errorCode === REQUEST_SCOPED_UPSTREAM_TIMEOUT_CODE) {
+        if (
+          preferredDeadline.mayRotateOnRequestTimeout &&
+          !preferredFailoverUsed &&
+          requestSignal?.aborted !== true
+        ) {
+          preferredFailoverUsed = true;
+          preferredTimeoutOriginal = withSelectedConnectionHeader(
+            result.response,
+            credentials.connectionId
+          );
+          excludedConnectionIds.add(credentials.connectionId);
+          log.info(
+            "AUTH",
+            "Preferred account response-start timed out; trying one eligible sibling"
+          );
+          continue;
+        }
+        return withSelectedConnectionHeader(result.response, credentials.connectionId);
       }
       // Never let generic account fallback or affinity eviction move a Muse caller.
       if (museOwner) {
@@ -2456,6 +2804,8 @@ async function handleSingleModelChat(
         );
         if (museDelayMs !== null) {
           await new Promise((resolve) => setTimeout(resolve, museDelayMs));
+          sameAccountRetries += 1;
+          routingWaitMs += Math.max(0, museDelayMs);
           continue;
         }
         if (muse.museFailureMarksAccount(result)) {
@@ -2498,7 +2848,7 @@ async function handleSingleModelChat(
       // per-key policy decision — before the fix it even crashed on
       // `result.response.headers` (bare Response) and returned a 500/502.
       if (result.errorCode === "quota_share_blocked") {
-        return withSelectedConnectionHeader(result.response, credentials.connectionId);
+        return withRoutingTelemetry(result.response, credentials.connectionId);
       }
 
       // Missing Cloud Code project assignment is configuration, not a transient failure.
@@ -2506,14 +2856,14 @@ async function handleSingleModelChat(
       // redispatch and repeat bootstrap within the same logical request.
       if (isAntigravityMissingProjectError(provider, result)) {
         markAntigravityMissingCloudCodeProject(credentials.connectionId);
-        return withSelectedConnectionHeader(result.response, credentials.connectionId);
+        return withRoutingTelemetry(result.response, credentials.connectionId);
       }
 
       // A 422 body-deserialization rejection describes THIS request's shape, not the
       // account. Cooling the connection down would make every other client routed to
       // the same (often single) account fail with the stale error for ~1 minute.
       if (isRequestShapeError(result.status, result.error, provider)) {
-        return withSelectedConnectionHeader(result.response, credentials.connectionId);
+        return withRoutingTelemetry(result.response, credentials.connectionId);
       }
 
       const isAntigravityStreamReadinessFailure =
@@ -2562,6 +2912,7 @@ async function handleSingleModelChat(
           !(isCombo && result.errorCode === "empty_content")
         ) {
           streamEarlyEofRetries += 1;
+          pendingStreamRetryConnectionId = credentials.connectionId;
           if (result.errorCode === "empty_content") {
             runtimeOptions.emptyTurnConnectionId = credentials.connectionId;
           }
@@ -2604,14 +2955,16 @@ async function handleSingleModelChat(
         ) {
           // Retry spent and nothing emitted yet: one hop to a sibling (routing only, no mark).
           log.warn("STREAM", `${provider}/${model} early-EOF retry exhausted — trying one sibling`);
-          earlyEofOriginal = withSelectedConnectionHeader(
-            result.response,
-            credentials.connectionId
-          );
+          noteAccountFallback("stream_early_eof", credentials.connectionId);
+          earlyEofOriginal = withRoutingTelemetry(result.response, credentials.connectionId);
           excludedConnectionIds.add(credentials.connectionId);
           continue;
         }
-        return withSelectedConnectionHeader(result.response, credentials?.connectionId);
+        return withSelectedConnectionHeader(
+          result.response,
+          credentials?.connectionId,
+          routingTelemetry()
+        );
       }
 
       if (isAntigravityStreamReadinessFailure) {
@@ -2648,6 +3001,7 @@ async function handleSingleModelChat(
               // best-effort: selection also excludes this connection for the current retry.
             }
           }
+          noteAccountFallback("stream_readiness", credentials.connectionId);
           excludedConnectionIds.add(credentials.connectionId);
           lastError = classificationError;
           lastStatus = result.status;
@@ -2655,7 +3009,7 @@ async function handleSingleModelChat(
           requestRetryLastStatus = result.status;
           continue;
         }
-        return withSelectedConnectionHeader(result.response, credentials?.connectionId);
+        return withRoutingTelemetry(result.response, credentials?.connectionId);
       }
 
       const isAntigravityPreResponseTimeout =
@@ -2697,6 +3051,7 @@ async function handleSingleModelChat(
               // best-effort: selection also excludes this connection for the current retry.
             }
           }
+          noteAccountFallback("pre_response_timeout", credentials.connectionId);
           excludedConnectionIds.add(credentials.connectionId);
           lastError = result.error;
           lastStatus = result.status;
@@ -2705,20 +3060,21 @@ async function handleSingleModelChat(
           continue;
         }
 
-        return withSelectedConnectionHeader(result.response, credentials?.connectionId);
+        return withRoutingTelemetry(result.response, credentials?.connectionId);
       }
 
       if (result.errorType === "account_semaphore_capacity") {
         // Local concurrency pressure is not an upstream quota failure. Prefer another
         // account when possible; pinned combo steps fall through to combo orchestration.
         if (hasForcedConnection) {
-          return withSelectedConnectionHeader(result.response, credentials?.connectionId);
+          return withRoutingTelemetry(result.response, credentials?.connectionId);
         }
 
         log.warn(
           "AUTH",
           `Account ${accountId}... at local concurrency cap, trying fallback account`
         );
+        noteAccountFallback("capacity", credentials.connectionId);
         excludedConnectionIds.add(credentials.connectionId);
         lastError = result.error;
         lastStatus = result.status;
@@ -2727,12 +3083,41 @@ async function handleSingleModelChat(
         continue;
       }
 
+      // Per-IP 429 through a pool member: same account, untried member (sameAccountEgressRetry.ts).
+      const reEgressTo = await reEgress.nextReEgress({
+        status: result.status,
+        upstreamStatus: appliedProxySink.upstreamStatus,
+        provider,
+        proxyInfo,
+        appliedProxy: appliedProxySink.proxy,
+        quotaText: String(result.rawMessage ?? result.error ?? ""),
+        attempt: egressRetries,
+        aborted: requestSignal?.aborted === true,
+        triedKeys: egressTriedKeys,
+        resolveNext: () =>
+          safeResolveProxy(credentials.connectionId, apiKeyInfo?.id, provider, comboName),
+      });
+      if (reEgressTo) {
+        egressRetries += 1;
+        sameAccountRetries += 1;
+        log.info("PROXY", `${provider}/${model} per-IP 429, re-egress #${egressRetries}`);
+        pendingEgress = { connectionId: credentials.connectionId, proxyInfo: reEgressTo.proxyInfo };
+        preselectedCredentials = credentials;
+        continue;
+      }
+
       // Emergency fallback for budget exhaustion (402 / billing / quota keywords):
       // reroute to a free model (default provider/model: nvidia + nvidia/nemotron-3.5-super-vl-120b-a12b) exactly once.
       // Combo targets never emergency-hop: the combo is the operator's fallback policy
       // (target-level orchestration plus the global fallback #689 after it), and a
       // per-target hop burns extra upstream calls against exhausted providers (#1731).
-      if (!runtimeOptions.pattyDecision && !runtimeOptions.emergencyFallbackTried && !comboName) {
+      // Upstream's `providerFailoverPending` guard plus the fork's Patty guard: a Patty
+      // decision already chose the route, so an emergency hop would override it.
+      const emergencyHopAllowed =
+        !runtimeOptions.providerFailoverPending &&
+        !runtimeOptions.pattyDecision &&
+        !comboName;
+      if (!runtimeOptions.emergencyFallbackTried && emergencyHopAllowed) {
         const fallbackDecision = await resolveEmergencyFallbackDecision(
           Number(result.status || 0),
           String(result.error || ""),
@@ -2878,6 +3263,7 @@ async function handleSingleModelChat(
       const transportAttempts = sameAccountTransportRetries.get(credentials.connectionId) || 0;
       if (
         !runtimeOptions.emergencyFallbackTried &&
+        !runtimeOptions.providerFailoverPending &&
         !comboName &&
         !forceLiveComboTest &&
         shouldRetrySameAccountTransport({
@@ -2901,6 +3287,8 @@ async function handleSingleModelChat(
           releaseOAuthSession();
           return errorResponse(499, "Request aborted");
         }
+        sameAccountRetries += 1;
+        routingWaitMs += waitMs;
         preselectedCredentials = credentials;
         continue;
       }
@@ -2930,26 +3318,29 @@ async function handleSingleModelChat(
 
       const { shouldFallback, cooldownMs } = skipConnectionDisable
         ? { shouldFallback: false, cooldownMs: 0 }
-        : await markAccountUnavailable(
-            credentials.connectionId,
-            result.status,
-            errorStr,
-            provider,
-            model,
-            providerProfile,
-            buildExhaustionOptions(runtimeOptions.correlationId ?? null, {
-              persistUnavailableState: !(
-                isCombo &&
-                result.status === 429 &&
-                (failureKind === "rate_limit" || failureKind === "transient")
-              ),
-              isCombo,
-              headers: result.response.headers,
-              isAvalancheRisk: avalancheRisk?.isAvalancheRisk ?? false,
-              avalancheCooldownMs: avalancheRisk?.suggestedCooldownMs,
-              suppressFallback: avalancheRisk?.shouldSuppressFallback ?? false,
-              structuredError: { code: result.errorCode, type: result.errorType },
-            })
+        : await runWithCodexResponseFence(result.response, () =>
+            markAccountUnavailable(
+              credentials.connectionId,
+              result.status,
+              errorStr,
+              provider,
+              model,
+              providerProfile,
+              buildExhaustionOptions(runtimeOptions.correlationId ?? null, {
+                persistUnavailableState: !(
+                  isCombo &&
+                  result.status === 429 &&
+                  (failureKind === "rate_limit" || failureKind === "transient")
+                ),
+                isCombo,
+                headers: result.response.headers,
+                isAvalancheRisk: avalancheRisk?.isAvalancheRisk ?? false,
+                avalancheCooldownMs: avalancheRisk?.suggestedCooldownMs,
+                suppressFallback: avalancheRisk?.shouldSuppressFallback ?? false,
+                structuredError: { code: result.errorCode, type: result.errorType },
+                upstreamErrorBody: result.upstreamErrorBody,
+              })
+            )
           );
 
       if (avalancheRisk?.shouldSuppressFallback) {
@@ -2987,6 +3378,12 @@ async function handleSingleModelChat(
             // best-effort: selection also excludes this connection for the current retry.
           }
         }
+        noteAccountFallback(
+          typeof result.status === "number" && result.status >= 100 && result.status <= 599
+            ? "http_" + result.status
+            : "upstream_error",
+          credentials.connectionId
+        );
         excludedConnectionIds.add(credentials.connectionId);
         lastError = result.error;
         lastStatus = result.status;
@@ -3005,7 +3402,7 @@ async function handleSingleModelChat(
         breaker._onFailure();
       }
 
-      return withSelectedConnectionHeader(result.response, credentials?.connectionId);
+      return withRoutingTelemetry(result.response, credentials?.connectionId);
     }
   }
 }

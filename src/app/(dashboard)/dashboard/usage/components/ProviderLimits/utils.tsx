@@ -526,10 +526,13 @@ export function getBarColor(remainingPercentage: number): {
   };
 }
 
-export function formatCountdown(resetAt: string | null | undefined): string | null {
+export function formatCountdown(
+  resetAt: string | null | undefined,
+  now: number = Date.now()
+): string | null {
   if (!resetAt) return null;
   try {
-    const diff = new Date(resetAt).getTime() - Date.now();
+    const diff = new Date(resetAt).getTime() - now;
     if (diff <= 0) return null;
     const h = Math.floor(diff / 3_600_000);
     const m = Math.floor((diff % 3_600_000) / 60_000);
@@ -566,9 +569,11 @@ export interface SoonestResetInfo {
 }
 
 /** Soonest future reset across a card's quota rows (past/absent resets ignored). */
-export function getSoonestResetInfo(quotas: any[] | undefined): SoonestResetInfo | null {
+export function getSoonestResetInfo(
+  quotas: any[] | undefined,
+  now: number = Date.now()
+): SoonestResetInfo | null {
   if (!quotas || quotas.length === 0) return null;
-  const now = Date.now();
   let soonest = Number.POSITIVE_INFINITY;
   let soonestIso: string | null = null;
   for (const q of quotas) {
@@ -583,13 +588,16 @@ export function getSoonestResetInfo(quotas: any[] | undefined): SoonestResetInfo
   if (!soonestIso) return null;
   return {
     iso: soonestIso,
-    countdown: formatCountdown(soonestIso) ?? "",
+    countdown: formatCountdown(soonestIso, now) ?? "",
     urgency: resetUrgency(soonest - now),
   };
 }
 
-export function getNextResetSummary(quotas: any[] | undefined): string | null {
-  return getSoonestResetInfo(quotas)?.countdown ?? null;
+export function getNextResetSummary(
+  quotas: any[] | undefined,
+  now: number = Date.now()
+): string | null {
+  return getSoonestResetInfo(quotas, now)?.countdown ?? null;
 }
 
 function addQuotaModelIdVariants(out: Set<string>, provider: string, modelId: string) {

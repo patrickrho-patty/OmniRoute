@@ -1,33 +1,24 @@
 "use client";
 
-/**
- * QuotaCardGrid — ONE unified MagicGrid board of quota cards.
- *
- * Every connection — any provider, any account count — renders as the same
- * fixed-width card and flows into the same grid (shortest-column-first), so
- * single-account providers sit right next to multi-account ones instead of
- * stretching across the whole row or hiding in a per-provider section.
- * Provider identity lives on the card itself (icon + label + plan badge).
- *
- * Layout engine: magic-grid (MagicGrid). Cards keep their CSS width
- * (`w-full` on phones → 1 column; `sm:w-[320px]` → as many 320px columns as
- * fit, capped by maxColumns). MagicGrid only computes positions; we drive
- * `positionItems()` from our own ResizeObserver / MutationObserver / window
- * resize listeners so every listener is disconnectable on unmount (the
- * library's `listen()` leaks a window listener and has no destroy).
- */
-
-import { useEffect, useRef } from "react";
-import MagicGrid from "magic-grid";
+import type { ReactNode } from "react";
+import { useState } from "react";
+import { PROVIDER_ORDER } from "./constants";
+import { useProviderOrder } from "./useProviderOrder";
+import { ProviderSortContext, SortableProviderBlock } from "./ProviderRowSort";
 import QuotaCard from "./QuotaCard";
+import QuotaHealthOverview from "./QuotaHealthOverview";
+import { buildHealthGroups, type HealthAccount } from "./healthOverview";
+import { displayAccount } from "./availabilityDisplay";
+import { HealthCounts } from "./HealthOverviewChrome";
+import { useTranslations } from "next-intl";
 import {
-  compareProviderGroups,
   worstStatus,
   type CardStatus,
+  compareProviderGroups,
   type QuotaVisibilityScope,
 } from "./utils";
-import { PROVIDER_ORDER } from "./constants";
-import type { HealthAccount } from "./healthOverview";
+import Button from "@/shared/components/Button";
+import Icon from "@/shared/components/Icon";
 import { compareTr } from "@/shared/utils/turkishText";
 
 interface Props {
@@ -38,7 +29,7 @@ interface Props {
   lastRefreshedAt: Record<string, string | undefined>;
   emailsVisible: boolean;
   providerLabels: Record<string, string>;
-  renderInlineQuotaSummary?: (quota: any) => React.ReactNode;
+  renderInlineQuotaSummary?: (quota: any) => ReactNode;
   onRefresh: (id: string, provider: string) => void;
   onOpenCutoff: (connection: any) => void;
   onOpenResetCredits?: (id: string, provider: string) => void;
@@ -50,7 +41,6 @@ interface Props {
   quotaVisibility?: Record<string, { hidden?: string[] }>;
   onHideQuota?: (scope: QuotaVisibilityScope, quota: any) => void;
   onShowQuota?: (scope: QuotaVisibilityScope, quota: any) => void;
-  /** Compact home-widget density: narrower cards on the same board. */
   compact?: boolean;
   overview?: boolean;
   accounts?: Record<string, HealthAccount>;
@@ -108,19 +98,9 @@ function getConnectionLabel(connection: any): string {
 
 export function sortProviderConnectionsByPriority(
   connections: any[],
-  quotaData: Record<string, any>,
-  providerLabels: Record<string, string> = {}
+  quotaData: Record<string, any>
 ) {
   return [...connections].sort((a, b) => {
-    // Providers grouped adjacently — same-provider cards must sit next to
-    // each other on the unified board ("All providers" view scannability).
-    const providerDiff = compareProviderGroups(a.provider, b.provider, {
-      providerOrder: PROVIDER_ORDER,
-      providerLabels,
-      compare: compareTr,
-    });
-    if (providerDiff !== 0) return providerDiff;
-
     const aActive = a.isActive ?? true;
     const bActive = b.isActive ?? true;
     if (aActive !== bActive) return aActive ? -1 : 1;
@@ -134,21 +114,8 @@ export function sortProviderConnectionsByPriority(
     const statusDiff = STATUS_RANK[worstStatus(aQuotas)] - STATUS_RANK[worstStatus(bQuotas)];
     if (statusDiff !== 0) return statusDiff;
 
-    // Minute granularity: idle opencode 5h windows report resetsAt = now+5h,
-    // so every card's reset differs only by seconds of fetch-order jitter —
-    // comparing at full ms resolution reordered cards on every refresh (read
-    // by operators as accounts "swapping usage"). A real sooner reset is
-    // still >= a minute apart. Cards with NO future reset (Infinity on both
-    // sides) must skip this tiebreak entirely: Infinity - Infinity is NaN,
-    // and a NaN comparator return short-circuits the remaining% comparison
-    // below with an engine-defined order (live bug: every idle opencode
-    // card has resetAt null since the idle-window fix).
-    const aReset = getSoonestResetMs(aQuotas);
-    const bReset = getSoonestResetMs(bQuotas);
-    if (Number.isFinite(aReset) && Number.isFinite(bReset)) {
-      const resetDiff = Math.floor(aReset / 60_000) - Math.floor(bReset / 60_000);
-      if (resetDiff !== 0) return resetDiff;
-    }
+    const resetDiff = getSoonestResetMs(aQuotas) - getSoonestResetMs(bQuotas);
+    if (resetDiff !== 0) return resetDiff;
 
     const remainingDiff =
       getLowestRemainingPercentage(aQuotas) - getLowestRemainingPercentage(bQuotas);
@@ -158,13 +125,169 @@ export function sortProviderConnectionsByPriority(
   });
 }
 
-/** Card width per density mode — phones go full-width (single MagicGrid column). */
-const CARD_WIDTH_CLASS = {
-  // 320px fits a full e-mail address on the account line; the header wraps its chips
-  // (see QuotaCardHeader) rather than crushing the text when a card is narrower.
-  full: "w-full sm:w-[320px]",
-  compact: "w-full sm:w-[296px]",
-} as const;
+function buildProviderGroups(
+  connections: any[],
+  quotaData: Record<string, any>,
+  providerLabels: Record<string, string>
+) {
+  const groups = new Map<string, typeof connections>();
+  for (const conn of connections) {
+    const list = groups.get(conn.provider) ?? [];
+    list.push(conn);
+    groups.set(conn.provider, list);
+  }
+
+  return [...groups.entries()]
+    .map(([provider, conns]) => ({
+      provider,
+      connections: sortProviderConnectionsByPriority(conns, quotaData),
+    }))
+    .sort((a, b) =>
+      compareProviderGroups(a.provider, b.provider, {
+        providerOrder: PROVIDER_ORDER,
+        providerLabels,
+        compare: compareTr,
+      })
+    );
+}
+
+interface ProviderQuotaSectionProps extends Omit<Props, "connections"> {
+  provider: string;
+  connections: any[];
+  defaultOpen?: boolean;
+  /** Drag grip from SortableProviderBlock; null when there is nothing to reorder. */
+  dragHandle?: ReactNode;
+}
+
+function ProviderQuotaHeader({
+  group,
+  providerLabel,
+  activeCount,
+  count,
+  open,
+  dragHandle,
+}: {
+  dragHandle: ReactNode;
+  group: ReturnType<typeof buildHealthGroups>[number] | undefined;
+  providerLabel: string;
+  activeCount: number;
+  count: number;
+  open: boolean;
+}) {
+  const t = useTranslations("usage");
+  const groupColor = group
+    ? {
+        critical: "var(--color-error)",
+        alert: "var(--color-warning)",
+        ok: "var(--color-success)",
+        empty: "var(--color-text-muted)",
+        paused: "var(--color-text-muted)",
+      }[group.status]
+    : undefined;
+  return (
+    <summary className="flex items-center gap-3 px-3 py-2.5 cursor-pointer select-none hover:bg-surface-2 [&::-webkit-details-marker]:hidden">
+      {dragHandle}
+      <Icon name={open ? "expand_less" : "expand_more"} size={16} className="text-text-muted" />
+      <div className="min-w-0 flex-1">
+        <h3 className="ci-heading truncate" data-size="sm">
+          {group && (
+            <span
+              className="me-2 inline-block h-2 w-2 rounded-full"
+              style={{ background: groupColor }}
+              aria-hidden
+            />
+          )}
+          {providerLabel}
+        </h3>
+        <p className="text-2xs text-text-muted tabular-nums">
+          {t("activeCount", { count: activeCount })} / {t("accountsCount", { count })}
+        </p>
+      </div>
+      {group && <HealthCounts accounts={group.accounts.map((a) => displayAccount(a))} />}
+    </summary>
+  );
+}
+
+function ProviderQuotaSection({
+  provider,
+  connections,
+  defaultOpen = true,
+  quotaData,
+  loading,
+  errors,
+  lastRefreshedAt,
+  emailsVisible,
+  providerLabels,
+  onRefresh,
+  onOpenCutoff,
+  onOpenResetCredits,
+  onToggleActive,
+  togglingActiveId,
+  redeemingResetCreditId = null,
+  loadingResetCreditsId = null,
+  quotaVisibility,
+  onHideQuota,
+  onShowQuota,
+  accounts,
+  dragHandle = null,
+}: ProviderQuotaSectionProps) {
+  const [open, setOpen] = useState(defaultOpen);
+  const group =
+    accounts && buildHealthGroups(connections.map((c) => accounts[c.id]).filter(Boolean))[0];
+  const activeCount = connections.filter((conn) => conn.isActive ?? true).length;
+  const providerLabel = providerLabels[provider] || provider;
+
+  return (
+    <details
+      open={open}
+      onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)}
+      className="rounded-lg border border-border bg-surface overflow-hidden"
+    >
+      <ProviderQuotaHeader
+        dragHandle={dragHandle}
+        group={group}
+        providerLabel={providerLabel}
+        activeCount={activeCount}
+        count={connections.length}
+        open={open}
+      />
+      <div className="px-3 pb-3">
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,280px),1fr))] gap-3">
+          {connections.map((conn) => (
+            <QuotaCard
+              key={conn.id}
+              connection={conn}
+              quota={quotaData[conn.id]}
+              loading={!!loading[conn.id]}
+              error={errors[conn.id] || null}
+              refreshedAt={lastRefreshedAt[conn.id]}
+              emailsVisible={emailsVisible}
+              providerLabel={providerLabels[conn.provider] || conn.provider}
+              onRefresh={() => onRefresh(conn.id, conn.provider)}
+              onOpenCutoff={() => onOpenCutoff(conn)}
+              onOpenResetCredits={() => onOpenResetCredits?.(conn.id, conn.provider)}
+              onToggleActive={(nextActive) => onToggleActive(conn.id, nextActive)}
+              togglingActive={togglingActiveId === conn.id}
+              redeemingResetCredit={redeemingResetCreditId === conn.id}
+              loadingResetCredits={loadingResetCreditsId === conn.id}
+              quotaVisibility={quotaVisibility}
+              onHideQuota={
+                onHideQuota
+                  ? (q) => onHideQuota({ connectionId: conn.id, provider: conn.provider }, q)
+                  : undefined
+              }
+              onShowQuota={
+                onShowQuota
+                  ? (q) => onShowQuota({ connectionId: conn.id, provider: conn.provider }, q)
+                  : undefined
+              }
+            />
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
 
 export default function QuotaCardGrid({
   connections,
@@ -186,95 +309,129 @@ export default function QuotaCardGrid({
   onHideQuota,
   onShowQuota,
   compact = false,
+  overview = false,
+  accounts,
+  summaryFailed,
 }: Props) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  const sorted = sortProviderConnectionsByPriority(connections, quotaData, providerLabels);
-
-  // MagicGrid lifecycle: one instance per mount; `static: true` bypasses the
-  // item-count gate so we can position partial loads, and we NEVER call
-  // listen() (it registers an unremovable window resize listener). All
-  // reposition triggers are ours and cleaned up below.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const grid = new MagicGrid({
-      container,
-      static: true,
-      gutter: 12,
-      // Row-major placement (round-robin columns): with cards grouped by
-      // provider in DOM order, each row reads as consecutive provider blocks.
-      // useMin's shortest-column-first packing would scatter them.
-      useMin: false,
-      // No column cap — the board uses all available width on wide screens.
-      animate: true,
-    });
-
-    let frame = 0;
-    const reposition = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        grid.positionItems();
-      });
-    };
-
-    // Card heights change without React state changes: "Show 5 more"
-    // expanders, loading → data swaps, refreshed countdown text.
-    const mutation = new MutationObserver(reposition);
-    mutation.observe(container, { childList: true, subtree: true, characterData: true });
-
-    const resize = new ResizeObserver(reposition);
-    resize.observe(container);
-
-    window.addEventListener("resize", reposition);
-    reposition();
-
-    return () => {
-      if (frame) cancelAnimationFrame(frame);
-      mutation.disconnect();
-      resize.disconnect();
-      window.removeEventListener("resize", reposition);
-    };
-    // Instance is per-mount; repositioning is observer-driven.
-  }, []);
-
+  const t = useTranslations("usage");
+  const { order, custom, reset, reorder } = useProviderOrder(connections.map((c) => c.provider));
+  const orderedConnections = [...connections].sort(
+    (a, b) => order.indexOf(a.provider) - order.indexOf(b.provider)
+  );
   if (connections.length === 0) return null;
 
+  const renderCard = (conn: (typeof connections)[number]) => (
+    <QuotaCard
+      key={conn.id}
+      connection={conn}
+      quota={quotaData[conn.id]}
+      loading={!!loading[conn.id]}
+      error={errors[conn.id] || null}
+      refreshedAt={lastRefreshedAt[conn.id]}
+      emailsVisible={emailsVisible}
+      providerLabel={providerLabels[conn.provider] || conn.provider}
+      onRefresh={() => onRefresh(conn.id, conn.provider)}
+      onOpenCutoff={() => onOpenCutoff(conn)}
+      onOpenResetCredits={() => onOpenResetCredits?.(conn.id, conn.provider)}
+      onToggleActive={(nextActive) => onToggleActive(conn.id, nextActive)}
+      togglingActive={togglingActiveId === conn.id}
+      redeemingResetCredit={redeemingResetCreditId === conn.id}
+      loadingResetCredits={loadingResetCreditsId === conn.id}
+      quotaVisibility={quotaVisibility}
+      onHideQuota={
+        onHideQuota
+          ? (q) => onHideQuota({ connectionId: conn.id, provider: conn.provider }, q)
+          : undefined
+      }
+      onShowQuota={
+        onShowQuota
+          ? (q) => onShowQuota({ connectionId: conn.id, provider: conn.provider }, q)
+          : undefined
+      }
+    />
+  );
+
+  if (overview) {
+    return (
+      <QuotaHealthOverview
+        connections={connections}
+        quotaData={quotaData}
+        quotaVisibility={quotaVisibility}
+        accounts={accounts}
+        summaryFailed={summaryFailed}
+        providerLabels={providerLabels}
+        emailsVisible={emailsVisible}
+        renderCard={renderCard}
+      />
+    );
+  }
+
+  // Compact mode: flat 3-column card grid, across all connections.
+  if (compact) {
+    return (
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(17rem,1fr))] gap-3">
+        {orderedConnections.map(renderCard)}
+      </div>
+    );
+  }
+
+  // Default layout: expandable provider sections. Provider groups are ordered
+  // deterministically (PROVIDER_ORDER rank → label → key) so the group order
+  // never shuffles between quota refreshes, and connections are
+  // priority-sorted within each provider.
+  const groups = buildProviderGroups(connections, quotaData, providerLabels).sort(
+    (a, b) => order.indexOf(a.provider) - order.indexOf(b.provider)
+  );
+
+  // Drag grips reuse the overview's sortable store (useProviderOrder), so the
+  // order is shared by every layout and saved to settings.quotaProviderOrder.
+  const groupIds = groups.map((group) => group.provider);
+  const canReorder = groupIds.length > 1;
+
   return (
-    <div ref={containerRef} className="relative">
-      {sorted.map((conn) => (
-        <div key={conn.id} className={CARD_WIDTH_CLASS[compact ? "compact" : "full"]}>
-          <QuotaCard
-            connection={conn}
-            quota={quotaData[conn.id]}
-            loading={!!loading[conn.id]}
-            error={errors[conn.id] || null}
-            refreshedAt={lastRefreshedAt[conn.id]}
-            emailsVisible={emailsVisible}
-            providerLabel={providerLabels[conn.provider] || conn.provider}
-            onRefresh={() => onRefresh(conn.id, conn.provider)}
-            onOpenCutoff={() => onOpenCutoff(conn)}
-            onOpenResetCredits={() => onOpenResetCredits?.(conn.id, conn.provider)}
-            onToggleActive={(nextActive) => onToggleActive(conn.id, nextActive)}
-            togglingActive={togglingActiveId === conn.id}
-            redeemingResetCredit={redeemingResetCreditId === conn.id}
-            loadingResetCredits={loadingResetCreditsId === conn.id}
-            quotaVisibility={quotaVisibility}
-            onHideQuota={
-              onHideQuota
-                ? (q) => onHideQuota({ connectionId: conn.id, provider: conn.provider }, q)
-                : undefined
-            }
-            onShowQuota={
-              onShowQuota
-                ? (q) => onShowQuota({ connectionId: conn.id, provider: conn.provider }, q)
-                : undefined
-            }
-          />
+    <div className="space-y-4">
+      {custom && (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" data-reset-order className="text-xs" onClick={reset}>
+            <Icon name="restart_alt" size={14} /> {t("healthResetOrder")}
+          </Button>
         </div>
-      ))}
+      )}
+      <ProviderSortContext ids={groupIds} labels={providerLabels} onReorder={reorder}>
+        {groups.map(({ provider, connections: conns }) => (
+          <SortableProviderBlock
+            key={provider}
+            id={provider}
+            label={providerLabels[provider] || provider}
+          >
+            {(handle) => (
+              <ProviderQuotaSection
+                provider={provider}
+                connections={conns}
+                accounts={accounts}
+                quotaData={quotaData}
+                loading={loading}
+                errors={errors}
+                lastRefreshedAt={lastRefreshedAt}
+                emailsVisible={emailsVisible}
+                providerLabels={providerLabels}
+                onRefresh={onRefresh}
+                onOpenCutoff={onOpenCutoff}
+                onOpenResetCredits={onOpenResetCredits}
+                onToggleActive={onToggleActive}
+                togglingActiveId={togglingActiveId}
+                quotaVisibility={quotaVisibility}
+                onHideQuota={onHideQuota}
+                onShowQuota={onShowQuota}
+                redeemingResetCreditId={redeemingResetCreditId}
+                loadingResetCreditsId={loadingResetCreditsId}
+                dragHandle={canReorder ? handle : null}
+                defaultOpen
+              />
+            )}
+          </SortableProviderBlock>
+        ))}
+      </ProviderSortContext>
     </div>
   );
 }

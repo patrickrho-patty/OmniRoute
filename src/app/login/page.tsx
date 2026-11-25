@@ -151,7 +151,7 @@ export default function LoginPage() {
               <Icon name="error" size={28} className="text-[#0a0a0b]" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-base font-bold text-[#0a0a0b] mb-1">
+              <h3 className="text-base font-semibold text-[#0a0a0b] mb-1">
                 {t("nodeIncompatibleTitle")}
               </h3>
               <p className="text-sm text-black/60 leading-relaxed mb-3">
@@ -200,7 +200,7 @@ export default function LoginPage() {
           className={`w-full max-w-md transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
         >
           <div className="text-center mb-10">
-            <h1 className="text-3xl font-bold text-[#0a0a0b] tracking-tight">{t("welcome")}</h1>
+            <h1 className="text-3xl font-semibold text-[#0a0a0b] tracking-tight">{t("welcome")}</h1>
             <p className="text-black/60 mt-2">{t("configureInstance")}</p>
           </div>
 
@@ -230,7 +230,7 @@ export default function LoginPage() {
           className={`w-full max-w-md transition-all duration-700 ease-out ${mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
         >
           <div className="text-center mb-10">
-            <h1 className="text-3xl font-bold text-[#0a0a0b] tracking-tight">
+            <h1 className="text-3xl font-semibold text-[#0a0a0b] tracking-tight">
               {t("secureYourInstance")}
             </h1>
             <p className="text-black/60 mt-2">{t("passwordNotEnabled")}</p>
@@ -264,7 +264,7 @@ export default function LoginPage() {
           <span className="text-xl font-semibold text-[#0a0a0b] tracking-tight">Patty</span>
         </div>
 
-        <h1 className="text-2xl font-bold text-[#0a0a0b] tracking-tight text-center mb-1.5">
+        <h1 className="text-2xl font-semibold text-[#0a0a0b] tracking-tight text-center mb-1.5">
           {t("signIn")}
         </h1>
         <p className="text-black/60 text-center mb-8">

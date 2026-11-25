@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthenticated } from "@/shared/utils/apiAuth";
 import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
+import { requireOperatorCredential } from "@/lib/api/operatorCredential";
 import { buildErrorBody } from "@omniroute/open-sse/utils/error";
 import {
   getObsidianSyncStatus,
@@ -14,6 +15,12 @@ const enableSchema = z
     vaultPath: z.string().min(1).max(4096),
   })
   .strict();
+
+// CodeQL #1372/#1373: the vault becomes the root of a read/write WebDAV service with freshly
+// minted credentials, so choosing it is an operator action. The route is ALWAYS_PROTECTED, so an
+// open instance (login disabled) does not make a machine credential the operator either.
+const WEBDAV_VAULT_FORBIDDEN_MESSAGE =
+  "Choosing the WebDAV vault requires a signed-in dashboard session or the local CLI; API keys and access tokens cannot change it.";
 
 export async function GET(request: NextRequest) {
   if (!(await isAuthenticated(request))) {
@@ -46,6 +53,11 @@ export async function POST(request: NextRequest) {
   if (!(await isAuthenticated(request))) {
     return NextResponse.json(buildErrorBody(401, "Authentication required"), { status: 401 });
   }
+  const operatorVerdict = await requireOperatorCredential(request, {
+    forbiddenMessage: WEBDAV_VAULT_FORBIDDEN_MESSAGE,
+    alwaysRequireAuth: true,
+  });
+  if (operatorVerdict.ok === false) return operatorVerdict.response;
 
   let rawBody: unknown;
   try {

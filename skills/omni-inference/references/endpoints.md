@@ -14,6 +14,8 @@
 - [`POST /api/v1/messages`](#post-apiv1messages)
 - [`POST /api/v1/messages/count_tokens`](#post-apiv1messagescounttokens)
 - [`POST /api/v1/responses`](#post-apiv1responses)
+- [`POST /api/v1/decisions`](#post-apiv1decisions)
+- [`OPTIONS /api/v1/decisions`](#options-apiv1decisions)
 - [`POST /api/v1/embeddings`](#post-apiv1embeddings)
 - [`GET /api/v1/multimodal-embeddings`](#get-apiv1multimodal-embeddings)
 - [`POST /api/v1/multimodal-embeddings`](#post-apiv1multimodal-embeddings)
@@ -93,6 +95,12 @@
 - [`PUT /api/v1/management/proxies/bulk-assign`](#put-apiv1managementproxiesbulk-assign)
 - [`GET /api/v1/management/proxies/health`](#get-apiv1managementproxieshealth)
 - [`GET /api/v1/me/status`](#get-apiv1mestatus)
+- [`GET /api/v1/me/quota/{provider}`](#get-apiv1mequotaprovider)
+- [`PATCH /api/v1/me/quota/{provider}`](#patch-apiv1mequotaprovider)
+- [`GET /api/v1/me/sessions`](#get-apiv1mesessions)
+- [`GET /api/v1/me/sessions/{id}`](#get-apiv1mesessionsid)
+- [`GET /api/v1/me/usage`](#get-apiv1meusage)
+- [`GET /api/v1/me/sessions/{id}/messages`](#get-apiv1mesessionsidmessages)
 - [`GET /api/v1/muse-code/models`](#get-apiv1muse-codemodels)
 - [`GET /api/v1/music/generations`](#get-apiv1musicgenerations)
 - [`POST /api/v1/music/generations`](#post-apiv1musicgenerations)
@@ -113,6 +121,7 @@
 - [`POST /api/v1/segment`](#post-apiv1segment)
 - [`GET /api/v1/systemone`](#get-apiv1systemone)
 - [`POST /api/v1/systemone`](#post-apiv1systemone)
+- [`GET /api/v1/systemone/models`](#get-apiv1systemonemodels)
 - [`GET /api/v1/video-bridge/drilldown`](#get-apiv1video-bridgedrilldown)
 - [`DELETE /api/v1/video-bridge/drilldown`](#delete-apiv1video-bridgedrilldown)
 - [`GET /api/v1/videos/generations`](#get-apiv1videosgenerations)
@@ -128,8 +137,10 @@
 - [`POST /api/v1/vscode/{token}/responses`](#post-apiv1vscodetokenresponses)
 - [`POST /api/v1/vscode/{token}/v1/chat/completions`](#post-apiv1vscodetokenv1chatcompletions)
 - [`GET /api/v1/vscode/{token}/v1/models`](#get-apiv1vscodetokenv1models)
-- [`GET /api/v1/vscode/combos/{token}/{{slug}}`](#get-apiv1vscodecombostokenslug)
-- [`POST /api/v1/vscode/combos/{token}/{{slug}}`](#post-apiv1vscodecombostokenslug)
+- [`GET /api/v1/vscode/combos/{token}`](#get-apiv1vscodecombostoken)
+- [`GET /api/v1/vscode/combos/{token}/api/version`](#get-apiv1vscodecombostokenapiversion)
+- [`GET /api/v1/vscode/combos/{token}/api/tags`](#get-apiv1vscodecombostokenapitags)
+- [`POST /api/v1/vscode/combos/{token}/api/show`](#post-apiv1vscodecombostokenapishow)
 - [`GET /api/v1/vscode/raw/{token}`](#get-apiv1vscoderawtoken)
 - [`POST /api/v1/vscode/raw/{token}/api/chat`](#post-apiv1vscoderawtokenapichat)
 - [`POST /api/v1/vscode/raw/{token}/api/show`](#post-apiv1vscoderawtokenapishow)
@@ -178,7 +189,7 @@ curl http://localhost:20128/api/v1/search \
 
 Run a unified search
 
-Searches the web, news, or X through a configured provider. Set `provider` to `xquik-search` to use Xquik for X search. The aliases `xquik` and `xquik_search` resolve to the same provider. AnySearch (`anysearch-search`, aliases `anysearch` / `anysearch_search`) provides free fallback-only web search.
+Searches the web, news, or X through a configured provider. Set `provider` to `xquik-search` to use Xquik for X search. The aliases `xquik` and `xquik_search` resolve to the same provider. AnySearch (`anysearch-search`, aliases `anysearch` / `anysearch_search`) provides free fallback-only web search. Alternatively, set `model` to a saved priority/fill-first combo name. Only search-capable targets are attempted, in configured order. `model` and `provider` are mutually exclusive. Codex Web Search (`codex-search`, alias `codex_search`) reuses connected Codex (ChatGPT) accounts. Name it explicitly to use it; automatic selection (a credentialed last resort before keyless search) needs the `CODEX_SEARCH_AUTO_FALLBACK_ENABLED` feature flag, off by default. It spends subscription quota (not a free API), typically takes 10–40 seconds, and uses a 60-second timeout unless the operator sets a lower search timeout. Time range and domain filters are instruction hints, not hard filters.
 
 ```bash
 curl -X POST http://localhost:20128/api/v1/search \
@@ -272,6 +283,28 @@ curl -X POST http://localhost:20128/api/v1/responses \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
+```
+
+### POST /api/v1/decisions
+
+Native OpenAI Decisions
+
+Forwards one request in the OpenAI Decisions wire format (`input` plus an ordered `questions` array of `predicate` / `choice` / `score`) to the Decisions endpoint of an `openai` connection and returns its ordered `answers` untouched. Model: `openai/gpt-6-luna` (or bare `gpt-6-luna`). Never translated to or from chat or System One. The API key's model allowlist, `decisions` endpoint category, budget and connection scope are checked before any credential is read. The upstream call uses the guarded decision transport: provider outbound guard, no retries, no redirects, a 5 s timeout and a 64 KB answer cap. Request bodies are limited to 4 MiB.
+
+```bash
+curl -X POST http://localhost:20128/api/v1/decisions \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### OPTIONS /api/v1/decisions
+
+CORS preflight for native Decisions
+
+```bash
+curl -X OPTIONS http://localhost:20128/api/v1/decisions \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
 ```
 
 ### POST /api/v1/embeddings
@@ -724,6 +757,9 @@ curl -X DELETE http://localhost:20128/api/v1/{omnirouteCatchAll} \
 
 GET accounts › <id> › limits
 
+Management-only, like `/api/v1/registered-keys`: a dashboard session, the local CLI token, or an API key with `manage`/`admin` scope. Inference-only API keys get 403.
+
+
 ```bash
 curl http://localhost:20128/api/v1/accounts/{id}/limits \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN"
@@ -732,6 +768,9 @@ curl http://localhost:20128/api/v1/accounts/{id}/limits \
 ### PUT /api/v1/accounts/{id}/limits
 
 PUT accounts › <id> › limits
+
+Management-only, like `/api/v1/registered-keys`: a dashboard session, the local CLI token, or an API key with `manage`/`admin` scope. Inference-only API keys get 403.
+
 
 ```bash
 curl -X PUT http://localhost:20128/api/v1/accounts/{id}/limits \
@@ -1029,6 +1068,9 @@ curl http://localhost:20128/api/v1/media/{id} \
 
 POST issues › report
 
+Management-only, like `/api/v1/registered-keys`: a dashboard session, the local CLI token, or an API key with `manage`/`admin` scope. Inference-only API keys get 403.
+
+
 ```bash
 curl -X POST http://localhost:20128/api/v1/issues/report \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
@@ -1120,8 +1162,78 @@ curl http://localhost:20128/api/v1/management/proxies/health \
 
 GET me › status
 
+Self-service usage status for the calling API key (also served at /v1/me/status). Authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`. Requires scope `self:usage`. `accountQuotas` / `accountQuota` are included only with scope `self:account-quota` and are filtered by the key's `sharedQuotaProviders` setting. `listPriceUsd` / `unpricedRequests` in `usage.cost`, `usage.daily` and `usage.weekly` are cached per key for 60 s, so they may lag by up to 60 s.
+
 ```bash
 curl http://localhost:20128/api/v1/me/status \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### GET /api/v1/me/quota/{provider}
+
+GET me › quota
+
+Self-service quota view for the calling API key (also served at /v1/me/quota/{provider}): the key's position in the Quota Share pools of one provider, plus the schedule windows and per-model caps it is under. Off unless the `QUOTA_SELF_PANEL` feature flag is on (a request that reaches the route gets 404 otherwise). Authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`; the key is never read from the query string or a cookie. Requires scope `self:usage`. Account-level readings (`total`, `accounts[].dimensions[].account`, `modelWindows`) are included only with scope `self:account-quota` and only for providers in the key's `sharedQuotaProviders` setting. Member usage slices (`members`) also need the pool's `memberBreakdown` option. Account bars and model windows are further limited to the connections the key may use when it has a list of allowed connections. Pools are identified by an opaque per-key `ref`. The pool's display name and schedule labels are returned as the administrator wrote them. No pool id, connection id or account identity is returned. A key outside every pool of the provider gets 200 with `pools: []`. Every response of this route carries `Cache-Control: no-store`; a refusal before the route runs, for example by the client API policy or the IP filter, does not.
+
+```bash
+curl http://localhost:20128/api/v1/me/quota/{provider} \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### PATCH /api/v1/me/quota/{provider}
+
+PATCH me › quota
+
+Records the calling API key's own lending consent for one Quota Share pool of the provider (also served at /v1/me/quota/{provider}). The pool is named by the `ref` the GET returns. A consent above 0 needs a pool in `consent` borrow mode, and 0 withdraws the consent in either mode. Same feature flag, headers and provider rules as the GET. The `self:usage` scope authorizes this write. Checks run in this order: flag (404), key (401), scope (403), provider (400), per-key limit (429), body (400), deadline (400), pool reference (404), borrow mode (403). A refusal by a check writes nothing. A change of the stored consent is audited as `quota.pool.lending.updated`. The same body twice writes and audits once. Limit: 20 requests per 60 seconds per key, counted apart from the key's request rate limit.
+
+```bash
+curl -X PATCH http://localhost:20128/api/v1/me/quota/{provider} \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### GET /api/v1/me/sessions
+
+GET me › sessions
+
+List agent sessions opened by the calling API key (also served at /v1/me/sessions). Authenticate with `Authorization: Bearer <key>`; requires scope `self:usage`. Every filter applies on top of the calling key, so other keys' sessions are never listed. Session `costUsd` is the list-price cost of the session's requests; flat-rate providers are not counted as $0. It has the same meaning as `/v1/me/status` `listPriceUsd`, except that sessions are priced when each request is recorded and status with the current prices, so the two differ if prices changed in between. `unpricedCount` counts the requests that used tokens but had no known price and are therefore missing from `costUsd`, like status `unpricedRequests`.
+
+```bash
+curl http://localhost:20128/api/v1/me/sessions \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### GET /api/v1/me/sessions/{id}
+
+GET me › sessions › <id>
+
+Get details and recent requests of a session owned by the calling API key. Authenticate with `Authorization: Bearer <key>`; requires scope `self:usage`.
+
+```bash
+curl http://localhost:20128/api/v1/me/sessions/{id} \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### GET /api/v1/me/usage
+
+GET me › usage
+
+Usage and cost series of the calling API key's own requests (also served at /v1/me/usage): totals, one entry per UTC day, per day and model, per model and per provider. Rows are selected by the calling key's id. The key name is never matched and rows without a key id are never counted. Off unless the `QUOTA_SELF_PANEL` feature flag is on (a request that reaches the route gets 404 otherwise). Authenticate with `Authorization: Bearer <key>` or `x-api-key: <key>`; the key is never read from the query string or a cookie. Requires scope `self:usage`. The key is checked before `range`. Provider is returned as recorded. Model is the recorded name after its last `/`, and rows are grouped by it. A combo request whose every target was refused is recorded with the routing label as provider (the combo name, `auto` or `combo`) and the model string the client sent. `costUsd` is the billed cost, where flat-rate subscription providers count $0. `listPriceUsd` prices the same usage at list price, subscriptions included. A request whose model has no price row counts its stored cost (reported by the provider or calculated when recorded); only a request with neither counts 0, with no marker, so a total can be partial. A built series is reused for 60 seconds per key and range; `generatedAt` gives its age. Every response of this route carries `Cache-Control: no-store`; a refusal before the route runs, for example by the client API policy or the IP filter, does not.
+
+```bash
+curl http://localhost:20128/api/v1/me/usage \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### GET /api/v1/me/sessions/{id}/messages
+
+GET me › sessions › <id> › messages
+
+Simplified conversation turns (user prompt, assistant reply, tool names) of a session owned by the calling API key (also served at /v1/me/sessions/{id}/messages). Turns are stored only while the AGENT_SESSION_MESSAGES_ENABLED feature flag is on, and never for `noLog` keys. Authenticate with `Authorization: Bearer <key>`; requires scope `self:usage`.
+
+```bash
+curl http://localhost:20128/api/v1/me/sessions/{id}/messages \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN"
 ```
 
@@ -1158,6 +1270,9 @@ curl -X POST http://localhost:20128/api/v1/music/generations \
 
 GET providers › <provider> › limits
 
+Management-only, like `/api/v1/registered-keys`: a dashboard session, the local CLI token, or an API key with `manage`/`admin` scope. Inference-only API keys get 403.
+
+
 ```bash
 curl http://localhost:20128/api/v1/providers/{provider}/limits \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN"
@@ -1166,6 +1281,9 @@ curl http://localhost:20128/api/v1/providers/{provider}/limits \
 ### PUT /api/v1/providers/{provider}/limits
 
 PUT providers › <provider> › limits
+
+Management-only, like `/api/v1/registered-keys`: a dashboard session, the local CLI token, or an API key with `manage`/`admin` scope. Inference-only API keys get 403.
+
 
 ```bash
 curl -X PUT http://localhost:20128/api/v1/providers/{provider}/limits \
@@ -1335,13 +1453,24 @@ curl http://localhost:20128/api/v1/systemone \
 
 System One typed decisions
 
-One `state` plus typed `questions` (`noul` / `choice` / `score`); the backend is selected by the model id — `typesafe/jev-*` or a bare `jev-*` alias routes natively to api.typesafe.ai, `openrouter/<vendor>/ <model>` routes to OpenRouter's alpha decisions endpoint. Answers, probabilities and usage (tokens, cost) pass through untouched.
+One `state` plus typed `questions` (`noul` / `choice` / `score`); the backend is selected by the model id — `typesafe/jev-*` or a bare `jev-*` alias routes natively to api.typesafe.ai, `openrouter/<vendor>/ <model>` routes to OpenRouter's alpha decisions endpoint, and `cloudflare-ai/<jev|clef|clef-flash>` (alias `cf/`) runs on Cloudflare Workers AI through the existing `cloudflare-ai` connection (Jev draws AI Gateway credits, Clef draws Workers AI neurons; opt-in through the `SYSTEMONE_CLOUDFLARE_BACKEND_ENABLED` feature flag, default off). Answers, probabilities and usage (tokens, cost) pass through untouched.
 
 ```bash
 curl -X POST http://localhost:20128/api/v1/systemone \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
+```
+
+### GET /api/v1/systemone/models
+
+Decision-model catalog (System One and native Decisions)
+
+The decision models of the caller's authorized model catalog, one list for both wire formats. Each row carries `api_format`: `systemone` rows are served by POST /api/v1/systemone, `decisions` rows (`openai/gpt-6-luna`) by POST /api/v1/decisions. `limit` and `after` page the final list (`has_more`, `last_id`). Reads no credential and calls no upstream. The `X-OmniRoute-Catalog-Status` header is `complete`, `partial` (stale or degraded catalog) or `unavailable` (HTTP 503, nothing survived).
+
+```bash
+curl http://localhost:20128/api/v1/systemone/models \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
 ```
 
 ### GET /api/v1/video-bridge/drilldown
@@ -1501,21 +1630,39 @@ curl http://localhost:20128/api/v1/vscode/{token}/v1/models \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN"
 ```
 
-### GET /api/v1/vscode/combos/{token}/{{slug}}
+### GET /api/v1/vscode/combos/{token}
 
-GET vscode › combos › <token> › <{slug>}
+List the VS Code combo catalog
 
 ```bash
-curl http://localhost:20128/api/v1/vscode/combos/{token}/{{slug}} \
+curl http://localhost:20128/api/v1/vscode/combos/{token} \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN"
 ```
 
-### POST /api/v1/vscode/combos/{token}/{{slug}}
+### GET /api/v1/vscode/combos/{token}/api/version
 
-POST vscode › combos › <token> › <{slug>}
+Read the Ollama compatibility version for the combo endpoint
 
 ```bash
-curl -X POST http://localhost:20128/api/v1/vscode/combos/{token}/{{slug}} \
+curl http://localhost:20128/api/v1/vscode/combos/{token}/api/version \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### GET /api/v1/vscode/combos/{token}/api/tags
+
+List the combo catalog in Ollama format
+
+```bash
+curl http://localhost:20128/api/v1/vscode/combos/{token}/api/tags \
+  -H "Authorization: Bearer $OMNIROUTE_TOKEN"
+```
+
+### POST /api/v1/vscode/combos/{token}/api/show
+
+Describe one combo in Ollama format
+
+```bash
+curl -X POST http://localhost:20128/api/v1/vscode/combos/{token}/api/show \
   -H "Authorization: Bearer $OMNIROUTE_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{}'
@@ -1633,6 +1780,8 @@ curl http://localhost:20128/api/v1/vscode/raw/{token}/v1/models \
 ### POST /api/v1/web/fetch
 
 POST web › fetch
+
+Fetch a URL with an explicit provider, native automatic selection, or a saved priority/fill-first combo in `model`. Mixed combos skip targets without a fetch executor. `model` and `provider` are mutually exclusive.
 
 ```bash
 curl -X POST http://localhost:20128/api/v1/web/fetch \

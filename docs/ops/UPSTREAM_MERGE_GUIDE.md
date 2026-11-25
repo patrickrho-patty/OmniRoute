@@ -122,6 +122,21 @@ Checklist to re-verify at the end (all bit me or nearly did):
   malformed-502 message, `/v1/models` catalog strip, its row in
   `docs/reference/FEATURE_FLAGS.md` — the count assertion in
   `tests/unit/feature-flags-doc-sync-static.test.ts` fails if the row drifts)
+  - **Response-model echo** (`open-sse/services/responseModelEcho.ts`) rewrites
+    **three** locations and every sync resolution must keep all three:
+    top-level `model` (Chat Completions), `response.model` (Responses API, #3697),
+    `message.model` (Anthropic `message_start` — the only event a
+    `/v1/messages` stream carries it in). It is wired at the non-streaming return
+    and as the **last** stage of the streaming pipe in
+    `open-sse/handlers/chatCore/streamingPipeline.ts`; if the pipe order moves,
+    a Claude-format stream leaks the upstream id again.
+  - **The flag's answer key** (run all of these after resolving — a resolution that
+    drops a redaction point turns them red):
+    `tests/unit/hide-upstream-metadata-units.test.ts`,
+    `tests/unit/response-model-echo-1311.test.ts`,
+    `tests/unit/response-model-echo-client-requested.test.ts`,
+    `tests/unit/codex-effort-model-echo-3697.test.ts`,
+    `tests/integration/hide-upstream-metadata-combo-echo.test.ts`.
 - Pretendard / Patty branding (`src/app/login/PattyShell.tsx`, self-hosted font in
   globals.css, `public/sw.js` constants, `public/icon-*.png?v=patty-*`)
 - Compression: incremental cache, ponytail engine, KO language pack,
@@ -370,7 +385,15 @@ deploys (teardown of `/opt/OmniRoute` + a doc rewrite is a tracked follow-up).
 ```text
 PREFLIGHT    base-green? · worktree on external drive · cp -Rc node_modules · baseline suite run
 MERGE        git merge --no-ff · R1–R7 · import-union + prune · file-level calls on flagships
+FLAG GATE    node --import tsx/esm --test tests/unit/hide-upstream-metadata-units.test.ts
+             tests/unit/response-model-echo-1311.test.ts
+             tests/unit/response-model-echo-client-requested.test.ts
+             tests/unit/codex-effort-model-echo-3697.test.ts
+             tests/integration/hide-upstream-metadata-combo-echo.test.ts
+             (green ⇒ no upstream-model leak on any chat surface: body, stream,
+              headers, SSE meta comments, combo failures, /v1/models)
 HYGIENE      marker sweep · esbuild parse sweep · typecheck ×2 · lint · fork invariants
+             · FLAG GATE (above) — not optional
 VERIFY       full suite · diff vs baseline · pure-upstream classifier on every new failure
              · local npm run build (the honest gate)
 COLLISIONS   migration renumber + RENAMED_MIGRATION_COMPATIBILITY + pinned-test count

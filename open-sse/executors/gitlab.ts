@@ -465,7 +465,8 @@ export class GitlabExecutor extends BaseExecutor {
   private async fetchGitLabDirectAccess(
     root: string,
     accessToken: string,
-    signal: AbortSignal | null | undefined
+    signal: AbortSignal | null | undefined,
+    credentials: ProviderCredentials
   ): Promise<{
     directAccess: GitLabDirectAccessDetails | null;
     response: Response | null;
@@ -474,14 +475,20 @@ export class GitlabExecutor extends BaseExecutor {
     const endpoints = buildGitLabOAuthEndpoints(root);
     const timeoutSignal = AbortSignal.timeout(FETCH_TIMEOUT_MS);
     const combinedSignal = signal ? mergeAbortSignals(signal, timeoutSignal) : timeoutSignal;
-    const response = await fetch(endpoints.directAccessUrl, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/json",
+    // The host is operator config; follow redirects through the dispatch guard.
+    this.assertOutboundUrlAllowed(endpoints.directAccessUrl);
+    const response = await this.dispatchRequest(
+      endpoints.directAccessUrl,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+        signal: combinedSignal,
       },
-      signal: combinedSignal,
-    });
+      credentials
+    );
 
     const bodyText = await response.text();
     if (!response.ok) {
@@ -544,7 +551,8 @@ export class GitlabExecutor extends BaseExecutor {
       const { directAccess, response, bodyText } = await this.fetchGitLabDirectAccess(
         root,
         credentials.accessToken,
-        input.signal
+        input.signal,
+        credentials
       );
 
       if (directAccess) {
@@ -649,12 +657,13 @@ export class GitlabExecutor extends BaseExecutor {
     const combinedSignal = input.signal
       ? mergeAbortSignals(input.signal, timeoutSignal)
       : timeoutSignal;
-    const response = await fetch(target.url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(transformedBody),
-      signal: combinedSignal,
-    });
+    // target.url is the stored GitLab host or the gateway its direct_access answer named.
+    this.assertOutboundUrlAllowed(target.url);
+    const response = await this.dispatchRequest(
+      target.url,
+      { method: "POST", headers, body: JSON.stringify(transformedBody), signal: combinedSignal },
+      input.credentials
+    );
     return { response, headers };
   }
 
